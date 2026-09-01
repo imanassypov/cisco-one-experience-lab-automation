@@ -8,8 +8,8 @@
 #
 # Prerequisites:
 #   catc_common.load_settings → settings_data
-#   Stage 3 / Design credentials present (CLI Admin, v2c read 1, v2c write 1,
-#   HTTP(S) read 1, HTTP(S) write 1). NETCONF only when enable_netconf is true.
+#   Stage 3 / Design credentials present (CLI Admin, SNMPv2c Read/Write,
+#   HTTPS Read/Write). NETCONF only when enable_netconf is true.
 #
 # Module: cisco.dnac.discovery_workflow_manager (state: merged)
 # =============================================================================
@@ -38,12 +38,13 @@
         {%- if disc and disc.discovery_name | default('') -%}
           {%- set cli_desc = disc.cli_description | default('CLI Admin') -%}
           {%- set cli_user = disc.cli_username | default('admin') -%}
+          {%- set http_user = disc.http_username | default('netadmin') -%}
           {%- set gcred = {
             'cli_credentials_list': [{'description': cli_desc, 'username': cli_user}],
-            'snmp_v2_read_credential_list': [{'description': disc.snmp_v2c_read_description | default('v2c read 1')}],
-            'snmp_v2_write_credential_list': [{'description': disc.snmp_v2c_write_description | default('v2c write 1')}],
-            'http_read_credential_list': [{'description': disc.http_read_description | default('HTTP(S) read 1'), 'username': cli_user}],
-            'http_write_credential_list': [{'description': disc.http_write_description | default('HTTP(S) write 1'), 'username': cli_user}]
+            'snmp_v2_read_credential_list': [{'description': disc.snmp_v2c_read_description | default('SNMPv2c Read')}],
+            'snmp_v2_write_credential_list': [{'description': disc.snmp_v2c_write_description | default('SNMPv2c Write')}],
+            'http_read_credential_list': [{'description': disc.http_read_description | default('HTTPS Read'), 'username': http_user}],
+            'http_write_credential_list': [{'description': disc.http_write_description | default('HTTPS Write'), 'username': http_user}]
           } -%}
           {%- set job = {
             'discovery_name': disc.discovery_name,

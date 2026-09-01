@@ -53,17 +53,20 @@
                     "enable_password": "C1sco12345"
                 },
                 "snmp_v2c_read": {
-                    "description": "v2c read 1",
+                    "description": "SNMPv2c Read",
                     "read_community": "RO"
                 },
                 "snmp_v2c_write": {
-                    "description": "v2c write 1",
+                    "description": "SNMPv2c Write",
                     "write_community": "RW"
                 },
                 "netconf_credential": {
-                    "description": "NETCONF-netadmin",
+                    "description": "defaultNetConfPort",
                     "netconf_port": "830"
                 }
+            },
+            "assign_credentials": {
+                "site_name": ["Global/CALIFORNIA/San Jose/DC-Site-10/MAIN"]
             },
             "device_list": "198.18.5.103",
             "discovery": {
@@ -78,10 +81,11 @@
                 "netconf_port": "830",
                 "cli_description": "CLI Admin",
                 "cli_username": "admin",
-                "snmp_v2c_read_description": "v2c read 1",
-                "snmp_v2c_write_description": "v2c write 1",
-                "http_read_description": "HTTP(S) read 1",
-                "http_write_description": "HTTP(S) write 1"
+                "snmp_v2c_read_description": "SNMPv2c Read",
+                "snmp_v2c_write_description": "SNMPv2c Write",
+                "http_read_description": "HTTPS Read",
+                "http_write_description": "HTTPS Write",
+                "http_username": "netadmin"
             },
             "network_profile": {
                 "profile_name": "HQ-Switching",
@@ -158,17 +162,20 @@
                     "enable_password": "C1sco12345"
                 },
                 "snmp_v2c_read": {
-                    "description": "v2c read 1",
+                    "description": "SNMPv2c Read",
                     "read_community": "RO"
                 },
                 "snmp_v2c_write": {
-                    "description": "v2c write 1",
+                    "description": "SNMPv2c Write",
                     "write_community": "RW"
                 },
                 "netconf_credential": {
-                    "description": "NETCONF-netadmin",
+                    "description": "defaultNetConfPort",
                     "netconf_port": "830"
                 }
+            },
+            "assign_credentials": {
+                "site_name": ["Global/NEW YORK/New York/DC-Site-11/MAIN"]
             },
             "device_list": "",
             "network_profile": {
@@ -246,17 +253,20 @@
                     "enable_password": "C1sco12345"
                 },
                 "snmp_v2c_read": {
-                    "description": "v2c read 1",
+                    "description": "SNMPv2c Read",
                     "read_community": "RO"
                 },
                 "snmp_v2c_write": {
-                    "description": "v2c write 1",
+                    "description": "SNMPv2c Write",
                     "write_community": "RW"
                 },
                 "netconf_credential": {
-                    "description": "NETCONF-netadmin",
+                    "description": "defaultNetConfPort",
                     "netconf_port": "830"
                 }
+            },
+            "assign_credentials": {
+                "site_name": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"]
             },
             "device_list": "172.30.255.1,172.30.255.2,172.30.255.3",
             "discovery": {
@@ -270,10 +280,11 @@
                 "enable_netconf": false,
                 "cli_description": "CLI Admin",
                 "cli_username": "admin",
-                "snmp_v2c_read_description": "v2c read 1",
-                "snmp_v2c_write_description": "v2c write 1",
-                "http_read_description": "HTTP(S) read 1",
-                "http_write_description": "HTTP(S) write 1"
+                "snmp_v2c_read_description": "SNMPv2c Read",
+                "snmp_v2c_write_description": "SNMPv2c Write",
+                "http_read_description": "HTTPS Read",
+                "http_write_description": "HTTPS Write",
+                "http_username": "netadmin"
             },
             "network_profile": {
                 "profile_name": "BGP-EVPN-Switching",
@@ -364,17 +375,20 @@
                     "enable_password": "C1sco12345"
                 },
                 "snmp_v2c_read": {
-                    "description": "v2c read 1",
+                    "description": "SNMPv2c Read",
                     "read_community": "RO"
                 },
                 "snmp_v2c_write": {
-                    "description": "v2c write 1",
+                    "description": "SNMPv2c Write",
                     "write_community": "RW"
                 },
                 "netconf_credential": {
-                    "description": "NETCONF-netadmin",
+                    "description": "defaultNetConfPort",
                     "netconf_port": "830"
                 }
+            },
+            "assign_credentials": {
+                "site_name": ["Global/TEXAS/Richardson/Site-106/MAIN"]
             },
             "device_list": "",
             "network_profile": {

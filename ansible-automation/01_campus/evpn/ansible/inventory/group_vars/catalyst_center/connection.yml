@@ -61,18 +61,18 @@ discovery_cli_credentials:
       username: admin
 discovery_snmp_read_credentials:
   snmp_v2_read_credential_list:
-    - description: v2c read 1
+    - description: SNMPv2c Read
 discovery_snmp_write_credentials:
   snmp_v2_write_credential_list:
-    - description: v2c write 1
+    - description: SNMPv2c Write
 discovery_http_read_credentials:
   http_read_credential_list:
-    - description: HTTP(S) read 1
-      username: admin
+    - description: HTTPS Read
+      username: netadmin
 discovery_http_write_credentials:
   http_write_credential_list:
-    - description: HTTP(S) write 1
-      username: admin
+    - description: HTTPS Write
+      username: netadmin
 
 # Template sync / GitHub (stage 7)
 # template_source selects where the .j2 templates and composite YAML are read from:

@@ -244,7 +244,7 @@ Client and endpoint AAA configuration (ISE/RADIUS for 802.1X and MAB). Applied t
 
 ### Device Credentials
 
-The `device_credentials` object defines the global device credentials created in Catalyst Center under **Design → Credentials** and assigned to the site. These credentials are used by Catalyst Center for SNMP polling, SSH management access, and NETCONF operations.
+The `device_credentials` object names the **live** Catalyst Center Design globals (not a second copy). Stage `03` creates a description only if it is missing, then binds that same global to each site via `assign_credentials`. PseudoCo lab names: `CLI Admin`, `SNMPv2c Read`, `SNMPv2c Write`, `defaultNetConfPort` (port 830).
 
 #### `cli_credential`
 
@@ -286,6 +286,16 @@ NETCONF over SSH credential.
 
 > **Note on credential descriptions:** The `description` field is the key the tooling uses to look up the UUID of an already-created credential. If you change a description between runs, the tooling will create a new credential rather than updating the existing one.
 
+#### `assign_credentials`
+
+Per-site bind of those globals. `site_name` is the MAIN floor path. CLI/SNMP descriptions are taken from the same row's `device_credentials` so four project rows do not create four global copies.
+
+```json
+"assign_credentials": {
+    "site_name": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"]
+}
+```
+
 ---
 
 ### Device List
@@ -312,8 +322,9 @@ Optional `discovery` object consumed by stage `04`. When present, it is the disc
 | `retry` / `timeout` | SNMP polling (lab GUI: 3 / 5) |
 | `enable_netconf` | `false` for Site-105; `true` for C9800-WLC (port 830) |
 | `cli_description` | Live global: `CLI Admin` |
-| `snmp_v2c_*_description` | Live globals: `v2c read 1`, `v2c write 1` |
-| `http_*_description` | Live globals: `HTTP(S) read 1`, `HTTP(S) write 1` |
+| `snmp_v2c_*_description` | Live globals: `SNMPv2c Read`, `SNMPv2c Write` |
+| `http_*_description` | Live globals: `HTTPS Read`, `HTTPS Write` |
+| `http_username` | Live HTTP credential user: `netadmin` |
 
 ---
 
