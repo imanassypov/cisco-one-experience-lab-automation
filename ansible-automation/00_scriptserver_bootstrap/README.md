@@ -14,8 +14,7 @@ Lab/demo access for other devices is in [PseudoCo_Lab_Access_Lookup.md](../../La
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali’s default shell is zsh) and symlinked into `~/bin`
 - On Kali, disables the HashiCorp apt source if it targets `kali-rolling` (that repo has no Release file and breaks `apt update`)
 - Pinned Cisco Galaxy collections (`cisco.ios`, `cisco.catalystcenter`, `cisco.ise`, `cisco.nxos`, `cisco.meraki`)
-- Working directory `~/cisco-one-automation` (Galaxy requirements copy)
-- Git checkout of this repo at `~/cisco-one-experience-lab-automation` (`02_sync_from_git.yml`)
+- Git checkout of this repo at `~/cisco-one-experience-lab-automation` (the only project tree on the script server)
 
 ## Playbook sequence
 
@@ -24,8 +23,8 @@ Playbooks in `playbooks/` are numbered in the order they should be applied:
 | Playbook | Purpose |
 | --- | --- |
 | `00_preflight.yml` | Confirm VPN path and TCP/22 to the script server |
-| `01_bootstrap_script_server.yml` | Install the script-server venv, Ansible binaries, and collections |
-| `02_sync_from_git.yml` | Clone or pull this GitHub repo onto the script server for testing |
+| `01_bootstrap_script_server.yml` | Install the script-server venv, Ansible binaries, collections, and pull this GitHub repo |
+| `02_sync_from_git.yml` | Clone or pull this GitHub repo onto the script server (sync only, no reinstall) |
 
 Later collections (`01_campus` and onward) will use the same `00_`, `01_`, … naming inside their own `playbooks/` folders.
 

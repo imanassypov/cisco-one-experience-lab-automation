@@ -8,8 +8,11 @@
 - name: Put venv binaries on PATH
   ansible.builtin.include_tasks: path.yml
 
-- name: Install Galaxy collections and working directory
+- name: Install Galaxy collections
   ansible.builtin.include_tasks: collections.yml
+
+- name: Clone or pull the GitHub repository
+  ansible.builtin.include_tasks: sync_repo.yml
 
 - name: Verify bootstrap
   ansible.builtin.include_tasks: verify.yml
