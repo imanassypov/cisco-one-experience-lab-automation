@@ -1,12 +1,28 @@
 ---
-description: Develop playbooks locally, push to GitHub, test on the dCloud script server
+description: Cisco One lab workflow, script-server facts, and repo conventions
 alwaysApply: true
 ---
 
-# Development workflow
+# Cisco One Experience Lab — local memory
 
-- Author and edit Ansible collections on the local Mac in this repo. Do not write new playbooks on the Kali script server.
-- After the user asks to commit or push, publish to `origin` (`imanassypov/cisco-one-experience-lab-automation` on `main`).
-- Testing is done on the bootstrapped script server (`198.18.134.12`) after it has pulled `main` into `~/cisco-one-experience-lab-automation`.
-- To refresh that checkout from the Mac (dCloud VPN up), run `ansible-automation/00_scriptserver_bootstrap/playbooks/02_sync_from_git.yml`.
-- On the script server, run later collections with the venv Ansible already on PATH. Recreate `.vault` there when a collection needs Vault (`.vault` is gitignored).
+dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playbooks. Topology and access lookup live in `Lab Topology/`. Do not put passwords in playbooks or unencrypted inventory.
+
+## Workflow
+
+- Author playbooks on the Mac in this repo. Do not write new playbooks on Kali.
+- Commit/push only when the user asks. Remote: `https://github.com/imanassypov/cisco-one-experience-lab-automation` (`main`, public).
+- Test on the Kali script server after it has `main` at `~/cisco-one-experience-lab-automation`.
+- Mac refresh (VPN up): `ansible-automation/00_scriptserver_bootstrap` venv, then `playbooks/01_bootstrap_script_server.yml` (also git-pulls) or `playbooks/02_sync_from_git.yml` (git only).
+- On Kali, Ansible is on PATH from `~/venv`. Recreate `.vault` there if a collection needs Vault (gitignored).
+
+## Script server
+
+- Kali Linux at `198.18.134.12`. SSH user and passwords come from Vault (`inventory/group_vars/script_servers/vault.yml`), unlocked by gitignored `.vault`.
+- Mac controller: project `.venv` via `setup-local-venv.sh`; `ansible_connection: paramiko`.
+- Only project tree on Kali: `~/cisco-one-experience-lab-automation`. Never create `~/cisco-one-automation`.
+
+## Collections
+
+- Playbooks live under `ansible-automation/`, numbered by lab-build order: `00_scriptserver_bootstrap`, `01_campus`, `02_data_center`, `03_dmz`, `04_remote_dc`, `05_sdwan`, `06_secure_access`.
+- Inside each collection, playbooks are `00_`, `01_`, … in apply order.
+- `00_` is implemented. `01_`–`06_` are stubs until built.
