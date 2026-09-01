@@ -1,0 +1,17 @@
+---
+- name: Clone or update the lab automation repository
+  ansible.builtin.git:
+    repo: "{{ script_server_git_repo }}"
+    dest: "{{ script_server_repo_dest }}"
+    version: "{{ script_server_git_version }}"
+    update: true
+    accept_hostkey: true
+  register: script_server_git_sync
+
+- name: Show the script-server checkout
+  ansible.builtin.debug:
+    msg: >-
+      {{ script_server_git_repo }} ({{ script_server_git_version }})
+      is at {{ script_server_repo_dest }}
+      ({{ script_server_git_sync.after | default('updated') }}).
+      Test playbooks from that tree; Ansible is already on PATH.

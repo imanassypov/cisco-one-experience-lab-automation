@@ -1,0 +1,12 @@
+---
+description: Develop playbooks locally, push to GitHub, test on the dCloud script server
+alwaysApply: true
+---
+
+# Development workflow
+
+- Author and edit Ansible collections on the local Mac in this repo. Do not write new playbooks on the Kali script server.
+- After the user asks to commit or push, publish to `origin` (`imanassypov/cisco-one-experience-lab-automation` on `main`).
+- Testing is done on the bootstrapped script server (`198.18.134.12`) after it has pulled `main` into `~/cisco-one-experience-lab-automation`.
+- To refresh that checkout from the Mac (dCloud VPN up), run `ansible-automation/00_scriptserver_bootstrap/playbooks/02_sync_from_git.yml`.
+- On the script server, run later collections with the venv Ansible already on PATH. Recreate `.vault` there when a collection needs Vault (`.vault` is gitignored).

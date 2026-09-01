@@ -2,6 +2,9 @@
 script_server_venv_path: "{{ ansible_user_dir }}/venv"
 script_server_bin_path: "{{ ansible_user_dir }}/bin"
 script_server_workdir: "{{ ansible_user_dir }}/cisco-one-automation"
+script_server_git_repo: https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+script_server_repo_dest: "{{ ansible_user_dir }}/cisco-one-experience-lab-automation"
+script_server_git_version: main
 script_server_bashrc: "{{ ansible_user_dir }}/.bashrc"
 script_server_profile: "{{ ansible_user_dir }}/.profile"
 script_server_zshrc: "{{ ansible_user_dir }}/.zshrc"

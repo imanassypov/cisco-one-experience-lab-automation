@@ -4,6 +4,41 @@ Ansible collections that automate the dCloud-delivered **Cisco One Experience** 
 
 Connect **Cisco Secure Client / AnyConnect** to the dCloud session before any SSH, RDP, or playbook run.
 
+## Development workflow
+
+Playbooks are written on the Mac, published to GitHub, and executed on the bootstrapped Kali script server.
+
+```mermaid
+flowchart LR
+  Mac["Mac: edit playbooks"]
+  GitHub["GitHub main"]
+  Script["Kali script server 198.18.134.12"]
+  Mac -->|"commit and push"| GitHub
+  GitHub -->|"02_sync_from_git or git pull"| Script
+  Script -->|"ansible-playbook on PATH"| Lab["Lab devices"]
+```
+
+1. **Develop locally** in this repo (`ansible-automation/`). Do not author new playbooks on the script server.
+2. **Push to GitHub** (`origin` / `main`): https://github.com/imanassypov/cisco-one-experience-lab-automation
+3. **Refresh the script server checkout** (VPN up), from the Mac:
+
+   ```bash
+   cd ansible-automation/00_scriptserver_bootstrap
+   source .venv/bin/activate
+   ansible-playbook playbooks/02_sync_from_git.yml
+   ```
+
+   That clones or updates `~/cisco-one-experience-lab-automation` on the script server.
+4. **Test on the script server** (SSH as `cisco`). Ansible is already on PATH from bootstrap:
+
+   ```bash
+   cd ~/cisco-one-experience-lab-automation/ansible-automation/<collection>
+   # recreate .vault here if that collection uses Vault (it is gitignored)
+   ansible-playbook playbooks/00_....yml
+   ```
+
+   You can also `git pull` in that directory instead of running `02_sync_from_git.yml`.
+
 ## Lab references
 
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)

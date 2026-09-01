@@ -14,7 +14,8 @@ Lab/demo access for other devices is in [PseudoCo_Lab_Access_Lookup.md](../../La
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali’s default shell is zsh) and symlinked into `~/bin`
 - On Kali, disables the HashiCorp apt source if it targets `kali-rolling` (that repo has no Release file and breaks `apt update`)
 - Pinned Cisco Galaxy collections (`cisco.ios`, `cisco.catalystcenter`, `cisco.ise`, `cisco.nxos`, `cisco.meraki`)
-- Working directory `~/cisco-one-automation`
+- Working directory `~/cisco-one-automation` (Galaxy requirements copy)
+- Git checkout of this repo at `~/cisco-one-experience-lab-automation` (`02_sync_from_git.yml`)
 
 ## Playbook sequence
 
@@ -24,6 +25,7 @@ Playbooks in `playbooks/` are numbered in the order they should be applied:
 | --- | --- |
 | `00_preflight.yml` | Confirm VPN path and TCP/22 to the script server |
 | `01_bootstrap_script_server.yml` | Install the script-server venv, Ansible binaries, and collections |
+| `02_sync_from_git.yml` | Clone or pull this GitHub repo onto the script server for testing |
 
 Later collections (`01_campus` and onward) will use the same `00_`, `01_`, … naming inside their own `playbooks/` folders.
 
@@ -50,6 +52,9 @@ cd ansible-automation/00_scriptserver_bootstrap
 source .venv/bin/activate
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml
+ansible-playbook playbooks/02_sync_from_git.yml
 ```
 
-After a successful run, SSH to the script server and confirm `ansible-playbook --version` works without activating that host's venv.
+After bootstrap, later collections are developed on the Mac, pushed to GitHub, then synced and run **on** the script server. See the root README development workflow.
+
+SSH to the script server and confirm `ansible-playbook --version` works without activating that host's venv. Test from `~/cisco-one-experience-lab-automation`. Recreate `.vault` there when a collection needs Vault.
