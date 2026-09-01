@@ -9,6 +9,19 @@ script_server_profile: "{{ ansible_user_dir }}/.profile"
 script_server_zshrc: "{{ ansible_user_dir }}/.zshrc"
 script_server_zprofile: "{{ ansible_user_dir }}/.zprofile"
 
+# Lab DNS first so corp.pseudoco.com (CatC, ISE, …) resolves. dCloud resolver
+# stays as fallback. glibc does not fail over on NXDOMAIN, so the lab server
+# must be first. 198.18.5.102 recurses for public names (GitHub/PyPI).
+script_server_lab_dns_primary: "198.18.5.102"
+script_server_lab_dns_fallback: "198.18.128.1"
+script_server_lab_dns_nameservers:
+  - "{{ script_server_lab_dns_primary }}"
+  - "{{ script_server_lab_dns_fallback }}"
+script_server_interfaces_path: /etc/network/interfaces
+script_server_resolv_conf_path: /etc/resolv.conf
+script_server_lab_dns_check_hosts:
+  - cat-center.corp.pseudoco.com
+
 # Pinned for supply-chain consistency. Bump deliberately when upgrading.
 script_server_ansible_core_version: "2.17.14"
 script_server_paramiko_version: "3.5.1"

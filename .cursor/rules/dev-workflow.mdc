@@ -17,7 +17,7 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 
 ## Script server
 
-- Kali Linux at `198.18.134.12`. SSH user and password come from `lab_access.script_server` in `Lab Topology/lab_access.yml`.
+- Kali Linux at `198.18.134.12`. SSH user and password come from `lab_access.script_server` in `Lab Topology/lab_access.yml`. Bootstrap sets resolver to lab DNS `198.18.5.102` (fallback `198.18.128.1`) so `corp.pseudoco.com` names resolve.
 - Mac controller: project `.venv` via `setup-local-venv.sh`; `ansible_connection: paramiko`.
 - Only project tree on Kali: `~/cisco-one-experience-lab-automation`. Never create `~/cisco-one-automation`.
 

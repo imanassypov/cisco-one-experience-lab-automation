@@ -1,0 +1,44 @@
+---
+# Point Kali at PseudoCo lab DNS (198.18.5.102). The ifupdown NetworkManager
+# plugin cannot be changed with nmcli, so persistence is interfaces(5) and
+# the live resolver is /etc/resolv.conf.
+
+- name: Check whether /etc/network/interfaces exists
+  ansible.builtin.stat:
+    path: "{{ script_server_interfaces_path }}"
+  register: script_server_interfaces_stat
+
+- name: Set dns-nameservers on eth0 in /etc/network/interfaces
+  ansible.builtin.replace:
+    path: "{{ script_server_interfaces_path }}"
+    regexp: '^(\s*)dns-nameservers\s+.*$'
+    replace: '\1dns-nameservers {{ script_server_lab_dns_nameservers | join(" ") }}'
+  become: true
+  when: script_server_interfaces_stat.stat.exists | default(false)
+  register: script_server_interfaces_dns
+
+- name: Write /etc/resolv.conf with lab DNS first
+  ansible.builtin.copy:
+    dest: "{{ script_server_resolv_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by 00_scriptserver_bootstrap (lab DNS, then dCloud fallback)
+      nameserver {{ script_server_lab_dns_primary }}
+      nameserver {{ script_server_lab_dns_fallback }}
+  become: true
+
+- name: Confirm lab FQDNs resolve
+  ansible.builtin.command:
+    argv:
+      - getent
+      - hosts
+      - "{{ item }}"
+  loop: "{{ script_server_lab_dns_check_hosts }}"
+  changed_when: false
+  register: script_server_dns_check
+
+- name: Show lab DNS resolution
+  ansible.builtin.debug:
+    msg: "{{ script_server_dns_check.results | map(attribute='stdout') | list }}"

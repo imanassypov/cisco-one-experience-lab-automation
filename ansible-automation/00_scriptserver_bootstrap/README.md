@@ -16,6 +16,7 @@ Host and URL index: [PseudoCo_Lab_Access_Lookup.md](../../Lab%20Topology/PseudoC
 - Pinned Cisco Galaxy collections (`cisco.ios`, `cisco.catalystcenter` 2.10.2, `cisco.dnac` 6.46.0, `cisco.ise`, `cisco.nxos`, `cisco.meraki`)
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Git checkout of this repo at `~/cisco-one-experience-lab-automation` (the only project tree on the script server)
+- Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
 
 ## Playbook sequence
 
@@ -24,7 +25,7 @@ Playbooks in `playbooks/` are numbered in the order they should be applied:
 | Playbook | Purpose |
 | --- | --- |
 | `00_preflight.yml` | Confirm VPN path and TCP/22 to the script server |
-| `01_bootstrap_script_server.yml` | Install the script-server venv, Ansible binaries, collections, and pull this GitHub repo |
+| `01_bootstrap_script_server.yml` | Lab DNS, venv, Ansible binaries, collections, and pull this GitHub repo |
 | `02_sync_from_git.yml` | Clone or pull this GitHub repo onto the script server (sync only, no reinstall) |
 
 Later collections (`01_campus` and onward) will use the same `00_`, `01_`, … naming inside their own `playbooks/` folders.

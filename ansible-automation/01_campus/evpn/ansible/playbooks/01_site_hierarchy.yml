@@ -25,6 +25,10 @@
 #   In Catalyst Center: the area/building/floor tree consumed by stages 02–10.
 #
 # Play var: state = merged (default) | deleted
+# Play var: site_hierarchy_update_existing = false (default).
+#   Building/floor PUT via cisco.catalystcenter 2.10.2 + SDK 3.1.3.0.1
+#   raises UnboundLocalError ('func'). Existing buildings/floors are left
+#   as-is; CREATE still runs for missing paths. Set true to retry UPDATE.
 # Modules: cisco.catalystcenter.{sites_info, areas, buildings, floors}
 #
 # Run: ansible-playbook playbooks/01_site_hierarchy.yml

@@ -182,6 +182,7 @@
 
 # ── UPDATE existing building ──────────────────────────────────────────────────
 # PUT /dna/intent/api/v2/buildings/{id}
+# Off by default: SDK 3.1.3.0.1 UnboundLocalError on variable 'func'.
 - name: "Building | UPDATE | {{ _path }}"
   cisco.catalystcenter.buildings:
     state:     present
@@ -196,6 +197,7 @@
   when:
     - _type == 'building'
     - _exists
+    - site_hierarchy_update_existing | default(false) | bool
 
 - name: "DEBUG | Building UPDATE result"
   debug:
@@ -204,6 +206,7 @@
     - catc_debug | default(false) | bool
     - _type == 'building'
     - _exists
+    - site_hierarchy_update_existing | default(false) | bool
 
 # =============================================================================
 # FLOORS
@@ -261,6 +264,7 @@
   when:
     - _type == 'floor'
     - _exists
+    - site_hierarchy_update_existing | default(false) | bool
 
 - name: "DEBUG | Floor UPDATE result"
   debug:
@@ -269,6 +273,7 @@
     - catc_debug | default(false) | bool
     - _type == 'floor'
     - _exists
+    - site_hierarchy_update_existing | default(false) | bool
 
 # =============================================================================
 # POST-CREATE: resolve the new site's UUID via sites_info

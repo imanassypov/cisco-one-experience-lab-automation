@@ -1,4 +1,7 @@
 ---
+- name: Point the resolver at lab DNS
+  ansible.builtin.include_tasks: dns.yml
+
 - name: Install OS packages
   ansible.builtin.include_tasks: packages.yml
 

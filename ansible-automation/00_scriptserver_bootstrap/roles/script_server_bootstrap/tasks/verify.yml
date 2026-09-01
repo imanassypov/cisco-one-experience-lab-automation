@@ -30,10 +30,20 @@
   changed_when: false
   failed_when: script_server_path_check.rc != 0
 
+- name: Confirm lab DNS still resolves CatC
+  ansible.builtin.command:
+    argv:
+      - getent
+      - hosts
+      - cat-center.corp.pseudoco.com
+  changed_when: false
+  register: script_server_dns_verify
+
 - name: Display bootstrap evidence
   ansible.builtin.debug:
     msg:
       - "{{ script_server_git_version.stdout }}"
       - "{{ script_server_ansible_version.stdout_lines }}"
       - "PATH binaries: {{ script_server_path_check.stdout_lines }}"
+      - "DNS: {{ script_server_dns_verify.stdout }}"
       - "{{ script_server_galaxy_list.stdout_lines }}"
