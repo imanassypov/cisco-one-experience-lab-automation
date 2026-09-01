@@ -1,0 +1,30 @@
+---
+- name: Preflight — dCloud VPN and script server SSH
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    script_server_host: "{{ hostvars['script_server'].ansible_host | default('198.18.134.12') }}"
+    script_server_port: 22
+  tasks:
+    - name: Check TCP 22 reachability to the script server
+      ansible.builtin.wait_for:
+        host: "{{ script_server_host }}"
+        port: "{{ script_server_port }}"
+        timeout: 8
+        state: started
+      register: script_server_ssh_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Fail if the dCloud VPN or script server is unreachable
+      ansible.builtin.fail:
+        msg: >-
+          Cannot reach {{ script_server_host }}:{{ script_server_port }}.
+          Connect Cisco Secure Client / AnyConnect to the dCloud session first,
+          then re-run this playbook.
+      when: script_server_ssh_check is failed
+
+    - name: Script server SSH port is reachable
+      ansible.builtin.debug:
+        msg: "{{ script_server_host }}:{{ script_server_port }} is reachable. VPN path looks good."

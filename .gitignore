@@ -1,0 +1,17 @@
+# Ansible
+*.retry
+.vault
+.vault_pass
+**/secrets.yml
+!**/secrets.yml.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

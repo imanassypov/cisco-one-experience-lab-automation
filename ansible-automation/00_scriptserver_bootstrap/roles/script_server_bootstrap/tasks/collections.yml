@@ -1,0 +1,22 @@
+---
+- name: Create the automation working directory
+  ansible.builtin.file:
+    path: "{{ script_server_workdir }}"
+    state: directory
+    mode: "0755"
+
+- name: Copy Galaxy requirements into the working directory
+  ansible.builtin.copy:
+    src: requirements.yml
+    dest: "{{ script_server_workdir }}/requirements.yml"
+    mode: "0644"
+
+- name: Install pinned Ansible collections with the venv ansible-galaxy
+  ansible.builtin.command:
+    cmd: >-
+      {{ script_server_venv_path }}/bin/ansible-galaxy collection install
+      -r {{ script_server_workdir }}/requirements.yml
+  register: script_server_galaxy
+  changed_when: >-
+    'Nothing to do.' not in script_server_galaxy.stdout
+    and 'is already installed' not in script_server_galaxy.stdout

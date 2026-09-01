@@ -1,0 +1,11 @@
+---
+- name: Create the user Python virtualenv
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ script_server_venv_path }}
+    creates: "{{ script_server_venv_path }}/bin/python"
+
+- name: Install pinned Python packages into the virtualenv
+  ansible.builtin.pip:
+    name: "{{ script_server_python_packages }}"
+    virtualenv: "{{ script_server_venv_path }}"
+    virtualenv_command: python3 -m venv

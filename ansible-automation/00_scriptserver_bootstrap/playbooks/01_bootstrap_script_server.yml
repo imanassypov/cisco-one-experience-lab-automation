@@ -1,0 +1,25 @@
+---
+- name: Require vault credentials before connecting
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Fail when vault SSH credentials are missing
+      ansible.builtin.assert:
+        that:
+          - hostvars['script_server'].ansible_user is defined
+          - hostvars['script_server'].ansible_user | length > 0
+          - hostvars['script_server'].ansible_password is defined
+          - hostvars['script_server'].ansible_password | length > 0
+        fail_msg: >-
+          Script server credentials come from the Ansible Vault file
+          inventory/group_vars/script_servers/vault.yml.
+          Create .vault (see .vault.example) so ansible.cfg can decrypt it.
+          Do not pass passwords on the command line.
+
+- name: Bootstrap the Linux script server
+  hosts: script_servers
+  gather_facts: true
+  become: false
+  roles:
+    - role: script_server_bootstrap

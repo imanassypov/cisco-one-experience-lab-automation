@@ -1,0 +1,4 @@
+---
+# Paramiko ships in the local .venv so vault password auth works on macOS without sshpass.
+ansible_connection: paramiko
+ansible_python_interpreter: auto_silent

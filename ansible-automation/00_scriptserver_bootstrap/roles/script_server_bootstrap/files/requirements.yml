@@ -1,0 +1,12 @@
+---
+collections:
+  - name: cisco.ios
+    version: 10.1.1
+  - name: cisco.catalystcenter
+    version: 2.2.2
+  - name: cisco.ise
+    version: 2.10.0
+  - name: cisco.nxos
+    version: 10.2.0
+  - name: cisco.meraki
+    version: 2.21.0

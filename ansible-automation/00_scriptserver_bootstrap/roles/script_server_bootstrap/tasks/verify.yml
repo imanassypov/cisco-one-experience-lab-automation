@@ -1,0 +1,39 @@
+---
+- name: Collect git version
+  ansible.builtin.command:
+    cmd: git --version
+  register: script_server_git_version
+  changed_when: false
+
+- name: Collect ansible-core version from the virtualenv
+  ansible.builtin.command:
+    cmd: "{{ script_server_venv_path }}/bin/ansible --version"
+  register: script_server_ansible_version
+  changed_when: false
+
+- name: Collect installed Galaxy collections
+  ansible.builtin.command:
+    cmd: "{{ script_server_venv_path }}/bin/ansible-galaxy collection list"
+  register: script_server_galaxy_list
+  changed_when: false
+
+- name: Confirm ansible-playbook is on PATH via venv and ~/bin
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export PATH="{{ script_server_venv_path }}/bin:{{ script_server_bin_path }}:${PATH}"
+    command -v ansible
+    command -v ansible-playbook
+    command -v ansible-galaxy
+  args:
+    executable: /bin/bash
+  register: script_server_path_check
+  changed_when: false
+  failed_when: script_server_path_check.rc != 0
+
+- name: Display bootstrap evidence
+  ansible.builtin.debug:
+    msg:
+      - "{{ script_server_git_version.stdout }}"
+      - "{{ script_server_ansible_version.stdout_lines }}"
+      - "PATH binaries: {{ script_server_path_check.stdout_lines }}"
+      - "{{ script_server_galaxy_list.stdout_lines }}"

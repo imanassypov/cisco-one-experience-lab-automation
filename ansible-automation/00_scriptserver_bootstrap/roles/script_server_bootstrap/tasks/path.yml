@@ -1,0 +1,50 @@
+---
+- name: Create ~/bin for Ansible CLI symlinks
+  ansible.builtin.file:
+    path: "{{ script_server_bin_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Symlink Ansible CLI binaries into ~/bin
+  ansible.builtin.file:
+    src: "{{ script_server_venv_path }}/bin/{{ item }}"
+    dest: "{{ script_server_bin_path }}/{{ item }}"
+    state: link
+    force: true
+  loop: "{{ script_server_cli_binaries }}"
+
+- name: Add venv and ~/bin to PATH in .bashrc
+  ansible.builtin.blockinfile:
+    path: "{{ script_server_bashrc }}"
+    create: true
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - cisco-one venv PATH"
+    block: |
+      export PATH="$HOME/venv/bin:$HOME/bin:$PATH"
+
+- name: Add venv and ~/bin to PATH in .profile
+  ansible.builtin.blockinfile:
+    path: "{{ script_server_profile }}"
+    create: true
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - cisco-one venv PATH"
+    block: |
+      export PATH="$HOME/venv/bin:$HOME/bin:$PATH"
+
+- name: Add venv and ~/bin to PATH in .zshrc
+  ansible.builtin.blockinfile:
+    path: "{{ script_server_zshrc }}"
+    create: true
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - cisco-one venv PATH"
+    block: |
+      export PATH="$HOME/venv/bin:$HOME/bin:$PATH"
+
+- name: Add venv and ~/bin to PATH in .zprofile
+  ansible.builtin.blockinfile:
+    path: "{{ script_server_zprofile }}"
+    create: true
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - cisco-one venv PATH"
+    block: |
+      export PATH="$HOME/venv/bin:$HOME/bin:$PATH"
