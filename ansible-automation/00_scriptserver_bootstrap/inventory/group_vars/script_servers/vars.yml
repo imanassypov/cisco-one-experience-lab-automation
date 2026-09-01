@@ -2,3 +2,6 @@
 # Paramiko ships in the local .venv so vault password auth works on macOS without sshpass.
 ansible_connection: paramiko
 ansible_python_interpreter: auto_silent
+ansible_user: "{{ lab_access[inventory_hostname].username }}"
+ansible_password: "{{ lab_access[inventory_hostname].password }}"
+ansible_become_password: "{{ lab_access[inventory_hostname].enable_password | default(lab_access[inventory_hostname].password) }}"

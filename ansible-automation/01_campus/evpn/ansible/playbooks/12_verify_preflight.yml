@@ -1,0 +1,31 @@
+---
+- name: Preflight — campus EVPN management reachability
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Check TCP 22 on each campus EVPN switch
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[item].ansible_host }}"
+        port: 22
+        timeout: 8
+        state: started
+      loop: "{{ groups['campus_evpn'] }}"
+      loop_control:
+        label: "{{ item }} ({{ hostvars[item].ansible_host }})"
+      register: campus_evpn_ssh
+      ignore_errors: true
+      changed_when: false
+
+    - name: Fail if any campus EVPN switch is unreachable
+      ansible.builtin.fail:
+        msg: >-
+          Cannot reach one or more Site 105 EVPN switches on TCP/22.
+          Connect the dCloud VPN and confirm
+          Site_105-Leaf1 (198.18.128.22), Site_105-Leaf2 (198.18.128.23),
+          and Site_105-Border-Spine (198.18.128.24).
+      when: campus_evpn_ssh.results | selectattr('failed') | list | length > 0
+
+    - name: Campus EVPN SSH ports are reachable
+      ansible.builtin.debug:
+        msg: All campus EVPN management addresses accept TCP/22.

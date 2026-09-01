@@ -1,0 +1,47 @@
+---
+# =============================================================================
+# catc_common / auth_token.yml
+# =============================================================================
+# Obtains a short-lived Catalyst Center JWT for raw REST calls (uri module).
+# Used by stages 9–10 (provision, deploy composite) and anywhere the collection
+# module cannot express the required API (async 202 bodies, composite payloads).
+#
+# Credentials: catc_username / catc_password from Lab Topology/lab_access.yml.
+# Connection:  catc_host, catc_port, catc_verify from group_vars.
+#
+# Play-level output:
+#   _catc_token — bearer string for X-Auth-Token header (no_log on storage)
+# =============================================================================
+
+# POST /dna/system/api/v1/auth/token with HTTP Basic auth.
+# Example
+#   In : catc_host = "198.18.129.100", catc_port = 443
+#        catc_username / catc_password from lab_access['Catalyst Center']
+#   Out: _auth_response.status = 200
+#        _auth_response.json = {
+#          "Token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2NTNhMWIyYyIsImV4cCI6MTc4NTkzNjEyN30.Qp7mR3xK9vL2sN4tY6uZ8wA1bC5dE0fG"
+#        }
+# The response key is "Token" with a capital T, not "token".
+- name: Authenticate with Catalyst Center
+  ansible.builtin.uri:
+    url: "https://{{ catc_host }}:{{ catc_port }}/dna/system/api/v1/auth/token"
+    method: POST
+    user: "{{ catc_username }}"
+    password: "{{ catc_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ catc_verify }}"
+    status_code: 200
+  register: _auth_response
+  no_log: true
+
+# Example
+#   In : _auth_response.json = {
+#          "Token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2NTNhMWIyYyIsImV4cCI6MTc4NTkzNjEyN30.Qp7mR3xK9vL2sN4tY6uZ8wA1bC5dE0fG"
+#        }
+#   Out: _catc_token =
+#          "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2NTNhMWIyYyIsImV4cCI6MTc4NTkzNjEyN30.Qp7mR3xK9vL2sN4tY6uZ8wA1bC5dE0fG"
+#        consumed as the X-Auth-Token header by every raw-REST uri task.
+- name: Store auth token
+  ansible.builtin.set_fact:
+    _catc_token: "{{ _auth_response.json.Token }}"
+  no_log: true

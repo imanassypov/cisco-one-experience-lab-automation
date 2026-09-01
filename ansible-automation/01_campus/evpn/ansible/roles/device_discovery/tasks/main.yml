@@ -1,0 +1,138 @@
+---
+# =============================================================================
+# device_discovery / main.yml  —  Pipeline stage 4.0
+# =============================================================================
+# Submits Catalyst Center discovery jobs from settings_data.project[].discovery
+# (preferred) or a legacy device_list. Uses global credentials already stored
+# in CatC (stage 3) via description references — not inline passwords.
+#
+# Prerequisites:
+#   catc_common.load_settings → settings_data
+#   Stage 3 / Design credentials present (CLI Admin, v2c read 1, v2c write 1,
+#   HTTP(S) read 1, HTTP(S) write 1). NETCONF only when enable_netconf is true.
+#
+# Module: cisco.dnac.discovery_workflow_manager (state: merged)
+# =============================================================================
+
+# One discovery job per project row that has a discovery block (or device_list).
+# Example (Site-105 from settings.json)
+#   In : settings_data.project[] discovery = {
+#          "discovery_name": "Site-105-Discovery",
+#          "discovery_type": "RANGE",
+#          "ip_address_list": ["172.30.255.1-172.30.255.3"],
+#          "preferred_mgmt_ip_method": "UseLoopBack",
+#          "enable_netconf": false,
+#          "cli_description": "CLI Admin", ...
+#        }
+#   Out: discovery_list entry with RANGE + global CLI/SNMP/HTTP, no NETCONF.
+#
+# Example (C9800-WLC)
+#   enable_netconf true → also sets discovery_specific_credentials.net_conf_port
+#   and preferred_mgmt_ip_method None.
+- name: Build discovery config list
+  ansible.builtin.set_fact:
+    discovery_list: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- set disc = entry.discovery | default({}, true) -%}
+        {%- if disc and disc.discovery_name | default('') -%}
+          {%- set cli_desc = disc.cli_description | default('CLI Admin') -%}
+          {%- set cli_user = disc.cli_username | default('admin') -%}
+          {%- set gcred = {
+            'cli_credentials_list': [{'description': cli_desc, 'username': cli_user}],
+            'snmp_v2_read_credential_list': [{'description': disc.snmp_v2c_read_description | default('v2c read 1')}],
+            'snmp_v2_write_credential_list': [{'description': disc.snmp_v2c_write_description | default('v2c write 1')}],
+            'http_read_credential_list': [{'description': disc.http_read_description | default('HTTP(S) read 1'), 'username': cli_user}],
+            'http_write_credential_list': [{'description': disc.http_write_description | default('HTTP(S) write 1'), 'username': cli_user}]
+          } -%}
+          {%- set job = {
+            'discovery_name': disc.discovery_name,
+            'discovery_type': disc.discovery_type | default('RANGE'),
+            'ip_address_list': disc.ip_address_list,
+            'protocol_order': disc.protocol_order | default('ssh'),
+            'retry': disc.retry | default(3) | int,
+            'timeout': disc.timeout | default(5) | int,
+            'preferred_mgmt_ip_method': disc.preferred_mgmt_ip_method | default('None'),
+            'global_credentials': gcred
+          } -%}
+          {%- if disc.enable_netconf | default(false) | bool -%}
+            {%- set job = job | combine({
+              'discovery_specific_credentials': {
+                'net_conf_port': (disc.netconf_port | default('830')) | string
+              }
+            }) -%}
+          {%- endif -%}
+          {%- set ns.result = ns.result + [job] -%}
+        {%- elif entry.device_list -%}
+          {%- set ips = entry.device_list.split(',') | map('trim') | reject('equalto', '') | list -%}
+          {%- set parent = entry.HierarchyParent | default('Global') -%}
+          {%- set area   = entry.HierarchyArea   | default('') -%}
+          {%- set bldg   = entry.HierarchyBldg   | default('') -%}
+          {%- set floor  = entry.HierarchyFloor  | default('') -%}
+          {%- if floor -%}
+            {%- set disc_name = parent + '/' + area + '/' + bldg + '/' + floor -%}
+          {%- elif bldg -%}
+            {%- set disc_name = parent + '/' + area + '/' + bldg -%}
+          {%- elif area -%}
+            {%- set disc_name = parent + '/' + area -%}
+          {%- else -%}
+            {%- set disc_name = parent -%}
+          {%- endif -%}
+          {%- set ns.result = ns.result + [{
+            'discovery_name': disc_name,
+            'discovery_type': 'RANGE',
+            'ip_address_list': ips,
+            'protocol_order': 'ssh',
+            'retry': 3,
+            'timeout': 5,
+            'preferred_mgmt_ip_method': 'UseLoopBack',
+            'global_credentials': {
+              'cli_credentials_list': discovery_cli_credentials.cli_credentials_list,
+              'snmp_v2_read_credential_list': discovery_snmp_read_credentials.snmp_v2_read_credential_list,
+              'snmp_v2_write_credential_list': discovery_snmp_write_credentials.snmp_v2_write_credential_list
+            }
+          }] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Discovery config list
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: "{{ discovery_list }}"
+
+# Task: Validate discovery list is non-empty
+# Pre:  discovery_list may be []
+# Post: unchanged on success; fails if no discovery / device_list entries in JSON
+- name: Validate discovery list is non-empty
+  ansible.builtin.assert:
+    that: discovery_list | length > 0
+    fail_msg: "No entries with discovery or device_list found in input JSON."
+    success_msg: "{{ discovery_list | length }} discovery task(s) to run."
+
+# Task: Discover devices
+# Purpose: Submit each discovery config to CatC (async workflow inside module).
+# Pre:  discovery_list as above
+# Post: discovery_results (register) — per-loop dnac_response with task IDs
+- name: "Discover devices"
+  cisco.dnac.discovery_workflow_manager:
+    state: merged
+    config:
+      - "{{ item }}"
+  loop: "{{ discovery_list }}"
+  loop_control:
+    label: "{{ item.discovery_name }}"
+  register: discovery_results
+
+- name: --DEBUG-- Discovery results
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: "{{ discovery_results }}"
+
+# Task: Device discovery complete — summary
+- name: Device discovery complete
+  ansible.builtin.debug:
+    msg:
+      - "Device discovery submitted successfully"
+      - "Discovery tasks run: {{ discovery_list | length }}"
+      - "{{ discovery_list | map(attribute='discovery_name') | list | join(', ') }}"

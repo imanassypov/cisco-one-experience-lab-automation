@@ -1,0 +1,52 @@
+---
+# =============================================================================
+# yangsuite_docker / preflight.yml  —  validate inputs before install
+# =============================================================================
+# Fails fast on the three misconfigurations that are only discoverable after a
+# full Docker build otherwise:
+#   1. missing admin credentials — the container starts but nobody can log in
+#   2. missing yangsuite_server_ip — certs and compose ports render wrong
+#   3. server IP absent from ALLOWED_HOSTS — Django returns DisallowedHost
+#      in the browser, with no error visible on the host
+#
+# The literal 'admin' username is rejected: it is the upstream default and
+# leaving it in place ships a predictable account.
+#
+# Pre:  vault.yml — vault_yangsuite_admin_user (must not be 'admin'),
+#                   vault_yangsuite_admin_password, vault_yangsuite_admin_email
+#       vars.yml  — yangsuite_server_ip
+#       defaults  — yangsuite_allowed_hosts ("localhost {{ yangsuite_server_ip }}")
+#
+# Post: no facts set — assertion-only. Play fails with an actionable message
+#       naming the exact file and variable to fix.
+# =============================================================================
+
+- name: Assert YANG Suite admin credentials are defined
+  ansible.builtin.assert:
+    that:
+      - vault_yangsuite_admin_user is defined
+      - vault_yangsuite_admin_user | length > 0
+      - vault_yangsuite_admin_user != 'admin'
+      - vault_yangsuite_admin_password is defined
+      - vault_yangsuite_admin_password | length > 0
+      - vault_yangsuite_admin_email is defined
+      - vault_yangsuite_admin_email | length > 0
+    fail_msg: >-
+      Configure vault_yangsuite_admin_user (must not be 'admin'),
+      vault_yangsuite_admin_password, and vault_yangsuite_admin_email in
+      inventory/group_vars/yangsuite_servers/vault.yml.
+
+- name: Assert yangsuite_server_ip is set
+  ansible.builtin.assert:
+    that:
+      - yangsuite_server_ip is defined
+      - yangsuite_server_ip | length > 0
+    fail_msg: Set yangsuite_server_ip in group_vars/yangsuite_servers/vars.yml.
+
+- name: Assert allowed hosts includes server IP
+  ansible.builtin.assert:
+    that: yangsuite_server_ip in yangsuite_allowed_hosts
+    fail_msg: >-
+      yangsuite_allowed_hosts must include yangsuite_server_ip
+      (browser DisallowedHost errors otherwise). Current:
+      {{ yangsuite_allowed_hosts }}

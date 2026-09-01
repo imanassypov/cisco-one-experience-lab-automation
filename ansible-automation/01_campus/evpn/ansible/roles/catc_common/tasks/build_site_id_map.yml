@@ -1,0 +1,84 @@
+---
+# =============================================================================
+# catc_common / build_site_id_map.yml
+# =============================================================================
+# Queries Catalyst Center for all existing sites and builds a lookup table
+# nameHierarchy → site UUID. Required before create/update/delete loops that
+# need parentId or id for areas, buildings, and floors.
+#
+# Play-level inputs:
+#   catc_debug — optional
+#   module_defaults on cisco.catalystcenter.sites_info (from playbook)
+#
+# Play-level outputs:
+#   site_id_map — dict[str, str]  full path → UUID
+#   _site_id_map — alias (same content; legacy name used in some roles)
+# =============================================================================
+
+# Task: Phase A — Fetch all existing sites from Catalyst Center
+# Purpose: GET /dna/intent/api/v1/sites (unfiltered) via collection module.
+# Pre:  site_id_map undefined
+# Post: catc_all_sites (register):
+#         catc_all_sites.catalystcenter_response.response = [
+#           { "id": "a1000000-0000-4000-8000-000000000001", "type": "global" },
+#           { "id": "a1000000-0000-4000-8000-000000000002", "type": "area",
+#             "nameHierarchy": "Global/PODS" },
+#           { "id": "a1000000-0000-4000-8000-000000000003", "type": "area",
+#             "nameHierarchy": "Global/PODS/POD 0" },
+#           { "id": "a1000000-0000-4000-8000-000000000004", "type": "building",
+#             "nameHierarchy": "Global/PODS/POD 0/Building P0" },
+#           { "id": "a1000000-0000-4000-8000-000000000005", "type": "floor",
+#             "nameHierarchy": "Global/PODS/POD 0/Building P0/Floor 1" }
+#         ]
+#       The Global root row carries no nameHierarchy key.
+- name: "Phase A — Fetch all existing sites from Catalyst Center"
+  cisco.catalystcenter.sites_info:
+  register: catc_all_sites
+
+# Task: DEBUG | catc_all_sites raw response
+# Pre/Post: unchanged — diagnostic only
+- name: "DEBUG | catc_all_sites raw response"
+  ansible.builtin.debug:
+    var: catc_all_sites.catalystcenter_response
+  when: catc_debug | default(false) | bool
+
+# Builds the O(1) lookup used for parentId/id in every site create loop.
+# The Global root carries no nameHierarchy in the API response, so its UUID is
+# injected manually under the key "Global".
+# Example
+#   In : catc_all_sites.catalystcenter_response.response = [
+#          { "id": "a1000000-0000-4000-8000-000000000001", "type": "global" },
+#          { "id": "a1000000-0000-4000-8000-000000000002", "type": "area",
+#            "nameHierarchy": "Global/PODS" },
+#          { "id": "a1000000-0000-4000-8000-000000000003", "type": "area",
+#            "nameHierarchy": "Global/PODS/POD 0" },
+#          { "id": "a1000000-0000-4000-8000-000000000004", "type": "building",
+#            "nameHierarchy": "Global/PODS/POD 0/Building P0" },
+#          { "id": "a1000000-0000-4000-8000-000000000005", "type": "floor",
+#            "nameHierarchy": "Global/PODS/POD 0/Building P0/Floor 1" }
+#        ]
+#   Out: site_id_map / _site_id_map = {
+#          "Global":                                "a1000000-0000-4000-8000-000000000001",
+#          "Global/PODS":                           "a1000000-0000-4000-8000-000000000002",
+#          "Global/PODS/POD 0":                     "a1000000-0000-4000-8000-000000000003",
+#          "Global/PODS/POD 0/Building P0":         "a1000000-0000-4000-8000-000000000004",
+#          "Global/PODS/POD 0/Building P0/Floor 1": "a1000000-0000-4000-8000-000000000005"
+#        }
+# selectattr('nameHierarchy','defined') drops the Global row before items2dict,
+# which would otherwise raise on the missing key.
+- name: "Phase A — Build site_id_map (nameHierarchy → UUID)"
+  vars:
+    _all_sites: "{{ catc_all_sites.catalystcenter_response.response | default([]) }}"
+    _named_map: "{{ _all_sites | selectattr('nameHierarchy', 'defined') | list
+                     | items2dict(key_name='nameHierarchy', value_name='id') }}"
+    _global_id: "{{ (_all_sites | selectattr('type', 'equalto', 'global')
+                      | map(attribute='id') | list | first) | default('') }}"
+  ansible.builtin.set_fact:
+    site_id_map: "{{ _named_map | combine({'Global': _global_id}) }}"
+    _site_id_map: "{{ _named_map | combine({'Global': _global_id}) }}"
+
+# Task: Phase A — site_id_map summary
+# Pre/Post: unchanged — prints map size and contents
+- name: "Phase A — site_id_map summary"
+  ansible.builtin.debug:
+    msg: "{{ site_id_map | length }} existing sites: {{ site_id_map }}"

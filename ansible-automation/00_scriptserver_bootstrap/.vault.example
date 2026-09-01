@@ -1,4 +1,0 @@
-# Copy to .vault (gitignored), one line, no quotes:
-#   cp .vault.example .vault
-# Then replace this file's contents with the lab vault password only.
-# Do not commit .vault.

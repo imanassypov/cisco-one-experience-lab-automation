@@ -32,8 +32,8 @@ flowchart LR
 4. **Test on the script server** (SSH as `cisco`). Ansible is already on PATH from bootstrap:
 
    ```bash
+   # once per checkout: cp .vault.example .vault  (repo root, gitignored)
    cd ~/cisco-one-experience-lab-automation/ansible-automation/<collection>
-   # recreate .vault here if that collection uses Vault (it is gitignored)
    ansible-playbook playbooks/00_....yml
    ```
 
@@ -42,7 +42,7 @@ flowchart LR
 ## Lab references
 
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)
-- [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — jumphosts, management GUIs, users, workstations, and infrastructure (lab/demo credentials only)
+- [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
 
 ## Collection layout
 
@@ -51,7 +51,7 @@ Playbooks live under `ansible-automation/`. Numbered folders follow lab-build or
 | Folder | Lab section | Status |
 | --- | --- | --- |
 | [00_scriptserver_bootstrap](ansible-automation/00_scriptserver_bootstrap/) | Kali Linux script server (`198.18.134.12`) | Implemented |
-| [01_campus](ansible-automation/01_campus/) | Campus fabric and workstations | Stub |
+| [01_campus](ansible-automation/01_campus/) | Campus — [sda](ansible-automation/01_campus/sda/) stub, [evpn](ansible-automation/01_campus/evpn/) in progress | In progress |
 | [02_data_center](ansible-automation/02_data_center/) | HQ data center services | Stub |
 | [03_dmz](ansible-automation/03_dmz/) | DMZ and Secure Access connector | Stub |
 | [04_remote_dc](ansible-automation/04_remote_dc/) | Remote DC / Nexus fabric | Stub |

@@ -1,0 +1,48 @@
+---
+- name: Require vault credentials before connecting
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Fail when vault credentials are missing
+      ansible.builtin.assert:
+        that:
+          - hostvars['Site_105-Leaf1'].ansible_user is defined
+          - hostvars['Site_105-Leaf1'].ansible_password is defined
+        fail_msg: >-
+          Campus EVPN credentials come from Lab Topology/lab_access.yml
+          using each inventory hostname as the key. Create the repo-root
+          .vault (see .vault.example) so ansible.cfg can decrypt that vault.
+
+- name: Collect Site 105 EVPN switch facts
+  hosts: campus_evpn
+  gather_facts: false
+  tasks:
+    - name: Run show commands for underlay and overlay discovery
+      cisco.ios.ios_command:
+        commands:
+          - show version
+          - show ip interface brief
+          - show ip ospf neighbor
+          - show ip bgp summary
+          - show bgp l2vpn evpn summary
+          - show nve peers
+          - show vrf brief
+          - show vlan brief
+      register: campus_evpn_shows
+
+    - name: Create local evidence directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../evidence"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Write per-host evidence
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../evidence/{{ inventory_hostname }}.txt"
+        mode: "0644"
+        content: |
+          {{ campus_evpn_shows.stdout | join('\n\n===== NEXT COMMAND =====\n\n') }}
+      delegate_to: localhost

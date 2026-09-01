@@ -4,6 +4,7 @@
 .vault_pass
 **/secrets.yml
 !**/secrets.yml.example
+**/evidence/
 
 # Python
 __pycache__/

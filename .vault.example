@@ -1,0 +1,5 @@
+# Copy to .vault at the repository root (gitignored), one line, no quotes:
+#   cp .vault.example .vault
+# Then replace this file's contents with the lab vault password only.
+# Every collection ansible.cfg points at this file to decrypt
+# Lab Topology/lab_access.yml. Do not commit .vault.

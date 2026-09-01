@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# catc_common / build_hierarchy_paths.yml
+# =============================================================================
+# Derives the deepest CatC site path per settings.json project entry.
+# Used when a stage needs one site name per row (network settings, profiles)
+# rather than the expanded area/building/floor list from site_hierarchy.
+#
+# Play-level inputs:
+#   settings_data  — loaded by load_settings (required)
+#   catc_debug     — optional
+#
+# Play-level outputs:
+#   site_names     — list[str], one path per project[] row (deepest level wins)
+# =============================================================================
+
+# Collapses the split hierarchy fields into CatC nameHierarchy strings.
+# Depth rule: Floor > Building > Area > Parent only — the deepest populated
+# level wins and shallower levels are never emitted as separate entries.
+# Example
+#   In : settings_data.project = [
+#          { "HierarchyParent": "Global/PODS", "HierarchyArea": "POD 0",
+#            "HierarchyBldg": "Building P0",   "HierarchyFloor": "Floor 1" },
+#          { "HierarchyParent": "Global/PODS", "HierarchyArea": "POD 1",
+#            "HierarchyBldg": "Building P1",   "HierarchyFloor": "" },
+#          { "HierarchyParent": "Global",      "HierarchyArea": "DMZ",
+#            "HierarchyBldg": "",              "HierarchyFloor": "" }
+#        ]
+#   Out: site_names = [
+#          "Global/PODS/POD 0/Building P0/Floor 1",   # floor present
+#          "Global/PODS/POD 1/Building P1",           # falls back to building
+#          "Global/DMZ"                               # falls back to area
+#        ]
+#   Exactly one string per project[] row — index alignment with project[] is
+#   relied on by network_settings and network_profile.
+- name: Build site name list from project entries
+  ansible.builtin.set_fact:
+    site_names: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- if entry.HierarchyFloor -%}
+          {%- set s = entry.HierarchyParent + '/' + entry.HierarchyArea + '/' + entry.HierarchyBldg + '/' + entry.HierarchyFloor -%}
+        {%- elif entry.HierarchyBldg -%}
+          {%- set s = entry.HierarchyParent + '/' + entry.HierarchyArea + '/' + entry.HierarchyBldg -%}
+        {%- elif entry.HierarchyArea -%}
+          {%- set s = entry.HierarchyParent + '/' + entry.HierarchyArea -%}
+        {%- else -%}
+          {%- set s = entry.HierarchyParent -%}
+        {%- endif -%}
+        {%- set ns.result = ns.result + [s] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+# Task: DEBUG | Site names derived from settings.json
+# Pre/Post: unchanged — diagnostic only
+- name: "DEBUG | Site names derived from settings.json"
+  ansible.builtin.debug:
+    var: site_names
+  when: catc_debug | default(false) | bool

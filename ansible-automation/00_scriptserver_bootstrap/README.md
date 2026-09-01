@@ -4,7 +4,7 @@ Prepares the **Kali Linux** script server at `198.18.134.12` so later lab collec
 
 Connect **Cisco Secure Client / AnyConnect** first. This collection is run from your Mac over SSH.
 
-Lab/demo access for other devices is in [PseudoCo_Lab_Access_Lookup.md](../../Lab%20Topology/PseudoCo_Lab_Access_Lookup.md). Playbooks load the script-server SSH user and password from Ansible Vault (`inventory/group_vars/script_servers/vault.yml`). Do not put passwords in playbooks or unencrypted inventory.
+Host and URL index: [PseudoCo_Lab_Access_Lookup.md](../../Lab%20Topology/PseudoCo_Lab_Access_Lookup.md). Credentials for this collection and every later playbook come from vault-encrypted [lab_access.yml](../../Lab%20Topology/lab_access.yml) (`script_server` key here). Do not put passwords in playbooks or unencrypted inventory.
 
 ## What it installs
 
@@ -13,7 +13,8 @@ Lab/demo access for other devices is in [PseudoCo_Lab_Access_Lookup.md](../../La
 - Pinned `ansible-core`, `paramiko`, and `netaddr` inside that venv
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali’s default shell is zsh) and symlinked into `~/bin`
 - On Kali, disables the HashiCorp apt source if it targets `kali-rolling` (that repo has no Release file and breaks `apt update`)
-- Pinned Cisco Galaxy collections (`cisco.ios`, `cisco.catalystcenter`, `cisco.ise`, `cisco.nxos`, `cisco.meraki`)
+- Pinned Cisco Galaxy collections (`cisco.ios`, `cisco.catalystcenter` 2.10.2, `cisco.dnac` 6.46.0, `cisco.ise`, `cisco.nxos`, `cisco.meraki`)
+- Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Git checkout of this repo at `~/cisco-one-experience-lab-automation` (the only project tree on the script server)
 
 ## Playbook sequence
@@ -40,7 +41,7 @@ source .venv/bin/activate
 
 That installs the pins in `requirements.txt` (`ansible-core`, `paramiko`, `netaddr`) — the same versions the script server venv will get.
 
-SSH credentials come from Vault. `ansible.cfg` reads `.vault` (gitignored) to decrypt `inventory/group_vars/script_servers/vault.yml`. If `.vault` is missing, copy `.vault.example` to `.vault` and put the lab vault password on a single line. Do not commit `.vault`.
+`ansible.cfg` reads the repo-root `.vault` (gitignored) to decrypt `Lab Topology/lab_access.yml`. If it is missing, from the repository root: `cp .vault.example .vault` and put the lab vault password on a single line. Do not commit `.vault`.
 
 The inventory uses Paramiko so password auth works on macOS without `sshpass`.
 
@@ -56,4 +57,4 @@ ansible-playbook playbooks/02_sync_from_git.yml
 
 After bootstrap, later collections are developed on the Mac, pushed to GitHub, then synced and run **on** the script server. See the root README development workflow.
 
-SSH to the script server and confirm `ansible-playbook --version` works without activating that host's venv. Test from `~/cisco-one-experience-lab-automation`. Recreate `.vault` there when a collection needs Vault.
+SSH to the script server and confirm `ansible-playbook --version` works without activating that host's venv. Test from `~/cisco-one-experience-lab-automation`. Recreate the repo-root `.vault` there after clone.

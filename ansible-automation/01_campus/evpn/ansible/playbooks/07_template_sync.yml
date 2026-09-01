@@ -1,0 +1,72 @@
+---
+# =============================================================================
+# 07_template_sync.yml  —  Pipeline stage 07
+# =============================================================================
+# Pulls the Jinja2 fabric templates and composite YAML from GitHub or from a
+# local directory and pushes them into Catalyst Center Template Programmer
+# projects. With the Git source this is what makes Git the source of truth for
+# device configuration; the local source is for iterating on templates before
+# they are committed. Role: template_sync.
+#
+# Flow: GitHub API tree (or local find) → process-subfolder.yml
+#       → process-template.yml (.j2 files) or process-composite.yml (composite YAML)
+#
+# Sourced:
+#   connection.yml (inventory vars — note: NOT settings.json):
+#     template_source       — git | local
+#     template_local_root   — directory scanned when template_source is local
+#                             (defaults to the repository root)
+#     git_repo              — https://github.com/<org>/<repo>.git
+#     git_branch            — e.g. main
+#     git_repo_subfolders[] — [{path: "Catalyst Center Templates/Site BGP EVPN
+#                                Templates", project_name: "Building P0"},
+#                               {path: "Catalyst Center Templates/DMZ BGP EVPN
+#                                Templates", project_name: "DMZ 01"}]
+#                             paths are relative to the repo root or to
+#                             template_local_root, so one list drives both sources
+#     template_extension (j2), include_diff_header,
+#     default_software_type / default_software_variant, default_template_version,
+#     default_device_types[] — product_family + product_series matrix
+#     catc_template_summary_maxchar
+#     dnac_host/port/version/verify/debug/log
+#   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
+#   git_token (optional — needed only
+#              for private repos or to lift the 60 req/hr anonymous rate limit;
+#              unused when template_source is local)
+#
+# Produced:
+#   repo_tree_entries — unified [{path}] file list, whichever source was used
+#   git_repo_slug   — "org/repo" parsed from git_repo (git source only)
+#   git_api_base    — https://api.github.com
+#   git_auth_header — {Authorization: "Bearer <git_token>"} or {} when
+#                     unauthenticated
+#   start_timestamp — run timestamp used in template comments / diff headers
+#   In Catalyst Center: one Template Programmer project per subfolder, each
+#   containing versioned templates + composites referenced by stage 08.
+#
+# gather_facts is true here — ansible_date_time supplies start_timestamp.
+# Module: cisco.dnac.template_workflow_manager
+#
+# Run: ansible-playbook playbooks/07_template_sync.yml
+#      ansible-playbook playbooks/07_template_sync.yml -e template_source=local
+#      ansible-playbook playbooks/07_template_sync.yml -e template_source=local \
+#        -e template_local_root=/path/to/templates
+# =============================================================================
+- name: Template Synchronization from Git using Template Workflow Manager
+  hosts: catalyst_center
+  gather_facts: true
+  vars:
+    catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
+  module_defaults:
+    cisco.dnac.template_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+  roles:
+    - role: template_sync

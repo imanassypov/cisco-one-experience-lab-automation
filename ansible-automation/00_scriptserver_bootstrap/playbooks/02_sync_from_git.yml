@@ -12,9 +12,9 @@
           - hostvars['script_server'].ansible_password is defined
           - hostvars['script_server'].ansible_password | length > 0
         fail_msg: >-
-          Script server credentials come from the Ansible Vault file
-          inventory/group_vars/script_servers/vault.yml.
-          Create .vault (see .vault.example) so ansible.cfg can decrypt it.
+          Script server credentials come from Lab Topology/lab_access.yml
+          (key script_server). Create the repo-root .vault
+          (see .vault.example) so ansible.cfg can decrypt that vault.
 
 - name: Sync the GitHub repo onto the script server
   hosts: script_servers

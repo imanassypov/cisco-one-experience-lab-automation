@@ -3,3 +3,6 @@
 ansible-core==2.17.14
 paramiko==3.5.1
 netaddr==1.3.0
+# CatC 3.1.5 appliance; SDKs expose API profile 3.1.3.0 only (no 3.1.5).
+catalystcentersdk==3.1.3.0.1
+dnacentersdk==2.10.6

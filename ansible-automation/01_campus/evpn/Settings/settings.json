@@ -1,0 +1,403 @@
+{
+    "project": [
+        {
+            "HierarchyParent": "Global/CALIFORNIA",
+            "HierarchyArea": "San Jose",
+            "HierarchyBldg": "DC-Site-10",
+            "HierarchyFloor": "MAIN",
+            "HierarchyBldgAddress": "400 East Tasman Drive, San Jose, California",
+            "HierarchyBldgLatitude": 37.41185,
+            "HierarchyBldgLongitude": -121.92966,
+            "HierarchyBldgCountry": "United States",
+            "network_settings": {
+                "dhcp_server": ["198.18.5.102"],
+                "dns_server": {
+                    "domain_name": "corp.pseudoco.com",
+                    "primary_ip_address": "198.18.5.102",
+                    "secondary_ip_address": null
+                },
+                "ntp_server": ["198.18.5.102"],
+                "timezone": "America/Los_Angeles",
+                "message_of_the_day": {
+                    "banner_message": "PseudoCo HQ DC-Site-10 — authorized lab access only",
+                    "retain_existing_banner": false
+                },
+                "snmp_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "syslog_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "netflow_server": {
+                    "configure_dnac_ip": true,
+                    "ip_address": "198.18.5.100",
+                    "port": 2055
+                },
+                "network_aaa": null,
+                "client_and_endpoint_aaa": {
+                    "server_type": "ISE",
+                    "primary_server_address": "198.18.5.101",
+                    "pan_address": "198.18.5.101",
+                    "protocol": "RADIUS",
+                    "shared_secret": "C1sco12345",
+                    "secondary_server_address": null
+                }
+            },
+            "device_credentials": {
+                "cli_credential": {
+                    "description": "CLI Admin",
+                    "username": "admin",
+                    "password": "C1sco12345",
+                    "enable_password": "C1sco12345"
+                },
+                "snmp_v2c_read": {
+                    "description": "v2c read 1",
+                    "read_community": "RO"
+                },
+                "snmp_v2c_write": {
+                    "description": "v2c write 1",
+                    "write_community": "RW"
+                },
+                "netconf_credential": {
+                    "description": "NETCONF-netadmin",
+                    "netconf_port": "830"
+                }
+            },
+            "device_list": "198.18.5.103",
+            "discovery": {
+                "discovery_name": "C9800-WLC",
+                "discovery_type": "RANGE",
+                "ip_address_list": ["198.18.5.103-198.18.5.103"],
+                "preferred_mgmt_ip_method": "None",
+                "protocol_order": "ssh",
+                "retry": 3,
+                "timeout": 5,
+                "enable_netconf": true,
+                "netconf_port": "830",
+                "cli_description": "CLI Admin",
+                "cli_username": "admin",
+                "snmp_v2c_read_description": "v2c read 1",
+                "snmp_v2c_write_description": "v2c write 1",
+                "http_read_description": "HTTP(S) read 1",
+                "http_write_description": "HTTP(S) write 1"
+            },
+            "network_profile": {
+                "profile_name": "HQ-Switching",
+                "DayNTemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": false
+                    }
+                ],
+                "Day0TemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": null
+                    }
+                ]
+            }
+        },
+        {
+            "HierarchyParent": "Global/NEW YORK",
+            "HierarchyArea": "New York",
+            "HierarchyBldg": "DC-Site-11",
+            "HierarchyFloor": "MAIN",
+            "HierarchyBldgAddress": "1 Pennsylvania Plaza, New York, New York",
+            "HierarchyBldgLatitude": 40.751057,
+            "HierarchyBldgLongitude": -73.992029,
+            "HierarchyBldgCountry": "United States",
+            "network_settings": {
+                "dhcp_server": ["198.18.5.102"],
+                "dns_server": {
+                    "domain_name": "corp.pseudoco.com",
+                    "primary_ip_address": "198.18.5.102",
+                    "secondary_ip_address": null
+                },
+                "ntp_server": ["198.18.5.102"],
+                "timezone": "America/New_York",
+                "message_of_the_day": {
+                    "banner_message": "PseudoCo Remote DC-Site-11 — authorized lab access only",
+                    "retain_existing_banner": false
+                },
+                "snmp_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "syslog_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "netflow_server": {
+                    "configure_dnac_ip": true,
+                    "ip_address": "198.18.5.100",
+                    "port": 2055
+                },
+                "network_aaa": null,
+                "client_and_endpoint_aaa": {
+                    "server_type": "ISE",
+                    "primary_server_address": "198.18.5.101",
+                    "pan_address": "198.18.5.101",
+                    "protocol": "RADIUS",
+                    "shared_secret": "C1sco12345",
+                    "secondary_server_address": null
+                }
+            },
+            "device_credentials": {
+                "cli_credential": {
+                    "description": "CLI Admin",
+                    "username": "admin",
+                    "password": "C1sco12345",
+                    "enable_password": "C1sco12345"
+                },
+                "snmp_v2c_read": {
+                    "description": "v2c read 1",
+                    "read_community": "RO"
+                },
+                "snmp_v2c_write": {
+                    "description": "v2c write 1",
+                    "write_community": "RW"
+                },
+                "netconf_credential": {
+                    "description": "NETCONF-netadmin",
+                    "netconf_port": "830"
+                }
+            },
+            "device_list": "",
+            "network_profile": {
+                "profile_name": "Remote-DC-Switching",
+                "DayNTemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": false
+                    }
+                ],
+                "Day0TemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": null
+                    }
+                ]
+            }
+        },
+        {
+            "HierarchyParent": "Global/NORTH CAROLINA",
+            "HierarchyArea": "Durham",
+            "HierarchyBldg": "Site-105",
+            "HierarchyFloor": "MAIN",
+            "HierarchyBldgAddress": "7025-1 Kit Creek Rd, Durham, NC 27709",
+            "HierarchyBldgLatitude": 35.8554421,
+            "HierarchyBldgLongitude": -78.8682539,
+            "HierarchyBldgCountry": "United States",
+            "network_settings": {
+                "dhcp_server": ["198.18.5.102"],
+                "dns_server": {
+                    "domain_name": "corp.pseudoco.com",
+                    "primary_ip_address": "198.18.5.102",
+                    "secondary_ip_address": null
+                },
+                "ntp_server": ["198.18.5.102"],
+                "timezone": "America/New_York",
+                "message_of_the_day": {
+                    "banner_message": "PseudoCo Campus Site-105 EVPN — authorized lab access only",
+                    "retain_existing_banner": false
+                },
+                "snmp_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "syslog_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "netflow_server": {
+                    "configure_dnac_ip": true,
+                    "ip_address": "198.18.5.100",
+                    "port": 2055
+                },
+                "network_aaa": null,
+                "client_and_endpoint_aaa": {
+                    "server_type": "ISE",
+                    "primary_server_address": "198.18.5.101",
+                    "pan_address": "198.18.5.101",
+                    "protocol": "RADIUS",
+                    "shared_secret": "C1sco12345",
+                    "secondary_server_address": null
+                }
+            },
+            "device_credentials": {
+                "cli_credential": {
+                    "description": "CLI Admin",
+                    "username": "admin",
+                    "password": "C1sco12345",
+                    "enable_password": "C1sco12345"
+                },
+                "snmp_v2c_read": {
+                    "description": "v2c read 1",
+                    "read_community": "RO"
+                },
+                "snmp_v2c_write": {
+                    "description": "v2c write 1",
+                    "write_community": "RW"
+                },
+                "netconf_credential": {
+                    "description": "NETCONF-netadmin",
+                    "netconf_port": "830"
+                }
+            },
+            "device_list": "172.30.255.1,172.30.255.2,172.30.255.3",
+            "discovery": {
+                "discovery_name": "Site-105-Discovery",
+                "discovery_type": "RANGE",
+                "ip_address_list": ["172.30.255.1-172.30.255.3"],
+                "preferred_mgmt_ip_method": "UseLoopBack",
+                "protocol_order": "ssh",
+                "retry": 3,
+                "timeout": 5,
+                "enable_netconf": false,
+                "cli_description": "CLI Admin",
+                "cli_username": "admin",
+                "snmp_v2c_read_description": "v2c read 1",
+                "snmp_v2c_write_description": "v2c write 1",
+                "http_read_description": "HTTP(S) read 1",
+                "http_write_description": "HTTP(S) write 1"
+            },
+            "network_profile": {
+                "profile_name": "BGP-EVPN-Switching",
+                "DayNTemplateNames": [
+                    {
+                        "TemplateName": "BGP-EVPN-BUILD.j2",
+                        "TemplateTag": "DEMO",
+                        "Project": "Building P0",
+                        "TemplateTarget": ["172.30.255.1", "172.30.255.2", "172.30.255.3"],
+                        "DeployTemplate": false
+                    }
+                ],
+                "Day0TemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": null
+                    }
+                ]
+            },
+            "swim": {
+                "image_server_base_url": "http://198.18.134.12/images",
+                "device_family_identifier": "Cisco Catalyst 9300 Switch",
+                "device_family_name": "Switches and Hubs",
+                "device_series_name": "Cisco Catalyst 9300 Series Switches",
+                "device_role": "ALL",
+                "upgrade_image": "",
+                "rollback_image": "",
+                "activation": {
+                    "device_upgrade_mode": "install",
+                    "distribute_if_needed": true,
+                    "schedule_validate": false
+                }
+            }
+        },
+        {
+            "HierarchyParent": "Global/TEXAS",
+            "HierarchyArea": "Richardson",
+            "HierarchyBldg": "Site-106",
+            "HierarchyFloor": "MAIN",
+            "HierarchyBldgAddress": "2250 President George Bush Highway, Richardson, Texas",
+            "HierarchyBldgLatitude": 32.99956,
+            "HierarchyBldgLongitude": -96.67973,
+            "HierarchyBldgCountry": "United States",
+            "network_settings": {
+                "dhcp_server": ["198.18.5.102"],
+                "dns_server": {
+                    "domain_name": "corp.pseudoco.com",
+                    "primary_ip_address": "198.18.5.102",
+                    "secondary_ip_address": null
+                },
+                "ntp_server": ["198.18.5.102"],
+                "timezone": "America/Chicago",
+                "message_of_the_day": {
+                    "banner_message": "PseudoCo Branch Site-106 — authorized lab access only",
+                    "retain_existing_banner": false
+                },
+                "snmp_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "syslog_server": {
+                    "configure_dnac_ip": true,
+                    "ip_addresses": ["198.18.5.100", "198.18.5.109"]
+                },
+                "netflow_server": {
+                    "configure_dnac_ip": true,
+                    "ip_address": "198.18.5.100",
+                    "port": 2055
+                },
+                "network_aaa": null,
+                "client_and_endpoint_aaa": {
+                    "server_type": "ISE",
+                    "primary_server_address": "198.18.5.101",
+                    "pan_address": "198.18.5.101",
+                    "protocol": "RADIUS",
+                    "shared_secret": "C1sco12345",
+                    "secondary_server_address": null
+                }
+            },
+            "device_credentials": {
+                "cli_credential": {
+                    "description": "CLI Admin",
+                    "username": "admin",
+                    "password": "C1sco12345",
+                    "enable_password": "C1sco12345"
+                },
+                "snmp_v2c_read": {
+                    "description": "v2c read 1",
+                    "read_community": "RO"
+                },
+                "snmp_v2c_write": {
+                    "description": "v2c write 1",
+                    "write_community": "RW"
+                },
+                "netconf_credential": {
+                    "description": "NETCONF-netadmin",
+                    "netconf_port": "830"
+                }
+            },
+            "device_list": "",
+            "network_profile": {
+                "profile_name": "Branch-Switching",
+                "DayNTemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": false
+                    }
+                ],
+                "Day0TemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": null
+                    }
+                ]
+            }
+        }
+    ]
+}

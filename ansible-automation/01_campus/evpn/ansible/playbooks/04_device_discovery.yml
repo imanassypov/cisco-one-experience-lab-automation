@@ -1,0 +1,53 @@
+---
+# =============================================================================
+# 04_device_discovery.yml  —  Pipeline stage 04
+# =============================================================================
+# Submits Catalyst Center discovery jobs for the management IPs declared in
+# settings.json, adding reachable devices to the CatC inventory under Global.
+# Role: device_discovery.
+#
+# Sourced:
+#   settings.json → settings_data.project[] (via catc_common.load_settings):
+#     discovery — job name, RANGE, ip_address_list, UseLoopBack/None,
+#                 credential descriptions, enable_netconf
+#     device_list — IPs CatC will store (used by stage 05 assign)
+#     HierarchyParent/Area/Bldg/Floor — assign site for stage 05
+#   connection.yml: dnac_* plus fallback discovery_* descriptions
+#   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
+#   env DEBUG → catc_debug
+#
+# Produced:
+#   discovery_list — one job per project row with a discovery{} block
+#     (Site-105-Discovery RANGE 172.30.255.1-3, C9800-WLC RANGE 198.18.5.103)
+#   In Catalyst Center: devices in inventory; stage 05 assigns them to
+#     Site-105/MAIN and DC-Site-10/MAIN.
+#
+# Depends on: stage 03 (global credentials must exist by description)
+# Module: cisco.dnac.discovery_workflow_manager (state: merged)
+#
+# Run: ansible-playbook playbooks/04_device_discovery.yml
+#      DEBUG=true ansible-playbook playbooks/04_device_discovery.yml
+# =============================================================================
+- name: Discover Devices in Catalyst Center from settings.json
+  hosts: catalyst_center
+  gather_facts: false
+  vars:
+    catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
+  module_defaults:
+    cisco.dnac.discovery_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+  pre_tasks:
+    - name: Load settings.json
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: load_settings
+  roles:
+    - role: device_discovery

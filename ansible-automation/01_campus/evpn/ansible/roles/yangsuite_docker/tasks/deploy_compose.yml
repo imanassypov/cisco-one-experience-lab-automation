@@ -1,0 +1,40 @@
+---
+# =============================================================================
+# yangsuite_docker / deploy_compose.yml  —  build and start the stack
+# =============================================================================
+# Runs `docker compose up -d` from the repo's docker/ directory.
+#
+# `changed` cannot be inferred from the return code — compose exits 0 whether
+# it rebuilt everything or did nothing — so it is derived from the stdout verbs
+# (Built / Creating / Recreating / Starting) plus whether the repo was freshly
+# cloned this run.
+#
+# Pre:  yangsuite_docker_dir   — chdir for the compose command
+#       yangsuite_compose_build — true adds --build
+#       yangsuite_git.changed  — from clone_repository.yml; forces changed=true
+#       Requires setup.env, certs, and patched ports to already be in place.
+#
+# Post: yangsuite_compose_up — .rc, .stdout_lines, .changed
+#       On the target host: yangsuite + nginx containers built and running
+#       detached, listening on the ports set by patch_compose_ports.yml.
+# =============================================================================
+
+- name: Build and start YANG Suite Docker Compose stack
+  ansible.builtin.command:
+    argv: "{{ ['docker', 'compose', 'up', '-d'] + (['--build'] if yangsuite_compose_build | bool else []) }}"
+    chdir: "{{ yangsuite_docker_dir }}"
+  register: yangsuite_compose_up
+  changed_when: >
+    yangsuite_compose_up.rc == 0 and (
+      'Built' in yangsuite_compose_up.stdout
+      or 'Creating' in yangsuite_compose_up.stdout
+      or 'Recreating' in yangsuite_compose_up.stdout
+      or 'Starting' in yangsuite_compose_up.stdout
+      or yangsuite_git.changed | default(false)
+    )
+  failed_when: yangsuite_compose_up.rc != 0
+
+- name: Show docker compose output when changed  # noqa: no-handler
+  ansible.builtin.debug:
+    var: yangsuite_compose_up.stdout_lines
+  when: yangsuite_compose_up.changed

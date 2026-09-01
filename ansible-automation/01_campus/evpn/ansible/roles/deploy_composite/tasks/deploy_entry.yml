@@ -1,0 +1,852 @@
+# ============================================================================
+# deploy_composite / deploy_entry.yml  —  Stage 10: deploy one composite entry
+# ============================================================================
+# Deploys a single composite template to its target devices. Included once per
+# element of _deploy_entries by roles/deploy_composite/tasks/main.yml.
+#
+# Calls the CatC REST API directly instead of using
+# cisco.dnac.configuration_template_deploy_v2: that module cannot send
+# copyingConfig: true, and without it CatC accepts the request but never pushes
+# config to the device.
+#
+# Pre:  deploy_entry (loop var, one element of _deploy_entries):
+#         site            — site hierarchy path (informational)
+#         template_name   — composite template name in Catalyst Center
+#         project_name    — CatC project that owns the template
+#         template_target — ["198.19.1.1", "198.19.1.2", "198.19.1.3",
+#                            "198.19.1.4", "198.19.1.5", "198.19.1.6"]
+#                            management IPs to deploy to
+#         template_tag    — template tag (informational)
+#       _catc_token            — X-Auth-Token, set by catc_common/auth_token
+#       dnac_host / dnac_port / dnac_verify
+#       force_push_template    — push even when the device is in-sync
+#       member_template_params — { "<member template name>": {param: value} }
+#       task_poll_retries / task_poll_delay
+#
+# Post: _template_version_map   — { "<name>": {rootId, versionId} }
+#                                  versionId = highest versionTime
+#       _composite_template_id  — latest version UUID → deploy templateId
+#       _composite_main_id      — root UUID          → deploy mainTemplateId
+#       _member_templates       — containingTemplates[] from the detail endpoint
+#       _device_uuid_map        — { "<ip>": {uuid, hostname} }
+#       _target_info            — top-level targetInfo[] payload
+#       _member_deployment_info — memberTemplateDeploymentInfo[] payload
+#       _deploy_task_ids        — [{ip, taskId}] — one deploy call per device
+#       _task_poll_results      — polled task state per device
+#       _deployment_status_ids  — [{ip, deploymentId, failureReason}]
+#                                  empty failureReason means SUCCESS
+#       _summary_lines          — rendered box-drawing result table
+#       On devices: config rendered by the composite and all member templates.
+#
+# Steps: A fetch project templates → B fetch members → C resolve device UUIDs
+#        → D build payloads → E deploy per device → F poll tasks → G summary
+# ============================================================================
+---
+
+# ── Step A: Fetch all project templates (including versionsInfo) ────────────
+#
+# GET /dna/intent/api/v1/template-programmer/template?projectNames=<project>
+# Returns a flat list of all templates in the project.  Unlike the project
+# endpoint, each entry here includes a `versionsInfo` array.
+#
+# IMPORTANT: versionsInfo is returned in RANDOM order — not chronological.
+# The latest committed version must be found by sorting on `versionTime`
+# (a Unix-millisecond timestamp) and taking the maximum value.
+#
+#   max(versionsInfo, key=versionTime).id  → latest version UUID
+#   templateId                             → root/parent UUID
+#
+# This is important because the CatC v2 deploy API requires:
+#   top-level templateId     = version UUID  (latest committed snapshot)
+#   top-level mainTemplateId = root UUID
+#   member templateId        = member version UUID
+#   member mainTemplateId    = member root UUID
+#
+# NOTE: The newer CatC API spec defines a separate versionedTemplateId field,
+# but the TemplateDeploymentInfo DTO on this server version does NOT support it
+# (only 8 known fields: templateId, mainTemplateId, targetInfo, isComposite,
+# memberTemplateDeploymentInfo, forcePushTemplate, copyingConfig, responseMsg).
+# Sending versionedTemplateId results in HTTP 400 BAD_REQUEST.
+#
+- name: "Fetch all project templates with versionsInfo | {{ deploy_entry.template_name }}"
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/template-programmer/template?projectNames={{ deploy_entry.project_name | urlencode }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _template_list_result
+
+# Example - project trimmed to the composite plus one member so the sort is
+# visible; the real Building P0 project holds 24 templates and 1 composite.
+#   In : _template_list_result.json = [
+#          {
+#            "name":       "BGP-EVPN-BUILD.j2",
+#            "templateId": "e1000000-0000-4000-8000-000000000001",
+#            "composite":  true,
+#            "versionsInfo": [
+#              { "id": "e1000000-0000-4000-8000-00000000000a",
+#                "version": "1", "versionTime": 1785849727000 },
+#              { "id": "e1000000-0000-4000-8000-00000000000c",
+#                "version": "3", "versionTime": 1785936127000 },
+#              { "id": "e1000000-0000-4000-8000-00000000000b",
+#                "version": "2", "versionTime": 1785892927000 }
+#            ]
+#          },
+#          {
+#            "name":       "FABRIC-VRF.j2",
+#            "templateId": "e1000000-0000-4000-8000-000000000002",
+#            "composite":  false,
+#            "versionsInfo": [
+#              { "id": "e1000000-0000-4000-8000-00000000001a",
+#                "version": "1", "versionTime": 1785849727000 }
+#            ]
+#          }
+#        ]
+#   Out: _template_version_map = {
+#          "BGP-EVPN-BUILD.j2": {
+#            "rootId":    "e1000000-0000-4000-8000-000000000001",
+#            "versionId": "e1000000-0000-4000-8000-00000000000c"
+#          },
+#          "FABRIC-VRF.j2": {
+#            "rootId":    "e1000000-0000-4000-8000-000000000002",
+#            "versionId": "e1000000-0000-4000-8000-00000000001a"
+#          }
+#        }
+# Note that versionsInfo arrived out of order (v1, v3, v2) and the sort picked
+# v3 - Catalyst Center does not return versions chronologically. A template with
+# an empty versionsInfo falls back to its rootId as versionId.
+- name: "Build template name → version/root ID map | {{ deploy_entry.template_name }}"
+  # Builds a dict keyed by template name:
+  #   { 'TEMPLATE-NAME': { 'rootId': '<uuid>', 'versionId': '<uuid>' }, ... }
+  # versionId = the versionsInfo entry with the highest versionTime (latest committed).
+  # versionsInfo is returned in random order by CatC — sorting is required.
+  set_fact:
+    _template_version_map: >-
+      {%- set ns = namespace(result={}) -%}
+      {%- for tpl in (_template_list_result.json | default([])) -%}
+        {%- set root_id    = tpl.templateId -%}
+        {%- set sorted_versions = tpl.versionsInfo | default([]) | sort(attribute='versionTime', reverse=true) -%}
+        {%- set version_id = (sorted_versions | first | default({})).id | default(root_id) -%}
+        {%- set ns.result = ns.result | combine({tpl.name: {'rootId': root_id, 'versionId': version_id}}) -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: "Assert composite template found | {{ deploy_entry.template_name }}"
+  assert:
+    that: deploy_entry.template_name in _template_version_map
+    fail_msg: >-
+      Template '{{ deploy_entry.template_name }}' not found in project
+      '{{ deploy_entry.project_name }}'.
+      Templates available: {{ _template_version_map.keys() | list | join(', ') }}.
+
+# Example
+#   In : deploy_entry.template_name = "BGP-EVPN-BUILD.j2"
+#        _template_version_map = {
+#          "BGP-EVPN-BUILD.j2": {
+#            "rootId":    "e1000000-0000-4000-8000-000000000001",
+#            "versionId": "e1000000-0000-4000-8000-00000000000c"
+#          },
+#          "FABRIC-VRF.j2": {
+#            "rootId":    "e1000000-0000-4000-8000-000000000002",
+#            "versionId": "e1000000-0000-4000-8000-00000000001a"
+#          }
+#        }
+#   Out: _composite_raw_id      = "e1000000-0000-4000-8000-000000000001"
+#        _composite_template_id = "e1000000-0000-4000-8000-00000000000c"
+#        _composite_main_id     = "e1000000-0000-4000-8000-000000000001"
+# templateId in the deploy body must be the latest version UUID while
+# mainTemplateId must be the root UUID - swapping them deploys a stale version.
+- name: "Extract composite template root and version IDs | {{ deploy_entry.template_name }}"
+  set_fact:
+    _composite_raw_id:        "{{ _template_version_map[deploy_entry.template_name].rootId }}"
+    _composite_template_id:   "{{ _template_version_map[deploy_entry.template_name].versionId }}"
+    _composite_main_id:       "{{ _template_version_map[deploy_entry.template_name].rootId }}"
+
+- name: "--DEBUG-- Composite template version/root IDs | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    msg:
+      - "Composite root ID    : {{ _composite_raw_id }}"
+      - "Composite templateId : {{ _composite_template_id }} (latest version by versionTime, used in deploy)"
+      - "Composite mainTplId  : {{ _composite_main_id }} (root)"
+
+# ── Step B: Fetch composite template detail (for containingTemplates) ───────
+#
+# GET /dna/intent/api/v1/template-programmer/template/<rootId>
+# The list endpoint (Step A) does not return containingTemplates — we need
+# a second call to the detail endpoint to get the list of member templates.
+# IDs (version + root) are already sourced from _template_version_map above.
+#
+- name: "Fetch composite template detail (containingTemplates) | {{ deploy_entry.template_name }}"
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/template-programmer/template/{{ _composite_raw_id }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _template_detail_result
+
+# Example - member list trimmed to two of the eleven FABRIC members
+#   In : _template_detail_result.json = {
+#          "id":        "e1000000-0000-4000-8000-000000000001",
+#          "name":      "BGP-EVPN-BUILD.j2",
+#          "composite": true,
+#          "containingTemplates": [
+#            { "name": "FABRIC-VRF.j2",
+#              "id":         "e1000000-0000-4000-8000-00000000001a",
+#              "templateId": "e1000000-0000-4000-8000-000000000002",
+#              "composite":  false, "language": "JINJA" },
+#            { "name": "FABRIC-LOOPBACKS.j2",
+#              "id":         "e1000000-0000-4000-8000-00000000002a",
+#              "templateId": "e1000000-0000-4000-8000-000000000003",
+#              "composite":  false, "language": "JINJA" }
+#          ]
+#        }
+#   Out: _member_templates = [
+#          { "name": "FABRIC-VRF.j2",
+#            "id":         "e1000000-0000-4000-8000-00000000001a",
+#            "templateId": "e1000000-0000-4000-8000-000000000002",
+#            "composite":  false, "language": "JINJA" },
+#          { "name": "FABRIC-LOOPBACKS.j2",
+#            "id":         "e1000000-0000-4000-8000-00000000002a",
+#            "templateId": "e1000000-0000-4000-8000-000000000003",
+#            "composite":  false, "language": "JINJA" }
+#        ]
+# containingTemplates is only returned by the detail endpoint, never by the
+# list endpoint used in Step A - hence the second API call.
+- name: "Extract member templates list | {{ deploy_entry.template_name }}"
+  set_fact:
+    _member_templates: "{{ _template_detail_result.json.containingTemplates | default([]) }}"
+
+- name: "Assert member templates are defined | {{ deploy_entry.template_name }}"
+  assert:
+    that: _member_templates | length > 0
+    fail_msg: >-
+      Composite template '{{ deploy_entry.template_name }}' has no
+      containingTemplates. Ensure the template is composite and has been
+      configured with member templates in Catalyst Center.
+
+- name: "--DEBUG-- Composite template IDs and members | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    msg:
+      - "Composite templateId    : {{ _composite_template_id }} (version)"
+      - "Composite mainTemplateId: {{ _composite_main_id }} (root)"
+      - "Member templates        : {{ _member_templates | map(attribute='name') | list }}"
+
+# ── Step C: Resolve device UUIDs for each target management IP ──────────────
+#
+# GET /dna/intent/api/v1/network-device?managementIpAddress=<ip>
+# Returns a `response` array; first element carries `id` (device UUID)
+# and `hostname` used to populate targetInfo entries.
+#
+- name: "Resolve device UUIDs for target IPs | {{ deploy_entry.template_name }}"
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/network-device?managementIpAddress={{ item }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ deploy_entry.template_target }}"
+  register: _device_results
+
+# Example - two of the six devices shown; every other result has the same shape
+#   In : _device_results.results = [
+#          {
+#            "item": "198.19.1.1",
+#            "json": { "response": [
+#              { "id":       "b1000000-0000-4000-8000-000000000101",
+#                "hostname": "spine01.dcloud.cisco.com",
+#                "managementIpAddress": "198.19.1.1" }
+#            ] }
+#          },
+#          {
+#            "item": "198.19.1.3",
+#            "json": { "response": [
+#              { "id":       "b1000000-0000-4000-8000-000000000103",
+#                "hostname": "leaf01.dcloud.cisco.com",
+#                "managementIpAddress": "198.19.1.3" }
+#            ] }
+#          }
+#        ]
+#   Out: _device_uuid_map = {
+#          "198.19.1.1": { "uuid":     "b1000000-0000-4000-8000-000000000101",
+#                          "hostname": "spine01.dcloud.cisco.com" },
+#          "198.19.1.3": { "uuid":     "b1000000-0000-4000-8000-000000000103",
+#                          "hostname": "leaf01.dcloud.cisco.com" }
+#        }
+# Keyed by the API's managementIpAddress rather than the loop item. hostname
+# falls back to the IP when the device has none, so targetInfo.hostName is
+# never empty.
+- name: "Build IP → { uuid, hostname } map | {{ deploy_entry.template_name }}"
+  set_fact:
+    _device_uuid_map: >-
+      {%- set ns = namespace(result={}) -%}
+      {%- for r in _device_results.results -%}
+        {%- set device = (r.json.response | default([]) | first | default(none)) -%}
+        {%- if device is not none and device.id is defined -%}
+          {%- set ns.result = ns.result | combine({
+              device.managementIpAddress: {
+                'uuid':     device.id,
+                'hostname': device.hostname | default(device.managementIpAddress)
+              }
+          }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: "--DEBUG-- Device UUID map | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    var: _device_uuid_map
+
+- name: "Validate all target IPs resolved to device UUIDs | {{ deploy_entry.template_name }}"
+  assert:
+    that: item in _device_uuid_map
+    fail_msg: >-
+      Device with management IP '{{ item }}' was not found in Catalyst Center.
+      Ensure the device is discovered and managed before deploying templates.
+  loop: "{{ deploy_entry.template_target }}"
+
+
+# ── Step D: Build targetInfo and memberTemplateDeploymentInfo payloads ──────
+#
+# The CatC v2 composite deploy API requires device targets in the top-level
+# `targetInfo` field.  Providing targets only inside `memberTemplateDeploymentInfo`
+# without a populated top-level `targetInfo` causes NCTP10028 ("At least one
+# device should data should be provided").
+#
+# Each targetInfo entry carries:
+#   id             — device UUID resolved in Step C
+#   hostName       — device hostname (informational)
+#   type           — MANAGED_DEVICE_UUID
+#   params         — template parameter key/value dict (empty {} for top-level)
+#   resourceParams — three entries matching the CatC v2 deploy API schema
+#
+# resourceParams entries per CatC Template Deploy API spec (ResourceParam object):
+#   type  — enum: MANAGED_DEVICE_UUID | MANAGED_DEVICE_IP | MANAGED_DEVICE_HOSTNAME | ...
+#   value — actual value for the param type
+#   scope — RUNTIME (provided at deploy time, may differ per deployment)
+#
+#   [{type: MANAGED_DEVICE_UUID, scope: RUNTIME, value: <uuid>}]
+#
+# Note: Only MANAGED_DEVICE_UUID is sent in resourceParams.
+# Example - two target IPs shown; the real entry targets all six
+#   In : deploy_entry.template_target = ["198.19.1.1", "198.19.1.3"]
+#        _device_uuid_map = {
+#          "198.19.1.1": { "uuid":     "b1000000-0000-4000-8000-000000000101",
+#                          "hostname": "spine01.dcloud.cisco.com" },
+#          "198.19.1.3": { "uuid":     "b1000000-0000-4000-8000-000000000103",
+#                          "hostname": "leaf01.dcloud.cisco.com" }
+#        }
+#   Out: _target_info = [
+#          {
+#            "id":       "b1000000-0000-4000-8000-000000000101",
+#            "hostName": "spine01.dcloud.cisco.com",
+#            "type":     "MANAGED_DEVICE_UUID",
+#            "params":   {},
+#            "resourceParams": [
+#              { "type":  "MANAGED_DEVICE_UUID",
+#                "scope": "RUNTIME",
+#                "value": "b1000000-0000-4000-8000-000000000101" }
+#            ]
+#          },
+#          {
+#            "id":       "b1000000-0000-4000-8000-000000000103",
+#            "hostName": "leaf01.dcloud.cisco.com",
+#            "type":     "MANAGED_DEVICE_UUID",
+#            "params":   {},
+#            "resourceParams": [
+#              { "type":  "MANAGED_DEVICE_UUID",
+#                "scope": "RUNTIME",
+#                "value": "b1000000-0000-4000-8000-000000000103" }
+#            ]
+#          }
+#        ]
+# params is empty at the top level - member parameters go in
+# memberTemplateDeploymentInfo instead. An IP missing from _device_uuid_map is
+# silently dropped, which the preceding assert already prevents.
+- name: "Build top-level targetInfo | {{ deploy_entry.template_name }}"
+  set_fact:
+    _target_info: >-
+      {%- set tns = namespace(targets=[]) -%}
+      {%- for ip in deploy_entry.template_target -%}
+        {%- if ip in _device_uuid_map -%}
+          {%- set d = _device_uuid_map[ip] -%}
+          {%- set tns.targets = tns.targets + [{
+              'id':       d.uuid,
+              'hostName': d.hostname,
+              'type':     'MANAGED_DEVICE_UUID',
+              'params':   {},
+              'resourceParams': [
+                {'type': 'MANAGED_DEVICE_UUID', 'scope': 'RUNTIME', 'value': d.uuid}
+              ]
+          }] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ tns.targets }}
+
+- name: "--DEBUG-- targetInfo | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    var: _target_info
+
+# ── Step D2: Build memberTemplateDeploymentInfo ─────────────────────────────
+#
+# Per-member deployment spec with the same resourceParams structure as the
+# top-level targetInfo.  copyingConfig: true is required at both levels.
+#
+# Per-template params are keyed by template name in the inventory variable
+# `member_template_params`.  Example:
+#
+#   member_template_params:
+#     "FABRIC-LOOPBACKS.j2":
+#       loopback_ip: "192.168.100.1"
+#     "FABRIC-VRF.j2": {}
+#
+# Example - one member and one target device so the nesting is readable; the
+# real payload has eleven members times six devices.
+#   In : deploy_entry.template_target = ["198.19.1.3"]
+#        force_push_template = true
+#        member_template_params = { "FABRIC-LOOPBACKS.j2": { "loopback_ip": "192.168.100.1" } }
+#        _member_templates = [
+#          { "name": "FABRIC-LOOPBACKS.j2",
+#            "id":         "e1000000-0000-4000-8000-00000000002a",
+#            "templateId": "e1000000-0000-4000-8000-000000000003",
+#            "composite":  false, "language": "JINJA" }
+#        ]
+#        _template_version_map = {
+#          "FABRIC-LOOPBACKS.j2": {
+#            "rootId":    "e1000000-0000-4000-8000-000000000003",
+#            "versionId": "e1000000-0000-4000-8000-00000000002c"
+#          }
+#        }
+#        _device_uuid_map = {
+#          "198.19.1.3": { "uuid":     "b1000000-0000-4000-8000-000000000103",
+#                          "hostname": "leaf01.dcloud.cisco.com" }
+#        }
+#   Out: _member_deployment_info = [
+#          {
+#            "templateId":     "e1000000-0000-4000-8000-00000000002c",
+#            "mainTemplateId": "e1000000-0000-4000-8000-000000000003",
+#            "targetInfo": [
+#              {
+#                "id":       "b1000000-0000-4000-8000-000000000103",
+#                "hostName": "leaf01.dcloud.cisco.com",
+#                "type":     "MANAGED_DEVICE_UUID",
+#                "params":   { "loopback_ip": "192.168.100.1" },
+#                "resourceParams": [
+#                  { "type":  "MANAGED_DEVICE_UUID",
+#                    "scope": "RUNTIME",
+#                    "value": "b1000000-0000-4000-8000-000000000103" }
+#                ]
+#              }
+#            ],
+#            "forcePushTemplate": true,
+#            "copyingConfig":     true,
+#            "isComposite":       false
+#          }
+#        ]
+# The member's templateId is taken from _template_version_map, not from the
+# containingTemplates entry: the detail endpoint returns the member's root ID,
+# which would deploy the uncommitted draft rather than the latest version.
+# A member absent from member_template_params gets params: {}.
+- name: "Build memberTemplateDeploymentInfo | {{ deploy_entry.template_name }}"
+  set_fact:
+    _member_deployment_info: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for member in _member_templates -%}
+        {%- set member_root_id  = member.templateId | default(member.id) -%}
+        {%- set member_ver_info = (_template_version_map[member.name] | default({})) -%}
+        {%- set member_id       = member_ver_info.versionId | default(member_root_id) -%}
+        {%- set member_main_id  = member_ver_info.rootId    | default(member_root_id) -%}
+        {%- set params         = (member_template_params | default({}))[member.name] | default({}) -%}
+        {%- set tns = namespace(targets=[]) -%}
+        {%- for ip in deploy_entry.template_target -%}
+          {%- if ip in _device_uuid_map -%}
+            {%- set d = _device_uuid_map[ip] -%}
+            {%- set tns.targets = tns.targets + [{
+                'id':       d.uuid,
+                'hostName': d.hostname,
+                'type':     'MANAGED_DEVICE_UUID',
+                'params':   params,
+                'resourceParams': [
+                  {'type': 'MANAGED_DEVICE_UUID', 'scope': 'RUNTIME', 'value': d.uuid}
+                ]
+            }] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {%- set ns.result = ns.result + [{
+          'templateId':        member_id,
+          'mainTemplateId':    member_main_id,
+          'targetInfo':        tns.targets,
+          'forcePushTemplate': force_push_template | bool,
+          'copyingConfig':     true,
+          'isComposite':       false
+        }] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: "--DEBUG-- memberTemplateDeploymentInfo | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    var: _member_deployment_info
+
+- name: "--DEBUG-- Full deploy payload (first device) | {{ deploy_entry.template_name }}"
+  when: (catc_debug | default(false) | bool) and (_device_uuid_map | dict2items | length > 0)
+  vars:
+    _first_dev: "{{ (_device_uuid_map | dict2items | first).value }}"
+  debug:
+    msg: >-
+      {{ {
+      'templateId': _composite_template_id,
+      'mainTemplateId': _composite_main_id,
+      'isComposite': true,
+      'forcePushTemplate': true,
+      'copyingConfig': true,
+      'targetInfo': [{
+      'id': _first_dev.uuid,
+      'hostName': _first_dev.hostname,
+      'type': 'MANAGED_DEVICE_UUID',
+      'params': {},
+      'resourceParams': [
+      {'type': 'MANAGED_DEVICE_UUID', 'scope': 'RUNTIME', 'value': _first_dev.uuid}
+      ]
+      }],
+      'memberTemplateDeploymentInfo': _member_deployment_info
+      } | to_nice_json }}
+
+# ── Step E: Deploy composite template via direct REST API call ───────────────
+#
+# POST /dna/intent/api/v2/template-programmer/template/deploy
+#
+# CRITICAL: The cisco.dnac.configuration_template_deploy_v2 Ansible module
+# CANNOT send 'copyingConfig: true' at the top level — that field is not
+# exposed as a module parameter and the SDK silently drops it.  Without
+# copyingConfig=true CatC accepts the deploy request but never pushes config
+# to the device (the task completes with no actual device config change).
+#
+# Additionally, the module declares memberTemplateDeploymentInfo as
+# 'elements: str' which may mangle the list-of-dicts payload.
+#
+# The fix: call the API directly via ansible.builtin.uri so we have full
+# control over every field, matching the known-good UX payload structure:
+#   - copyingConfig: true (top level AND each member)
+#   - isComposite: true (top level)
+#   - isComposite: false (each member)
+#   - One API call per device (single-element targetInfo)
+#
+- name: "Deploy composite template | {{ deploy_entry.template_name }}"
+  vars:
+    _single_target:
+      - id:       "{{ item.value.uuid }}"
+        hostName: "{{ item.value.hostname }}"
+        type:     "MANAGED_DEVICE_UUID"
+        params:   {}
+        resourceParams:
+          - type:  "MANAGED_DEVICE_UUID"
+            scope: "RUNTIME"
+            value: "{{ item.value.uuid }}"
+    _single_member_info: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for m in _member_deployment_info -%}
+        {%- set entry = m | combine({'targetInfo': [
+            m.targetInfo | selectattr('id','equalto', item.value.uuid) | first | default({})
+        ]}) -%}
+        {%- set ns.result = ns.result + [entry] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v2/template-programmer/template/deploy"
+    method: POST
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+      Content-Type: "application/json"
+    validate_certs: "{{ dnac_verify }}"
+    body_format: json
+    body:
+      templateId:                   "{{ _composite_template_id }}"
+      mainTemplateId:               "{{ _composite_main_id }}"
+      isComposite:                  true
+      forcePushTemplate:            true
+      copyingConfig:                true
+      targetInfo:                   "{{ _single_target }}"
+      memberTemplateDeploymentInfo: "{{ _single_member_info }}"
+    status_code: [200, 202]
+  loop: "{{ _device_uuid_map | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: _deploy_results
+  ignore_errors: true
+
+- name: "--DEBUG-- Raw deploy module responses | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    var: _deploy_results
+
+# Example - two devices, one accepted and one rejected
+#   In : _deploy_results.results = [
+#          {
+#            "item": { "key":   "198.19.1.1",
+#                      "value": { "uuid":     "b1000000-0000-4000-8000-000000000101",
+#                                 "hostname": "spine01.dcloud.cisco.com" } },
+#            "status": 202,
+#            "json": { "response": {
+#              "taskId": "f1000000-0000-4000-8000-000000000401",
+#              "url":    "/api/v1/task/f1000000-0000-4000-8000-000000000401" } }
+#          },
+#          {
+#            "item": { "key":   "198.19.1.3",
+#                      "value": { "uuid":     "b1000000-0000-4000-8000-000000000103",
+#                                 "hostname": "leaf01.dcloud.cisco.com" } },
+#            "status": 400,
+#            "json": { "response": {} }
+#          }
+#        ]
+#   Out: _deploy_task_ids = [
+#          { "ip":     "198.19.1.1",
+#            "taskId": "f1000000-0000-4000-8000-000000000401" }
+#        ]
+# Devices whose call returned no taskId are dropped rather than polled, so a
+# single rejected device does not stall the run. ignore_errors on the deploy
+# task is what allows this list to be partial.
+- name: "Extract async task IDs from deploy responses | {{ deploy_entry.template_name }}"
+  # The v2 deploy API returns { "response": { "taskId": "...", "url": "..." } }.
+  # With ansible.builtin.uri the response is under .json (not .dnac_response).
+  set_fact:
+    _deploy_task_ids: >-
+      {%- set ns = namespace(ids=[]) -%}
+      {%- for r in (_deploy_results.results | default([])) -%}
+        {%- set tid = (r.json.response | default({})).taskId | default('') -%}
+        {%- if tid -%}
+          {%- set ns.ids = ns.ids + [{'ip': r.item.key, 'taskId': tid}] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.ids }}
+
+- name: "--DEBUG-- Deploy task IDs per device | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    var: _deploy_task_ids
+
+# ── Step F: Poll async task status per device ────────────────────────────────
+#
+# Each device got its own deploy call and taskId — poll each independently.
+# The task `progress` field contains the Template Deployment ID once CatC has
+# registered the deployment, allowing Step F2 to poll actual push success/failure.
+# Note: CatC's own field name has a typo — "Template Deployemnt Id" (not "Deployment").
+#
+- name: "Poll async task status | {{ deploy_entry.template_name }}"
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/task/{{ item.taskId }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _task_poll_results
+  loop: "{{ _deploy_task_ids }}"
+  loop_control:
+    label: "{{ item.ip }} → {{ item.taskId }}"
+  until: >-
+    (_task_poll_results.json.response | default({})).endTime is defined
+    or (_task_poll_results.json.response | default({})).isError | default(false) | bool
+  retries: "{{ task_poll_retries | int }}"
+  delay:   "{{ task_poll_delay   | int }}"
+  ignore_errors: true
+
+- name: "--DEBUG-- Task poll responses (progress/isError/endTime) | {{ deploy_entry.template_name }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    msg: >-
+      {%- set member_names = _member_templates | map(attribute='name') | list | join(', ') -%}
+      {%- set ns = namespace(out=[]) -%}
+      {%- for r in (_task_poll_results.results | default([])) -%}
+        {%- set resp     = r.json.response | default({}) -%}
+        {%- set dev_info = _device_uuid_map[r.item.ip] | default({}) -%}
+        {%- set hostname = dev_info.hostname | default(r.item.ip) -%}
+        {%- set ns.out = ns.out + [
+          'Device: ' + r.item.ip + ' (' + hostname + ')' +
+          ' | member templates: ' + member_names +
+          ' | isError: ' + (resp.isError | default('n/a') | string) +
+          ' | endTime: ' + (resp.endTime | default('n/a') | string) +
+          ' | progress: ' + (resp.progress | default('n/a') | string) +
+          ' | failureReason: ' + (resp.failureReason | default('') | string)
+        ] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
+# Example - one device succeeded, one failed
+#   In : _task_poll_results.results = [
+#          {
+#            "item": { "ip": "198.19.1.1",
+#                      "taskId": "f1000000-0000-4000-8000-000000000401" },
+#            "json": { "response": {
+#              "id":        "f1000000-0000-4000-8000-000000000401",
+#              "isError":   false,
+#              "endTime":   1785936319000,
+#              "progress":  "Deployment of Composite Template: 9a7c5e21-3b4d-4f18-9c0a-2e6f8b1d4057 Member Template: FABRIC-VRF.j2",
+#              "failureReason": ""
+#            } }
+#          },
+#          {
+#            "item": { "ip": "198.19.1.3",
+#                      "taskId": "f1000000-0000-4000-8000-000000000403" },
+#            "json": { "response": {
+#              "id":        "f1000000-0000-4000-8000-000000000403",
+#              "isError":   true,
+#              "endTime":   1785936290000,
+#              "progress":  "Template Deployemnt Id: 4c8f0d33-7a1b-42e9-8d55-1f3a9b6c0e72 | failureReason: Device is unreachable",
+#              "failureReason": "Device is unreachable"
+#            } }
+#          }
+#        ]
+#   Out: _deployment_status_ids = [
+#          { "ip":            "198.19.1.1",
+#            "deploymentId":  "9a7c5e21-3b4d-4f18-9c0a-2e6f8b1d4057",
+#            "failureReason": "" },
+#          { "ip":            "198.19.1.3",
+#            "deploymentId":  "4c8f0d33-7a1b-42e9-8d55-1f3a9b6c0e72",
+#            "failureReason": "Device is unreachable" }
+#        ]
+#
+# Example - task errored but progress carries no failureReason marker
+#   In : _task_poll_results.results[0].json.response = {
+#          "id":        "f1000000-0000-4000-8000-000000000401",
+#          "isError":   true,
+#          "endTime":   1785936290000,
+#          "progress":  "Deployment of Composite Template: 9a7c5e21-3b4d-4f18-9c0a-2e6f8b1d4057",
+#          "failureReason": "NCTP10028: At least one device should data should be provided"
+#        }
+#   Out: _deployment_status_ids = [
+#          { "ip":            "198.19.1.1",
+#            "deploymentId":  "9a7c5e21-3b4d-4f18-9c0a-2e6f8b1d4057",
+#            "failureReason": "NCTP10028: At least one device should data should be provided" }
+#        ]
+# An empty failureReason is the only SUCCESS signal - Catalyst Center does not
+# return a status enum here. The regex matches both progress formats because
+# older releases used the misspelled "Template Deployemnt Id:" marker.
+- name: "Extract Template Deployment IDs and failure reasons from task progress | {{ deploy_entry.template_name }}"
+  # ── Step F2: Extract deployment result from task progress ─────────────────
+  #
+  # The CatC v2 Deploy Template API (2.3.7.9) is specified to return deploymentId
+  # directly in the POST response body.  On this server the response only includes
+  # taskId, so we read the authoritative push result from the task progress field
+  # The composite template UUID appears in the progress field as:
+  #   "Deployment of Composite Template: <uuid> Member Template: ..."
+  # Older CatC versions used "Template Deployemnt Id: <uuid> | failureReason: <reason>"
+  # (CatC's own typo: "Deployemnt"). We match both formats. An empty failureReason means SUCCESS.
+  #
+  # NOTE: CatC returns deploymentId only for the parent composite template, not for each member template.
+  # The member templates' deployment status must be inferred from the overall task success/failure and the presence of the
+  # member template names in the task progress logs.
+  set_fact:
+    _deployment_status_ids: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for r in (_task_poll_results.results | default([])) -%}
+        {%- set resp     = r.json.response | default({}) -%}
+        {%- set progress = resp.progress | default('') -%}
+        {%- set id_match = progress | regex_search('(?:Template Deploy[a-z]+ Id:|Deployment of Composite Template:) ([a-zA-Z0-9-]+)', '\\1') -%}
+        {%- set fr_match = progress | regex_search('\| failureReason: (.*)$', '\\1') -%}
+        {%- set did = (id_match | first) if (id_match is not none and id_match | length > 0) else '' -%}
+        {%- set fr_from_progress = ((fr_match | first) | trim) if (fr_match is not none and fr_match | length > 0) else '' -%}
+        {# If isError=True but progress has no failureReason pattern, fall back to task-level failureReason field #}
+        {%- set is_err = resp.isError | default(false) | bool -%}
+        {%- set fr = fr_from_progress if fr_from_progress else (resp.failureReason | default('') if is_err else '') -%}
+        {%- set ns.result = ns.result + [{'ip': r.item.ip, 'deploymentId': did, 'failureReason': fr}] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: "Template Deployment IDs and push results | {{ deploy_entry.template_name }}"
+  debug:
+    msg: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for d in (_deployment_status_ids | default([])) -%}
+        {%- set result = 'SUCCESS' if d.failureReason | default('') | length == 0 else 'FAILURE' -%}
+        {%- set ns.out = ns.out + [
+          'Device: ' + d.ip +
+          ' | deploymentId: ' + d.deploymentId +
+          ' | result: ' + result +
+          ' | failureReason: ' + (d.failureReason | default('') | string)
+        ] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+
+# ── Step G: Summary and error propagation ───────────────────────────────────
+# Example - two devices, one succeeded and one failed
+#   In : deploy_entry = {
+#          "site":          "Global/PODS/POD 0/Building P0/Floor 1",
+#          "template_name": "BGP-EVPN-BUILD.j2",
+#          "project_name":  "Building P0",
+#          "template_tag":  "DEMO",
+#          "template_target": ["198.19.1.1", "198.19.1.3"]
+#        }
+#        _deploy_results.results = [
+#          { "item": { "key": "198.19.1.1" }, "failed": false, "status": 202 },
+#          { "item": { "key": "198.19.1.3" }, "failed": false, "status": 202 }
+#        ]
+#        _deployment_status_ids = [
+#          { "ip":            "198.19.1.1",
+#            "deploymentId":  "9a7c5e21-3b4d-4f18-9c0a-2e6f8b1d4057",
+#            "failureReason": "" },
+#          { "ip":            "198.19.1.3",
+#            "deploymentId":  "4c8f0d33-7a1b-42e9-8d55-1f3a9b6c0e72",
+#            "failureReason": "Device is unreachable" }
+#        ]
+#   Out: _summary_lines = [
+#          "┌────────────────────┬──────────────────────────────────────────┐",
+#          "│ Template           │ BGP-EVPN-BUILD.j2                        │",
+#          "├────────────────────┼──────────────────────────────────────────┤",
+#          "│ Project            │ Building P0                              │",
+#          "├────────────────────┼──────────────────────────────────────────┤",
+#          "│ Site               │ Global/PODS/POD 0/Building P0/Floor 1    │",
+#          "├────────────────────┼──────────────────────────────────────────┤",
+#          "│ Target devices     │ 198.19.1.1, 198.19.1.3                   │",
+#          "├────────────────────┼──────────────────────────────────────────┤",
+#          "│ API errors         │ none ✓                                   │",
+#          "├────────────────────┼──────────────────────────────────────────┤",
+#          "│ 198.19.1.1         │ ✓ SUCCESS                                │",
+#          "├────────────────────┼──────────────────────────────────────────┤",
+#          "│ 198.19.1.3         │ ✗ FAILURE  Device is unreachable         │",
+#          "└────────────────────┴──────────────────────────────────────────┘"
+#        ]
+# "API errors" reports HTTP-level failures on the deploy call itself, which is
+# a different condition from a per-device push failure - a device can be
+# accepted with 202 and still fail to receive config.
+- name: "Deployment summary - build table | {{ deploy_entry.template_name }}"
+  set_fact:
+    _summary_lines: >-
+      {%- set SEP  = '─' -%}
+      {%- set rows = [] -%}
+      {%- set _ = rows.append(('Template',       deploy_entry.template_name)) -%}
+      {%- set _ = rows.append(('Project',         deploy_entry.project_name)) -%}
+      {%- set _ = rows.append(('Site',            deploy_entry.site)) -%}
+      {%- set _ = rows.append(('Target devices',  deploy_entry.template_target | join(', '))) -%}
+      {%- set any_err = _deploy_results.results | selectattr('failed','equalto',true) | list | length > 0 -%}
+      {%- set _ = rows.append(('API errors',      'YES ✗' if any_err else 'none ✓')) -%}
+      {%- for d in _deployment_status_ids | default([]) -%}
+        {%- set result = '✓ SUCCESS' if d.failureReason | default('') | length == 0 else ('✗ FAILURE  ' + d.failureReason) -%}
+        {%- set _ = rows.append((d.ip, result)) -%}
+      {%- endfor -%}
+      {%- set col0w = (rows | map(attribute=0) | map('length') | max) + 2 -%}
+      {%- set col1w = (rows | map(attribute=1) | map('length') | max) + 2 -%}
+      {%- set bar   = '┌' + SEP * (col0w + 2) + '┬' + SEP * (col1w + 2) + '┐' -%}
+      {%- set mid   = '├' + SEP * (col0w + 2) + '┼' + SEP * (col1w + 2) + '┤' -%}
+      {%- set bot   = '└' + SEP * (col0w + 2) + '┴' + SEP * (col1w + 2) + '┘' -%}
+      {%- set ns = namespace(lines=[bar]) -%}
+      {%- for label, value in rows -%}
+        {%- set lpad = label.ljust(col0w) -%}
+        {%- set vpad = value.ljust(col1w) -%}
+        {%- set _ = ns.lines.append('│ ' + lpad + ' │ ' + vpad + ' │') -%}
+        {%- if not loop.last -%}{%- set _ = ns.lines.append(mid) -%}{%- endif -%}
+      {%- endfor -%}
+      {%- set _ = ns.lines.append(bot) -%}
+      {{ ns.lines }}
+
+- name: "Deployment summary | {{ deploy_entry.template_name }}"
+  debug:
+    msg: "{{ _summary_lines }}"

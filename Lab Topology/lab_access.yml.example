@@ -1,0 +1,23 @@
+---
+# Schema only — no live passwords. The encrypted source of truth is lab_access.yml.
+# Recreate: copy this file, fill passwords, then:
+#   ansible-vault encrypt lab_access.yml
+# Playbooks load lab_access via ansible-automation/plugins/vars/lab_access.py.
+lab_access:
+  script_server:
+    access: "ssh: 198.18.134.12"
+    username: cisco
+    password: REPLACE_ME
+  Jumphost1:
+    access: "RDP: 198.18.133.36"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "Catalyst Center":
+    access: "https://cat-center.corp.pseudoco.com"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Site_105-Leaf1:
+    access: "ssh: 198.18.128.22"
+    username: REPLACE_ME
+    password: REPLACE_ME
+    enable_password: REPLACE_ME

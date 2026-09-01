@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Cisco One Experience Lab — local memory
 
-dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playbooks. Topology and access lookup live in `Lab Topology/`. Do not put passwords in playbooks or unencrypted inventory.
+dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playbooks. Topology lives in `Lab Topology/`. The single credential source for every playbook is vault-encrypted `Lab Topology/lab_access.yml`, unlocked by the repo-root gitignored `.vault`. The markdown lookup is an index of hosts and URLs only. Do not put passwords in playbooks or unencrypted inventory.
 
 ## Workflow
 
@@ -13,11 +13,11 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 - Commit/push only when the user asks. Remote: `https://github.com/imanassypov/cisco-one-experience-lab-automation` (`main`, public).
 - Test on the Kali script server after it has `main` at `~/cisco-one-experience-lab-automation`.
 - Mac refresh (VPN up): `ansible-automation/00_scriptserver_bootstrap` venv, then `playbooks/01_bootstrap_script_server.yml` (also git-pulls) or `playbooks/02_sync_from_git.yml` (git only).
-- On Kali, Ansible is on PATH from `~/venv`. Recreate `.vault` there if a collection needs Vault (gitignored).
+- On Kali, Ansible is on PATH from `~/venv`. Recreate the repo-root `.vault` there after clone (gitignored).
 
 ## Script server
 
-- Kali Linux at `198.18.134.12`. SSH user and passwords come from Vault (`inventory/group_vars/script_servers/vault.yml`), unlocked by gitignored `.vault`.
+- Kali Linux at `198.18.134.12`. SSH user and password come from `lab_access.script_server` in `Lab Topology/lab_access.yml`.
 - Mac controller: project `.venv` via `setup-local-venv.sh`; `ansible_connection: paramiko`.
 - Only project tree on Kali: `~/cisco-one-experience-lab-automation`. Never create `~/cisco-one-automation`.
 
@@ -25,4 +25,10 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 
 - Playbooks live under `ansible-automation/`, numbered by lab-build order: `00_scriptserver_bootstrap`, `01_campus`, `02_data_center`, `03_dmz`, `04_remote_dc`, `05_sdwan`, `06_secure_access`.
 - Inside each collection, playbooks are `00_`, `01_`, … in apply order.
-- `00_` is implemented. `01_`–`06_` are stubs until built.
+- `01_campus` has two independent tracks: `sda/` (stub) and `evpn/` (Site 105).
+- EVPN is **Catalyst Center GitOps**, not a `cisco.ios` underlay/overlay pusher. Fabric CLI is rendered by CatC from vendored Jinja DEFN/FUNC/FABRIC templates (`evpn/Catalyst Center Templates/`). The only playbook collection is `evpn/ansible/` (copied CICD stages `00`–`10` plus verify `12`/`13`). Settings SSOT is `evpn/Settings/`. CatC API credentials come from `lab_access['Catalyst Center']` in `Lab Topology/lab_access.yml`. Site 105 verify playbooks use `lab_access[inventory_hostname]`.
+- Live CatC is **3.1.5**. Ansible/SDK API profile is **3.1.3.0** (SDK has no `3.1.5` string). Pins: `cisco.catalystcenter` 2.10.2, `cisco.dnac` 6.46.0, `catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6. Do not drop `cisco.catalystcenter` below 2.4.0.
+- `evpn/ansible/playbooks/12_verify_preflight.yml` and `13_verify_collect_facts.yml` are **post-deploy verify** (TCP/22 + `ios_command`). They do not build the fabric.
+- `evpn/Settings/settings.json` matches the live CatC hierarchy (state → city → building → MAIN). Campus EVPN discovery is `Site-105-Discovery` over loopbacks `172.30.255.1–3`; WLC discovery is `C9800-WLC` at `198.18.5.103` on DC-Site-10 / MAIN. Copied DEFN templates still describe the reference CML fabric. Do not run provision/composite deploy (`09`/`10`) against the live lab until Site 105 roles, ASN 65535, and VRF Main/Prod/IoT are mapped.
+- Source of the vendored trees: `imanassypov/CatalystCenter-BGP-EVPN-VXLAN` `6d2afa3a2becfe71f8f036ee79a0a1c164ba0433`.
+- `00_` is implemented. `01_campus/evpn` has the CatC pipeline vendored. Other `01_`–`06_` tracks are stubs.

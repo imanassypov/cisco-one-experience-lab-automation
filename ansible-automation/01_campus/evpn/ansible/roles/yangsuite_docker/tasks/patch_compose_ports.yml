@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# yangsuite_docker / patch_compose_ports.yml  —  rebind published host ports
+# =============================================================================
+# Rewrites the port bindings in the upstream docker-compose.yml in place.
+#
+# An override file is NOT used: `docker compose` MERGES port lists rather than
+# replacing them, so an override would publish both the upstream port and the
+# desired one. Any stale override left by an earlier approach is removed here.
+#
+# This matters because the YANG Suite host is co-located with the SWIM image
+# server from stage 06.0, which already owns TCP/80 and TCP/443.
+#
+# Pre:  <yangsuite_docker_dir>/docker-compose.yml — upstream, unmodified
+#       yangsuite_publish_http  — false; drops the nginx 80:80 binding entirely
+#       yangsuite_http_port     — 8080 (only used when publish_http is true)
+#       yangsuite_https_port    — 8443 → replaces "8443:8443"
+#       yangsuite_restconf_port — 8444 → replaces "443:443" (avoids nginx TLS)
+#
+# Post: On the target host: docker-compose.yml edited in place with the
+#       configured host ports; docker-compose.override.yml removed.
+#       Every task notifies "Restart YANG Suite Docker Compose stack".
+# =============================================================================
+
+- name: Remove nginx HTTP port binding when HTTP redirect is disabled
+  ansible.builtin.lineinfile:
+    path: "{{ yangsuite_docker_dir }}/docker-compose.yml"
+    regexp: '^\s+- "80:80"$'
+    state: absent
+  when: not yangsuite_publish_http | bool
+  notify: Restart YANG Suite Docker Compose stack
+
+- name: Set nginx HTTP host port binding
+  ansible.builtin.replace:
+    path: "{{ yangsuite_docker_dir }}/docker-compose.yml"
+    regexp: '(\s+- )"80:80"'
+    replace: '\1"{{ yangsuite_http_port }}:80"'
+  when: yangsuite_publish_http | bool
+  notify: Restart YANG Suite Docker Compose stack
+
+- name: Set nginx HTTPS host port binding
+  ansible.builtin.replace:
+    path: "{{ yangsuite_docker_dir }}/docker-compose.yml"
+    regexp: '(\s+- )"8443:8443"'
+    replace: '\1"{{ yangsuite_https_port }}:8443"'
+  notify: Restart YANG Suite Docker Compose stack
+
+- name: Set RESTCONF host port binding on yangsuite service
+  ansible.builtin.replace:
+    path: "{{ yangsuite_docker_dir }}/docker-compose.yml"
+    regexp: '(\s+# RESTCONF\n\s+- )"443:443"'
+    replace: '\1"{{ yangsuite_restconf_port }}:443"'
+  notify: Restart YANG Suite Docker Compose stack
+
+- name: Remove stale docker-compose override file if present
+  ansible.builtin.file:
+    path: "{{ yangsuite_docker_dir }}/docker-compose.override.yml"
+    state: absent
+  notify: Restart YANG Suite Docker Compose stack

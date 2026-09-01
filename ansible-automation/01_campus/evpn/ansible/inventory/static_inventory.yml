@@ -1,0 +1,42 @@
+---
+# Static Ansible inventory — hosts not sourced from CML (Catalyst Center API, infra utilities).
+# MCP bastion/Splunk: utils/mcp-ssh-server/inventory/static_hosts.yml (not Ansible).
+all:
+  children:
+    # Host name must differ from the group name, otherwise Ansible warns
+    # "Found both group and host with same name". Playbooks target the group.
+    catalyst_center:
+      hosts:
+        catalyst_center_api:
+          ansible_host: localhost
+          ansible_connection: local
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+    image_servers:
+      hosts:
+        swim_image_server:
+          ansible_host: "{{ image_server_ip }}"
+
+    yangsuite_servers:
+      hosts:
+        yangsuite_server:
+          ansible_host: "{{ yangsuite_server_ip }}"
+
+    campus_evpn:
+      vars:
+        ansible_connection: ansible.netcommon.network_cli
+        ansible_network_os: cisco.ios.ios
+        ansible_become: false
+        ansible_user: "{{ lab_access[inventory_hostname].username }}"
+        ansible_password: "{{ lab_access[inventory_hostname].password }}"
+      children:
+        evpn_leaves:
+          hosts:
+            Site_105-Leaf1:
+              ansible_host: 198.18.128.22
+            Site_105-Leaf2:
+              ansible_host: 198.18.128.23
+        evpn_border_spine:
+          hosts:
+            Site_105-Border-Spine:
+              ansible_host: 198.18.128.24
