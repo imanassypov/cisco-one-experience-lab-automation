@@ -1,4 +1,4 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# ======================================== #}
 {# Client Port Utility Macros (Library)     #}
 {# ======================================== #}
@@ -42,7 +42,6 @@ interface {{ port_entry.port }}
 
 {% macro switchport_trunk(port_entry) %}
 {% if '-' in port_entry.port %}
-  {# Port range: parse prefix and start/end numbers #}
   {% set parts = port_entry.port.split('-') %}
   {% if parts | length == 2 %}
     {% set last_slash = parts[0].rfind('/') %}
@@ -52,28 +51,91 @@ interface {{ port_entry.port }}
     {% for i in range(start_num, end_num + 1) %}
 interface {{ prefix }}{{ i }}
  description {{ port_entry.description }}
- switchport mode trunk
+      {% if port_entry.native_vlan is defined and port_entry.native_vlan %}
+ switchport trunk native vlan {{ port_entry.native_vlan }}
+      {% endif %}
       {% if port_entry.vlan is defined and port_entry.vlan %}
  switchport trunk allowed vlan {{ port_entry.vlan }}
+      {% endif %}
+ switchport mode trunk
+      {% if port_entry.portfast_trunk is defined and port_entry.portfast_trunk %}
+ spanning-tree portfast trunk
+      {% elif port_entry.portfast is defined and port_entry.portfast %}
+ spanning-tree portfast trunk
+      {% endif %}
+      {% if port_entry.cts_sgt is defined %}
+ cts manual
+  policy static sgt {{ port_entry.cts_sgt }}{% if port_entry.cts_trusted is defined and port_entry.cts_trusted %} trusted{% endif %}
+      {% if port_entry.cts_propagate is defined and port_entry.cts_propagate %}
+  propagate sgt
+      {% endif %}
       {% endif %}
 !
     {% endfor %}
   {% endif %}
 {% else %}
-  {# Single port #}
 interface {{ port_entry.port }}
  description {{ port_entry.description }}
- switchport mode trunk
+  {% if port_entry.native_vlan is defined and port_entry.native_vlan %}
+ switchport trunk native vlan {{ port_entry.native_vlan }}
+  {% endif %}
   {% if port_entry.vlan is defined and port_entry.vlan %}
  switchport trunk allowed vlan {{ port_entry.vlan }}
   {% endif %}
+ switchport mode trunk
+  {% if port_entry.portfast_trunk is defined and port_entry.portfast_trunk %}
+ spanning-tree portfast trunk
+  {% elif port_entry.portfast is defined and port_entry.portfast %}
+ spanning-tree portfast trunk
+  {% endif %}
+  {% if port_entry.cts_sgt is defined %}
+ cts manual
+  policy static sgt {{ port_entry.cts_sgt }}{% if port_entry.cts_trusted is defined and port_entry.cts_trusted %} trusted{% endif %}
+  {% if port_entry.cts_propagate is defined and port_entry.cts_propagate %}
+  propagate sgt
+  {% endif %}
+  {% endif %}
+!
+{% endif %}
+{% endmacro %}
+
+{% macro switchport_ibns(port_entry) %}
+{% if '-' in port_entry.port %}
+  {% set parts = port_entry.port.split('-') %}
+  {% if parts | length == 2 %}
+    {% set last_slash = parts[0].rfind('/') %}
+    {% set prefix = parts[0][:last_slash + 1] %}
+    {% set start_num = parts[0][last_slash + 1:] | int %}
+    {% set end_num = parts[1] | int %}
+    {% for i in range(start_num, end_num + 1) %}
+interface {{ prefix }}{{ i }}
+ description {{ port_entry.description }}
+ switchport mode access
+ device-tracking attach-policy {{ port_entry.ipdt_policy | default('IPDT_POLICY', true) }}
+ source template {{ port_entry.source_template | default('WIRED_DOT1X_CLOSED', true) }}
+      {% if port_entry.portfast is defined and port_entry.portfast %}
+ spanning-tree portfast
+      {% endif %}
+ ip nbar protocol-discovery
+!
+    {% endfor %}
+  {% endif %}
+{% else %}
+interface {{ port_entry.port }}
+ description {{ port_entry.description }}
+ switchport mode access
+ device-tracking attach-policy {{ port_entry.ipdt_policy | default('IPDT_POLICY', true) }}
+ source template {{ port_entry.source_template | default('WIRED_DOT1X_CLOSED', true) }}
+  {% if port_entry.portfast is defined and port_entry.portfast %}
+ spanning-tree portfast
+  {% endif %}
+ ip nbar protocol-discovery
 !
 {% endif %}
 {% endmacro %}
 
 {% macro switchport_reserved_mode(port_entry, mode_name) %}
 {% if '-' in port_entry.port %}
-  {# Port range: parse prefix and start/end numbers #}
   {% set parts = port_entry.port.split('-') %}
   {% if parts | length == 2 %}
     {% set last_slash = parts[0].rfind('/') %}
@@ -101,10 +163,9 @@ interface {{ port_entry.port }}
 {% elif port_mode == 'autoconf' %}
 {{ switchport_reserved_mode(port_entry, 'autoconf') }}
 {% elif port_mode == 'ibns' %}
-{{ switchport_reserved_mode(port_entry, 'ibns') }}
+{{ switchport_ibns(port_entry) }}
 {% else %}
 ! Unknown mode '{{ port_mode }}' for {{ port_entry.port }}; defaulting to access
 {{ switchport_access(port_entry) }}
 {% endif %}
 {% endmacro %}
-

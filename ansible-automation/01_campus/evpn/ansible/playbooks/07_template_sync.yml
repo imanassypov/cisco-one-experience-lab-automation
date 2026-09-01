@@ -19,9 +19,7 @@
 #     git_repo              — https://github.com/<org>/<repo>.git
 #     git_branch            — e.g. main
 #     git_repo_subfolders[] — [{path: "Catalyst Center Templates/Site BGP EVPN
-#                                Templates", project_name: "Building P0"},
-#                               {path: "Catalyst Center Templates/DMZ BGP EVPN
-#                                Templates", project_name: "DMZ 01"}]
+#                                Templates", project_name: "Site-105"}]
 #                             paths are relative to the repo root or to
 #                             template_local_root, so one list drives both sources
 #     template_extension (j2), include_diff_header,

@@ -235,7 +235,7 @@ ansible-playbook playbooks/07_template_sync.yml -e template_source=local \
 
 The default therefore points at whichever clone the playbook is running from, with no absolute path hard-coded. Move `07_template_sync.yml` to a different directory depth and this expression must be adjusted, or `template_local_root` set explicitly. Note that `playbook_dir` only equals `playbooks/` under `ansible-playbook` — an ad-hoc `ansible ... -m debug -a var=template_local_root` sets it to the cwd and so reports a path one level too high.
 
-Only the directories named in `git_repo_subfolders` are scanned in `local` mode — a recursive walk of the whole root would descend into `.git` and `.venv`, whose `.yml`/`.j2` files are noise. A subfolder with no `.j2` files logs a warning and is skipped, which is why the empty DMZ folder does not fail the run.
+Only the directories named in `git_repo_subfolders` are scanned in `local` mode — a recursive walk of the whole root would descend into `.git` and `.venv`, whose `.yml`/`.j2` files are noise. A subfolder with no `.j2` files logs a warning and is skipped.
 
 File contents are read with `slurp` + `b64decode` rather than the `file` lookup, so bytes — including trailing newlines — match what the Git path produces.
 

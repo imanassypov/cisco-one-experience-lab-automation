@@ -14,7 +14,7 @@ Copied (not a submodule) from `CatalystCenter-BGP-EVPN-VXLAN` `main` at
 
 ```
 evpn/
-  Catalyst Center Templates/   # Site + DMZ DEFN/FUNC/FABRIC .j2 and BGP-EVPN-BUILD.yml
+  Catalyst Center Templates/   # Site DEFN/FUNC/FABRIC .j2 and BGP-EVPN-BUILD.yml
   Settings/                    # settings.json SSOT (DNS/NTP/AAA/sites/devices)
   ansible/                     # only playbook collection (CatC CICD + Site 105 verify)
 ```
@@ -28,7 +28,9 @@ evpn/
 
 ## Do not provision yet
 
-`Settings/settings.json` matches the live CatC hierarchy (Global → state → city → building → MAIN). Discovery jobs: `Site-105-Discovery` (RANGE `172.30.255.1–3`, Loopback, no NETCONF) and `C9800-WLC` (RANGE `198.18.5.103`, NETCONF 830) assigned to DC-Site-10 / MAIN. CatC inventory IPs for the fabric are those loopbacks; Ansible SSH verify still uses `198.18.128.22–24`. Copied **DEFN** templates still describe the reference CML fabric (Spine-01/02, ASN 65001, VRFs red/blue/green). PseudoCo Site 105 is 2 leaves + 1 border-spine (ASN 65535, VRFs Main/Prod/IoT). **Do not run `09_provision_devices` or `10_deploy_composite` until DEFN is mapped.** `DeployTemplate` is false.
+`Settings/settings.json` matches the live CatC hierarchy (Global → state → city → building → MAIN). Discovery jobs: `Site-105-Discovery` (RANGE `172.30.255.1–3`, Loopback, no NETCONF) and `C9800-WLC` (RANGE `198.18.5.103`, NETCONF 830) assigned to DC-Site-10 / MAIN. CatC inventory IPs for the fabric are those loopbacks; Ansible SSH verify still uses `198.18.128.22–24`.
+
+**DEFN** is remapped to Site-105: CatC FQDNs `Site_105-Leaf1|Leaf2|Border-Spine.dcloud.cisco.com`, ASN **65535**, VRFs **Main / PROD / IOT** (ids 10 / 101 / 102), static BUM `232.1.1.1`, VRF-Lite SVI handoff on Border-Spine `Gi1/0/48` toward SD-WAN AS 65534. `DeployTemplate` is still false. **Do not run `09_provision_devices` or `10_deploy_composite` until you ask to provision.**
 
 ## CatC pipeline (run from `ansible/`)
 
@@ -45,8 +47,8 @@ Stages, in order, from `ansible/playbooks/`:
 | `06.*` | SWIM (optional; not required to sync templates) |
 | `07_template_sync.yml` | Publish `.j2` into CatC projects; build composite `BGP-EVPN-BUILD` |
 | `08_network_profile.yml` | Network profile |
-| `09_provision_devices.yml` | Provision (blocked until Site 105 mapping) |
-| `10_deploy_composite.yml` | Deploy composite (blocked until Site 105 mapping) |
+| `09_provision_devices.yml` | Provision (`DeployTemplate` still false; do not run until asked) |
+| `10_deploy_composite.yml` | Deploy composite (do not run until asked) |
 
 Safe to inspect after the repo-root `.vault` can decrypt `Lab Topology/lab_access.yml`: syntax-check or a dry read of `07_template_sync.yml`. Real CatC runs stay on the script server (`cisco.catalystcenter` / `cisco.dnac`). Install collections from `ansible/collections/requirements.yml` into `~/venv` if a stage reports a missing collection.
 

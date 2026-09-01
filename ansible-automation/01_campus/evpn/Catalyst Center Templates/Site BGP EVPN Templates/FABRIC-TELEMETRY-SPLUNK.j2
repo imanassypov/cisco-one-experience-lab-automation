@@ -1,4 +1,4 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-TELEMETRY-SPLUNK.j2 - IOS-XE MDT Telemetry subscriptions for Splunk/OpenTelemetry collection #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-TELEMETRY-SPLUNK.j2" %}
@@ -10,7 +10,7 @@
 {# DEFN_NODE_ROLES[role]) silently returned empty, so this section never rendered   #}
 {# on CLIENT-only nodes (leaves). DEFN_TELEMETRY_SPLUNK_ROLES stays in the DEFN for #}
 {# documentation; the roles are enumerated explicitly below to avoid variable keys. #}
-{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT'] %}
+{% if DEFN_TELEMETRY_SPLUNK_RECEIVER_IP and (DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT']) %}
 ! =============================================================================
 ! IOS-XE MDT Telemetry Subscriptions - Campus BGP EVPN VXLAN Fabric
 ! =============================================================================

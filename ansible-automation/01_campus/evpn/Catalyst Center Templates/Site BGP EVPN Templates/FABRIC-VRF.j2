@@ -1,4 +1,4 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-VRF.j2 - Standalone VRF Definition Template #}
 {# Generates VRF definitions for the current device #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-VRF.j2" %}
@@ -13,7 +13,7 @@
 {% set vrf_objs = [] %}
 {{ vrf_definition(DEFN_VRF, DEFN_VRF_TO_NODE, DEVICE_HOSTNAME) }}
 {# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
-{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': ''} %}
+{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': '', 'l3_vlan': '', 'l3_vni': ''} %}
 {% for vrf in vrf_objs %}
 vrf definition {{ vrf.name }}
 description VRF {{ vrf.name }} definition

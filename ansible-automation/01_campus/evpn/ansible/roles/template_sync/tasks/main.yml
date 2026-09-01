@@ -136,10 +136,7 @@
     #            "sha":  "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", "size": 2048 },
     #          { "path": "Catalyst Center Templates/Site BGP EVPN Templates/BGP-EVPN-BUILD.yml",
     #            "mode": "100644", "type": "blob",
-    #            "sha":  "d4e5f6a7b8c9d0e1f2031425364758697a8b9c0d", "size": 512 },
-    #          { "path": "Catalyst Center Templates/DMZ BGP EVPN Templates",
-    #            "mode": "040000", "type": "tree",
-    #            "sha":  "99aabbccddeeff00112233445566778899aabbcc" } ]
+    #            "sha":  "d4e5f6a7b8c9d0e1f2031425364758697a8b9c0d", "size": 512 } ]
     #        repo_tree_response.json.truncated = false
     #   One recursive call returns the whole repo; process-subfolder.yml filters
     #   this single tree per subfolder instead of re-querying GitHub.
@@ -216,9 +213,7 @@
 # Example
 #   In : git_repo_subfolders = [
 #          { "path": "Catalyst Center Templates/Site BGP EVPN Templates",
-#            "project_name": "Building P0" },
-#          { "path": "Catalyst Center Templates/DMZ BGP EVPN Templates",
-#            "project_name": "DMZ 01" } ]
+#            "project_name": "Site-105" } ]
 #   Out: normalized_subfolders = same list, passed through unchanged
 #   Kept as a separate fact so the include loop has one stable name to iterate
 #   if the inventory shape ever needs pre-processing.

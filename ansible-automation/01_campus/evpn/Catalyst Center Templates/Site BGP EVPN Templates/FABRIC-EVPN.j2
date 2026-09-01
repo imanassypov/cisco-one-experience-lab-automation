@@ -1,4 +1,4 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-EVPN.j2 - BGP EVPN Peering Configuration Template #}
 {# Generates BGP EVPN peering, address-families, and route policies #}
 {# L3OUT interface configuration in FABRIC-L3OUT.j2 #}
@@ -16,7 +16,7 @@
 {% set vrf_objs = [] %}
 {{ vrf_definition(DEFN_VRF, DEFN_VRF_TO_NODE, DEVICE_HOSTNAME) }}
 {# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
-{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': ''} %}
+{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': '', 'l3_vlan': '', 'l3_vni': ''} %}
 {# =========================================== #}
 {# BGP Border Prefix-List to prevent loops     #}
 {# =========================================== #}
@@ -198,6 +198,13 @@ router bgp {{FABRIC_BGP_ASN}}
   neighbor {{DEFN_LOOP_UNDERLAY[rr]}} inherit peer-session UNDERLAY-SPINE-EVPN-PEER-SESSION-POLICY
 {% endfor %}
 {% endif %}
+{% if DEVICE_HOSTNAME in DEFN_L3OUT_NODES %}
+{% for g in DEFN_L3OUT_GLOBAL %}
+{% if g.node == DEVICE_HOSTNAME %}
+  neighbor {{ g.neighbour }} remote-as {{ g.neighbour_asn }}
+{% endif %}
+{% endfor %}
+{% endif %}
 {% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] and DEFN_TUNNELS is defined and DEFN_TUNNELS | length > 0 %}
 {# BUILD DMZ EVPN NEIGHBORS - REMOTE OVERLAY (Loopback2) PEERING (eBGP) #}
 {% for remote in DEFN_NODE_ROLES['MCLUSTER'] %}
@@ -208,11 +215,25 @@ router bgp {{FABRIC_BGP_ASN}}
 !
 {# ======================================== #}
 {# Address-Family: ipv4 (global unicast)     #}
-{# DMZ peers are EVPN-only. Greenfield: with #}
-{# 'no bgp default ipv4-unicast' set above,  #}
-{# neighbors are never activated in IPv4     #}
-{# unicast, so no explicit block is needed.  #}
+{# L3OUT global neighbor advertises fabric   #}
+{# loopbacks toward SD-WAN.                  #}
 {# ======================================== #}
+{% if DEVICE_HOSTNAME in DEFN_L3OUT_NODES %}
+{% for g in DEFN_L3OUT_GLOBAL %}
+{% if g.node == DEVICE_HOSTNAME %}
+  address-family ipv4
+{% for net in g.networks %}
+   network {{ net.prefix }} mask {{ net.mask }}
+{% endfor %}
+   neighbor {{ g.neighbour }} activate
+   neighbor {{ g.neighbour }} send-community both
+! @start-ignore-compliance
+   exit-address-family
+! @end-ignore-compliance
+!
+{% endif %}
+{% endfor %}
+{% endif %}
 {# ============================= #}
 {# Address-Family: ipv4 vrf      #}
 {# L3OUT CONFIGURATION ON SPINES #}
@@ -226,14 +247,17 @@ router bgp {{FABRIC_BGP_ASN}}
   address-family ipv4 vrf {{vrf.name}}
    advertise l2vpn evpn
    import path selection all
+{% if DEFN_L3OUT_HANDOFF != 'svi' %}
 {% for aggregate in DEFN_L3OUT_AGGREGATES %}
    aggregate-address {{aggregate}} summary-only
 {% endfor %}
    redistribute static
+{% endif %}
    redistribute connected
 {% for iface in l3out.interfaces %}
    neighbor {{iface.neighbour}} remote-as {{l3out.neighbour_asn}}
    neighbor {{iface.neighbour}} activate
+   neighbor {{iface.neighbour}} send-community both
 {% endfor %}
    maximum-paths ibgp {{ DEFN_NODE_ROLES['BORDER'] | length }}
 ! @start-ignore-compliance

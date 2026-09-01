@@ -1,4 +1,4 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-MCAST.j2 - Standalone Multicast Routing Template #}
 {# Generates multicast routing configuration for the current device #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-VRF.j2" %}
@@ -14,7 +14,8 @@
 {% set vrf_objs = [] %}
 {{ vrf_definition(DEFN_VRF, DEFN_VRF_TO_NODE, DEVICE_HOSTNAME) }}
 {# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
-{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': ''} %}
+{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': '', 'l3_vlan': '', 'l3_vni': ''} %}
+{% if DEFN_MCAST_ENABLE is defined and DEFN_MCAST_ENABLE %}
 ip multicast-routing
 !
 {% for vrf in vrf_objs %}
@@ -48,4 +49,5 @@ interface {{DEFN_LOOP_NAME['ANYCAST']}}
 ip msdp peer {{DEFN_LOOP_UNDERLAY[spine]}} connect-source {{DEFN_LOOP_NAME['UNDERLAY']}} remote-as {{FABRIC_BGP_ASN}}
 {% endif %}
 {% endfor %}
+{% endif %}
 {% endif %}

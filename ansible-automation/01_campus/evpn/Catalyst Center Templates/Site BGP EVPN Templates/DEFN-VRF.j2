@@ -1,45 +1,17 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# Site-105 tenants. RD/RT come from Loopback0:id and ASN:id (65535). #}
+{# l3_vlan / l3_vni are explicit: L3 core is not vlan == vrf.id.      #}
 {% set DEFN_VRF = [
-  {'id':'901','name':'red', 'mdt_default':'239.190.0.1', 'mdt_data':'239.190.1.0'},
-  {'id':'902','name':'blue', 'mdt_default':'239.190.0.2', 'mdt_data':'239.190.2.0'},
-  {'id':'903','name':'green', 'mdt_default':'239.190.0.3', 'mdt_data':'239.190.3.0'}
+  {'id':'10',  'name':'Main', 'l3_vlan':'1010', 'l3_vni':'110010', 'mdt_default':'', 'mdt_data':''},
+  {'id':'101', 'name':'PROD', 'l3_vlan':'1101', 'l3_vni':'110101', 'mdt_default':'', 'mdt_data':''},
+  {'id':'102', 'name':'IOT',  'l3_vlan':'1102', 'l3_vni':'110102', 'mdt_default':'', 'mdt_data':''}
   ]
 %}
-{# VRF TO NODE MAPPINGS #}
-{# NOT ALL VRF AND VNI NEED TO BE INSTANTIATED ON ALL THE NODES IN FABRIC #}
-{# -------------------------------------------------------------------- #}
-{# L3OUT COUPLING - SPINE ENTRIES                                        #}
-{# Spine nodes are listed here with their L3OUT VRF IDs (e.g. '901').   #}
-{# This is required so FABRIC-NVE.j2 and FABRIC-VRF.j2 generate the    #}
-{# L3VNI / VRF definition on Spines to support VRF route leaking to the #}
-{# upstream core via L3OUT sub-interfaces.                               #}
-{#                                                                       #}
-{# When disabling L3OUT (DEFN_L3OUT_NODES = [] in DEFN-L3OUT.j2):       #}
-{#   Remove the L3OUT VRF IDs from the Spine entries below.              #}
-{#   Example: 'Spine-01.dcloud.cisco.com': [] (or omit entirely)        #}
-{#   Leaving L3OUT VRF IDs here while DEFN_L3OUT_NODES is empty will    #}
-{#   produce orphaned VRF/NVE config on Spines with no external         #}
-{#   connectivity - sub-interfaces and BGP neighbors will be missing.   #}
-{# -------------------------------------------------------------------- #}
+{# All three VRFs on all three fabric nodes (leaves + border-spine). #}
 {% set DEFN_VRF_TO_NODE = {
-  'Spine-01.dcloud.cisco.com':  ['901'],
-  'Spine-02.dcloud.cisco.com':  ['901'],
-  'Leaf-01.dcloud.cisco.com':   ['901','902','903'],
-  'Leaf-02.dcloud.cisco.com':   ['901','902','903'],
-  'Border-01.dcloud.cisco.com': ['902','903'],
-  'Border-02.dcloud.cisco.com': ['902','903']
+  'Site_105-Leaf1.dcloud.cisco.com':        ['10','101','102'],
+  'Site_105-Leaf2.dcloud.cisco.com':        ['10','101','102'],
+  'Site_105-Border-Spine.dcloud.cisco.com': ['10','101','102']
 } %}
-{# -------------------------------------------------------------------- #}
-{# DEFN_VRF_BORDER_IMPORT_RTS - extra RTs imported on BORDER VRFs only  #}
-{#                                                                      #}
-{# After rewrite-evpn-rt-asn, DMZ shared-services Type-5 (RT             #}
-{# 65003:1000 / 65004:1000) becomes 65001:1000. Campus tenant VRFs      #}
-{# otherwise import only :902 / :903, so dmz2's shared prefix is         #}
-{# received but never installed (PfxRcd=0).                              #}
-{#                                                                      #}
-{# Mirrors the DMZ-side leak (blue/green import :1000). Do NOT add a    #}
-{# campus 'shared' VRF or L3VNI — shared stays at the DMZ/firewall.     #}
-{# Emitted by FABRIC-VRF.j2 when DEVICE is BORDER and DEFN_TUNNELS is   #}
-{# non-empty.                                                            #}
-{# -------------------------------------------------------------------- #}
-{% set DEFN_VRF_BORDER_IMPORT_RTS = ['1000'] %}
+{# No DMZ shared-RT leak in this lab. #}
+{% set DEFN_VRF_BORDER_IMPORT_RTS = [] %}

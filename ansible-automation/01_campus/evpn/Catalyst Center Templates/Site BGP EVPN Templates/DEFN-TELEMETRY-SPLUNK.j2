@@ -1,9 +1,9 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
-{# DEFN-TELEMETRY-SPLUNK.j2 - IOS-XE MDT Telemetry subscription data for Splunk/OpenTelemetry collection #}
-{# Applies to the deduplicated union of DEFN_NODE_ROLES['SPINE'], ['BORDER'], and ['CLIENT'] #}
-{% set DEFN_TELEMETRY_SPLUNK_RECEIVER_IP = '18.224.25.161' %}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# Disabled for Site-105. Empty receiver prevents leftover CML collector 18.224.25.161. #}
+{# Re-enable by setting receiver IP/port and restoring DEFN_TELEMETRY_SPLUNK_ROLES.     #}
+{% set DEFN_TELEMETRY_SPLUNK_RECEIVER_IP = '' %}
 {% set DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT = '57444' %}
-{% set DEFN_TELEMETRY_SPLUNK_ROLES = ['SPINE', 'BORDER', 'CLIENT'] %}
+{% set DEFN_TELEMETRY_SPLUNK_ROLES = [] %}
 {% set DEFN_TELEMETRY_SPLUNK = [
   {
     'section': 'NVE Global State',

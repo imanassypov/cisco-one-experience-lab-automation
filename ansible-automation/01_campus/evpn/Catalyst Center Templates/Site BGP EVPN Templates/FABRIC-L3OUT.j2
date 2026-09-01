@@ -1,6 +1,7 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-L3OUT.j2 - L3 External Connectivity Interface Template #}
-{# Generates L3OUT dot1Q sub-interfaces for spine-to-core handoff #}
+{# handoff=svi: trunk parent + tenant SVIs (Site-105 VRF-Lite)   #}
+{# handoff=subif (default): no switchport + dot1Q subinterfaces  #}
 {# BGP L3OUT peering configuration is in FABRIC-EVPN.j2 #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-VRF.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/FUNC-VRF-LOOKUP.j2" %}
@@ -13,18 +14,39 @@
 {% set vrf_objs = [] %}
 {{ vrf_definition(DEFN_VRF, DEFN_VRF_TO_NODE, DEVICE_HOSTNAME) }}
 {# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
-{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': ''} %}
-{# ================================================================= #}
-{# DEFN_L3OUT_NODES GUARD                                            #}
-{# All L3OUT output (interfaces + east-west Null routes) is skipped  #}
-{# when this device is not listed in DEFN_L3OUT_NODES.               #}
-{# To disable L3OUT: set DEFN_L3OUT_NODES=[] in DEFN-L3OUT.j2 and   #}
-{# remove corresponding VRF IDs from Spine entries in DEFN-VRF.j2.  #}
-{# ================================================================= #}
+{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': '', 'l3_vlan': '', 'l3_vni': ''} %}
 {% if DEVICE_HOSTNAME in DEFN_L3OUT_NODES %}
+{% if DEFN_L3OUT_HANDOFF == 'svi' %}
 {# ============================================= #}
-{# L3OUT Interface Configuration Block           #}
-{# Parent interface + Dot1Q sub-interfaces       #}
+{# SVI handoff: trunk parent + per-VRF SVIs      #}
+{# ============================================= #}
+{% for parent in DEFN_L3OUT_PARENTS %}
+{% if parent.node == DEVICE_HOSTNAME %}
+interface {{ parent.parent }}
+ switchport mode {{ parent.mode }}
+{% if parent.cts == 'manual' %}
+ cts manual
+{% endif %}
+ no shutdown
+!
+{% endif %}
+{% endfor %}
+{% for vrf in vrf_objs %}
+{% for l3out in DEFN_L3OUT %}
+{% if l3out.vrf == vrf.name and l3out.node == DEVICE_HOSTNAME %}
+{% for iface in l3out.interfaces %}
+interface Vlan{{ iface.vlan }}
+ description {{ iface.name }}
+ vrf forwarding {{ vrf.name }}
+ ip address {{ iface.ipaddr }}
+!
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% else %}
+{# ============================================= #}
+{# Subinterface handoff (reference CML path)     #}
 {# ============================================= #}
 {% for vrf in vrf_objs %}
 {% for l3out in DEFN_L3OUT %}
@@ -43,15 +65,8 @@ interface {{iface.ifname}}
 {% endif %}
 {% endfor %}
 {% endfor %}
-{# ============================================= #}
-{# VRF East-West Protection Block                #}
-{# Null routes prevent inter-tenant leakage      #}
-{# via the L3OUT external path.                  #}
-{# Derived dynamically from DEFN_OVERLAY.        #}
-{# Only active when DEVICE is an L3OUT node.     #}
-{# ============================================= #}
+{# East-west Null0 only for subinterface L3OUT (not in Site-105 guide). #}
 {% for vrf in vrf_objs %}
-{# For this VRF, install null routes for subnets from ALL OTHER VRFs #}
 {% for overlay in DEFN_OVERLAY %}
 {% if overlay.vrf != vrf.name %}
 {% for vlan_id in overlay.vlan_ids %}
@@ -60,5 +75,6 @@ ip route vrf {{vrf.name}} {{overlay.vlans[vlan_id].network}} Null0
 {% endif %}
 {% endfor %}
 {% endfor %}
+{% endif %}
 {% endif %}
 {# End of File #}

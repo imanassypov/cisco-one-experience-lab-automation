@@ -1,4 +1,6 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# Site-105 BUM is static NVE mcast-group 232.1.1.1 — no PIM/MSDP/anycast-RP. #}
+{% set DEFN_MCAST_ENABLE = false %}
 {% set FABRIC_RP_ADDR  = '198.19.1.100' %}
 {% set FABRIC_RP_SCOPES = ['239.190.0.0 0.0.255.255'] %}
 {% set ENTERPRISE_RP_ADDR  = '198.19.1.254' %}

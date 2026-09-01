@@ -88,9 +88,7 @@ git_repo: "https://github.com/imanassypov/CatalystCenter-BGP-EVPN-VXLAN.git"
 git_branch: main
 git_repo_subfolders:
   - path: "Catalyst Center Templates/Site BGP EVPN Templates"
-    project_name: "Building P0"
-  - path: "Catalyst Center Templates/DMZ BGP EVPN Templates"
-    project_name: "DMZ 01"
+    project_name: "Site-105"
 template_extension: j2
 include_diff_header: false
 default_software_type: IOS

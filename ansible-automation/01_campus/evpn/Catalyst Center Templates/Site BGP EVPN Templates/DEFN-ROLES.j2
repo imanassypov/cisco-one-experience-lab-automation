@@ -1,17 +1,13 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# Site-105: two CLIENT leaves + one combined SPINE/RR/BORDER.         #}
+{# Border stays off CLIENT so FABRIC skips leaf L2/DAG/NVE-BUM on it.  #}
 {% set DEFN_NODE_ROLES =
   {
-  'SPINE':    ['Spine-01.dcloud.cisco.com',
-               'Spine-02.dcloud.cisco.com'],
-  'RR':       ['Spine-01.dcloud.cisco.com',
-               'Spine-02.dcloud.cisco.com'],
-  'CLIENT':   ['Leaf-01.dcloud.cisco.com',
-               'Leaf-02.dcloud.cisco.com',
-               'Border-01.dcloud.cisco.com',
-               'Border-02.dcloud.cisco.com'],
-  'BORDER':   ['Border-01.dcloud.cisco.com',
-               'Border-02.dcloud.cisco.com'],
-  'MCLUSTER': ['dmz1.dcloud.cisco.com',
-               'dmz2.dcloud.cisco.com']
+  'SPINE':    ['Site_105-Border-Spine.dcloud.cisco.com'],
+  'RR':       ['Site_105-Border-Spine.dcloud.cisco.com'],
+  'CLIENT':   ['Site_105-Leaf1.dcloud.cisco.com',
+               'Site_105-Leaf2.dcloud.cisco.com'],
+  'BORDER':   ['Site_105-Border-Spine.dcloud.cisco.com'],
+  'MCLUSTER': []
   }
 %}

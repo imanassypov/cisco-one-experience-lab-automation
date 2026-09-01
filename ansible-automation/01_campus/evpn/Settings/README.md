@@ -17,7 +17,7 @@ This repo’s `settings.json` is mapped to the **live** Catalyst Center hierarch
 | `Global/NORTH CAROLINA/Durham/Site-105/MAIN` | Campus EVPN | `Site-105-Discovery` RANGE `172.30.255.1-172.30.255.3` (Loopback, no NETCONF) | `172.30.255.1,2,3` |
 | `Global/TEXAS/Richardson/Site-106/MAIN` | Branch | none | empty |
 
-Shared services: DNS/DHCP/NTP `198.18.5.102` (`corp.pseudoco.com`), ISE AAA `198.18.5.101`, CatC/syslog/netflow `198.18.5.100` (Splunk `198.18.5.109`). CLI username is `admin`. Day-N composite `BGP-EVPN-BUILD.j2` is bound to Site-105 only; `DeployTemplate` is `false` until DEFN is remapped. State areas (`CALIFORNIA`, `NEW YORK`, `NORTH CAROLINA`, `TEXAS`) already exist in CatC; stage `01` only synthesizes area/building/floor under `HierarchyParent`.
+Shared services: DNS/DHCP/NTP `198.18.5.102` (`corp.pseudoco.com`), ISE AAA `198.18.5.101`, CatC/syslog/netflow `198.18.5.100` (Splunk `198.18.5.109`). CLI username is `admin`. Day-N composite `BGP-EVPN-BUILD.j2` syncs into CatC Template Hub project `Site-105` and is bound to that site only. DEFN is remapped to Site-105 (ASN 65535, Main/PROD/IOT); `DeployTemplate` stays `false` until provision is requested. State areas (`CALIFORNIA`, `NEW YORK`, `NORTH CAROLINA`, `TEXAS`) already exist in CatC; stage `01` only synthesizes area/building/floor under `HierarchyParent`.
 
 ---
 

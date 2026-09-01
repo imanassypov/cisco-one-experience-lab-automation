@@ -281,7 +281,7 @@
                     {
                         "TemplateName": "BGP-EVPN-BUILD.j2",
                         "TemplateTag": "DEMO",
-                        "Project": "Building P0",
+                        "Project": "Site-105",
                         "TemplateTarget": ["172.30.255.1", "172.30.255.2", "172.30.255.3"],
                         "DeployTemplate": false
                     }

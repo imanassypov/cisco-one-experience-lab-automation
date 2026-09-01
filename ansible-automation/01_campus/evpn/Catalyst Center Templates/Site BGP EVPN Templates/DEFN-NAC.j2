@@ -1,11 +1,18 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
-{# nac_ip / nac_key: RADIUS server address and shared key for the IOT VRF.                #}
-{# dnac_managed: set true when this RADIUS server is already provisioned by Catalyst      #}
-{#   Center from network settings (present on the device as 'dnac-radius_<ip>'). When true #}
-{#   FABRIC-NAC.j2 reuses that server entry instead of creating a duplicate, avoiding the  #}
-{#   '%Server already exists with same address port combination.' error.                  #}
-{% set DEFN_NAC_IOT = [
-  {'vrf':'blue', 'nac_ip':'198.18.133.27', 'nac_key':'C1sco12345', 'dnac_managed': true},
-  {'vrf':'green', 'nac_ip':'198.18.133.27', 'nac_key':'C1sco12345', 'dnac_managed': true}
-  ]
-%}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# Site-105 IBNS 2.0 on leaves. RADIUS/AAA is CatC network-settings (ISE), not here. #}
+{# Ports (Gi1/0/1–3) stay in DEFN-CLIENT-PORTS; L2 VLANs stay in DEFN-OVERLAY.       #}
+{# Global hygiene (password-encryption, no logging console, netconf-yang, TFTP/SSH) #}
+{# is not NAC — leave those to CatC / Day-0.                                        #}
+{% set DEFN_NAC_ENABLE = true %}
+{% set DEFN_NAC_IOT = [] %}
+{% set DEFN_NAC_IBNS = {
+  'filter_list': 'ISE-DS-list',
+  'filter_attrs': ['vlan-id', 'cdp', 'lldp', 'dhcp', 'http'],
+  'critical_data': 'CRITICAL_DATA_ACCESS',
+  'critical_voice': 'CRITICAL_VOICE_ACCESS',
+  'critical_acl': 'PERMIT-ISE',
+  'dot1x_policy': 'DOT1X_MAB_POLICY',
+  'mab_policy': 'MAB_DOT1X_POLICY',
+  'cts_vlans': '10,101-102',
+  'ipdt_policy': 'IPDT_POLICY'
+} %}

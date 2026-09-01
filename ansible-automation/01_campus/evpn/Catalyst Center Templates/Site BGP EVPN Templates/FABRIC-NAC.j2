@@ -1,49 +1,28 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
-{# FABRIC-NAC.j2 - Standalone NAC/802.1X IOT Template #}
-{# Generates IBNS 2.0 policy and RADIUS configuration for IOT VRFs #}
-{% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-VRF.j2" %}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# FABRIC-NAC.j2 - Site-105 IBNS 2.0 (leaves only). No RADIUS keys. #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
-{% include "{{ TEMPLATE_PROJECT_NAME }}/FUNC-VRF-LOOKUP.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-NAC.j2" %}
-{# Dereference Catalyst Center magic variable #}
 {% set DEVICE_HOSTNAME = __device.hostname | default('', true) %}
-{# Resolve the VRF objects for this device #}
-{% set vrf_objs = [] %}
-{{ vrf_definition(DEFN_VRF, DEFN_VRF_TO_NODE, DEVICE_HOSTNAME) }}
-{# Build list of DNAC-managed RADIUS server IPs from system binding variable __aaaendpointserver #}
-{# If DNAC manages AAA, reuse its server entry rather than creating a duplicate #}
-{% set dnac_server_ips = [] %}
-{% if __aaaendpointserver is defined %}
-  {% for aaaserver in __aaaendpointserver %}
-    {% if aaaserver.ipAddress is defined %}
-      {% do dnac_server_ips.append(aaaserver.ipAddress) %}
-    {% endif %}
-  {% endfor %}
-{% endif %}
-{# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
-{% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': ''} %}
-{# NAC/dot1x only applies to Leaf nodes - skip Spine and Border #}
-{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
-{# SKIP NAC ON SPINE AND BORDER NODES #}
-{# AS NOT IN LOGIC IS NOT SUPPORTED IN THIS J2 ENGINE #}
-{% else %}
-{% for vrf in vrf_objs %}
-    {% for nac in DEFN_NAC_IOT %}
-        {% if vrf.name == nac.vrf %}
-        {# Detect whether this RADIUS server is already managed by Catalyst Center.        #}
-        {# CatC pushes AAA servers from network settings as 'dnac-radius_<ip>'. When the   #}
-        {# same IP is present, reuse that existing server entry instead of creating a new  #}
-        {# 'NAC_<vrfid>_<ip>' server, which would fail on the device with:                 #}
-        {#   %Server already exists with same address port combination.                    #}
-        {# 'dnac_managed' can be set explicitly per entry in DEFN-NAC.j2, or auto-detected #}
-        {# from the __aaaendpointserver system binding variable.                           #}
-        {% set nac_dnac_managed = (nac.dnac_managed is defined and nac.dnac_managed) or (nac.nac_ip in dnac_server_ips) %}
-        {% if nac_dnac_managed %}
-        {% set nac_servername = 'dnac-radius_' + nac.nac_ip %}
-        {% else %}
-        {% set nac_servername = 'NAC_' + vrf.id + '_' + nac.nac_ip %}
-        {% endif %}
-        {% set nac_groupname = 'NAC_IOT_' + vrf.id %}
+{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
+{% if DEFN_NAC_ENABLE is defined and DEFN_NAC_ENABLE %}
+device-tracking policy {{ DEFN_NAC_IBNS.ipdt_policy }}
+ no protocol udp
+ tracking enable
+!
+access-session attributes filter-list list {{ DEFN_NAC_IBNS.filter_list }}
+{% for attr in DEFN_NAC_IBNS.filter_attrs %}
+ {{ attr }}
+{% endfor %}
+!
+access-session authentication attributes filter-spec include list {{ DEFN_NAC_IBNS.filter_list }}
+access-session accounting attributes filter-spec include list {{ DEFN_NAC_IBNS.filter_list }}
+!
+service-template {{ DEFN_NAC_IBNS.critical_data }}
+ access-group {{ DEFN_NAC_IBNS.critical_acl }}
+service-template {{ DEFN_NAC_IBNS.critical_voice }}
+ access-group {{ DEFN_NAC_IBNS.critical_acl }}
+ voice vlan
+dot1x system-auth-control
 !
 class-map type control subscriber match-all AAA_SVR_DOWN_AUTHD_HOST
  match result-type aaa-timeout
@@ -53,9 +32,12 @@ class-map type control subscriber match-all AAA_SVR_DOWN_UNAUTHD_HOST
  match result-type aaa-timeout
  match authorization-status unauthorized
 !
-class-map type control subscriber match-all AUTHC_SUCCESS-AUTHZ_FAIL
+class-map type control subscriber match-all AUTHC_SUCCESS_AUTHZ_FAIL
  match authorization-status unauthorized
  match result-type success
+!
+class-map type control subscriber match-all DOT1X
+ match method dot1x
 !
 class-map type control subscriber match-all DOT1X_FAILED
  match method dot1x
@@ -69,51 +51,35 @@ class-map type control subscriber match-all DOT1X_TIMEOUT
  match method dot1x
  match result-type method dot1x method-timeout
 !
-class-map type control subscriber match-all IN_CRITICAL_AUTH_CLOSED_MODE
- match activated-service-template DefaultCriticalAuthVlan_SRV_TEMPLATE
- match activated-service-template DefaultCriticalVoice_SRV_TEMPLATE
+class-map type control subscriber match-any IN_CRITICAL_AUTH
+ match activated-service-template {{ DEFN_NAC_IBNS.critical_data }}
+ match activated-service-template {{ DEFN_NAC_IBNS.critical_voice }}
+!
+class-map type control subscriber match-all MAB
+ match method mab
 !
 class-map type control subscriber match-all MAB_FAILED
  match method mab
  match result-type method mab authoritative
 !
-class-map type control subscriber match-none NOT_IN_CRITICAL_AUTH_CLOSED_MODE
- match activated-service-template DefaultCriticalAuthVlan_SRV_TEMPLATE
- match activated-service-template DefaultCriticalVoice_SRV_TEMPLATE
+class-map type control subscriber match-none NOT_IN_CRITICAL_AUTH
+ match activated-service-template {{ DEFN_NAC_IBNS.critical_data }}
+ match activated-service-template {{ DEFN_NAC_IBNS.critical_voice }}
 !
-{% if nac_dnac_managed %}
-{# RADIUS server 'dnac-radius_{{nac.nac_ip}}' is managed by Catalyst Center - reuse it, do not recreate #}
-{% else %}
-no radius server {{nac_servername}}
-radius server {{nac_servername}}
- address ipv4 {{nac.nac_ip}} auth-port 1812 acct-port 1813
- key {{nac.nac_key}}
-!
-{% endif %}
-aaa group server radius {{nac_groupname}}
-server name {{nac_servername}}
-ip vrf forwarding {{vrf.name}}
-ip radius source-interface Loopback{{vrf.id}}
-retransmit 2
-timeout 10
-!
-aaa authentication dot1x NAC_IOT_AUTH_{{vrf.id}} group {{nac_groupname}}
-aaa authorization network NAC_IOT_AUTHZ_{{vrf.id}} group {{nac_groupname}}
-!
-policy-map type control subscriber NAC_IOT_PM_{{vrf.id}}
+policy-map type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
  event session-started match-all
   10 class always do-until-failure
-   10 authenticate using mab aaa authc-list NAC_IOT_AUTH_{{vrf.id}} authz-list NAC_IOT_AUTHZ_{{vrf.id}} priority 10
-{# authc/authz lists above reference {{nac_groupname}} which resolves to NAC_IOT_{{vrf.id}} (VRF-scoped group) #}
+   10 authenticate using dot1x retries 2 retry-time 0 priority 10
  event authentication-failure match-first
   5 class DOT1X_FAILED do-until-failure
    10 terminate dot1x
    20 authenticate using mab priority 20
   10 class AAA_SVR_DOWN_UNAUTHD_HOST do-until-failure
-   10 activate service-template DefaultCriticalAuthVlan_SRV_TEMPLATE
-   20 activate service-template DefaultCriticalVoice_SRV_TEMPLATE
-   30 authorize
-   40 pause reauthentication
+   10 clear-authenticated-data-hosts-on-port
+   20 activate service-template {{ DEFN_NAC_IBNS.critical_data }}
+   30 activate service-template {{ DEFN_NAC_IBNS.critical_voice }}
+   40 authorize
+   50 pause reauthentication
   20 class AAA_SVR_DOWN_AUTHD_HOST do-until-failure
    10 pause reauthentication
    20 authorize
@@ -123,47 +89,132 @@ policy-map type control subscriber NAC_IOT_PM_{{vrf.id}}
   40 class MAB_FAILED do-until-failure
    10 terminate mab
    20 authentication-restart 60
-  50 class DOT1X_TIMEOUT do-until-failure
-   10 terminate dot1x
-   20 authenticate using mab priority 20
-  60 class always do-until-failure
+  50 class always do-until-failure
    10 terminate dot1x
    20 terminate mab
    30 authentication-restart 60
- event aaa-available match-all
-  10 class IN_CRITICAL_AUTH_CLOSED_MODE do-until-failure
-   10 clear-session
-  20 class NOT_IN_CRITICAL_AUTH_CLOSED_MODE do-until-failure
-   10 resume reauthentication
  event agent-found match-all
   10 class always do-until-failure
    10 terminate mab
    20 authenticate using dot1x retries 2 retry-time 0 priority 10
+ event aaa-available match-all
+  10 class IN_CRITICAL_AUTH do-until-failure
+   10 clear-session
+  20 class NOT_IN_CRITICAL_AUTH do-until-failure
+   10 resume reauthentication
  event inactivity-timeout match-all
   10 class always do-until-failure
    10 clear-session
  event authentication-success match-all
+  10 class always do-until-failure
+   10 activate service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
  event violation match-all
   10 class always do-until-failure
    10 restrict
  event authorization-failure match-all
-  10 class AUTHC_SUCCESS-AUTHZ_FAIL do-until-failure
+  10 class AUTHC_SUCCESS_AUTHZ_FAIL do-until-failure
    10 authentication-restart 60
 !
-template NAC_TEMPLATE_IOT_{{vrf.id}}
-dot1x pae authenticator
-dot1x timeout tx-period 7
-dot1x timeout supp-timeout 7
-dot1x max-req 3
-dot1x max-reauth-req 3
-mab
-access-session closed
-access-session port-control auto
-authentication periodic
-authentication timer reauthenticate server
-service-policy type control subscriber NAC_IOT_PM_{{vrf.id}}
-load-interval 30
-        {% endif %}
-    {% endfor %}
-{% endfor %}
-{% endif %}{# end Leaf-only NAC guard #}
+policy-map type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
+ event session-started match-all
+  10 class always do-until-failure
+   10 authenticate using mab priority 20
+ event authentication-failure match-first
+  5 class DOT1X_FAILED do-until-failure
+   10 terminate dot1x
+   20 authenticate using mab priority 20
+  10 class AAA_SVR_DOWN_UNAUTHD_HOST do-until-failure
+   10 clear-authenticated-data-hosts-on-port
+   20 activate service-template {{ DEFN_NAC_IBNS.critical_data }}
+   30 activate service-template {{ DEFN_NAC_IBNS.critical_voice }}
+   40 authorize
+   50 pause reauthentication
+  20 class AAA_SVR_DOWN_AUTHD_HOST do-until-failure
+   10 pause reauthentication
+   20 authorize
+  30 class MAB_FAILED do-until-failure
+   10 terminate mab
+   20 authenticate using dot1x retries 2 retry-time 0 priority 10
+  40 class DOT1X_NO_RESP do-until-failure
+   10 terminate dot1x
+   20 authentication-restart 60
+  60 class always do-until-failure
+   10 terminate mab
+   20 terminate dot1x
+   30 authentication-restart 60
+ event agent-found match-all
+  10 class always do-until-failure
+   10 terminate mab
+   20 authenticate using dot1x retries 2 retry-time 0 priority 10
+ event aaa-available match-all
+  10 class IN_CRITICAL_AUTH do-until-failure
+   10 clear-session
+  20 class NOT_IN_CRITICAL_AUTH do-until-failure
+   10 resume reauthentication
+ event inactivity-timeout match-all
+  10 class always do-until-failure
+   10 clear-session
+ event authentication-success match-all
+  10 class always do-until-failure
+   10 activate service-template DEFAULT_LINKSEC_POLICY_SHOULD_SECURE
+ event violation match-all
+  10 class always do-until-failure
+   10 restrict
+ event authorization-failure match-all
+  10 class AUTHC_SUCCESS_AUTHZ_FAIL do-until-failure
+   10 authentication-restart 60
+!
+template WIRED_DOT1X_CLOSED
+ dot1x pae authenticator
+ dot1x timeout quiet-period 300
+ dot1x timeout tx-period 7
+ mab
+ access-session control-direction in
+ access-session closed
+ access-session port-control auto
+ authentication periodic
+ authentication timer reauthenticate server
+ service-policy type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
+!
+template WIRED_DOT1X_OPEN
+ dot1x pae authenticator
+ dot1x timeout quiet-period 300
+ dot1x timeout tx-period 7
+ mab
+ access-session control-direction in
+ access-session port-control auto
+ authentication periodic
+ authentication timer reauthenticate server
+ service-policy type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
+!
+template WIRED_MAB_CLOSED
+ dot1x pae authenticator
+ dot1x timeout quiet-period 300
+ dot1x timeout tx-period 7
+ mab
+ access-session control-direction in
+ access-session closed
+ access-session port-control auto
+ authentication periodic
+ authentication timer reauthenticate server
+ service-policy type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
+!
+template WIRED_MAB_OPEN
+ dot1x pae authenticator
+ dot1x timeout quiet-period 300
+ dot1x timeout tx-period 7
+ mab
+ access-session control-direction in
+ access-session port-control auto
+ authentication periodic
+ authentication timer reauthenticate server
+ service-policy type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
+!
+ip access-list extended {{ DEFN_NAC_IBNS.critical_acl }}
+ 10 permit ip any any
+!
+cts role-based enforcement
+cts role-based enforcement vlan-list {{ DEFN_NAC_IBNS.cts_vlans }}
+!
+{% endif %}
+{% endif %}

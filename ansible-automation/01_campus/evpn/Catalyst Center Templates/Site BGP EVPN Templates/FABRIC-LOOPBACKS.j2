@@ -1,4 +1,4 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-LOOPBACKS.j2 - Standalone Loopback Interface Template #}
 {# Generates loopback interfaces for the current device #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-VRF.j2" %}
@@ -6,17 +6,19 @@
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-LOOPBACKS.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-BORDER-DMZ-TUNNELS.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-OVERLAY.j2" %}
+{% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-MCAST.j2" %}
 {# Dereference Catalyst Center magic variable #}
 {% set DEVICE_HOSTNAME = __device.hostname | default('', true) %}
 {# UNDERLAY LOOPBACKS #}
 interface {{DEFN_LOOP_NAME['UNDERLAY']}}
  description UNDERLAY-NVE-INTERFACE
  ip address {{DEFN_LOOP_UNDERLAY[DEVICE_HOSTNAME]}} 255.255.255.255
+{% if DEFN_MCAST_ENABLE is defined and DEFN_MCAST_ENABLE %}
  ip pim sparse-mode
+{% endif %}
 !
-{# Generate per-VRF overlay loopbacks for any node that has VRFs mapped #}
-{# Needed for external peering toward enterprise RP; without this source loopback, the PIM Register Tunnel remains down #}
-{% if DEFN_VRF_TO_NODE[DEVICE_HOSTNAME] is defined %}
+{# Generate per-VRF overlay loopbacks only when DEFN_LOOP_OVERLAY is populated #}
+{% if DEFN_LOOP_OVERLAY is defined and DEFN_LOOP_OVERLAY | length > 0 and DEFN_VRF_TO_NODE[DEVICE_HOSTNAME] is defined %}
 {% for vrf_id in DEFN_VRF_TO_NODE[DEVICE_HOSTNAME] %}
 {% for vrf_entry in DEFN_VRF %}
 {% if vrf_entry.id == vrf_id %}

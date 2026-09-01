@@ -1,33 +1,21 @@
-{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9000 Series Virtual Switches ##}
-{# ========================================= #}
-{# Client-Facing Port Configuration Data    #}
-{# ========================================= #}
-{# Per-device port->VLAN->description mapping #}
-{# Supports individual ports and ranges     #}
-{# Optional flags: portfast (true/false)    #}
-{# mode values: access, trunk, autoconf, ibns #}
-{# Companion list required for iteration    #}
-{# in FABRIC templates (CATC dict-iter bug) #}
+{## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
+{# Site-105 leaf access: Gi1/0/1 and 1/0/3 clients (IBNS), Gi1/0/2 AP trunk. #}
+{# mode values: access, trunk, autoconf, ibns                                 #}
 
 {% set DEFN_CLIENT_PORTS = {
-  'Leaf-01.dcloud.cisco.com': [
-    {'port': 'GigabitEthernet1/0/3', 'vlan': '101', 'description': 'client-red-01', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/4', 'vlan': '102', 'description': 'client-red-03', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/5', 'vlan': '201', 'description': 'client-blue-01', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/6', 'vlan': '221', 'description': 'client-green-01', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/7', 'vlan': '201', 'description': 'client-blue-03-dhcp', 'portfast': true, 'mode': 'access'}
+  'Site_105-Leaf1.dcloud.cisco.com': [
+    {'port': 'GigabitEthernet1/0/1', 'description': 'Client', 'portfast': true, 'mode': 'ibns'},
+    {'port': 'GigabitEthernet1/0/2', 'vlan': '10,101,102', 'native_vlan': '10', 'description': 'AP', 'portfast_trunk': true, 'mode': 'trunk', 'cts_sgt': '2', 'cts_trusted': true, 'cts_propagate': true},
+    {'port': 'GigabitEthernet1/0/3', 'description': 'Client', 'portfast': true, 'mode': 'ibns'}
   ],
-  'Leaf-02.dcloud.cisco.com': [
-    {'port': 'GigabitEthernet1/0/3', 'vlan': '101', 'description': 'client-red-02', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/4', 'vlan': '102', 'description': 'client-red-04', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/5', 'vlan': '201', 'description': 'client-blue-02', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/6', 'vlan': '221', 'description': 'client-green-02-dhcp', 'portfast': true, 'mode': 'access'},
-    {'port': 'GigabitEthernet1/0/7', 'vlan': '221', 'description': 'client-green-03', 'portfast': true, 'mode': 'access'}
+  'Site_105-Leaf2.dcloud.cisco.com': [
+    {'port': 'GigabitEthernet1/0/1', 'description': 'Client', 'portfast': true, 'mode': 'ibns'},
+    {'port': 'GigabitEthernet1/0/2', 'vlan': '10,101,102', 'native_vlan': '10', 'description': 'AP', 'portfast_trunk': true, 'mode': 'trunk', 'cts_sgt': '2', 'cts_trusted': true, 'cts_propagate': true},
+    {'port': 'GigabitEthernet1/0/3', 'description': 'Client', 'portfast': true, 'mode': 'ibns'}
   ]
 } %}
 
-{# Companion list for FABRIC iteration (avoids dict-key iteration bug) #}
 {% set DEFN_CLIENT_PORT_DEVICES = [
-  'Leaf-01.dcloud.cisco.com',
-  'Leaf-02.dcloud.cisco.com'
+  'Site_105-Leaf1.dcloud.cisco.com',
+  'Site_105-Leaf2.dcloud.cisco.com'
 ] %}

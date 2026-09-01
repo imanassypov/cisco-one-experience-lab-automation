@@ -55,8 +55,8 @@
 # =============================================================================
 
 # Reset per-subfolder accumulators so facts never leak across iterations/projects.
-# Example - second iteration of git_repo_subfolders, entering "DMZ 01" after
-# "Building P0" has already been synced.
+# Example - a later git_repo_subfolders iteration after "Site-105" has already
+# been synced.
 #   In : enriched_template_files        = [ {"name": "DEFN-VRF.j2", "path": "Catalyst Center Templates/Site BGP EVPN Templates/DEFN-VRF.j2", "content": "{## CATC: ... ##}", "commit_message": "2026-08-01T09:14:22Z | Add red VRF [Igor Manassypov]", "diff_content": ""} ]
 #        enriched_composite_files       = [ {"name": "BGP-EVPN-BUILD.yml", "path": "Catalyst Center Templates/Site BGP EVPN Templates/BGP-EVPN-BUILD.yml", "content": "templates:\n  - name: FABRIC-VRF.j2\n"} ]
 #        composite_referenced_templates = ["FABRIC-VRF.j2"]
@@ -69,7 +69,7 @@
 #        template_sync_result           = {"changed": true, "failed": false}
 #        composite_sync_result          = {"changed": true, "failed": false}
 #   Out: every one of the ten facts above is reset to [] or {}
-# Without this reset the DMZ project would inherit the Site project's templates,
+# Without this reset the next project would inherit the previous project's templates,
 # because set_fact values persist for the whole play.
 - name: Reset per-subfolder accumulators
   set_fact:
@@ -115,9 +115,6 @@
 #          { "path": "Catalyst Center Templates/Site BGP EVPN Templates/BGP-EVPN-BUILD.yml",
 #            "mode": "100644", "type": "blob",
 #            "sha":  "d4e5f6a7b8c9d0e1f2031425364758697a8b9c0d", "size": 512 },
-#          { "path": "Catalyst Center Templates/DMZ BGP EVPN Templates/DEFN-DMZ.j2",
-#            "mode": "100644", "type": "blob",
-#            "sha":  "e5f6a7b8c9d0e1f2031425364758697a8b9c0d1e", "size": 900 },
 #          { "path": "Catalyst Center Templates/Site BGP EVPN Templates",
 #            "mode": "040000", "type": "tree",
 #            "sha":  "99aabbccddeeff00112233445566778899aabbcc" }
@@ -158,15 +155,15 @@
     # Example - explicit project_name (rule 1, how this repo is configured)
     #   In : subfolder_item = {
     #          "path":         "Catalyst Center Templates/Site BGP EVPN Templates",
-    #          "project_name": "Building P0"
+    #          "project_name": "Site-105"
     #        }
-    #   Out: project_name = "Building P0"
+    #   Out: project_name = "Site-105"
     #
     # Example - no project_name, path present (rule 2)
     #   In : subfolder_item = {
-    #          "path": "Catalyst Center Templates/DMZ BGP EVPN Templates"
+    #          "path": "Catalyst Center Templates/Site BGP EVPN Templates"
     #        }
-    #   Out: project_name = "DMZ BGP EVPN Templates"
+    #   Out: project_name = "Site BGP EVPN Templates"
     #
     # Example - repo-root scan, falls back to the first template's folder (rule 3)
     #   In : subfolder_item    = { "path": "" }
