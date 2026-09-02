@@ -120,6 +120,7 @@
                     {
                         "ssid_name": "PSEUDOCO-POD{POD}",
                         "enable_fabric": false,
+                        "interface_name": "PSEUDOCO-VLAN10",
                         "local_to_vlan": 10
                     }
                 ],
@@ -144,6 +145,12 @@
                 }
             },
             "wireless_design": {
+                "interfaces": [
+                    {
+                        "interface_name": "PSEUDOCO-VLAN10",
+                        "vlan_id": 10
+                    }
+                ],
                 "ssids": [
                     {
                         "ssid_name": "PSEUDOCO-POD{POD}",
