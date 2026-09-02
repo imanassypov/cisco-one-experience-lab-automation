@@ -12,8 +12,9 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 - Author playbooks on the Mac in this repo. Do not write new playbooks on Kali.
 - Commit/push only when the user asks. Remote: `https://github.com/imanassypov/cisco-one-experience-lab-automation` (`main`, public).
 - Test on the Kali script server after it has `main` at `~/cisco-one-experience-lab-automation`.
-- Mac refresh (VPN up): `ansible-automation/00_scriptserver_bootstrap` venv, then `playbooks/01_bootstrap_script_server.yml` (also git-pulls) or `playbooks/02_sync_from_git.yml` (git only).
-- On Kali, Ansible is on PATH from `~/venv`. Recreate the repo-root `.vault` there after clone (gitignored).
+- Mac refresh (VPN up): `ansible-automation/00_scriptserver_bootstrap` venv, then `playbooks/01_bootstrap_script_server.yml` (also git-pulls) or `playbooks/02_sync_from_git.yml` (git only). Kali tree is often dirty from ad-hoc file copies; `02` fails until those are committed or reverted.
+- On Kali, Ansible is on PATH from `~/venv`. Recreate the repo-root `.vault` there after clone (gitignored). One line only, same password as the Mac.
+- Run CatC stages from Mac via `00_scriptserver_bootstrap` `.venv` → `ansible script_server -m shell` in `~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible`. Copy Mac-only edits to Kali first when git is stale.
 
 ## Script server
 
@@ -26,9 +27,25 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 - Playbooks live under `ansible-automation/`, numbered by lab-build order: `00_scriptserver_bootstrap`, `01_campus`, `02_data_center`, `03_dmz`, `04_remote_dc`, `05_sdwan`, `06_secure_access`.
 - Inside each collection, playbooks are `00_`, `01_`, … in apply order.
 - `01_campus` has two independent tracks: `sda/` (stub) and `evpn/` (Site 105).
-- EVPN is **Catalyst Center GitOps**, not a `cisco.ios` underlay/overlay pusher. Fabric CLI is rendered by CatC from vendored Jinja DEFN/FUNC/FABRIC templates (`evpn/Catalyst Center Templates/`). The only playbook collection is `evpn/ansible/` (copied CICD stages `00`–`10` plus verify `12`/`13`). Settings SSOT is `evpn/Settings/`. CatC API credentials come from `lab_access['Catalyst Center']` in `Lab Topology/lab_access.yml`. Site 105 verify playbooks use `lab_access[inventory_hostname]`.
+- EVPN is **Catalyst Center GitOps**, not a `cisco.ios` underlay/overlay pusher. Fabric CLI is rendered by CatC from vendored Jinja DEFN/FUNC/FABRIC templates (`evpn/Catalyst Center Templates/`). The only playbook collection is `evpn/ansible/` (CICD `00`–`10` plus verify `12`/`13`). Settings SSOT is `evpn/Settings/`. CatC API credentials come from `lab_access['Catalyst Center']`. Site 105 verify uses `lab_access[inventory_hostname]`.
 - Live CatC is **3.1.5**. Ansible/SDK API profile is **3.1.3.0** (SDK has no `3.1.5` string). Pins: `cisco.catalystcenter` 2.10.2, `cisco.dnac` 6.46.0, `catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6. Do not drop `cisco.catalystcenter` below 2.4.0.
-- `evpn/ansible/playbooks/12_verify_preflight.yml` and `13_verify_collect_facts.yml` are **post-deploy verify** (TCP/22 + `ios_command`). They do not build the fabric.
-- `evpn/Settings/settings.json` matches the live CatC hierarchy (state → city → building → MAIN). Campus EVPN discovery is `Site-105-Discovery` over loopbacks `172.30.255.1–3`; WLC discovery is `C9800-WLC` at `198.18.5.103` on DC-Site-10 / MAIN. DEFN is remapped to Site-105 (ASN 65535, VRFs Main/PROD/IOT, CatC FQDNs from `Site-105-Discovery`). Do not run provision/composite deploy (`09`/`10`) against the live lab until asked.
+- `template_source: local`. `template_local_root` is `evpn/` (two dirnames up from `playbooks/`). Subfolder `Catalyst Center Templates/Site BGP EVPN Templates` → CatC project **Site-105**. Composite `BGP-EVPN-BUILD.j2`.
+- `12_verify_preflight.yml` = TCP/22 on `198.18.128.22–24`. `13_verify_collect_facts.yml` = `ios_command` → `ansible/evidence/` on the host that ran the play (Kali if driven from the script server). They do **not** build the fabric.
+- `settings.json` matches live CatC hierarchy (state → city → building → MAIN). Four project rows: DC-Site-10 (WLC `198.18.5.103`, `C9800-WLC`, `HQ-Switching`), DC-Site-11 (empty, `Remote-DC-Switching`), Site-105 (`.1–.3`, `Site-105-Discovery`, no NETCONF, `BGP-EVPN-Switching`, Day-N `BGP-EVPN-BUILD.j2`), Site-106 (empty, `Branch-Switching`). DEFN: ASN 65535, VRFs Main/PROD/IOT, CatC FQDNs `Site_105-Leaf1|Leaf2|Border-Spine.dcloud.cisco.com`. Border-Spine is SPINE+RR+BORDER; leaves CLIENT only.
 - Source of the vendored trees: `imanassypov/CatalystCenter-BGP-EVPN-VXLAN` `6d2afa3a2becfe71f8f036ee79a0a1c164ba0433`.
 - `00_` is implemented. `01_campus/evpn` has the CatC pipeline vendored. Other `01_`–`06_` tracks are stubs.
+
+## Pipeline (as of 2026-09-02)
+
+- Ran on Kali: `01`–`05`, `07`–`10`, `13`. **`06` SWIM never run.** Do not re-run `09`/`10` against the live lab until asked.
+- `01`: skip building/floor UPDATE (`site_hierarchy_update_existing: false`). `cisco.catalystcenter.buildings` PUT raises `UnboundLocalError: local variable 'func'`. Re-enable with `-e site_hierarchy_update_existing=true`.
+- `03`: bind live Design names, do not CREATE duplicates. Live: CLI `CLI Admin`, SNMP `SNMPv2c Read`/`SNMPv2c Write`, NETCONF `defaultNetConfPort` (830), HTTP `HTTPS Read`/`HTTPS Write`. Each project row `assign_credentials.site_name` = that site’s MAIN path.
+- `09`: `POST /dna/intent/api/v1/sda/provisionDevices` cannot set wireless DeviceInfo (`NCWL10092`). `roles/provision_devices/tasks/provision_site.yml` skips `family` containing `Wireless`. WLC stays site-assigned from `05`. Site-105 9300s provisioned 3/3.
+- `10` queues only `DayNTemplateNames` with `DeployTemplate: true`. Site-105 was flipped to `true` so the play would not assert-empty. CatC reported SUCCESS (`5d38a5da-561e-40fa-b00b-563ef5ab4eab`) for `172.30.255.1–3`.
+- `13` after that push: underlay is up (Loopback0, OSPF FULL). Overlay is **not** on the boxes: `% BGP not active`, no NVE peers, VRF `Mgmt-vrf` only, no Main/PROD/IOT. CatC deploy SUCCESS ≠ CLI present.
+
+## CatC Jinja UDV scanner
+
+- Static scan ignores `{% set %}` inside `{% for %}`. Dummy-declare loop vars at template scope (already done for `vrf`).
+- `default((L3VNIOFFSET|string) + vrf.id)` does not parse as a declaration. Bare `{{ l3_vni }}` becomes a required Template Hub input (“Value should not be empty”).
+- Site-105 `DEFN-VRF.j2` already has explicit `l3_vlan` / `l3_vni`. Prefer `{{ vrf['l3_vni'] }}` over a local `l3_vni`. `FABRIC-NVE.j2` was fixed locally; **not yet re-synced with `07`**.

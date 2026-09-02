@@ -294,7 +294,7 @@
                         "TemplateTag": "DEMO",
                         "Project": "Site-105",
                         "TemplateTarget": ["172.30.255.1", "172.30.255.2", "172.30.255.3"],
-                        "DeployTemplate": false
+                        "DeployTemplate": true
                     }
                 ],
                 "Day0TemplateNames": [

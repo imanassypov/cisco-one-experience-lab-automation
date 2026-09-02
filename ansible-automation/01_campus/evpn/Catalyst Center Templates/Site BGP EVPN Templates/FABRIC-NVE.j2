@@ -12,30 +12,31 @@
 {# Resolve the VRF objects for this device #}
 {% set vrf_objs = [] %}
 {{ vrf_definition(DEFN_VRF, DEFN_VRF_TO_NODE, DEVICE_HOSTNAME) }}
-{# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
+{# Dummy sets for CatC's static UDV scanner. A bare {{ l3_vni }} is treated as
+   a required input because {% set %} inside {% for %} is ignored, and
+   default((L3VNIOFFSET|string) + vrf.id) does not parse as a declaration.
+   Values come from DEFN-VRF via vrf['l3_vlan'] / vrf['l3_vni']. #}
 {% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': '', 'l3_vlan': '', 'l3_vni': ''} %}
+{% set l3_vlan = '' %}
+{% set l3_vni = '' %}
 {# --- VLAN SECTION --- #}
 ! @start-ignore-compliance {#transparent mode#}
 {% for vrf in vrf_objs %}
-{% set l3_vlan = vrf.l3_vlan | default(vrf.id, true) %}
-vlan {{ l3_vlan }}
- name L3-VRF-CORE-VLAN-{{ vrf.id }}
+vlan {{ vrf['l3_vlan'] }}
+ name L3-VRF-CORE-VLAN-{{ vrf['id'] }}
 !
 {% endfor %}
 ! @end-ignore-compliance
 {# --- VLAN CONFIGURATION SECTION --- #}
 {% for vrf in vrf_objs %}
-{% set l3_vlan = vrf.l3_vlan | default(vrf.id, true) %}
-{% set l3_vni = vrf.l3_vni | default((L3VNIOFFSET|string) + vrf.id, true) %}
-vlan configuration {{ l3_vlan }}
- member vni {{ l3_vni }}
+vlan configuration {{ vrf['l3_vlan'] }}
+ member vni {{ vrf['l3_vni'] }}
 !
 {% endfor %}
 {# --- INTERFACE VLAN SECTION --- #}
 {% for vrf in vrf_objs %}
-{% set l3_vlan = vrf.l3_vlan | default(vrf.id, true) %}
-interface Vlan{{ l3_vlan }}
- vrf forwarding {{ vrf.name }}
+interface Vlan{{ vrf['l3_vlan'] }}
+ vrf forwarding {{ vrf['name'] }}
  ip unnumbered {{ DEFN_LOOP_NAME['UNDERLAY'] }}
  no autostate
 !
@@ -49,8 +50,7 @@ interface nve1
  group-based-policy
 {% endif %}
 {% for vrf in vrf_objs %}
-{% set l3_vni = vrf.l3_vni | default((L3VNIOFFSET|string) + vrf.id, true) %}
- member vni {{ l3_vni }} vrf {{ vrf.name }}
+ member vni {{ vrf['l3_vni'] }} vrf {{ vrf['name'] }}
 {% endfor %}
 {# --- GLOBAL L2VPN EVPN SECTION (LEAF only, not SPINE or BORDER) --- #}
 {% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] %}
