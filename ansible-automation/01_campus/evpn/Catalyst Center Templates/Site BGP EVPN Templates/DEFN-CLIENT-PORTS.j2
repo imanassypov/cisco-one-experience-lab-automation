@@ -3,12 +3,12 @@
 {# mode values: access, trunk, autoconf, ibns                                 #}
 
 {% set DEFN_CLIENT_PORTS = {
-  'Site_105-Leaf1.dcloud.cisco.com': [
+  'Site_105-Leaf1.corp.pseudoco.com': [
     {'port': 'GigabitEthernet1/0/1', 'description': 'Client', 'portfast': true, 'mode': 'ibns'},
     {'port': 'GigabitEthernet1/0/2', 'vlan': '10,101,102', 'native_vlan': '10', 'description': 'AP', 'portfast_trunk': true, 'mode': 'trunk', 'cts_sgt': '2', 'cts_trusted': true, 'cts_propagate': true},
     {'port': 'GigabitEthernet1/0/3', 'description': 'Client', 'portfast': true, 'mode': 'ibns'}
   ],
-  'Site_105-Leaf2.dcloud.cisco.com': [
+  'Site_105-Leaf2.corp.pseudoco.com': [
     {'port': 'GigabitEthernet1/0/1', 'description': 'Client', 'portfast': true, 'mode': 'ibns'},
     {'port': 'GigabitEthernet1/0/2', 'vlan': '10,101,102', 'native_vlan': '10', 'description': 'AP', 'portfast_trunk': true, 'mode': 'trunk', 'cts_sgt': '2', 'cts_trusted': true, 'cts_propagate': true},
     {'port': 'GigabitEthernet1/0/3', 'description': 'Client', 'portfast': true, 'mode': 'ibns'}
@@ -16,6 +16,6 @@
 } %}
 
 {% set DEFN_CLIENT_PORT_DEVICES = [
-  'Site_105-Leaf1.dcloud.cisco.com',
-  'Site_105-Leaf2.dcloud.cisco.com'
+  'Site_105-Leaf1.corp.pseudoco.com',
+  'Site_105-Leaf2.corp.pseudoco.com'
 ] %}

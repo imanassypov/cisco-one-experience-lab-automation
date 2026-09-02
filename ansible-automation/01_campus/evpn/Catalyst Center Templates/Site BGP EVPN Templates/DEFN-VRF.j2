@@ -9,9 +9,9 @@
 %}
 {# All three VRFs on all three fabric nodes (leaves + border-spine). #}
 {% set DEFN_VRF_TO_NODE = {
-  'Site_105-Leaf1.dcloud.cisco.com':        ['10','101','102'],
-  'Site_105-Leaf2.dcloud.cisco.com':        ['10','101','102'],
-  'Site_105-Border-Spine.dcloud.cisco.com': ['10','101','102']
+  'Site_105-Leaf1.corp.pseudoco.com':        ['10','101','102'],
+  'Site_105-Leaf2.corp.pseudoco.com':        ['10','101','102'],
+  'Site_105-Border-Spine.corp.pseudoco.com': ['10','101','102']
 } %}
 {# No DMZ shared-RT leak in this lab. #}
 {% set DEFN_VRF_BORDER_IMPORT_RTS = [] %}

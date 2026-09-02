@@ -8,7 +8,7 @@
 {% set DEFN_L3OUT = [
   {
     'vrf': 'Main',
-    'node': 'Site_105-Border-Spine.dcloud.cisco.com',
+    'node': 'Site_105-Border-Spine.corp.pseudoco.com',
     'neighbour_asn': '65534',
     'handoff': 'svi',
     'parent': 'GigabitEthernet1/0/48',
@@ -18,7 +18,7 @@
   },
   {
     'vrf': 'PROD',
-    'node': 'Site_105-Border-Spine.dcloud.cisco.com',
+    'node': 'Site_105-Border-Spine.corp.pseudoco.com',
     'neighbour_asn': '65534',
     'handoff': 'svi',
     'parent': 'GigabitEthernet1/0/48',
@@ -28,7 +28,7 @@
   },
   {
     'vrf': 'IOT',
-    'node': 'Site_105-Border-Spine.dcloud.cisco.com',
+    'node': 'Site_105-Border-Spine.corp.pseudoco.com',
     'neighbour_asn': '65534',
     'handoff': 'svi',
     'parent': 'GigabitEthernet1/0/48',
@@ -40,7 +40,7 @@
 {# Parent trunk emitted once (not per VRF). #}
 {% set DEFN_L3OUT_PARENTS = [
   {
-    'node': 'Site_105-Border-Spine.dcloud.cisco.com',
+    'node': 'Site_105-Border-Spine.corp.pseudoco.com',
     'parent': 'GigabitEthernet1/0/48',
     'mode': 'trunk',
     'cts': 'manual'
@@ -49,7 +49,7 @@
 {# Global IPv4 BGP toward SD-WAN; advertises the three fabric /32s. #}
 {% set DEFN_L3OUT_GLOBAL = [
   {
-    'node': 'Site_105-Border-Spine.dcloud.cisco.com',
+    'node': 'Site_105-Border-Spine.corp.pseudoco.com',
     'neighbour': '192.168.255.6',
     'neighbour_asn': '65534',
     'networks': [
@@ -61,5 +61,5 @@
 ] %}
 {# Lab uses redistribute connected, not summary-only aggregates. #}
 {% set DEFN_L3OUT_AGGREGATES = [] %}
-{% set DEFN_L3OUT_NODES = ['Site_105-Border-Spine.dcloud.cisco.com'] %}
+{% set DEFN_L3OUT_NODES = ['Site_105-Border-Spine.corp.pseudoco.com'] %}
 {# End of File #}

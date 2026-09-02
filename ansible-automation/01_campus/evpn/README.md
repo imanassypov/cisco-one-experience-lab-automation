@@ -30,7 +30,7 @@ evpn/
 
 `Settings/settings.json` matches the live CatC hierarchy (Global → state → city → building → MAIN). Discovery jobs: `Site-105-Discovery` (RANGE `172.30.255.1–3`, Loopback, no NETCONF) and `C9800-WLC` (RANGE `198.18.5.103`, NETCONF 830) assigned to DC-Site-10 / MAIN. CatC inventory IPs for the fabric are those loopbacks; Ansible SSH verify still uses `198.18.128.22–24`.
 
-**DEFN** is remapped to Site-105: CatC FQDNs `Site_105-Leaf1|Leaf2|Border-Spine.dcloud.cisco.com`, ASN **65535**, VRFs **Main / PROD / IOT** (ids 10 / 101 / 102), static BUM `232.1.1.1`, VRF-Lite SVI handoff on Border-Spine `Gi1/0/48` toward SD-WAN AS 65534. `DeployTemplate` is still false. **Do not run `09_provision_devices` or `10_deploy_composite` until you ask to provision.**
+**DEFN** is remapped to Site-105: CatC inventory FQDNs `Site_105-Leaf1|Leaf2|Border-Spine.corp.pseudoco.com` (IOS hostname + `ip domain name corp.pseudoco.com`), ASN **65535**, VRFs **Main / PROD / IOT** (ids 10 / 101 / 102), static BUM `232.1.1.1`, VRF-Lite SVI handoff on Border-Spine `Gi1/0/48` toward SD-WAN AS 65534.
 
 ## CatC pipeline (run from `ansible/`)
 
