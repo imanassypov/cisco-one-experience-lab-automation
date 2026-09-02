@@ -23,7 +23,10 @@
   'ipdt_policy': 'IPDT_POLICY'
 } %}
 {% set attr = '' %}
-{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
+{# CatC Jinja has no working `not … in`. Skip BORDER/SPINE, else = leaf. #}
+{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
+{# Skip: IBNS is leaf-only #}
+{% else %}
 service password-encryption
 !
 no logging console
