@@ -27,12 +27,17 @@ Shared services: DNS/DHCP/NTP `198.18.5.102` (`corp.pseudoco.com`), ISE AAA `198
 2. [Design Principle — Repeating Project Array](#design-principle--repeating-project-array)
 3. [Top-Level Structure](#top-level-structure)
 4. [Field Reference](#field-reference)
+   - [Lab](#lab)
    - [Site Hierarchy Fields](#site-hierarchy-fields)
    - [Network Settings](#network-settings)
    - [Device Credentials](#device-credentials)
    - [Device List](#device-list)
    - [Discovery](#discovery)
    - [Network Profile](#network-profile)
+   - [Wireless Profile](#wireless-profile)
+   - [Wireless Controller](#wireless-controller)
+   - [Wireless Design](#wireless-design)
+   - [Access Points](#access-points)
 5. [How the Tooling Consumes This File](#how-the-tooling-consumes-this-file)
 6. [Adding a New Site](#adding-a-new-site)
 7. [Field Null Handling](#field-null-handling)
@@ -86,6 +91,8 @@ The automation tooling iterates over every element in the `project` array and ap
 
 ```
 settings.json
+├── lab{}                              # Pod-wide values shared by every site
+│   └── wireless_ssid                  # SSID pattern; {POD} filled from lab_pod_id
 └── project[]                          # Array — one element per site
     ├── HierarchyParent                # Catalyst Center parent path
     ├── HierarchyArea                  # Area name under parent
@@ -117,15 +124,81 @@ settings.json
     │   ├── profile_name               # Switching profile name in Catalyst Center
     │   ├── DayNTemplateNames[]        # Day-N (post-onboarding) template bindings
     │   └── Day0TemplateNames[]        # Day-0 (PnP onboarding) template bindings
-    └── wireless_profile{}             # Optional — only sites with a WLC
-        ├── profile_name               # Wireless profile name in Catalyst Center
-        ├── ssid_details[]             # SSID bindings; may be empty
-        └── DayNTemplateNames[]        # Optional wireless Day-N template bindings
+    ├── wireless_profile{}             # Optional — only sites with a WLC
+    │   ├── profile_name               # Wireless profile name in Catalyst Center
+    │   ├── site_names[]               # Site paths the profile is applied to
+    │   ├── ssid_details[]             # SSID bindings; may be empty
+    │   └── DayNTemplateNames[]        # Optional wireless Day-N template bindings
+    ├── wireless_controller{}          # Optional — the row that owns the WLC
+    │   ├── managed_ap_locations[]     # Site paths whose APs this WLC manages
+    │   ├── skip_ap_provision          # Provision the WLC without touching APs
+    │   └── rolling_ap_upgrade{}       # Staged AP reboot behaviour
+    ├── wireless_design{}              # Optional — global wireless design objects
+    │   ├── ssids[]                    # Enterprise/Guest SSID definitions
+    │   └── flex_connect_configuration[]  # Per-site FlexConnect native VLAN
+    └── access_points[]                # Optional — APs physically at this site
+        ├── mac_address                # {APn_MAC} token — see lab_ap_macs
+        ├── ap_name                    # Friendly name to set on the AP
+        ├── location                   # Free-text location description
+        ├── ap_mode                    # Local, Monitor, Sniffer, Bridge
+        └── site{floor{}}              # Floor the AP is assigned to
 ```
 
 ---
 
 ## Field Reference
+
+### Lab
+
+`lab` is the only top-level key besides `project`. It holds pod-wide values that are not specific to any one site.
+
+```json
+"lab": {
+    "wireless_ssid": "PSEUDOCO-POD{POD}"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `wireless_ssid` | string | SSID **pattern** for the lab WLAN. `{POD}` is replaced at run time with the student's pod number, zero-padded to two digits. |
+
+#### Per-student values are not stored here
+
+Every student in the dCloud environment runs this same repository against their own pod, so no value that differs between students may live in this shared, version-controlled file. Those values are Ansible variables instead, and `settings.json` carries `{TOKEN}` placeholders that are filled in at run time.
+
+```yaml
+# ansible/inventory/group_vars/all/lab.yml
+lab_pod_id: 12
+lab_ap_macs:
+  - "0c:d0:f8:9a:1a:58"
+  - "10:b3:d6:73:a6:e8"
+```
+
+| Token | Source variable | Substitution |
+|-------|-----------------|--------------|
+| `{POD}` | `lab_pod_id` | Zero-padded to two digits |
+| `{AP1_MAC}`, `{AP2_MAC}`, … | `lab_ap_macs[n-1]` | By index, in join order |
+
+A student edits those lines before running any wireless stage, or overrides them for a single run without touching the file:
+
+```bash
+ansible-playbook playbooks/08_network_profile.yml -e lab_pod_id=7
+```
+
+So `settings.json` carries only the *shape* of the SSID, and the tooling renders it:
+
+| `lab_pod_id` | Rendered SSID |
+|--------------|---------------|
+| `12` | `PSEUDOCO-POD12` |
+| `7` | `PSEUDOCO-POD07` |
+
+Zero-padding is applied automatically, which removes the single-digit trap called out in the lab guide. The rendered value is then asserted against `^PSEUDOCO-POD\d{2}$`, so a trailing space or a malformed pod number fails the play rather than producing an SSID that silently fails to match the pre-configured group policy carrying the authentication settings.
+
+An `{APn_MAC}` token with no matching entry in `lab_ap_macs` causes that access point to be dropped rather than sent to Catalyst Center with an unresolved MAC. A pod with one AP therefore needs no edit beyond listing a single MAC, which matches the lab guide's "one or two registered APs".
+
+#### Why a `{TOKEN}` and not `{{ lab_pod_id }}`
+
+`settings.json` is read with `lookup('file') | from_json`, and Ansible does **not** re-template Jinja found inside the resulting data — a value written as `PSEUDOCO-POD{{ lab_pod_id }}` arrives at the module as that literal string, which would look correct in the file and fail silently at run time. Tokens are substituted explicitly with `replace()` instead, which is also a safe no-op on any value that does not contain them.
 
 ### Site Hierarchy Fields
 
@@ -387,7 +460,16 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
 ```json
 "wireless_profile": {
     "profile_name": "HQ-Wireless",
-    "ssid_details": [],
+    "site_names": [
+        "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
+    ],
+    "ssid_details": [
+        {
+            "ssid_name":     "PSEUDOCO-POD{POD}",
+            "enable_fabric": false,
+            "local_to_vlan": 10
+        }
+    ],
     "DayNTemplateNames": [
         {
             "TemplateName":   null,
@@ -403,12 +485,118 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
 | Field | Type | Description |
 |-------|------|-------------|
 | `profile_name` | string | Wireless profile name in Catalyst Center. Created if absent, updated if present. |
+| `site_names` | array | Site paths the profile is applied to. Defaults to this row's own site path when omitted. Set it explicitly when the APs live somewhere other than the row that owns the WLC. |
 | `ssid_details` | array | Passed to the wireless workflow manager verbatim. Each element takes `ssid_name` plus optional `enable_fabric`, `vlan_group_name`, `interface_name`, `local_to_vlan`, `anchor_group_name`. An empty array binds the profile to the site with no SSIDs. |
 | `DayNTemplateNames` | array | Same shape as the switching block. Only `TemplateName` reaches the profile binding; an all-`null` row is dropped. |
 
-The site path is derived from the hierarchy fields exactly as it is for the switching profile — deepest defined level wins.
+`local_to_vlan` is what makes the SSID locally switched at the AP rather than tunnelled back to the controller. It is set to `10` here because VLAN 10 is the native VLAN on the Site-105 AP trunk ports.
 
-Note that the WLC is **not** provisioned by stage 09. `POST /dna/intent/api/v1/sda/provisionDevices` cannot set a wireless DeviceInfo role and returns `NCWL10092`, so the role skips any device whose Catalyst Center `family` contains `Wireless`. The controller keeps the site assignment made in stage 05, and this profile is what carries its wireless intent.
+**The controller and the APs are at different sites.** DC-Site-10 owns the C9800, but the APs are on Site-105 VLAN 10, hanging off the `Gi1/0/2` trunk ports on the leaves. That is why `site_names` and `managed_ap_locations` both point at Site-105 while living on the DC-Site-10 row.
+
+---
+
+### Wireless Controller
+
+The optional `wireless_controller` object belongs on the row whose `device_list` contains the WLC. It drives the wireless provisioning pass added to stage 09.
+
+```json
+"wireless_controller": {
+    "managed_ap_locations": [
+        "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
+    ],
+    "skip_ap_provision": false,
+    "rolling_ap_upgrade": {
+        "enable_rolling_ap_upgrade": false,
+        "ap_reboot_percentage":      25
+    }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `managed_ap_locations` | array | Site paths whose APs this controller manages. Assigned before provisioning; the WLC cannot be provisioned without at least one. |
+| `skip_ap_provision` | bool | Provision the controller without touching the APs it manages. |
+| `rolling_ap_upgrade` | object | Staged AP reboot behaviour during provisioning. `ap_reboot_percentage` is ignored unless `enable_rolling_ap_upgrade` is true. |
+
+Stage 09 provisions switches through `POST /dna/intent/api/v1/sda/provisionDevices`, which cannot set a wireless DeviceInfo role and returns `NCWL10092` for a controller. Devices whose Catalyst Center `family` contains `Wireless` are therefore split out of the SDA payload and sent down the wireless provisioning path instead. The whole wireless pass is gated behind `wireless_provision_enabled`, which defaults to `false` — run stage 09 with `-e wireless_provision_enabled=true` to opt in.
+
+---
+
+### Wireless Design
+
+The optional `wireless_design` object defines the global wireless objects that must exist in Design → Network Settings → Wireless **before** a wireless profile can reference them. Stage 08 applies it ahead of the profile pass for that reason.
+
+```json
+"wireless_design": {
+    "ssids": [
+        {
+            "ssid_name":         "PSEUDOCO-POD{POD}",
+            "ssid_type":         "Enterprise",
+            "wlan_profile_name": "PSEUDOCO-FLEX-Profile",
+            "ssid_state":   { "admin_status": true, "broadcast_ssid": true },
+            "radio_policy": { "radio_bands": [2.4, 5] },
+            "l2_security":  { "l2_auth_type": "WPA2_WPA3_ENTERPRISE" },
+            "auth_key_management": ["802.1X-SHA1", "802.1X-SHA2"],
+            "wpa_encryption":      ["CCMP128"],
+            "aaa": {
+                "auth_servers_ip_address_list":       ["198.18.5.101"],
+                "accounting_servers_ip_address_list": ["198.18.5.101"],
+                "aaa_override": true
+            }
+        }
+    ],
+    "flex_connect_configuration": [
+        {
+            "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
+            "vlan_id": 10
+        }
+    ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ssids` | array | Passed to `wireless_design_workflow_manager` verbatim. `ssid_name` must equal `lab.wireless_ssid`. |
+| `flex_connect_configuration` | array | Per-site FlexConnect native VLAN. Set to VLAN 10 to match the AP trunk native VLAN at Site-105. |
+
+`radio_bands` is `[2.4, 5]` rather than including 6 GHz because neither lab AP has a 6 GHz radio — the C9117AXI and the AP4800 are both Wi-Fi 6 at most. The AAA servers point at ISE on `198.18.5.101`, the same address as `network_settings.client_and_endpoint_aaa.primary_server_address`.
+
+---
+
+### Access Points
+
+The optional `access_points` array belongs on the row where the APs are physically installed, which is Site-105 rather than the row that owns the controller.
+
+```json
+"access_points": [
+    {
+        "mac_address": "{AP1_MAC}",
+        "ap_name":     "SITE-105-AP-1",
+        "location":    "Leaf1",
+        "ap_mode":     "Local",
+        "is_assigned_site_as_location": "Disabled",
+        "site": {
+            "floor": {
+                "name":        "MAIN",
+                "parent_name": "Global/NORTH CAROLINA/Durham/Site-105"
+            }
+        }
+    }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mac_address` | string | `{APn_MAC}` token, resolved from `lab_ap_macs` by index. The MAC is the only stable identifier — the AP carries a factory name until this stage renames it. |
+| `ap_name` | string | Friendly name to set on the AP. |
+| `location` | string | Free-text location description. |
+| `ap_mode` | string | `Local`, `Monitor`, `Sniffer` or `Bridge`. |
+| `is_assigned_site_as_location` | string | `Enabled` makes the AP inherit its site path as the location, overriding `location`. |
+| `site.floor` | object | Floor the AP is assigned to, by `name` and `parent_name`. |
+
+**MAC addresses are per-student, so they are tokens.** Each pod has its own APs, and the entries above resolve from `lab_ap_macs` in [`group_vars/all/lab.yml`](../ansible/inventory/group_vars/all/lab.yml) the same way `{POD}` resolves from `lab_pod_id` — see [Per-student values are not stored here](#per-student-values-are-not-stored-here). `{AP1_MAC}` takes the first MAC in that list, `{AP2_MAC}` the second, and an entry whose token has no matching MAC is skipped, so a one-AP pod needs no change here.
+
+Changing an AP's site assignment reboots it. The lab documents a 1–3 minute rejoin, so the stage that applies this block has to poll until the APs are registered again rather than assuming success.
 
 ---
 
@@ -422,8 +610,9 @@ All three automation paths read `settings.json` from GitHub and iterate over eve
 | Network Settings | `GitOps-BuildSettings-v3` | `playbooks/02_network_settings.yml` | `network_settings.py` | `network_settings.*` |
 | Device Credentials | `GitOps-BuildSettings-v3` | `playbooks/03_credentials.yml` | `credentials.py` | `device_credentials.*` |
 | Device Discovery | `GitOps-DeviceDiscovery-v3` | `playbooks/04_device_discovery.yml` | `device_discovery.py` | `device_list`, `device_credentials.*` |
-| Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/08_network_profile.yml` | `network_profile.py` | `network_profile.*`, `wireless_profile.*` |
-| Provisioning | `GitOps-Provisioning-v3` | `playbooks/09_provision_devices.yml` + `playbooks/10_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames` |
+| Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/08_network_profile.yml` | `network_profile.py` | `lab.*`, `network_profile.*`, `wireless_design.*`, `wireless_profile.*` |
+| Provisioning | `GitOps-Provisioning-v3` | `playbooks/09_provision_devices.yml` + `playbooks/10_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*` |
+| Access Points | — | `playbooks/14_wireless_accesspoints.yml` | — | `access_points[]` |
 
 All Ansible playbooks run from [`CICD Pipeline/ansible/`](../ansible/).
 

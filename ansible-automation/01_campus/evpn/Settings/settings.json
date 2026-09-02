@@ -1,4 +1,7 @@
 {
+    "lab": {
+        "wireless_ssid": "PSEUDOCO-POD{POD}"
+    },
     "project": [
         {
             "HierarchyParent": "Global/CALIFORNIA",
@@ -110,7 +113,16 @@
             },
             "wireless_profile": {
                 "profile_name": "HQ-Wireless",
-                "ssid_details": [],
+                "site_names": [
+                    "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
+                ],
+                "ssid_details": [
+                    {
+                        "ssid_name": "PSEUDOCO-POD{POD}",
+                        "enable_fabric": false,
+                        "local_to_vlan": 10
+                    }
+                ],
                 "DayNTemplateNames": [
                     {
                         "TemplateName": null,
@@ -118,6 +130,48 @@
                         "Project": null,
                         "TemplateTarget": [],
                         "DeployTemplate": false
+                    }
+                ]
+            },
+            "wireless_controller": {
+                "managed_ap_locations": [
+                    "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
+                ],
+                "skip_ap_provision": false,
+                "rolling_ap_upgrade": {
+                    "enable_rolling_ap_upgrade": false,
+                    "ap_reboot_percentage": 25
+                }
+            },
+            "wireless_design": {
+                "ssids": [
+                    {
+                        "ssid_name": "PSEUDOCO-POD{POD}",
+                        "ssid_type": "Enterprise",
+                        "wlan_profile_name": "PSEUDOCO-FLEX-Profile",
+                        "ssid_state": {
+                            "admin_status": true,
+                            "broadcast_ssid": true
+                        },
+                        "radio_policy": {
+                            "radio_bands": [2.4, 5]
+                        },
+                        "l2_security": {
+                            "l2_auth_type": "WPA2_WPA3_ENTERPRISE"
+                        },
+                        "auth_key_management": ["802.1X-SHA1", "802.1X-SHA2"],
+                        "wpa_encryption": ["CCMP128"],
+                        "aaa": {
+                            "auth_servers_ip_address_list": ["198.18.5.101"],
+                            "accounting_servers_ip_address_list": ["198.18.5.101"],
+                            "aaa_override": true
+                        }
+                    }
+                ],
+                "flex_connect_configuration": [
+                    {
+                        "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
+                        "vlan_id": 10
                     }
                 ]
             }
@@ -333,7 +387,35 @@
                     "distribute_if_needed": true,
                     "schedule_validate": false
                 }
-            }
+            },
+            "access_points": [
+                {
+                    "mac_address": "{AP1_MAC}",
+                    "ap_name": "SITE-105-AP-1",
+                    "location": "Leaf1",
+                    "ap_mode": "Local",
+                    "is_assigned_site_as_location": "Disabled",
+                    "site": {
+                        "floor": {
+                            "name": "MAIN",
+                            "parent_name": "Global/NORTH CAROLINA/Durham/Site-105"
+                        }
+                    }
+                },
+                {
+                    "mac_address": "{AP2_MAC}",
+                    "ap_name": "SITE-105-AP-2",
+                    "location": "Leaf2",
+                    "ap_mode": "Local",
+                    "is_assigned_site_as_location": "Disabled",
+                    "site": {
+                        "floor": {
+                            "name": "MAIN",
+                            "parent_name": "Global/NORTH CAROLINA/Durham/Site-105"
+                        }
+                    }
+                }
+            ]
         },
         {
             "HierarchyParent": "Global/TEXAS",

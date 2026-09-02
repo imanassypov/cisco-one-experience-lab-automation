@@ -1,0 +1,28 @@
+---
+# Per-student lab values. Every dCloud pod runs the same repo, so anything that
+# differs between students belongs here rather than in Settings/settings.json.
+#
+# settings.json carries {TOKEN} placeholders; the values below fill them in at
+# run time. Override any of them for a single run instead of editing this file:
+#   ansible-playbook playbooks/08_network_profile.yml -e lab_pod_id=7
+
+# ── {POD} ────────────────────────────────────────────────────────────────────
+# dCloud POD number from the lab printout. Ask a proctor if you cannot find it.
+# Zero-padded to two digits when substituted, so pod 7 yields PSEUDOCO-POD07.
+# The SSID must match a pre-configured group policy on the WLC that carries the
+# authentication settings, so the padding is not cosmetic.
+lab_pod_id: 12
+
+# ── {AP1_MAC}, {AP2_MAC} ─────────────────────────────────────────────────────
+# Ethernet MAC of each access point, in join order, colon-separated. A pod has
+# one or two APs; list only the ones present. settings.json entries whose token
+# has no matching entry here are dropped, so a single-AP pod needs no other
+# change.
+#
+# Read them off the controller with:
+#   show ap summary
+# or from Configuration > Wireless > Access Points in the WLC web UI, using the
+# Ethernet MAC column rather than the Base Radio MAC.
+lab_ap_macs:
+  - "04:5f:b9:ca:03:58"   # {AP1_MAC} — SITE-105-AP-1
+  # - "10:b3:d6:73:a6:e8" # {AP2_MAC} — SITE-105-AP-2, absent from this pod
