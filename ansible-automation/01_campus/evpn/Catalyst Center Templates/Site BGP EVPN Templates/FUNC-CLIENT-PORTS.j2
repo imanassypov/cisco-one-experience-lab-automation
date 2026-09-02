@@ -65,10 +65,10 @@ interface {{ prefix }}{{ i }}
       {% endif %}
       {% if port_entry.cts_sgt is defined %}
  cts manual
-  policy static sgt {{ port_entry.cts_sgt }}{% if port_entry.cts_trusted is defined and port_entry.cts_trusted %} trusted{% endif %}
-      {% if port_entry.cts_propagate is defined and port_entry.cts_propagate %}
-  propagate sgt
-      {% endif %}
+{{ '  policy static sgt ' ~ port_entry.cts_sgt ~ (' trusted' if port_entry.cts_trusted | default(false) else '') }}
+{% if port_entry.cts_propagate | default(false) %}
+{{ '  propagate sgt' }}
+{% endif %}
       {% endif %}
 !
     {% endfor %}
@@ -90,10 +90,10 @@ interface {{ port_entry.port }}
   {% endif %}
   {% if port_entry.cts_sgt is defined %}
  cts manual
-  policy static sgt {{ port_entry.cts_sgt }}{% if port_entry.cts_trusted is defined and port_entry.cts_trusted %} trusted{% endif %}
-  {% if port_entry.cts_propagate is defined and port_entry.cts_propagate %}
-  propagate sgt
-  {% endif %}
+{{ '  policy static sgt ' ~ port_entry.cts_sgt ~ (' trusted' if port_entry.cts_trusted | default(false) else '') }}
+{% if port_entry.cts_propagate | default(false) %}
+{{ '  propagate sgt' }}
+{% endif %}
   {% endif %}
 !
 {% endif %}

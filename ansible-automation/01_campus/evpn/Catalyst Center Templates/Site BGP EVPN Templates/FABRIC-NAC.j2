@@ -7,8 +7,11 @@
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-NAC.j2" %}
 {% set DEVICE_HOSTNAME = __device.hostname | default('', true) %}
-{# Dummy set — CatC UDV scanner ignores {% set %} inside {% if %} #}
-{% set DEFN_NAC_IBNS = DEFN_NAC_IBNS | default({
+{# Force-set after include. `| default(DEFN_NAC_IBNS)` still names a UDV; #}
+{# CatC binds that empty and the enable gate then skips the whole body.  #}
+{# Bracket keys so the scanner does not require dotted attributes.       #}
+{% set DEFN_NAC_ENABLE = true %}
+{% set DEFN_NAC_IBNS = {
   'filter_list': 'ISE-DS-list',
   'filter_attrs': ['vlan-id', 'cdp', 'lldp', 'dhcp', 'http'],
   'critical_data': 'CRITICAL_DATA_ACCESS',
@@ -18,9 +21,9 @@
   'mab_policy': 'MAB_DOT1X_POLICY',
   'cts_vlans': '10,101-102',
   'ipdt_policy': 'IPDT_POLICY'
-}) %}
+} %}
+{% set attr = '' %}
 {% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
-{% if DEFN_NAC_ENABLE is defined and DEFN_NAC_ENABLE %}
 service password-encryption
 !
 no logging console
@@ -29,22 +32,22 @@ no ip domain lookup
 netconf-yang
 no ip dhcp snooping information option
 no ip tftp blocksize
-device-tracking policy {{ DEFN_NAC_IBNS.ipdt_policy }}
+device-tracking policy {{ DEFN_NAC_IBNS['ipdt_policy'] }}
  no protocol udp
  tracking enable
 !
-access-session attributes filter-list list {{ DEFN_NAC_IBNS.filter_list }}
-{% for attr in DEFN_NAC_IBNS.filter_attrs %}
+access-session attributes filter-list list {{ DEFN_NAC_IBNS['filter_list'] }}
+{% for attr in DEFN_NAC_IBNS['filter_attrs'] %}
  {{ attr }}
 {% endfor %}
 !
-access-session authentication attributes filter-spec include list {{ DEFN_NAC_IBNS.filter_list }}
-access-session accounting attributes filter-spec include list {{ DEFN_NAC_IBNS.filter_list }}
+access-session authentication attributes filter-spec include list {{ DEFN_NAC_IBNS['filter_list'] }}
+access-session accounting attributes filter-spec include list {{ DEFN_NAC_IBNS['filter_list'] }}
 !
-service-template {{ DEFN_NAC_IBNS.critical_data }}
- access-group {{ DEFN_NAC_IBNS.critical_acl }}
-service-template {{ DEFN_NAC_IBNS.critical_voice }}
- access-group {{ DEFN_NAC_IBNS.critical_acl }}
+service-template {{ DEFN_NAC_IBNS['critical_data'] }}
+ access-group {{ DEFN_NAC_IBNS['critical_acl'] }}
+service-template {{ DEFN_NAC_IBNS['critical_voice'] }}
+ access-group {{ DEFN_NAC_IBNS['critical_acl'] }}
  voice vlan
 dot1x system-auth-control
 !
@@ -77,8 +80,8 @@ class-map type control subscriber match-all DOT1X_TIMEOUT
  match result-type method dot1x method-timeout
 !
 class-map type control subscriber match-any IN_CRITICAL_AUTH
- match activated-service-template {{ DEFN_NAC_IBNS.critical_data }}
- match activated-service-template {{ DEFN_NAC_IBNS.critical_voice }}
+ match activated-service-template {{ DEFN_NAC_IBNS['critical_data'] }}
+ match activated-service-template {{ DEFN_NAC_IBNS['critical_voice'] }}
 !
 class-map type control subscriber match-all MAB
  match method mab
@@ -88,10 +91,10 @@ class-map type control subscriber match-all MAB_FAILED
  match result-type method mab authoritative
 !
 class-map type control subscriber match-none NOT_IN_CRITICAL_AUTH
- match activated-service-template {{ DEFN_NAC_IBNS.critical_data }}
- match activated-service-template {{ DEFN_NAC_IBNS.critical_voice }}
+ match activated-service-template {{ DEFN_NAC_IBNS['critical_data'] }}
+ match activated-service-template {{ DEFN_NAC_IBNS['critical_voice'] }}
 !
-policy-map type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
+policy-map type control subscriber {{ DEFN_NAC_IBNS['dot1x_policy'] }}
  event session-started match-all
   10 class always do-until-failure
    10 authenticate using dot1x retries 2 retry-time 0 priority 10
@@ -101,8 +104,8 @@ policy-map type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
    20 authenticate using mab priority 20
   10 class AAA_SVR_DOWN_UNAUTHD_HOST do-until-failure
    10 clear-authenticated-data-hosts-on-port
-   20 activate service-template {{ DEFN_NAC_IBNS.critical_data }}
-   30 activate service-template {{ DEFN_NAC_IBNS.critical_voice }}
+   20 activate service-template {{ DEFN_NAC_IBNS['critical_data'] }}
+   30 activate service-template {{ DEFN_NAC_IBNS['critical_voice'] }}
    40 authorize
    50 pause reauthentication
   20 class AAA_SVR_DOWN_AUTHD_HOST do-until-failure
@@ -140,7 +143,7 @@ policy-map type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
   10 class AUTHC_SUCCESS_AUTHZ_FAIL do-until-failure
    10 authentication-restart 60
 !
-policy-map type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
+policy-map type control subscriber {{ DEFN_NAC_IBNS['mab_policy'] }}
  event session-started match-all
   10 class always do-until-failure
    10 authenticate using mab priority 20
@@ -150,8 +153,8 @@ policy-map type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
    20 authenticate using mab priority 20
   10 class AAA_SVR_DOWN_UNAUTHD_HOST do-until-failure
    10 clear-authenticated-data-hosts-on-port
-   20 activate service-template {{ DEFN_NAC_IBNS.critical_data }}
-   30 activate service-template {{ DEFN_NAC_IBNS.critical_voice }}
+   20 activate service-template {{ DEFN_NAC_IBNS['critical_data'] }}
+   30 activate service-template {{ DEFN_NAC_IBNS['critical_voice'] }}
    40 authorize
    50 pause reauthentication
   20 class AAA_SVR_DOWN_AUTHD_HOST do-until-failure
@@ -199,7 +202,7 @@ template WIRED_DOT1X_CLOSED
  access-session port-control auto
  authentication periodic
  authentication timer reauthenticate server
- service-policy type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
+ service-policy type control subscriber {{ DEFN_NAC_IBNS['dot1x_policy'] }}
 !
 template WIRED_DOT1X_OPEN
  dot1x pae authenticator
@@ -210,7 +213,7 @@ template WIRED_DOT1X_OPEN
  access-session port-control auto
  authentication periodic
  authentication timer reauthenticate server
- service-policy type control subscriber {{ DEFN_NAC_IBNS.dot1x_policy }}
+ service-policy type control subscriber {{ DEFN_NAC_IBNS['dot1x_policy'] }}
 !
 template WIRED_MAB_CLOSED
  dot1x pae authenticator
@@ -222,7 +225,7 @@ template WIRED_MAB_CLOSED
  access-session port-control auto
  authentication periodic
  authentication timer reauthenticate server
- service-policy type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
+ service-policy type control subscriber {{ DEFN_NAC_IBNS['mab_policy'] }}
 !
 template WIRED_MAB_OPEN
  dot1x pae authenticator
@@ -233,16 +236,15 @@ template WIRED_MAB_OPEN
  access-session port-control auto
  authentication periodic
  authentication timer reauthenticate server
- service-policy type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
+ service-policy type control subscriber {{ DEFN_NAC_IBNS['mab_policy'] }}
 !
 ! @end-ignore-compliance
 ip tftp source-interface GigabitEthernet0/0
 ip ssh version 2
 !
-ip access-list extended {{ DEFN_NAC_IBNS.critical_acl }}
+ip access-list extended {{ DEFN_NAC_IBNS['critical_acl'] }}
  10 permit ip any any
 !
 cts role-based enforcement
-cts role-based enforcement vlan-list {{ DEFN_NAC_IBNS.cts_vlans }}
-{% endif %}
+cts role-based enforcement vlan-list {{ DEFN_NAC_IBNS['cts_vlans'] }}
 {% endif %}
