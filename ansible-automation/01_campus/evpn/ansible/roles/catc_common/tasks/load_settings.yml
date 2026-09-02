@@ -9,9 +9,15 @@
 # Invoked from playbooks via:
 #   import_role: { name: catc_common, tasks_from: load_settings }
 #
+#
+# Per-pod {TOKEN} placeholders in the file are resolved here, so every stage
+# sees the same substituted data. See "Runtime token substitution" below.
+#
 # Play-level inputs (from inventory/group_vars):
 #   settings_json_path  — relative to playbooks/ (default ../../Settings/settings.json)
-#   catc_debug          — optional; dumps resolved path and raw JSON when true
+#   lab_pod_id          — dCloud pod number, fills {POD} (group_vars/all/lab.yml)
+#   lab_ap_macs         — AP MACs in join order, fills {AP1_MAC}, {AP2_MAC}, …
+#   catc_debug          — optional; dumps resolved path, token map and JSON when true
 # =============================================================================
 
 # Ansible's file lookup needs a resolvable path; relative paths anchor to playbooks/.
@@ -128,6 +134,67 @@
 - name: Load settings JSON
   ansible.builtin.set_fact:
     settings_data: "{{ lookup('file', _resolved_json_path) | from_json }}"
+
+# ── Runtime token substitution ───────────────────────────────────────────
+#
+# settings.json is shared by every student in the dCloud environment, so
+# anything that differs per pod is a {TOKEN} placeholder filled in here from
+# inventory/group_vars/all/lab.yml. Doing it in the loader rather than in each
+# role means a token works anywhere in the file and every stage sees the same
+# resolved data.
+#
+# Jinja written into settings.json would not work: the file is read with
+# lookup('file') | from_json, and Ansible does not re-template the data a
+# lookup returns, so "PSEUDOCO-POD{{ lab_pod_id }}" would look correct in the
+# file and reach the API as that literal string.
+#
+# Example - pod 12 with a single AP
+#   In : lab_pod_id  = 12
+#        lab_ap_macs = ["04:5f:b9:ca:03:58"]
+#   Out: _lab_token_map = {
+#          "{POD}":      "12",
+#          "{AP1_MAC}":  "04:5f:b9:ca:03:58"
+#        }
+#
+# Example - pod 7, zero-padded, two APs
+#   In : lab_pod_id  = 7
+#        lab_ap_macs = ["04:5f:b9:ca:03:58", "10:b3:d6:73:a6:e8"]
+#   Out: _lab_token_map = {
+#          "{POD}":      "07",
+#          "{AP1_MAC}":  "04:5f:b9:ca:03:58",
+#          "{AP2_MAC}":  "10:b3:d6:73:a6:e8"
+#        }
+# The pod number is padded to two digits because the SSID it builds must match
+# a group policy pre-configured on the WLC, so PSEUDOCO-POD7 would not match.
+#
+# An {APn_MAC} with no nth entry in lab_ap_macs is deliberately left
+# unresolved rather than blanked: a pod with one AP still carries two access
+# point entries in settings.json, and the stage that consumes them drops the
+# ones still holding a literal token instead of sending a bad MAC to CatC.
+- name: Build runtime token map
+  ansible.builtin.set_fact:
+    _lab_token_map: >-
+      {%- set ns = namespace(m={'{POD}': '%02d' | format(lab_pod_id | int)}) -%}
+      {%- for mac in lab_ap_macs | default([]) -%}
+        {%- set ns.m = ns.m | combine({'{AP' ~ loop.index ~ '_MAC}': mac}) -%}
+      {%- endfor -%}
+      {{ ns.m }}
+
+- name: "DEBUG | Runtime token map"
+  ansible.builtin.debug:
+    var: _lab_token_map
+  when: catc_debug | default(false) | bool
+
+# Substitution runs over the serialised JSON so a token is honoured wherever it
+# appears — key or value, any depth — without the loader knowing the schema.
+- name: Resolve runtime tokens in settings data
+  ansible.builtin.set_fact:
+    settings_data: >-
+      {%- set ns = namespace(raw=(settings_data | to_json)) -%}
+      {%- for token, value in _lab_token_map.items() -%}
+        {%- set ns.raw = ns.raw | replace(token, value) -%}
+      {%- endfor -%}
+      {{ ns.raw | from_json }}
 
 # Task: DEBUG | settings_data (raw JSON)
 # Pre/Post: unchanged — dumps full settings_data when catc_debug=true

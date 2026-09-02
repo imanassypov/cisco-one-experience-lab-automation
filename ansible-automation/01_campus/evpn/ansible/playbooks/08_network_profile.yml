@@ -13,11 +13,19 @@
 #       DayNTemplateNames[] — [{TemplateName: "Building-P0-Composite",
 #                                Project: "Building P0"}]
 #       Day0TemplateNames[] — optional onboarding templates
+#     wireless_design:      — optional; SSIDs and FlexConnect settings, created
+#       ssids[]               before any profile can reference them
+#       flex_connect_configuration[]
 #     wireless_profile:     — optional, only sites with a WLC
 #       profile_name        — e.g. "HQ-Wireless"
+#       site_names[]        — sites this profile is bound to; a WLC cannot manage
+#                             a site's APs until one is bound (NCWL10001)
 #       ssid_details[]      — passed through to the WFM as-is; may be empty
 #       DayNTemplateNames[] — optional wireless Day-N templates
 #     HierarchyParent/Area/Bldg/Floor — composed into the bound site path
+#   inventory/group_vars/all/lab.yml:
+#     lab_pod_id — fills the {POD} token in SSID names; catc_common.load_settings
+#       substitutes it, so this play sees "PSEUDOCO-POD12", not the raw token
 #   connection.yml: dnac_host, dnac_port, dnac_version, dnac_verify, dnac_debug
 #   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
 #
@@ -35,7 +43,10 @@
 #   expected to gain switches.
 #
 # Depends on: stage 07 (referenced template names must already exist)
+# Required by: stage 09 — provisioning a wireless controller fails with
+#   NCWL10001 until a wireless profile is bound to each of its managed AP sites
 # Modules: cisco.dnac.network_profile_switching_workflow_manager
+#          cisco.dnac.wireless_design_workflow_manager
 #          cisco.dnac.network_profile_wireless_workflow_manager
 #
 # Run: ansible-playbook playbooks/08_network_profile.yml
@@ -47,6 +58,16 @@
     catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
   module_defaults:
     cisco.dnac.network_profile_switching_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+    cisco.dnac.wireless_design_workflow_manager:
       dnac_host: "{{ dnac_host }}"
       dnac_username: "{{ catc_username }}"
       dnac_password: "{{ catc_password }}"
