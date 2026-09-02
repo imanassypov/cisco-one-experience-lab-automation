@@ -1,8 +1,7 @@
 {## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# Site-105 IBNS 2.0 on leaves. RADIUS/AAA is CatC network-settings (ISE), not here. #}
-{# Ports (Gi1/0/1–3) stay in DEFN-CLIENT-PORTS; L2 VLANs stay in DEFN-OVERLAY.       #}
-{# Global hygiene (password-encryption, no logging console, netconf-yang, TFTP/SSH) #}
-{# is not NAC — leave those to CatC / Day-0.                                        #}
+{# Ports (Gi1/0/1–3) stay in DEFN-CLIENT-PORTS / FABRIC-CLIENT-PORTS.                #}
+{# L2 VLANs stay in DEFN-OVERLAY / FABRIC-OVERLAY.                                  #}
 {% set DEFN_NAC_ENABLE = true %}
 {% set DEFN_NAC_IOT = [] %}
 {% set DEFN_NAC_IBNS = {

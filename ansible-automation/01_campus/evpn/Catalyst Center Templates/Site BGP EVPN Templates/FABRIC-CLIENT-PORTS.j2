@@ -1,6 +1,7 @@
 {## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
-{# FABRIC-CLIENT-PORTS.j2 - Client-Facing Access Port Configuration #}
-{# Generates switchport access VLAN configs on leaf switches for client-facing interfaces #}
+{# FABRIC-CLIENT-PORTS.j2 - Front-panel client / AP ports (leaves only). #}
+{# Nested cts manual children are ignored by CatC compliance; wrap only #}
+{# the port loop. IBNS globals live in FABRIC-NAC.                      #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-CLIENT-PORTS.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/FUNC-CLIENT-PORTS.j2" %}
@@ -15,8 +16,10 @@
 {% else %}
   {# This is a LEAF or CLIENT node #}
   {% if DEVICE_HOSTNAME in DEFN_CLIENT_PORTS %}
+! @start-ignore-compliance {#transparent mode#}
     {% for port_entry in DEFN_CLIENT_PORTS[DEVICE_HOSTNAME] %}
 {{ switchport_config(port_entry) }}
     {% endfor %}
+! @end-ignore-compliance
   {% endif %}
 {% endif %}

@@ -1,10 +1,34 @@
 {## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
 {# FABRIC-NAC.j2 - Site-105 IBNS 2.0 (leaves only). No RADIUS keys. #}
+{# Front-panel ports stay in FABRIC-CLIENT-PORTS. L2 VLANs stay in  #}
+{# FABRIC-OVERLAY. Ignore-compliance is only on subscriber          #}
+{# class/policy-maps and IOS interface templates — CatC drops those #}
+{# objects; the rest of this file stays under normal compliance.    #}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-NAC.j2" %}
 {% set DEVICE_HOSTNAME = __device.hostname | default('', true) %}
+{# Dummy set — CatC UDV scanner ignores {% set %} inside {% if %} #}
+{% set DEFN_NAC_IBNS = DEFN_NAC_IBNS | default({
+  'filter_list': 'ISE-DS-list',
+  'filter_attrs': ['vlan-id', 'cdp', 'lldp', 'dhcp', 'http'],
+  'critical_data': 'CRITICAL_DATA_ACCESS',
+  'critical_voice': 'CRITICAL_VOICE_ACCESS',
+  'critical_acl': 'PERMIT-ISE',
+  'dot1x_policy': 'DOT1X_MAB_POLICY',
+  'mab_policy': 'MAB_DOT1X_POLICY',
+  'cts_vlans': '10,101-102',
+  'ipdt_policy': 'IPDT_POLICY'
+}) %}
 {% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] and not DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
 {% if DEFN_NAC_ENABLE is defined and DEFN_NAC_ENABLE %}
+service password-encryption
+!
+no logging console
+!
+no ip domain lookup
+netconf-yang
+no ip dhcp snooping information option
+no ip tftp blocksize
 device-tracking policy {{ DEFN_NAC_IBNS.ipdt_policy }}
  no protocol udp
  tracking enable
@@ -24,6 +48,7 @@ service-template {{ DEFN_NAC_IBNS.critical_voice }}
  voice vlan
 dot1x system-auth-control
 !
+! @start-ignore-compliance {#transparent mode#}
 class-map type control subscriber match-all AAA_SVR_DOWN_AUTHD_HOST
  match result-type aaa-timeout
  match authorization-status authorized
@@ -210,11 +235,14 @@ template WIRED_MAB_OPEN
  authentication timer reauthenticate server
  service-policy type control subscriber {{ DEFN_NAC_IBNS.mab_policy }}
 !
+! @end-ignore-compliance
+ip tftp source-interface GigabitEthernet0/0
+ip ssh version 2
+!
 ip access-list extended {{ DEFN_NAC_IBNS.critical_acl }}
  10 permit ip any any
 !
 cts role-based enforcement
 cts role-based enforcement vlan-list {{ DEFN_NAC_IBNS.cts_vlans }}
-!
 {% endif %}
 {% endif %}
