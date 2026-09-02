@@ -252,8 +252,9 @@
 #
 # Wireless controllers are excluded from sda/provisionDevices. That API
 # cannot set DeviceInfo wireless role and CatC returns NCWL10092
-# (Endpoint Proxy / Guest Anchor required). WLC stays site-assigned from
-# stage 05; wireless provision is a different workflow.
+# (Endpoint Proxy / Guest Anchor required). They collect in
+# _skipped_wireless_ips and are provisioned by tasks/provision_wireless.yml
+# after this loop, through provision_workflow_manager.
 - name: "Build provision and re-provision payloads | {{ site_entry.key }}"
   set_fact:
     _provision_payload: >-
@@ -311,13 +312,13 @@
       Skipping {{ _skipped_ips | length }} already-provisioned device(s)
       (set force_reprovision=true to override): {{ _skipped_ips | join(', ') }}
 
-- name: "Report skipped wireless controllers | {{ site_entry.key }}"
+- name: "Report wireless controllers deferred to the wireless pass | {{ site_entry.key }}"
   when: _skipped_wireless_ips | length > 0
   debug:
     msg: >-
-      Skipping {{ _skipped_wireless_ips | length }} wireless controller(s)
-      (sda/provisionDevices returns NCWL10092 without a wireless role):
-      {{ _skipped_wireless_ips | join(', ') }}
+      Deferring {{ _skipped_wireless_ips | length }} wireless controller(s) to
+      the wireless provision pass (sda/provisionDevices returns NCWL10092
+      without a wireless role): {{ _skipped_wireless_ips | join(', ') }}
 
 - name: "--DEBUG-- Provision payload | {{ site_entry.key }}"
   when: catc_debug | default(false) | bool
@@ -536,7 +537,7 @@
     _status: >-
       {%- if not _any_submitted | bool and (_skipped_wireless_ips | default([]) | length > 0)
            and (_skipped_ips | default([]) | length == 0) -%}
-        SKIPPED — wireless controller(s) excluded from SDA provision
+        DEFERRED — wireless controller(s) handled by the wireless pass
       {%- elif not _any_submitted | bool -%}
         SKIPPED — all devices already provisioned at this site
       {%- elif _is_error | bool -%}
@@ -552,7 +553,7 @@
       - "│ New (POST)    : {{ _provision_payload | length }} device(s)"
       - "│ Reprov (PUT)  : {{ _reprovision_payload | length }} device(s)"
       - "│ Skipped       : {{ _skipped_ips | length }} device(s) — already provisioned"
-      - "│ Wireless skip : {{ _skipped_wireless_ips | default([]) | length }} device(s) — WLC not on SDA provision API"
+      - "│ Wireless defer: {{ _skipped_wireless_ips | default([]) | length }} device(s) — WLC provisioned by the wireless pass"
       - "│ POST task ID  : {{ _provision_task_id if _provision_task_id else 'N/A' }}"
       - "│ PUT task ID   : {{ _reprovision_task_id if _reprovision_task_id else 'N/A' }}"
       - "│ Progress      : {{ _progress }}"

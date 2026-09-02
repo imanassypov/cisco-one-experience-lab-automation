@@ -109,6 +109,11 @@ catc_template_summary_maxchar: 1024
 force_reprovision: false
 task_poll_retries: 60
 task_poll_delay: 10
+# Wireless controllers are provisioned in a second pass, after the wired one.
+# Set false to leave them site-assigned but unprovisioned: the pass reboots
+# APs whenever a controller's managed AP locations change, so a run that only
+# needs to touch switches can skip it.
+wireless_provision_enabled: true
 
 # Deploy composite (stage 10)
 force_push_template: true

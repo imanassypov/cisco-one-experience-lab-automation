@@ -128,3 +128,27 @@
   loop_control:
     loop_var: site_entry
     label: "{{ site_entry.key }}"
+
+# ── Step 5: Provision wireless controllers ────────────────────────────────
+#
+# The loop above skips any device whose family contains 'Wireless' — the SDA
+# provision API cannot set a wireless role and answers NCWL10092. Controllers
+# are provisioned here instead, via provision_workflow_manager, which is also
+# what assigns their managed AP locations.
+#
+# Runs once for all sites rather than per site: a controller commonly sits in
+# one building and serves the APs of another, so the settings row, not the
+# loop, decides the pairing. Tasks: tasks/provision_wireless.yml
+#
+# Gated by wireless_provision_enabled because this reboots APs whenever the
+# managed AP locations change.
+- name: Report that wireless provisioning is disabled
+  when: not (wireless_provision_enabled | default(true) | bool)
+  ansible.builtin.debug:
+    msg: >-
+      wireless_provision_enabled is false — leaving wireless controllers
+      site-assigned but unprovisioned. Set it true to provision them.
+
+- name: Provision wireless controllers
+  when: wireless_provision_enabled | default(true) | bool
+  ansible.builtin.include_tasks: provision_wireless.yml

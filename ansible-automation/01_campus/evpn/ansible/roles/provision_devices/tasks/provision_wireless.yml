@@ -1,0 +1,307 @@
+# ============================================================================
+# tasks/provision_wireless.yml  —  Pipeline stage 9.1
+# ============================================================================
+# Provisions wireless controllers, which the wired pass in provision_site.yml
+# deliberately leaves alone.
+#
+# POST /dna/intent/api/v1/sda/provisionDevices cannot set the wireless
+# DeviceInfo role and answers NCWL10092 (Endpoint Proxy / Guest Anchor
+# required) for a C9800, so provision_site.yml drops any device whose family
+# contains 'Wireless' into _skipped_wireless_ips. Those controllers are picked
+# up here instead, through provision_workflow_manager, which is the only path
+# that carries managed AP locations.
+#
+# This runs once after the wired loop rather than inside it: one module call
+# covers every controller in settings.json, and the live wired path is left
+# byte-identical.
+#
+# Variables read from inventory / parent play scope:
+#   settings_data              — settings.json (catc_common.load_settings)
+#   _catc_token                — short-lived JWT for the inventory lookups
+#   dnac_host / dnac_port / dnac_verify
+#   force_reprovision          — bool; re-provision an already-provisioned WLC
+# ============================================================================
+---
+
+# ── Step A: Collect the rows that declare a controller ────────────────────
+#
+# A row qualifies when it has both a wireless_controller block and a
+# device_list. The controller's own site comes from the row's hierarchy
+# fields, exactly as the wired pass derives it; managed_ap_locations is
+# separate and names the sites whose APs this controller serves, which are
+# usually somewhere else in the hierarchy.
+#
+# Example - DC-Site-10 holds the C9800 that serves the APs at Site-105
+#   In : settings_data.project = [
+#          {
+#            "HierarchyParent": "Global/CALIFORNIA", "HierarchyArea": "San Jose",
+#            "HierarchyBldg": "DC-Site-10", "HierarchyFloor": "MAIN",
+#            "device_list": "198.18.5.103",
+#            "wireless_controller": {
+#              "managed_ap_locations": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
+#              "skip_ap_provision": false,
+#              "rolling_ap_upgrade": { "enable_rolling_ap_upgrade": false,
+#                                      "ap_reboot_percentage": 25 } }
+#          },
+#          { "HierarchyBldg": "Site-105", "device_list": "198.18.128.22,198.18.128.23" }
+#        ]
+#   Out: _wlc_rows = [
+#          { "site_path": "Global/CALIFORNIA/San Jose/DC-Site-10/MAIN",
+#            "ips": ["198.18.5.103"],
+#            "controller": { ...the wireless_controller block verbatim... } }
+#        ]
+#   The Site-105 row has no wireless_controller key and is dropped.
+- name: Build wireless controller row list
+  ansible.builtin.set_fact:
+    _wlc_rows: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- if entry.wireless_controller is defined and entry.wireless_controller
+             and entry.device_list is defined and entry.device_list -%}
+          {%- set ips = entry.device_list.split(',') | map('trim') | reject('equalto', '') | list -%}
+          {%- set parent = entry.HierarchyParent | default('Global') -%}
+          {%- set area   = entry.HierarchyArea   | default('') -%}
+          {%- set bldg   = entry.HierarchyBldg   | default('') -%}
+          {%- set floor  = entry.HierarchyFloor  | default('') -%}
+          {%- if floor -%}
+            {%- set site_path = parent + '/' + area + '/' + bldg + '/' + floor -%}
+          {%- elif bldg -%}
+            {%- set site_path = parent + '/' + area + '/' + bldg -%}
+          {%- elif area -%}
+            {%- set site_path = parent + '/' + area -%}
+          {%- else -%}
+            {%- set site_path = parent -%}
+          {%- endif -%}
+          {%- set ns.result = ns.result + [{
+                'site_path':  site_path,
+                'ips':        ips,
+                'controller': entry.wireless_controller
+              }] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Wireless controller row list
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _wlc_rows
+
+- name: Report that no site declares a wireless controller
+  when: _wlc_rows | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      No wireless_controller block in settings.json — nothing to provision.
+      Wired devices were handled by the SDA provision pass above.
+
+# ── Step B: Confirm which of those IPs are actually controllers ───────────
+#
+# A row's device_list may hold switches alongside the controller, so the
+# family reported by inventory decides rather than the settings file. This is
+# the same GET the wired pass uses, and the same 'Wireless' in family test,
+# so a device cannot be claimed by both passes.
+- name: Resolve device family for wireless controller candidates
+  when: _wlc_rows | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/network-device?managementIpAddress={{ item }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ _wlc_rows | map(attribute='ips') | flatten | unique }}"
+  register: _wlc_device_results
+
+# Example - the C9800 answers, a switch in the same row would not match later
+#   In : _wlc_device_results.results = [
+#          { "item": "198.18.5.103",
+#            "json": { "response": [
+#              { "id": "b1000000-0000-4000-8000-000000000110",
+#                "hostname": "wlc.corp.pseudoco.com",
+#                "family": "Wireless Controller",
+#                "managementIpAddress": "198.18.5.103" } ] } }
+#        ]
+#   Out: _wlc_family_map = {
+#          "198.18.5.103": { "hostname": "wlc.corp.pseudoco.com",
+#                            "family":   "Wireless Controller" }
+#        }
+# Keyed by the API's managementIpAddress rather than the loop item, matching
+# the wired pass, so a controller answering on a different address than the
+# one queried still maps. An empty response array drops the entry, which the
+# assert in Step C then reports.
+- name: Build IP → { hostname, family } map for controller candidates
+  when: _wlc_rows | length > 0
+  ansible.builtin.set_fact:
+    _wlc_family_map: >-
+      {%- set ns = namespace(result={}) -%}
+      {%- for r in (_wlc_device_results.results | default([])) -%}
+        {%- set device = (r.json.response | default([]) | first | default(none)) -%}
+        {%- if device is not none and device.id is defined -%}
+          {%- set ns.result = ns.result | combine({
+              device.managementIpAddress: {
+                'hostname': device.hostname | default(device.managementIpAddress),
+                'family':   device.family   | default('')
+              }
+          }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Controller candidate family map
+  when:
+    - catc_debug | default(false) | bool
+    - _wlc_rows | length > 0
+  ansible.builtin.debug:
+    var: _wlc_family_map
+
+# ── Step C: Build the provision config ────────────────────────────────────
+#
+# One entry per controller, shaped for provision_workflow_manager. The
+# wireless_controller block in settings.json is already snake_case and 1:1
+# with the module schema, so managed_ap_locations, skip_ap_provision and
+# rolling_ap_upgrade pass through untouched; only the keys the module needs
+# from elsewhere are added.
+#
+# force_provisioning reuses the existing force_reprovision flag rather than
+# introducing a second switch: with it false the module leaves an
+# already-provisioned controller alone, which is what a re-run of this stage
+# should do.
+#
+# Example
+#   In : _wlc_rows       = as built in Step A
+#        _wlc_family_map = { "198.18.5.103": { "family": "Wireless Controller", ... } }
+#        force_reprovision = false
+#   Out: _wlc_provision_config = [
+#          { "management_ip_address": "198.18.5.103",
+#            "site_name_hierarchy":   "Global/CALIFORNIA/San Jose/DC-Site-10/MAIN",
+#            "managed_ap_locations":  ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
+#            "skip_ap_provision":     false,
+#            "rolling_ap_upgrade":    { "enable_rolling_ap_upgrade": false,
+#                                       "ap_reboot_percentage": 25 },
+#            "force_provisioning":    false }
+#        ]
+#        _wlc_unresolved_ips = []
+- name: Build wireless controller provision config
+  when: _wlc_rows | length > 0
+  ansible.builtin.set_fact:
+    _wlc_provision_config: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for row in _wlc_rows -%}
+        {%- for ip in row.ips -%}
+          {%- if ip in _wlc_family_map
+               and 'Wireless' in (_wlc_family_map[ip].family | default('')) -%}
+            {%- set cfg = {
+                  'management_ip_address': ip,
+                  'site_name_hierarchy':   row.site_path,
+                  'force_provisioning':    force_reprovision | default(false) | bool
+                } -%}
+            {%- if row.controller.managed_ap_locations is defined
+                 and row.controller.managed_ap_locations -%}
+              {%- set cfg = cfg | combine({'managed_ap_locations': row.controller.managed_ap_locations}) -%}
+            {%- endif -%}
+            {%- if row.controller.skip_ap_provision is defined -%}
+              {%- set cfg = cfg | combine({'skip_ap_provision': row.controller.skip_ap_provision}) -%}
+            {%- endif -%}
+            {%- if row.controller.rolling_ap_upgrade is defined
+                 and row.controller.rolling_ap_upgrade -%}
+              {%- set cfg = cfg | combine({'rolling_ap_upgrade': row.controller.rolling_ap_upgrade}) -%}
+            {%- endif -%}
+            {%- set ns.result = ns.result + [cfg] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+    _wlc_unresolved_ips: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for row in _wlc_rows -%}
+        {%- for ip in row.ips -%}
+          {%- if ip not in _wlc_family_map -%}
+            {%- set ns.result = ns.result + [ip] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Wireless controller provision config
+  when:
+    - catc_debug | default(false) | bool
+    - _wlc_rows | length > 0
+  ansible.builtin.debug:
+    var: _wlc_provision_config
+
+# An IP in a wireless_controller row that inventory does not know about means
+# discovery (stage 04) never picked it up, so provisioning cannot proceed.
+- name: Assert controller candidates exist in inventory
+  when: _wlc_rows | length > 0
+  ansible.builtin.assert:
+    that: _wlc_unresolved_ips | length == 0
+    fail_msg: >-
+      Not found in Catalyst Center inventory: {{ _wlc_unresolved_ips | join(', ') }}.
+      Run stage 04 discovery and stage 05 site assignment before provisioning.
+
+# A row declaring wireless_controller whose devices are all wired means the
+# block is on the wrong project row — a settings.json error worth failing on
+# rather than silently provisioning nothing.
+- name: Assert each declared controller row yielded a controller
+  when: _wlc_rows | length > 0
+  ansible.builtin.assert:
+    that: _wlc_provision_config | length > 0
+    fail_msg: >-
+      {{ _wlc_rows | length }} row(s) declare wireless_controller but none of
+      their device_list entries report a Wireless family in inventory:
+      {{ _wlc_rows | map(attribute='ips') | flatten | join(', ') }}.
+      Check that wireless_controller sits on the row holding the WLC.
+    success_msg: >-
+      {{ _wlc_provision_config | length }} wireless controller(s) to provision.
+
+# managed_ap_locations is what makes this stage worth running — without it the
+# controller is provisioned but serves no site, and the APs never join.
+- name: Assert every controller names at least one managed AP location
+  when: _wlc_rows | length > 0
+  ansible.builtin.assert:
+    that: item.managed_ap_locations | default([]) | length > 0
+    fail_msg: >-
+      Controller {{ item.management_ip_address }} has no managed_ap_locations.
+      Add the site path(s) whose APs it serves to wireless_controller in settings.json.
+  loop: "{{ _wlc_provision_config }}"
+  loop_control:
+    label: "{{ item.management_ip_address }}"
+
+# ── Step D: Provision ─────────────────────────────────────────────────────
+#
+# provision_workflow_manager handles the async task polling internally, so
+# there is no task-ID plumbing here of the kind the wired pass needs.
+#
+# This reboots APs when managed AP locations change. The lab documents a 1-3
+# minute rejoin, so a controller that reports SUCCESS still leaves its APs
+# briefly absent from inventory.
+- name: Provision wireless controllers
+  when: _wlc_rows | length > 0
+  cisco.dnac.provision_workflow_manager:
+    state: merged
+    config: "{{ _wlc_provision_config }}"
+  register: _wlc_provision_result
+
+- name: --DEBUG-- Wireless provision result
+  when:
+    - catc_debug | default(false) | bool
+    - _wlc_rows | length > 0
+  ansible.builtin.debug:
+    var: _wlc_provision_result
+
+# ── Step E: Summary ───────────────────────────────────────────────────────
+- name: Wireless provisioning summary
+  when: _wlc_rows | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      {{ ['┌─────────────────────────────────────────────────────────────────┐']
+         + ['│ Controllers   : ' + (_wlc_provision_config | length) | string]
+         + (_wlc_provision_config | map(attribute='management_ip_address')
+            | zip(_wlc_provision_config | map(attribute='site_name_hierarchy'))
+            | map('join', ' → ') | map('regex_replace', '^', '│   ') | list)
+         + ['│ AP locations  : '
+            + (_wlc_provision_config | map(attribute='managed_ap_locations')
+               | flatten | unique | join(', '))]
+         + ['│ Force reprov  : ' + (force_reprovision | default(false) | bool) | string]
+         + ['│ Changed       : ' + (_wlc_provision_result.changed | default(false)) | string]
+         + ['│ Status        : ' + (_wlc_provision_result.msg | default('see task output') | string)]
+         + ['└─────────────────────────────────────────────────────────────────┘'] }}
