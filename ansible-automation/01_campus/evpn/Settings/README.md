@@ -134,6 +134,7 @@ settings.json
     │   ├── skip_ap_provision          # Provision the WLC without touching APs
     │   └── rolling_ap_upgrade{}       # Staged AP reboot behaviour
     ├── wireless_design{}              # Optional — global wireless design objects
+    │   ├── interfaces[]               # Wireless interfaces an SSID maps onto
     │   ├── ssids[]                    # Enterprise/Guest SSID definitions
     │   └── flex_connect_configuration[]  # Per-site FlexConnect native VLAN
     └── access_points[]                # Optional — APs physically at this site
@@ -465,9 +466,10 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
     ],
     "ssid_details": [
         {
-            "ssid_name":     "PSEUDOCO-POD{POD}",
-            "enable_fabric": false,
-            "local_to_vlan": 10
+            "ssid_name":      "PSEUDOCO-POD{POD}",
+            "enable_fabric":  false,
+            "interface_name": "PSEUDOCO-VLAN10",
+            "local_to_vlan":  10
         }
     ],
     "DayNTemplateNames": [
@@ -486,12 +488,14 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
 |-------|------|-------------|
 | `profile_name` | string | Wireless profile name in Catalyst Center. Created if absent, updated if present. |
 | `site_names` | array | Site paths the profile is applied to. Defaults to this row's own site path when omitted. Set it explicitly when the APs live somewhere other than the row that owns the WLC. |
-| `ssid_details` | array | Passed to the wireless workflow manager verbatim. Each element takes `ssid_name` plus optional `enable_fabric`, `vlan_group_name`, `interface_name`, `local_to_vlan`, `anchor_group_name`. An empty array binds the profile to the site with no SSIDs. |
+| `ssid_details` | array | Passed to the wireless workflow manager verbatim. Each element takes `ssid_name` and either `interface_name` or `vlan_group_name`, plus optional `enable_fabric`, `local_to_vlan`, `anchor_group_name`. An empty array binds the profile to the site with no SSIDs. |
 | `DayNTemplateNames` | array | Same shape as the switching block. Only `TemplateName` reaches the profile binding; an all-`null` row is dropped. |
 
-`local_to_vlan` is what makes the SSID locally switched at the AP rather than tunnelled back to the controller. It is set to `10` here because VLAN 10 is the native VLAN on the Site-105 AP trunk ports.
+`interface_name` names an interface declared in `wireless_design.interfaces`, and is mandatory unless a `vlan_group_name` is given instead. `local_to_vlan` is what makes the SSID locally switched at the AP rather than tunnelled back to the controller. Both are VLAN 10 here because that is the native VLAN on the Site-105 AP trunk ports.
 
 **The controller and the APs are at different sites.** DC-Site-10 owns the C9800, but the APs are on Site-105 VLAN 10, hanging off the `Gi1/0/2` trunk ports on the leaves. That is why `site_names` and `managed_ap_locations` both point at Site-105 while living on the DC-Site-10 row.
+
+Getting `site_names` wrong is not a quiet mistake. A wireless controller can only be provisioned for AP locations that already have a wireless profile bound; if the profile binds to DC-Site-10 instead of Site-105, stage 09 fails with `NCWL10001: Wireless profile is not configured for managed site <uuid>`.
 
 ---
 
@@ -528,6 +532,9 @@ The optional `wireless_design` object defines the global wireless objects that m
 
 ```json
 "wireless_design": {
+    "interfaces": [
+        { "interface_name": "PSEUDOCO-VLAN10", "vlan_id": 10 }
+    ],
     "ssids": [
         {
             "ssid_name":         "PSEUDOCO-POD{POD}",
@@ -556,8 +563,11 @@ The optional `wireless_design` object defines the global wireless objects that m
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `interfaces` | array | Wireless interfaces to create, each `interface_name` plus `vlan_id`. Referenced by `wireless_profile.ssid_details[].interface_name`. |
 | `ssids` | array | Passed to `wireless_design_workflow_manager` verbatim. `ssid_name` must equal `lab.wireless_ssid`. |
 | `flex_connect_configuration` | array | Per-site FlexConnect native VLAN. Set to VLAN 10 to match the AP trunk native VLAN at Site-105. |
+
+**An SSID binding needs an interface.** `network_profile_wireless_workflow_manager` rejects an `ssid_details` entry carrying only `local_to_vlan` — it requires either an `interface_name` or a `vlan_group_name`, and fails with *"Either VLAN Group Name or Interface Name required in playbook"*. `PSEUDOCO-VLAN10` exists for that reason, and is declared here rather than in the profile so the design pass creates it before the profile pass references it. All three VLAN references — the interface, the FlexConnect native VLAN, and `local_to_vlan` — are VLAN 10.
 
 `radio_bands` is `[2.4, 5]` rather than including 6 GHz because neither lab AP has a 6 GHz radio — the C9117AXI and the AP4800 are both Wi-Fi 6 at most. The AAA servers point at ISE on `198.18.5.101`, the same address as `network_settings.client_and_endpoint_aaa.primary_server_address`.
 
