@@ -113,10 +113,14 @@ settings.json
     │   └── netconf_credential{}       # NETCONF credential and port
     ├── device_list                    # Comma-separated CatC management IPs
     ├── discovery{}                    # Optional CatC discovery job (stage 04)
-    └── network_profile{}              # Template-to-site binding definition
-        ├── profile_name               # Switching profile name in Catalyst Center
-        ├── DayNTemplateNames[]        # Day-N (post-onboarding) template bindings
-        └── Day0TemplateNames[]        # Day-0 (PnP onboarding) template bindings
+    ├── network_profile{}              # Template-to-site binding definition
+    │   ├── profile_name               # Switching profile name in Catalyst Center
+    │   ├── DayNTemplateNames[]        # Day-N (post-onboarding) template bindings
+    │   └── Day0TemplateNames[]        # Day-0 (PnP onboarding) template bindings
+    └── wireless_profile{}             # Optional — only sites with a WLC
+        ├── profile_name               # Wireless profile name in Catalyst Center
+        ├── ssid_details[]             # SSID bindings; may be empty
+        └── DayNTemplateNames[]        # Optional wireless Day-N template bindings
 ```
 
 ---
@@ -374,6 +378,40 @@ Set individual fields to `null` and `TemplateTarget` to `[]` when no Day-0 templ
 
 ---
 
+### Wireless Profile
+
+The optional `wireless_profile` object binds a Catalyst Center **wireless network profile** to the site. Omit the key entirely for sites with no WLC — stage 08 then skips the wireless pass.
+
+A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 does: it holds a C9800 today and is expected to gain switches, so `HQ-Switching` and `HQ-Wireless` are bound to the same site path.
+
+```json
+"wireless_profile": {
+    "profile_name": "HQ-Wireless",
+    "ssid_details": [],
+    "DayNTemplateNames": [
+        {
+            "TemplateName":   null,
+            "TemplateTag":    null,
+            "Project":        null,
+            "TemplateTarget": [],
+            "DeployTemplate": false
+        }
+    ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `profile_name` | string | Wireless profile name in Catalyst Center. Created if absent, updated if present. |
+| `ssid_details` | array | Passed to the wireless workflow manager verbatim. Each element takes `ssid_name` plus optional `enable_fabric`, `vlan_group_name`, `interface_name`, `local_to_vlan`, `anchor_group_name`. An empty array binds the profile to the site with no SSIDs. |
+| `DayNTemplateNames` | array | Same shape as the switching block. Only `TemplateName` reaches the profile binding; an all-`null` row is dropped. |
+
+The site path is derived from the hierarchy fields exactly as it is for the switching profile — deepest defined level wins.
+
+Note that the WLC is **not** provisioned by stage 09. `POST /dna/intent/api/v1/sda/provisionDevices` cannot set a wireless DeviceInfo role and returns `NCWL10092`, so the role skips any device whose Catalyst Center `family` contains `Wireless`. The controller keeps the site assignment made in stage 05, and this profile is what carries its wireless intent.
+
+---
+
 ## How the Tooling Consumes This File
 
 All three automation paths read `settings.json` from GitHub and iterate over every element in the `project` array:
@@ -384,7 +422,7 @@ All three automation paths read `settings.json` from GitHub and iterate over eve
 | Network Settings | `GitOps-BuildSettings-v3` | `playbooks/02_network_settings.yml` | `network_settings.py` | `network_settings.*` |
 | Device Credentials | `GitOps-BuildSettings-v3` | `playbooks/03_credentials.yml` | `credentials.py` | `device_credentials.*` |
 | Device Discovery | `GitOps-DeviceDiscovery-v3` | `playbooks/04_device_discovery.yml` | `device_discovery.py` | `device_list`, `device_credentials.*` |
-| Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/08_network_profile.yml` | `network_profile.py` | `network_profile.*` |
+| Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/08_network_profile.yml` | `network_profile.py` | `network_profile.*`, `wireless_profile.*` |
 | Provisioning | `GitOps-Provisioning-v3` | `playbooks/09_provision_devices.yml` + `playbooks/10_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames` |
 
 All Ansible playbooks run from [`CICD Pipeline/ansible/`](../ansible/).

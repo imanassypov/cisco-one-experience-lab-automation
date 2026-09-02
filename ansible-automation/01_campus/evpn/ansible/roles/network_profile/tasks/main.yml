@@ -2,9 +2,14 @@
 # =============================================================================
 # network_profile / main.yml  —  Pipeline stage 8.0
 # =============================================================================
-# Creates or updates Catalyst Center switching network profiles and binds them
-# to sites. Maps settings.json network_profile block to
-# network_profile_switching_workflow_manager config schema.
+# Creates or updates Catalyst Center network profiles and binds them to sites.
+# Maps the settings.json network_profile block to
+# network_profile_switching_workflow_manager, and the optional wireless_profile
+# block to network_profile_wireless_workflow_manager.
+#
+# A site may carry both. DC-Site-10 holds a C9800 today and is expected to gain
+# switches, so it defines HQ-Switching and HQ-Wireless side by side. Rows with
+# no wireless_profile key skip the wireless pass entirely.
 #
 # Prerequisites: catc_common.load_settings → settings_data
 #                Stage 7 templates synced (Day0/Day-N template names referenced)
@@ -107,8 +112,106 @@
   ansible.builtin.debug:
     msg: "{{ profile_results }}"
 
-- name: Network profile creation complete
+- name: Switching network profile creation complete
   ansible.builtin.debug:
     msg:
       - "Switching network profile(s) created/updated successfully"
       - "Profiles processed: {{ profile_list | map(attribute='profile_name') | join(', ') }}"
+
+# Wireless profiles are optional — only rows that declare a wireless_profile
+# block produce an entry, so wireless_profile_list is empty for sites with no
+# WLC and the module call below is skipped rather than asserted on.
+#
+# The site path derivation repeats the switching builder above rather than
+# sharing a fact: the switching pass is live against the lab and is left
+# byte-identical.
+#
+# ssid_details passes through verbatim (snake_case, 1:1 with the module
+# schema). DayNTemplateNames keeps the PascalCase shape of its switching
+# sibling so stage 10 can consume TemplateTarget/DeployTemplate later; only
+# TemplateName survives into the profile binding.
+# Example
+#   In : settings_data.project[0] = {
+#          "HierarchyParent": "Global/CALIFORNIA", "HierarchyArea": "San Jose",
+#          "HierarchyBldg": "DC-Site-10", "HierarchyFloor": "MAIN",
+#          "wireless_profile": {
+#            "profile_name": "HQ-Wireless",
+#            "ssid_details": [],
+#            "DayNTemplateNames": [{ "TemplateName": null, ... }] } }
+#   Out: wireless_profile_list = [{
+#          "profile_name": "HQ-Wireless",
+#          "site_names": ["Global/CALIFORNIA/San Jose/DC-Site-10/MAIN"]
+#        }]
+#   Empty ssid_details and an all-null DayNTemplateNames row are dropped, so
+#   CatC receives a name + site binding only.
+- name: Build wireless network profile config list
+  ansible.builtin.set_fact:
+    wireless_profile_list: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- if entry.wireless_profile is defined and entry.wireless_profile -%}
+          {%- set prof = entry.wireless_profile -%}
+          {%- set parent = entry.HierarchyParent | default('Global') -%}
+          {%- set area   = entry.HierarchyArea   | default('') -%}
+          {%- set bldg   = entry.HierarchyBldg   | default('') -%}
+          {%- set floor  = entry.HierarchyFloor  | default('') -%}
+          {%- if floor -%}
+            {%- set site_path = parent + '/' + area + '/' + bldg + '/' + floor -%}
+          {%- elif bldg -%}
+            {%- set site_path = parent + '/' + area + '/' + bldg -%}
+          {%- elif area -%}
+            {%- set site_path = parent + '/' + area -%}
+          {%- else -%}
+            {%- set site_path = parent -%}
+          {%- endif -%}
+          {%- set cfg = {'profile_name': prof.profile_name, 'site_names': [site_path]} -%}
+          {%- if prof.ssid_details is defined and prof.ssid_details -%}
+            {%- set cfg = cfg | combine({'ssid_details': prof.ssid_details}) -%}
+          {%- endif -%}
+          {%- if prof.DayNTemplateNames is defined and prof.DayNTemplateNames -%}
+            {%- set wtnames = prof.DayNTemplateNames
+                | selectattr('TemplateName', 'defined')
+                | selectattr('TemplateName', 'ne', none)
+                | map(attribute='TemplateName') | list -%}
+            {%- if wtnames | length > 0 -%}
+              {%- set cfg = cfg | combine({'day_n_templates': wtnames}) -%}
+            {%- endif -%}
+          {%- endif -%}
+          {%- set ns.result = ns.result + [cfg] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Wireless profile config list
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: "{{ wireless_profile_list }}"
+
+- name: Report that no site declares a wireless profile
+  when: wireless_profile_list | length == 0
+  ansible.builtin.debug:
+    msg: "No wireless_profile block in settings.json — skipping wireless profile stage."
+
+# Task: Create/update wireless network profile
+# Pre:  wireless_profile_list as above
+# Post: wireless_profile_results — dnac_response from WFM (profile UUID, site assignment)
+- name: Create/update wireless network profile
+  when: wireless_profile_list | length > 0
+  cisco.dnac.network_profile_wireless_workflow_manager:
+    state: merged
+    config: "{{ wireless_profile_list }}"
+  register: wireless_profile_results
+
+- name: --DEBUG-- Wireless profile results
+  when:
+    - catc_debug | default(false) | bool
+    - wireless_profile_list | length > 0
+  ansible.builtin.debug:
+    msg: "{{ wireless_profile_results }}"
+
+- name: Wireless network profile creation complete
+  when: wireless_profile_list | length > 0
+  ansible.builtin.debug:
+    msg:
+      - "Wireless network profile(s) created/updated successfully"
+      - "Profiles processed: {{ wireless_profile_list | map(attribute='profile_name') | join(', ') }}"

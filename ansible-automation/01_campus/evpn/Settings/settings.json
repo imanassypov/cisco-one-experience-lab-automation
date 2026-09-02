@@ -107,6 +107,19 @@
                         "DeployTemplate": null
                     }
                 ]
+            },
+            "wireless_profile": {
+                "profile_name": "HQ-Wireless",
+                "ssid_details": [],
+                "DayNTemplateNames": [
+                    {
+                        "TemplateName": null,
+                        "TemplateTag": null,
+                        "Project": null,
+                        "TemplateTarget": [],
+                        "DeployTemplate": false
+                    }
+                ]
             }
         },
         {
