@@ -56,7 +56,8 @@
 #
 # Depends on: stages 01, 02, 05 and 07
 # Modules: cisco.dnac.provision_workflow_manager (wireless pass)
-#          cisco.dnac.accesspoint_workflow_manager (AP pass)
+#          cisco.dnac.accesspoint_workflow_manager (AP pass, naming only)
+#          cisco.dnac.site_info + assign_device_to_site (AP site assignment)
 #
 # Run: ansible-playbook playbooks/08_provision_devices.yml
 #      ansible-playbook playbooks/08_provision_devices.yml -e force_reprovision=true
@@ -89,6 +90,22 @@
       dnac_debug: "{{ dnac_debug }}"
       dnac_log_level: "{{ dnac_log_level }}"
       dnac_log: "{{ dnac_log }}"
+    cisco.dnac.site_info:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+    cisco.dnac.assign_device_to_site:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
   pre_tasks:
     - name: Obtain Catalyst Center auth token
       ansible.builtin.import_role:
