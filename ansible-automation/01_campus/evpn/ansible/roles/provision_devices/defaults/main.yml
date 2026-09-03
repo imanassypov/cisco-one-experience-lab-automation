@@ -1,0 +1,37 @@
+---
+# =============================================================================
+# provision_devices / defaults/main.yml
+# =============================================================================
+# Device families that POST/PUT /dna/intent/api/v1/sda/provisionDevices cannot
+# handle, and which the wired pass in tasks/provision_site.yml therefore keeps
+# out of its payloads.
+#
+# Matched as substrings against the family Catalyst Center reports for the
+# device, so 'Wireless' covers 'Wireless Controller' and 'Wireless Sensor'
+# without listing each. 'Unified AP' needs its own entry because an access
+# point's family contains no such marker.
+#
+# A device matching any marker is reported and left alone by the wired pass.
+# Controllers are then provisioned by tasks/provision_wireless.yml through
+# provision_workflow_manager, and access points by
+# tasks/provision_accesspoints.yml — neither of which touches the SDA API.
+wireless_family_markers:
+  - Wireless
+  - Unified AP
+
+# force_provisioning for the controller pass (tasks/provision_wireless.yml).
+#
+# Deliberately its own knob rather than the shared force_reprovision, which
+# also switches on the wired PUT path — forcing the controller should not
+# re-push the fabric switches alongside it.
+#
+# Defaults true because provision_workflow_manager short-circuits on
+# 'already provisioned' without diffing intent, so with it false a changed
+# managed_ap_locations or wireless profile binding is silently never applied.
+# Forcing re-asserts the intent on every run. A re-provision that changes the
+# controller's managed AP locations reboots the affected APs; re-asserting the
+# same locations does not.
+#
+# Set false to make the pass a no-op against an already-provisioned controller:
+#   -e force_wireless_provisioning=false
+force_wireless_provisioning: true

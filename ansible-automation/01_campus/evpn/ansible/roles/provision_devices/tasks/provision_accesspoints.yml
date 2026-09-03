@@ -365,8 +365,16 @@
 # force_reprovision overrides that, for the case where the two halves have come
 # apart: the AP is already a site member but the controller was never
 # re-provisioned afterwards, so it still holds default tags and no amount of
-# re-running will fix it on its own. This is the same flag that drives
-# force_provisioning in stage 8.1, so one switch covers both.
+# re-running will fix it on its own.
+#
+# This stays on force_reprovision rather than the force_wireless_provisioning
+# flag that drives stage 8.1. That one defaults true, so keying the takeover
+# off it would re-provision the controller on every run and reboot the APs even
+# when nothing moved — the exact thing the _ap_pending gate exists to prevent.
+#
+# Note that with 8.1 forcing by default, the split-halves case now largely
+# self-heals: 8.1 re-provisions the controller on the next run, and an AP that
+# is already a site member gets taken over then.
 - name: Decide whether the controller needs re-provisioning
   when: _ap_declared | length > 0
   ansible.builtin.set_fact:

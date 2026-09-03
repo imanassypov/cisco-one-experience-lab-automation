@@ -19,7 +19,8 @@
 #   settings_data              — settings.json (catc_common.load_settings)
 #   _catc_token                — short-lived JWT for the inventory lookups
 #   dnac_host / dnac_port / dnac_verify
-#   force_reprovision          — bool; re-provision an already-provisioned WLC
+#   force_wireless_provisioning — bool; re-provision an already-provisioned
+#                                 WLC. Defaults true (roles defaults/main.yml).
 # ============================================================================
 ---
 
@@ -161,15 +162,17 @@
 # rolling_ap_upgrade pass through untouched; only the keys the module needs
 # from elsewhere are added.
 #
-# force_provisioning reuses the existing force_reprovision flag rather than
-# introducing a second switch: with it false the module leaves an
-# already-provisioned controller alone, which is what a re-run of this stage
-# should do.
+# force_provisioning comes from force_wireless_provisioning, which is separate
+# from the wired pass's force_reprovision on purpose: forcing the controller
+# should not also switch on the wired PUT re-push of the fabric switches.
+# It defaults true because the module short-circuits on 'already provisioned'
+# without diffing intent, so a changed managed_ap_locations would otherwise
+# never be applied. See roles defaults/main.yml.
 #
 # Example
 #   In : _wlc_rows       = as built in Step A
 #        _wlc_family_map = { "198.18.5.103": { "family": "Wireless Controller", ... } }
-#        force_reprovision = false
+#        force_wireless_provisioning = true
 #   Out: _wlc_provision_config = [
 #          { "management_ip_address": "198.18.5.103",
 #            "site_name_hierarchy":   "Global/CALIFORNIA/San Jose/DC-Site-10/MAIN",
@@ -177,7 +180,7 @@
 #            "skip_ap_provision":     false,
 #            "rolling_ap_upgrade":    { "enable_rolling_ap_upgrade": false,
 #                                       "ap_reboot_percentage": 25 },
-#            "force_provisioning":    false }
+#            "force_provisioning":    true }
 #        ]
 #        _wlc_unresolved_ips = []
 - name: Build wireless controller provision config
@@ -192,7 +195,7 @@
             {%- set cfg = {
                   'management_ip_address': ip,
                   'site_name_hierarchy':   row.site_path,
-                  'force_provisioning':    force_reprovision | default(false) | bool
+                  'force_provisioning':    force_wireless_provisioning | default(true) | bool
                 } -%}
             {%- if row.controller.managed_ap_locations is defined
                  and row.controller.managed_ap_locations -%}
@@ -301,7 +304,7 @@
          + ['│ AP locations  : '
             + (_wlc_provision_config | map(attribute='managed_ap_locations')
                | flatten | unique | join(', '))]
-         + ['│ Force reprov  : ' + (force_reprovision | default(false) | bool) | string]
+         + ['│ Force provis  : ' + (force_wireless_provisioning | default(true) | bool) | string]
          + ['│ Changed       : ' + (_wlc_provision_result.changed | default(false)) | string]
          + ['│ Status        : ' + (_wlc_provision_result.msg | default('see task output') | string)]
          + ['└─────────────────────────────────────────────────────────────────┘'] }}

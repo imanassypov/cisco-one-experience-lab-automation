@@ -250,11 +250,48 @@
 # device id - Catalyst Center returns NCHS20405 if a POST is used on a device
 # that is already provisioned.
 #
-# Wireless controllers are excluded from sda/provisionDevices. That API
-# cannot set DeviceInfo wireless role and CatC returns NCWL10092
-# (Endpoint Proxy / Guest Anchor required). They collect in
-# _skipped_wireless_ips and are provisioned by tasks/provision_wireless.yml
-# after this loop, through provision_workflow_manager.
+# Wireless devices are excluded from sda/provisionDevices. That API cannot set
+# a DeviceInfo wireless role and CatC returns NCWL10092 (Endpoint Proxy /
+# Guest Anchor required). They collect in _skipped_wireless_ips and are handled
+# after this loop through provision_workflow_manager — controllers by
+# tasks/provision_wireless.yml, access points by
+# tasks/provision_accesspoints.yml.
+#
+# Classified up front, once per site, so every payload below asks the same
+# question and none can drift: the POST path and the force PUT path must agree,
+# or -e force_reprovision=true would push a controller at the SDA API.
+#
+# The test is a substring match against wireless_family_markers (see
+# defaults/main.yml) rather than 'Wireless' in family, because an access point
+# reports 'Unified AP' and would otherwise be taken for a wired device. APs are
+# addressed by MAC in access_points and do not normally appear in device_list at
+# all, so this is a guard against a future edit rather than current behaviour.
+#
+# Example
+#   In : site_entry.value = ["198.18.5.103", "172.30.255.1"]
+#        _device_uuid_map = {
+#          "198.18.5.103":  { "family": "Wireless Controller", ... },
+#          "172.30.255.1":  { "family": "Switches and Hubs",   ... } }
+#   Out: _wireless_ips = ["198.18.5.103"]
+- name: "Identify wireless devices at this site | {{ site_entry.key }}"
+  set_fact:
+    _wireless_ips: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for ip in site_entry.value -%}
+        {%- if ip in _device_uuid_map -%}
+          {%- set fam = _device_uuid_map[ip].family | default('') -%}
+          {%- if wireless_family_markers | select('in', fam) | list | length > 0 -%}
+            {%- set ns.result = ns.result + [ip] -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: "--DEBUG-- Wireless devices at this site | {{ site_entry.key }}"
+  when: catc_debug | default(false) | bool
+  debug:
+    var: _wireless_ips
+
 - name: "Build provision and re-provision payloads | {{ site_entry.key }}"
   set_fact:
     _provision_payload: >-
@@ -262,7 +299,7 @@
       {%- for ip in site_entry.value -%}
         {%- if ip in _device_uuid_map -%}
           {%- set d = _device_uuid_map[ip] -%}
-          {%- if 'Wireless' not in (d.family | default(''))
+          {%- if ip not in _wireless_ips
                and d.uuid not in _already_provisioned_ids -%}
             {%- set ns.result = ns.result + [{'networkDeviceId': d.uuid, 'siteId': _site_uuid}] -%}
           {%- endif -%}
@@ -274,7 +311,7 @@
       {%- for ip in site_entry.value -%}
         {%- if ip in _device_uuid_map -%}
           {%- set d = _device_uuid_map[ip] -%}
-          {%- if 'Wireless' not in (d.family | default(''))
+          {%- if ip not in _wireless_ips
                and d.uuid in _already_provisioned_ids
                and (force_reprovision | default(false) | bool) -%}
             {%- set ns.result = ns.result + [{'id': _already_provisioned_record_map[d.uuid], 'networkDeviceId': d.uuid, 'siteId': _site_uuid}] -%}
@@ -287,7 +324,7 @@
       {%- for ip in site_entry.value -%}
         {%- if ip in _device_uuid_map -%}
           {%- set d = _device_uuid_map[ip] -%}
-          {%- if 'Wireless' not in (d.family | default(''))
+          {%- if ip not in _wireless_ips
                and d.uuid in _already_provisioned_ids
                and not (force_reprovision | default(false) | bool) -%}
             {%- set ns.result = ns.result + [ip] -%}
@@ -295,15 +332,7 @@
         {%- endif -%}
       {%- endfor -%}
       {{ ns.result }}
-    _skipped_wireless_ips: >-
-      {%- set ns = namespace(result=[]) -%}
-      {%- for ip in site_entry.value -%}
-        {%- if ip in _device_uuid_map
-             and 'Wireless' in (_device_uuid_map[ip].family | default('')) -%}
-          {%- set ns.result = ns.result + [ip] -%}
-        {%- endif -%}
-      {%- endfor -%}
-      {{ ns.result }}
+    _skipped_wireless_ips: "{{ _wireless_ips }}"
 
 - name: "Report skipped (already provisioned) devices | {{ site_entry.key }}"
   when: _skipped_ips | length > 0
@@ -312,13 +341,14 @@
       Skipping {{ _skipped_ips | length }} already-provisioned device(s)
       (set force_reprovision=true to override): {{ _skipped_ips | join(', ') }}
 
-- name: "Report wireless controllers deferred to the wireless pass | {{ site_entry.key }}"
+- name: "Report wireless devices deferred to the later passes | {{ site_entry.key }}"
   when: _skipped_wireless_ips | length > 0
   debug:
     msg: >-
-      Deferring {{ _skipped_wireless_ips | length }} wireless controller(s) to
-      the wireless provision pass (sda/provisionDevices returns NCWL10092
-      without a wireless role): {{ _skipped_wireless_ips | join(', ') }}
+      Deferring {{ _skipped_wireless_ips | length }} wireless device(s) —
+      sda/provisionDevices returns NCWL10092 without a wireless role, so
+      controllers go to the wireless pass and access points to the AP pass,
+      both via provision_workflow_manager: {{ _skipped_wireless_ips | join(', ') }}
 
 - name: "--DEBUG-- Provision payload | {{ site_entry.key }}"
   when: catc_debug | default(false) | bool
@@ -537,7 +567,7 @@
     _status: >-
       {%- if not _any_submitted | bool and (_skipped_wireless_ips | default([]) | length > 0)
            and (_skipped_ips | default([]) | length == 0) -%}
-        DEFERRED — wireless controller(s) handled by the wireless pass
+        DEFERRED — wireless device(s) handled by the later passes
       {%- elif not _any_submitted | bool -%}
         SKIPPED — all devices already provisioned at this site
       {%- elif _is_error | bool -%}
@@ -553,7 +583,7 @@
       - "│ New (POST)    : {{ _provision_payload | length }} device(s)"
       - "│ Reprov (PUT)  : {{ _reprovision_payload | length }} device(s)"
       - "│ Skipped       : {{ _skipped_ips | length }} device(s) — already provisioned"
-      - "│ Wireless defer: {{ _skipped_wireless_ips | default([]) | length }} device(s) — WLC provisioned by the wireless pass"
+      - "│ Wireless defer: {{ _skipped_wireless_ips | default([]) | length }} device(s) — provisioned by the wireless/AP passes"
       - "│ POST task ID  : {{ _provision_task_id if _provision_task_id else 'N/A' }}"
       - "│ PUT task ID   : {{ _reprovision_task_id if _reprovision_task_id else 'N/A' }}"
       - "│ Progress      : {{ _progress }}"
