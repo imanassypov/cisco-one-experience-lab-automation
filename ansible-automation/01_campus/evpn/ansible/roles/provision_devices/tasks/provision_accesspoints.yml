@@ -4,12 +4,12 @@
 # Names each access point and assigns it to the site whose APs the controller
 # provisioned in stage 8.1 manages.
 #
-# Site assignment is the operative step. Catalyst Center has no notion of
-# handing an AP a policy tag or a site tag directly, and no module exposes
-# either. Tags are derived: the AP is assigned to a site, the wireless profile
-# from stage 07 is bound to that site, and Catalyst Center generates the site
-# and policy tags and pushes them when the controller is provisioned. An AP
-# with no site sits on default-site-tag and default-policy-tag, which map no
+# Catalyst Center never provisions an access point directly, and nothing lets
+# you hand one a policy tag or a site tag. Both are derived, in two moves: the
+# AP is assigned to a site, then the controller managing that site is
+# re-provisioned, at which point it takes the AP over and pushes the tags that
+# the wireless profile bound to that site implies. An AP that has had neither
+# done to it sits on default-site-tag and default-policy-tag, which map no
 # WLAN, so it broadcasts nothing.
 #
 # Two modules, because neither does the whole job in a non-fabric deployment:
@@ -304,19 +304,104 @@
     label: "{{ item.key }}"
   register: _ap_site_info_results
 
+# assign_device_to_site is a thin API wrapper and always reports changed=false,
+# so it cannot tell us whether anything moved. Step F needs to know, because it
+# reboots the AP. Reading current membership first gives a real answer, and
+# skipping an assignment that would be a no-op keeps re-runs quiet.
+#
+# The AP's own network-device record is no help here: siteHierarchy stays null
+# for a Unified AP even once it is a member, so membership has to be read from
+# the site side.
+- name: Read current site membership
+  when: _ap_declared | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/site-member/{{ item.dnac_response.response[0].id }}/member?memberType=networkdevice"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ _ap_site_info_results.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  register: _ap_member_results
+
+# Example - the AP is not yet a member, the three switches are
+#   In : _ap_site_map = { "Global/NORTH CAROLINA/Durham/Site-105/MAIN":
+#                           ["10.10.255.101"] }
+#        membership for that site = 172.30.255.1-3
+#   Out: _ap_pending = { "Global/NORTH CAROLINA/Durham/Site-105/MAIN":
+#                          ["10.10.255.101"] }
+#
+# Example - a re-run, with the AP already a member
+#   Out: _ap_pending = {}   → Step E assigns nothing and Step F reboots nothing
+- name: Determine which assignments are still pending
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_pending: >-
+      {%- set ns = namespace(result={}) -%}
+      {%- for r in (_ap_member_results.results | default([])) -%}
+        {%- set path = r.item.item.key -%}
+        {%- set members = r.json.response | default([])
+              | map(attribute='managementIpAddress') | list -%}
+        {%- set missing = _ap_site_map[path] | difference(members) -%}
+        {%- if missing | length > 0 -%}
+          {%- set ns.result = ns.result | combine({path: missing}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Pending site assignments
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+  ansible.builtin.debug:
+    var: _ap_pending
+
+# The takeover in Step F is what actually gets the tags onto the AP, and it
+# normally runs only when Step E moved something, so that a re-run does not
+# reboot the APs for nothing.
+#
+# force_reprovision overrides that, for the case where the two halves have come
+# apart: the AP is already a site member but the controller was never
+# re-provisioned afterwards, so it still holds default tags and no amount of
+# re-running will fix it on its own. This is the same flag that drives
+# force_provisioning in stage 8.1, so one switch covers both.
+- name: Decide whether the controller needs re-provisioning
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_takeover_needed: >-
+      {{ (_ap_pending | length > 0) or (force_reprovision | default(false) | bool) }}
+
+- name: Report that every access point is already in its site
+  when:
+    - _ap_declared | length > 0
+    - _ap_pending | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      All {{ _ap_name_config | length }} access point(s) already belong to
+      their site, so nothing was assigned.
+      {{ 'Re-provisioning the controller anyway because force_reprovision is set.'
+         if _ap_takeover_needed | bool
+         else 'The controller is left alone, so the APs are not rebooted. If an
+               AP is a member but still shows default tags, re-run with
+               -e force_reprovision=true to hand it over.' }}
+
 # Example (one loop iteration)
-#   In : item.dnac_response.response[0].id = "d4e5f6a7-..."
+#   In : item.dnac_response.response[0].id = "919ce2a1-39b7-4c1f-a7ec-c76e50170ab7"
 #        item.item.key = "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
-#        _ap_site_map[item.item.key] = ["10.10.255.101"]
-#   Out: module args sent = { "siteId": "d4e5f6a7-...",
+#        _ap_pending[item.item.key] = ["10.10.255.101"]
+#   Out: module args sent = { "siteId": "919ce2a1-...",
 #                             "device": [ { "ip": "10.10.255.101" } ] }
 - name: Assign access points to their site
-  when: _ap_declared | length > 0
+  when:
+    - _ap_declared | length > 0
+    - item.item.key in _ap_pending
   cisco.dnac.assign_device_to_site:
     siteId: "{{ item.dnac_response.response[0].id }}"
     device: >-
       {%- set ns = namespace(result=[]) -%}
-      {%- for ip in _ap_site_map[item.item.key] -%}
+      {%- for ip in _ap_pending[item.item.key] -%}
         {%- set ns.result = ns.result + [{'ip': ip}] -%}
       {%- endfor -%}
       {{ ns.result }}
@@ -332,11 +417,92 @@
   ansible.builtin.debug:
     var: _ap_assignment_results
 
-# ── Step F: Summary ───────────────────────────────────────────────────────
+# ── Step F: Hand the access points to their controller ────────────────────
 #
-# Catalyst Center pushes the derived tags when the controller is next
-# provisioned, so a first run that assigns a site leaves the AP on default
-# tags until stage 8.1 runs again with force_reprovision=true.
+# Catalyst Center never provisions an AP directly. The controller takes one
+# over when it is re-provisioned and finds a new AP in one of its managed AP
+# locations, and that is also when the derived policy and site tags reach the
+# device. So a site assignment on its own leaves the AP where it was, on
+# default tags.
+#
+# force_provisioning is required: without it provision_workflow_manager
+# short-circuits on "already provisioned" and never looks at what changed
+# underneath. That is why _ap_takeover_needed gates this — normally only when
+# Step E assigned something, since forcing on every run would reboot the APs
+# every run, and additionally whenever force_reprovision is set.
+#
+# Only controllers whose managed AP locations cover a site one of these APs
+# belongs to are re-provisioned. _wlc_provision_config comes from stage 8.1 and
+# is absent when wireless_provision_enabled is false, leaving nothing to force.
+#
+# Example
+#   In : _ap_site_map          = { "Global/NORTH CAROLINA/Durham/Site-105/MAIN": [...] }
+#        _wlc_provision_config = [ { "management_ip_address": "198.18.5.103",
+#                                    "site_name_hierarchy": ".../DC-Site-10/MAIN",
+#                                    "managed_ap_locations":
+#                                      ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
+#                                    "force_provisioning": false, ... } ]
+#   Out: _ap_wlc_takeover = [ the same entry with force_provisioning: true ]
+- name: Build controller takeover config
+  when:
+    - _ap_declared | length > 0
+    - _ap_takeover_needed | bool
+  ansible.builtin.set_fact:
+    _ap_wlc_takeover: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for wlc in _wlc_provision_config | default([]) -%}
+        {%- set covered = wlc.managed_ap_locations | default([])
+              | intersect(_ap_site_map.keys() | list) -%}
+        {%- if covered | length > 0 -%}
+          {%- set ns.result = ns.result
+                + [wlc | combine({'force_provisioning': true})] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Controller takeover config
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+    - _ap_takeover_needed | bool
+  ansible.builtin.debug:
+    var: _ap_wlc_takeover
+
+# A newly assigned AP with no controller covering its site would stay on
+# default tags however many times this runs, which is worth failing on rather
+# than reporting success.
+- name: Assert a controller manages every site an access point joined
+  when:
+    - _ap_declared | length > 0
+    - _ap_takeover_needed | bool
+  ansible.builtin.assert:
+    that: _ap_wlc_takeover | length > 0
+    fail_msg: >-
+      Access points belong to {{ _ap_site_map.keys() | list | join(', ') }},
+      but no controller lists any of those paths in managed_ap_locations, so
+      nothing will take the APs over. Add the path to wireless_controller in
+      settings.json, and check wireless_provision_enabled is true.
+    success_msg: >-
+      {{ _ap_wlc_takeover | length }} controller(s) to re-provision.
+
+- name: Re-provision controllers to take over the new access points
+  when:
+    - _ap_declared | length > 0
+    - _ap_takeover_needed | bool
+  cisco.dnac.provision_workflow_manager:
+    state: merged
+    config: "{{ _ap_wlc_takeover }}"
+  register: _ap_takeover_result
+
+- name: --DEBUG-- Controller takeover result
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+    - _ap_takeover_needed | bool
+  ansible.builtin.debug:
+    var: _ap_takeover_result
+
+# ── Step G: Summary ───────────────────────────────────────────────────────
 - name: Access point provisioning summary
   when: _ap_declared | length > 0
   ansible.builtin.debug:
@@ -346,8 +512,11 @@
          + (_ap_name_config | map(attribute='ap_name')
             | zip(_ap_name_config | map(attribute='mac_address'))
             | map('join', ' → ') | map('regex_replace', '^', '│   ') | list)
-         + ['│ Assigned to   : ' + (_ap_site_map.keys() | list | join(', '))]
+         + ['│ Site          : ' + (_ap_site_map.keys() | list | join(', '))]
          + ['│ Skipped       : ' + (_ap_unresolved | join(', ') | default('none', true))]
          + ['│ Named changed : ' + (_ap_name_result.changed | default(false)) | string]
-         + ['│ Assign changed: ' + (_ap_assignment_results.changed | default(false)) | string]
+         + ['│ Newly joined  : ' + (_ap_pending.values() | flatten | join(', ')
+                                    | default('none — already members', true))]
+         + ['│ WLC takeover  : ' + (_ap_takeover_result.msg
+                                    | default('not needed') | string)]
          + ['└─────────────────────────────────────────────────────────────────┘'] }}
