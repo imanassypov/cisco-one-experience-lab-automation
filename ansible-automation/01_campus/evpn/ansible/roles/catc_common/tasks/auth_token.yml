@@ -3,7 +3,7 @@
 # catc_common / auth_token.yml
 # =============================================================================
 # Obtains a short-lived Catalyst Center JWT for raw REST calls (uri module).
-# Used by stages 9–10 (provision, deploy composite) and anywhere the collection
+# Used by stages 8–9 (provision, deploy composite) and anywhere the collection
 # module cannot express the required API (async 202 bodies, composite payloads).
 #
 # Credentials: catc_username / catc_password from Lab Topology/lab_access.yml.

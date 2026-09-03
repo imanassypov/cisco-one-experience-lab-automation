@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 07_template_sync.yml  —  Pipeline stage 07
+# 06_template_sync.yml  —  Pipeline stage 06
 # =============================================================================
 # Pulls the Jinja2 fabric templates and composite YAML from GitHub or from a
 # local directory and pushes them into Catalyst Center Template Programmer
@@ -40,14 +40,14 @@
 #                     unauthenticated
 #   start_timestamp — run timestamp used in template comments / diff headers
 #   In Catalyst Center: one Template Programmer project per subfolder, each
-#   containing versioned templates + composites referenced by stage 08.
+#   containing versioned templates + composites referenced by stage 07.
 #
 # gather_facts is true here — ansible_date_time supplies start_timestamp.
 # Module: cisco.dnac.template_workflow_manager
 #
-# Run: ansible-playbook playbooks/07_template_sync.yml
-#      ansible-playbook playbooks/07_template_sync.yml -e template_source=local
-#      ansible-playbook playbooks/07_template_sync.yml -e template_source=local \
+# Run: ansible-playbook playbooks/06_template_sync.yml
+#      ansible-playbook playbooks/06_template_sync.yml -e template_source=local
+#      ansible-playbook playbooks/06_template_sync.yml -e template_source=local \
 #        -e template_local_root=/path/to/templates
 # =============================================================================
 - name: Template Synchronization from Git using Template Workflow Manager

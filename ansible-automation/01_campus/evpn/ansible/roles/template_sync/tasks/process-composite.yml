@@ -9,7 +9,7 @@
 
 ---
 # =============================================================================
-# template_sync / process-composite.yml  —  Stage 07: build one composite config
+# template_sync / process-composite.yml  —  Stage 06: build one composite config
 # =============================================================================
 # Turns one composite definition .yml fetched from GitHub into a
 # template_workflow_manager config entry. Included once per element of
@@ -17,7 +17,7 @@
 # have already been queued — CatC rejects a composite whose members do not exist.
 #
 # A composite carries no content of its own; it is a named ordered list of
-# member templates (containing_templates), which is what stage 10 deploys.
+# member templates (containing_templates), which is what stage 09 deploys.
 #
 # Pre:  composite_file (loop var): { name, path, content }
 #         content is YAML: { composite_name (optional),
@@ -87,7 +87,7 @@
 #   Out: composite_name           = "SITE-FABRIC-DEPLOY.j2"
 #        composite_template_names = ["FABRIC-VRF.j2", "FABRIC-LOOPBACKS.j2", "FABRIC-EVPN.j2"]
 # The .yml -> .j2 swap matters: Catalyst Center stores the composite as a JINJA
-# template, and stage 10 looks it up by the .j2 name.
+# template, and stage 09 looks it up by the .j2 name.
 - name: Extract composite metadata
   set_fact:
     composite_name: "{{ composite_def.composite_name | default((composite_file.name | regex_replace('\\.yml$', '.j2'))) }}"
@@ -156,7 +156,7 @@
 #        ]
 # The stubs are member references, not definitions - the real templates were
 # already pushed by process-template.yml. Order is preserved, and it is the
-# order stage 10 deploys the members in.
+# order stage 09 deploys the members in.
 - name: Build containing templates list
   set_fact:
     containing_templates_list: "{{ containing_templates_list | default([]) + [{'name': item, 'composite': false, 'project_name': project_name, 'description': 'description','language': 'JINJA', 'device_types': default_device_types,'software_type': default_software_type, 'software_variant': default_software_variant, 'templateParams': [], 'tags': []}] }}"

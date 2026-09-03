@@ -44,13 +44,12 @@ Stages, in order, from `ansible/playbooks/`:
 | `03_credentials.yml` | Device credentials in CatC |
 | `04_device_discovery.yml` | Discovery |
 | `05_assign_to_site.yml` | Assign devices to sites |
-| `06.*` | SWIM (optional; not required to sync templates) |
-| `07_template_sync.yml` | Publish `.j2` into CatC projects; build composite `BGP-EVPN-BUILD` |
-| `08_network_profile.yml` | Network profile |
-| `09_provision_devices.yml` | Provision (`DeployTemplate` still false; do not run until asked) |
-| `10_deploy_composite.yml` | Deploy composite (do not run until asked) |
+| `06_template_sync.yml` | Publish `.j2` into CatC projects; build composite `BGP-EVPN-BUILD` |
+| `07_network_profile.yml` | Network profile (switching, wireless design, wireless) |
+| `08_provision_devices.yml` | Provision wired devices, then wireless controllers |
+| `09_deploy_composite.yml` | Deploy composite (do not run until asked) |
 
-Safe to inspect after the repo-root `.vault` can decrypt `Lab Topology/lab_access.yml`: syntax-check or a dry read of `07_template_sync.yml`. Real CatC runs stay on the script server (`cisco.catalystcenter` / `cisco.dnac`). Install collections from `ansible/collections/requirements.yml` into `~/venv` if a stage reports a missing collection.
+Safe to inspect after the repo-root `.vault` can decrypt `Lab Topology/lab_access.yml`: syntax-check or a dry read of `06_template_sync.yml`. Real CatC runs stay on the script server (`cisco.catalystcenter` / `cisco.dnac`). Install collections from `ansible/collections/requirements.yml` into `~/venv` if a stage reports a missing collection.
 
 ### Vault
 
@@ -68,12 +67,12 @@ Do not commit `.vault` or an unencrypted `lab_access.yml`.
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook playbooks/07_template_sync.yml
+ansible-playbook playbooks/06_template_sync.yml
 ```
 
 ## Post-deploy verify
 
-These playbooks do **not** build the fabric. After CatC has provisioned Site 105, use them for TCP/22 and `ios_command` evidence.
+This playbook does **not** build the fabric. After CatC has provisioned Site 105, use it for `ios_command` evidence.
 
 | Inventory name | Role | SSH mgmt | CatC / Loopback0 |
 | --- | --- | --- | --- |
@@ -83,13 +82,11 @@ These playbooks do **not** build the fabric. After CatC has provisioned Site 105
 
 | Playbook | Purpose |
 | --- | --- |
-| `playbooks/12_verify_preflight.yml` | TCP/22 to all three switches |
-| `playbooks/13_verify_collect_facts.yml` | Version, interfaces, OSPF, BGP EVPN, NVE, VRF, VLAN → `ansible/evidence/` |
+| `playbooks/10_verify_collect_facts.yml` | Version, interfaces, OSPF, BGP EVPN, NVE, VRF, VLAN → `ansible/evidence/` |
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook playbooks/12_verify_preflight.yml
-ansible-playbook playbooks/13_verify_collect_facts.yml
+ansible-playbook playbooks/10_verify_collect_facts.yml
 ```
 
 `ansible/evidence/` is local output and is gitignored.

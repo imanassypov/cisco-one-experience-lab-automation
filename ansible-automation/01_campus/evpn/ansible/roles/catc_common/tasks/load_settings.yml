@@ -2,7 +2,7 @@
 # =============================================================================
 # catc_common / load_settings.yml
 # =============================================================================
-# Shared prerequisite for stages 1–5 and 8–10. Loads the single source of truth
+# Shared prerequisite for stages 1–5 and 7–9. Loads the single source of truth
 # (Settings/settings.json) into play scope so downstream roles can iterate
 # settings_data.project without re-reading the file.
 #
@@ -115,18 +115,6 @@
 #                    "DeployTemplate": null
 #                  }
 #                ]
-#              },
-#              "swim": {
-#                "image_server_base_url":    "http://198.18.134.28/images",
-#                "device_family_identifier": "Cisco Catalyst 9000 UADP 8 Port Virtual Switch",
-#                "device_family_name":       "Switches and Hubs",
-#                "device_series_name":       "Cisco Catalyst 9000 Series Virtual Switches",
-#                "device_role":              "ALL",
-#                "upgrade_image":            "cat9kv-universalk9.BLD_V262_THROTTLE_LATEST_20260529_003538.SSA.bin",
-#                "rollback_image":           "cat9kv-universalk9.17.15.03.SPA.bin",
-#                "activation": { "device_upgrade_mode":  "install",
-#                                "distribute_if_needed": true,
-#                                "schedule_validate":    false }
 #              }
 #            }
 #          ]

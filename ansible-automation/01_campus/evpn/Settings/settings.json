@@ -381,20 +381,6 @@
                     }
                 ]
             },
-            "swim": {
-                "image_server_base_url": "http://198.18.134.12/images",
-                "device_family_identifier": "Cisco Catalyst 9300 Switch",
-                "device_family_name": "Switches and Hubs",
-                "device_series_name": "Cisco Catalyst 9300 Series Switches",
-                "device_role": "ALL",
-                "upgrade_image": "",
-                "rollback_image": "",
-                "activation": {
-                    "device_upgrade_mode": "install",
-                    "distribute_if_needed": true,
-                    "schedule_validate": false
-                }
-            },
             "access_points": [
                 {
                     "mac_address": "{AP1_MAC}",

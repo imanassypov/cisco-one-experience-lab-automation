@@ -9,7 +9,7 @@
 
 ---
 # =============================================================================
-# template_sync / process-subfolder.yml  —  Stage 07: sync one repo subfolder
+# template_sync / process-subfolder.yml  —  Stage 06: sync one repo subfolder
 # =============================================================================
 # Syncs a single repository subfolder into its own Catalyst Center Template
 # Programmer project. Included once per entry of git_repo_subfolders by

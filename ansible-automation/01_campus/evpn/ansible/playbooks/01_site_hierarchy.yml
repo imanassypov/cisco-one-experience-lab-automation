@@ -22,7 +22,7 @@
 #   floor_info_map     — site path → {rf_model, width, length, height, floor_number}
 #   all_site_paths     — depth-sorted list of every path to touch
 #   site_id_map        — site path → CatC site UUID (updated after each CREATE)
-#   In Catalyst Center: the area/building/floor tree consumed by stages 02–10.
+#   In Catalyst Center: the area/building/floor tree consumed by stages 02–09.
 #
 # Play var: state = merged (default) | deleted
 # Play var: site_hierarchy_update_existing = false (default).

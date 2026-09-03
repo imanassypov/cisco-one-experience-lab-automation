@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# template_sync / main.yml  —  Pipeline stage 7.0
+# template_sync / main.yml  —  Pipeline stage 6.0
 # =============================================================================
 # Pulls Jinja2 templates and composite YAML from GitHub or from a local
 # directory, pushes them into Catalyst Center Template Programmer projects via

@@ -4,7 +4,7 @@
 #
 # settings.json carries {TOKEN} placeholders; the values below fill them in at
 # run time. Override any of them for a single run instead of editing this file:
-#   ansible-playbook playbooks/08_network_profile.yml -e lab_pod_id=7
+#   ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 
 # ── {POD} ────────────────────────────────────────────────────────────────────
 # dCloud POD number from the lab printout. Ask a proctor if you cannot find it.

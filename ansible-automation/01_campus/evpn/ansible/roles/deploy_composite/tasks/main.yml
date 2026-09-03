@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# deploy_composite / main.yml  —  Pipeline stage 10.0
+# deploy_composite / main.yml  —  Pipeline stage 9.0
 # =============================================================================
 # Deploys Day-N composite configuration templates to target devices listed in
 # settings.json network_profile.DayNTemplateNames where DeployTemplate=true.

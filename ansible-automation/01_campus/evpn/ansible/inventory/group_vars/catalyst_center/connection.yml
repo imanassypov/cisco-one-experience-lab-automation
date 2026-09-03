@@ -1,5 +1,5 @@
 ---
-# Catalyst Center connection — cisco.catalystcenter modules (stages 1, 2, 6)
+# Catalyst Center connection — cisco.catalystcenter modules (stages 1, 2)
 # Credentials come from Lab Topology/lab_access.yml (vault), key "Catalyst Center".
 catc_username: "{{ lab_access['Catalyst Center'].username }}"
 catc_password: "{{ lab_access['Catalyst Center'].password }}"
@@ -12,7 +12,7 @@ catc_version: "3.1.3.0"
 catc_verify: false
 catc_debug: false
 
-# Catalyst Center connection — cisco.dnac modules (stages 3-5, 7-10)
+# Catalyst Center connection — cisco.dnac modules (stages 3-5, 6-9)
 dnac_host: cat-center.corp.pseudoco.com
 dnac_port: 443
 dnac_version: "3.1.3.0"
@@ -20,22 +20,6 @@ dnac_verify: false
 dnac_debug: false
 dnac_log: true
 dnac_log_level: INFO
-
-# SWIM-specific cisco.catalystcenter params (stage 6)
-catalystcenter_host: cat-center.corp.pseudoco.com
-catalystcenter_username: "{{ catc_username }}"
-catalystcenter_password: "{{ catc_password }}"
-catalystcenter_port: "443"
-catalystcenter_version: "3.1.3.0"
-catalystcenter_verify: false
-catalystcenter_debug: false
-catalystcenter_log: true
-catalystcenter_log_level: INFO
-catalystcenter_log_append: true
-catalystcenter_log_file_path: "{{ playbook_dir }}/../logs/catc-swim.log"
-validate_response_schema: true
-catalystcenter_api_task_timeout: 3600
-catalystcenter_task_poll_interval: 30
 
 # Central data model — relative to playbooks/ (resolves to evpn/Settings/)
 settings_json_path: "../../Settings/settings.json"
@@ -74,7 +58,7 @@ discovery_http_write_credentials:
     - description: HTTPS Write
       username: netadmin
 
-# Template sync / GitHub (stage 7)
+# Template sync / GitHub (stage 6)
 # template_source selects where the .j2 templates and composite YAML are read from:
 #   git   — GitHub REST API, using git_repo / git_branch / git_token below
 #   local — a directory on the machine running Ansible, rooted at template_local_root
@@ -105,7 +89,7 @@ default_device_types:
     product_series: "Cisco Catalyst 9400 Series Switches"
 catc_template_summary_maxchar: 1024
 
-# Provision devices (stage 9)
+# Provision devices (stage 8)
 force_reprovision: false
 task_poll_retries: 60
 task_poll_delay: 10
@@ -115,6 +99,6 @@ task_poll_delay: 10
 # needs to touch switches can skip it.
 wireless_provision_enabled: true
 
-# Deploy composite (stage 10)
+# Deploy composite (stage 9)
 force_push_template: true
 member_template_params: {}

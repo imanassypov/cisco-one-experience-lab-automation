@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# network_profile / main.yml  —  Pipeline stage 8.0
+# network_profile / main.yml  —  Pipeline stage 7.0
 # =============================================================================
 # Creates or updates Catalyst Center network profiles and binds them to sites.
 # Maps the settings.json network_profile block to
@@ -16,7 +16,7 @@
 # no wireless_profile key skip the wireless pass entirely.
 #
 # Prerequisites: catc_common.load_settings → settings_data
-#                Stage 7 templates synced (Day0/Day-N template names referenced)
+#                Stage 6 templates synced (Day0/Day-N template names referenced)
 # =============================================================================
 
 # Transforms the PascalCase JSON block into the string lists the switching WFM
@@ -43,7 +43,7 @@
 #          "day_n_templates": ["BGP-EVPN-BUILD.j2"]
 #        }]
 #   Only TemplateName survives — TemplateTag/Project/TemplateTarget/DeployTemplate
-#   are consumed by stage 10 (deploy composite), not by profile binding.
+#   are consumed by stage 09 (deploy composite), not by profile binding.
 #   The Day0 placeholder row has TemplateName: null, so selectattr('ne', none)
 #   empties the list and onboarding_templates is omitted from the config
 #   entirely rather than sent as [].
@@ -214,14 +214,14 @@
 #
 # Binding a profile to a site is what lets a controller manage that site's APs:
 # provisioning a WLC whose managed AP locations include an unbound site fails
-# with NCWL10001 in stage 09.
+# with NCWL10001 in stage 08.
 #
 # An explicit site_names wins over the row's own hierarchy. A wireless profile
 # is unlike a switching one here: the row that owns the controller is not
 # usually the site whose APs it serves, and it is the served site that has to
 # carry the binding. Deriving the path from the row would bind HQ-Wireless to
 # DC-Site-10 — where the C9800 lives — and leave Site-105 unbound, which is
-# what makes stage 09 fail with NCWL10001.
+# what makes stage 08 fail with NCWL10001.
 #
 # The fallback derivation repeats the switching builder above rather than
 # sharing a fact: the switching pass is live against the lab and is left
@@ -229,7 +229,7 @@
 #
 # ssid_details passes through verbatim (snake_case, 1:1 with the module
 # schema). DayNTemplateNames keeps the PascalCase shape of its switching
-# sibling so stage 10 can consume TemplateTarget/DeployTemplate later; only
+# sibling so stage 09 can consume TemplateTarget/DeployTemplate later; only
 # TemplateName survives into the profile binding.
 # Example - explicit site_names, as DC-Site-10 uses
 #   In : settings_data.project[0] = {

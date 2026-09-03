@@ -1,362 +1,233 @@
-# Getting Started — dCloud Jump Host Setup
+# Getting Started — first run of the EVPN pipeline
 
-> This file was copied from the upstream CML lab. For PseudoCo Site 105, use
-> the parent [evpn README](../README.md) and the Kali script server workflow
-> in `.cursor/rules/dev-workflow.mdc`. Do not use the jump-host IPs, `root`
-> login, or `tecops-venv` steps below.
+First-time setup. Follow these steps **in order**, once per pod. At the end you
+will be able to run the pipeline stages (`01`–`10`) against Catalyst Center.
 
-First-time setup for students. Follow these steps **in order**, once per pod. At
-the end you will be able to run the pipeline stages (`01`–`11`) from the jump
-host.
+Two machines are involved:
 
-Everything runs on the dCloud **script server** (the "jump host"), not on your
-laptop. It is the only host in the pod with reachability to both Catalyst Center
-(`198.18.129.100`) and the CML fabric API (`198.18.128.11`).
+| Machine | Role |
+|---------|------|
+| Your **Mac** | Authors the repo and bootstraps the script server. Never runs the pipeline against Catalyst Center. |
+| The **Kali script server** at `198.18.134.12` | Runs the pipeline. It is the host with reachability to Catalyst Center (`cat-center.corp.pseudoco.com`) and to the Site 105 switches. |
 
 | Step | What it does | Time |
 |------|--------------|------|
-| 1 | SSH into the jump host | 1 min |
-| 2 | Run `~/install-ansible.sh` — Python venv, Ansible, SDKs, collections | ~10 min |
-| 3 | Clone this repository | 1 min |
-| 4 | Install the CML extras the script does not cover | 2 min |
-| 5 | Create the vault password file | 1 min |
-| 6 | Create `.env` (CML + device credentials) | 2 min |
-| 7 | Create and encrypt `inventory/group_vars/catalyst_center/vault.yml` | 2 min |
-| 8 | Verify, then run stage 01 | 5 min |
+| 1 | Connect the dCloud VPN | 2 min |
+| 2 | Clone the repo and create `.vault` on the Mac | 3 min |
+| 3 | Build the Mac venv | 3 min |
+| 4 | Bootstrap the Kali script server | ~10 min |
+| 5 | Recreate `.vault` on Kali | 1 min |
+| 6 | Set your POD number and AP MACs | 2 min |
+| 7 | Verify, then run stage 01 | 5 min |
 
 ---
 
 ## Prerequisites
 
-- An active dCloud session with the **Campus BGP EVPN** lab powered on.
-- The jump host IP (`198.18.134.28` in the standard pod) and its `root` password
-  from your dCloud session details.
-- Two credentials you will be asked for later:
-  - **Catalyst Center** API user/password (`admin` / lab password).
-  - **CML** user/password (`admin` / lab password).
+- An active dCloud session for the **PseudoCo / Cisco One** lab, powered on.
+- **Cisco Secure Client / AnyConnect** credentials for that session.
+- Python 3 with the `venv` module on your Mac (Xcode CLT or `brew install python`).
+- The **lab vault password** — a single passphrase that decrypts every credential
+  in this repo. Ask a proctor if you do not have it.
 
-> **Never commit credentials.** Every file you create below (`.vault_pass`,
-> `.env`, `vault.yml`) is already in `.gitignore`. Nothing you type in this
-> guide should ever appear in a `git status` output as a new tracked file.
-
----
-
-## Step 1 — SSH into the jump host
-
-From your laptop (or the dCloud web terminal):
-
-```bash
-ssh root@198.18.134.28
-```
-
-Confirm you landed on the right box:
-
-```bash
-hostname && cat /etc/os-release | head -2
-# dcloud
-# NAME="Ubuntu"  VERSION="20.04.5 LTS (Focal Fossa)"
-```
+> **Never commit credentials.** All secrets live in one encrypted file,
+> `Lab Topology/lab_access.yml`, and the passphrase that opens it lives in
+> `.vault` at the repository root, which is gitignored. You never paste a
+> password into a playbook, an inventory file, or `settings.json`.
 
 ---
 
-## Step 2 — Run the environment installer
+## Step 1 — Connect the dCloud VPN
 
-The jump host image ships with `install-ansible.sh` already in the home
-directory. Run it from `~/`:
-
-```bash
-cd ~
-./install-ansible.sh
-```
-
-What it does:
-
-| Stage | Action |
-|-------|--------|
-| 0 | Repoints `/usr/bin/python3` at **3.8** so `apt` keeps working (the image's `apt_pkg` is built for 3.8) |
-| 1–2 | `apt-get update` and installs **Python 3.9** from the deadsnakes PPA |
-| 3 | Creates the virtualenv at **`~/tecops-venv`** and appends its activation to `~/.bashrc` |
-| 4 | Installs `ansible` 8.x (**ansible-core 2.15**) into the venv |
-| 5 | Installs `catalystcentersdk`, `dnacentersdk`, `github-clone` |
-| 6 | Installs collections into **`~/.ansible/collections`**: `cisco.catalystcenter`, `cisco.dnac`, `ansible.utils`, `community.general`, `cisco.ios`, `cisco.nxos` |
-| 7 | Checks for `~/.vault_pass` (warns if missing — we create it in Step 5) |
-| 8 | Prints the installed versions |
-
-The script is safe to re-run.
-
-Activate the venv in your **current** shell (new shells activate it
-automatically via `~/.bashrc`):
+Nothing in this lab is reachable without it. Connect Cisco Secure Client to the
+session, then confirm the script server answers:
 
 ```bash
-source ~/tecops-venv/bin/activate
+nc -z -G 5 198.18.134.12 22 && echo reachable
 ```
 
-Your prompt should now start with `(tecops-venv)`. Verify:
-
-```bash
-ansible --version | head -1
-# ansible [core 2.15.13]
-```
+If that hangs or fails, the VPN is down or the pod is still booting. Lab VMs can
+take several minutes after a session starts before SSH comes up.
 
 ---
 
-## Step 3 — Clone the repository
+## Step 2 — Clone the repository and create `.vault`
 
 ```bash
-cd ~
-git clone https://github.com/imanassypov/CatalystCenter-BGP-EVPN-VXLAN.git
+git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+cd cisco-one-experience-lab-automation
 ```
+
+`.vault` holds the **passphrase**, one bare line, no quotes. It is gitignored, so
+a fresh clone never has one — you create it on every machine that runs Ansible:
+
+```bash
+cp .vault.example .vault
+read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > .vault && unset VP
+chmod 600 .vault
+```
+
+`read -rs` keeps the passphrase off your screen and out of your shell history,
+and `printf '%s'` writes it with no trailing newline.
+
+Confirm it opens the credential map:
+
+```bash
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
+# ---
+# # Vault-encrypted lab access lookup. Single credential source for all playbooks.
+# lab_access:
+#   "script_server":
+```
+
+If that prints YAML, every playbook in the repo can authenticate. If it says
+`Decryption failed`, the passphrase in `.vault` is wrong. The
+`--vault-password-file` flag is needed here only because the repository root has
+no `ansible.cfg`; inside a collection directory the config supplies it.
+
+> **Two files, two jobs.** `.vault` is the passphrase; `Lab Topology/lab_access.yml`
+> is the encrypted `lab_access` map of hosts, usernames, and passwords. The map
+> **is** committed (encrypted); the passphrase never is. A vars plugin at
+> `ansible-automation/plugins/vars/lab_access.py` decrypts the map and injects
+> `lab_access` into every play, which is why no playbook takes a password prompt.
+
+---
+
+## Step 3 — Build the Mac venv
+
+Ansible is installed **only** into this collection's `.venv`. Do not
+`brew install ansible` or `pip install` into the system Python.
+
+```bash
+cd ansible-automation/00_scriptserver_bootstrap
+./setup-local-venv.sh
+source .venv/bin/activate
+```
+
+That installs the pins from `requirements.txt` — `ansible-core` 2.17.14,
+`paramiko`, `netaddr`, and the two Catalyst Center SDKs — the same versions the
+script server will get. Paramiko is what lets password auth work on macOS
+without `sshpass`.
+
+---
+
+## Step 4 — Bootstrap the Kali script server
+
+Run all three from `00_scriptserver_bootstrap/` with the venv active. The
+inventory targets `198.18.134.12` and reads its login from
+`lab_access.script_server`, so you are not asked for credentials.
+
+```bash
+ansible-playbook playbooks/00_preflight.yml
+ansible-playbook playbooks/01_bootstrap_script_server.yml
+ansible-playbook playbooks/02_sync_from_git.yml
+```
+
+| Playbook | What it does |
+|----------|--------------|
+| `00_preflight.yml` | Fails fast with a clear message if the VPN path or TCP/22 is down |
+| `01_bootstrap_script_server.yml` | OS packages, a venv at `~/venv` with the same pins, venv binaries on `PATH`, pinned Cisco collections and SDKs, lab DNS, and a clone of this repo at `~/cisco-one-experience-lab-automation` |
+| `02_sync_from_git.yml` | Git pull only — the fast path for later updates |
+
+Both bootstrap playbooks are safe to re-run.
+
+Lab DNS matters: `01` puts `198.18.5.102` first in `/etc/resolv.conf` (dCloud
+`198.18.128.1` as fallback) so `cat-center.corp.pseudoco.com` resolves. Without
+it, every Catalyst Center stage fails on name resolution.
+
+> `02_sync_from_git.yml` fails if the Kali tree has local modifications, which
+> happens easily after ad-hoc file copies. Commit or revert them on Kali, or
+> re-run `01`.
+
+---
+
+## Step 5 — Recreate `.vault` on the script server
+
+`.vault` is gitignored, so the clone Kali just made does not include it. Repeat
+Step 2's vault creation there, with the same passphrase:
+
+```bash
+ssh cisco@198.18.134.12
+cd ~/cisco-one-experience-lab-automation
+cp .vault.example .vault
+read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > .vault && unset VP
+chmod 600 .vault
+
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
+```
+
+Ansible is already on `PATH` from `~/venv` in an interactive shell — no
+`activate` needed.
 
 > **Working directory rule — read this once, remember it forever.**
-> Ansible only reads `ansible.cfg` from the **current** directory. This project's
-> config lives at `CICD Pipeline/ansible/ansible.cfg`, so **every** `ansible`,
-> `ansible-playbook`, `ansible-inventory`, and `ansible-vault` command in this
-> lab must be run from:
+> Ansible only reads `ansible.cfg` from the **current** directory, and that file
+> is what points at the inventory, the roles, the vars plugin, and `.vault`. Every
+> `ansible`, `ansible-playbook`, `ansible-inventory`, and `ansible-vault` command
+> for this pipeline runs from:
 >
 > ```bash
-> cd ~/CatalystCenter-BGP-EVPN-VXLAN/CICD\ Pipeline/ansible
+> cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 > ```
 >
-> Run them from anywhere else and you will get missing inventory plugins,
-> unresolved vault passwords, and interactive password prompts.
+> Run them from anywhere else and you get a missing inventory, unresolved vault
+> passwords, and interactive password prompts.
 
 ---
 
-## Step 4 — Install the pinned collections and the CML SDK
+## Step 6 — Set your POD number and AP MACs
 
-`install-ansible.sh` predates the CML dynamic inventory, so it does **not**
-install `cisco.cml` or the `virl2_client` SDK. Without them, every command
-prints:
-
-```
-[WARNING]: Failed to load inventory plugin, skipping cisco.cml.cml_inventory
-```
-
-Install both, plus the jump-host collection set:
+Every student runs the same repo against a different pod, so the values that
+differ live in one file: `inventory/group_vars/all/lab.yml`. `settings.json`
+carries `{POD}` and `{APn_MAC}` placeholders that are filled in from it at run
+time.
 
 ```bash
-cd ~/CatalystCenter-BGP-EVPN-VXLAN/CICD\ Pipeline/ansible
-source ~/tecops-venv/bin/activate
-
-pip install 'virl2_client>=2.0.0,<2.10.0'
-ansible-galaxy collection install -r collections/requirements-jumphost.yml --force
+cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+vi inventory/group_vars/all/lab.yml
 ```
-
-> **Use `requirements-jumphost.yml`, not `requirements.yml`.** The jump host venv
-> is Python 3.9, which caps ansible-core at 2.15. The default
-> `requirements.yml` targets a 2.17 control node and pulls collection releases
-> that require ansible-core 2.16+, each of which then warns
-> `Collection <name> does not support Ansible version 2.15.x`. The jump host
-> file pins the newest release of each collection that still supports 2.15.
-
-> **One warning is expected and correct:**
-> `Collection cisco.catalystcenter does not support Ansible version 2.15.13`.
-> That collection is deliberately held at 2.9.0. The newest 2.15-compatible
-> release (2.3.1) returns results under `dnac_response`, while every role here
-> reads `catalystcenter_response` — downgrading produces an empty site map and
-> stage 01 fails with `[400] NCND00067: The request body is invalid`. 2.9.0 runs
-> correctly on ansible-core 2.15 despite the declaration.
-
-> `virl2_client` is pinned below 2.10 because `cisco.cml` 1.2.0 still uses the
-> old `node.config` attribute, which 2.10 removed.
-
-Confirm:
-
-```bash
-ansible-galaxy collection list 2>&1 | grep -E 'cisco\.|ansible\.utils'
-# cisco.catalystcenter  2.9.0
-# cisco.cml             1.2.0
-# cisco.dnac            6.46.0
-# cisco.ios             9.2.0
-# cisco.nxos            9.4.0
-# ansible.utils         5.1.2
-```
-
----
-
-## Step 5 — Create the vault password file
-
-There are **two different vault files** and confusing them is the single most
-common mistake in this lab:
-
-| File | Holds | Format |
-|------|-------|--------|
-| `CICD Pipeline/.vault_pass` | The **passphrase** that locks/unlocks the vault | One bare line of text |
-| `.../group_vars/<group>/vault.yml` | The **secrets themselves** | YAML `key: value` pairs, encrypted |
-
-`ansible.cfg` points at the first one with `vault_password_file = ../.vault_pass`
-— relative to `CICD Pipeline/ansible/`, i.e. `CICD Pipeline/.vault_pass`.
-
-Create it (choose any passphrase you like — you will need it again if you ever
-re-encrypt):
-
-```bash
-cd ~/CatalystCenter-BGP-EVPN-VXLAN/CICD\ Pipeline
-
-read -rs -p 'Choose a vault passphrase: ' VP && printf '%s' "$VP" > .vault_pass && unset VP
-chmod 600 .vault_pass
-```
-
-`read -rs` keeps the passphrase off your screen and out of `~/.bash_history`,
-and `printf '%s'` writes it without a trailing newline.
-
-Verify — the file must be exactly one line and readable only by you:
-
-```bash
-ls -l .vault_pass && wc -l .vault_pass
-# -rw------- 1 root root 11 ... .vault_pass
-# 0 .vault_pass          ← 0 means "no trailing newline", which is correct
-```
-
-> `install-ansible.sh` also mentions `~/.vault_pass`. That path is for the
-> standalone TECOPS playbooks, **not** this repo. If you already created it and
-> want to use the same passphrase, link it instead of retyping:
-> `ln -sf ~/.vault_pass "$HOME/CatalystCenter-BGP-EVPN-VXLAN/CICD Pipeline/.vault_pass"`
-
----
-
-## Step 6 — Create `.env`
-
-`.env` carries the non-vault credentials — CML API, fabric device passwords, and
-the jump host password. It sits next to `.vault_pass`:
-
-```bash
-cd ~/CatalystCenter-BGP-EVPN-VXLAN/CICD\ Pipeline
-cp .env.example .env
-chmod 600 .env
-vi .env
-```
-
-Fill in at minimum:
 
 | Variable | Value |
 |----------|-------|
-| `IOSXE_PASS` | Fabric device `net-admin` password (stage 11 backups) |
-| `CML_PASSWORD` | CML `admin` password |
-| `CML_HOST` / `CML_USERNAME` / `CML_LAB` | Already correct for the standard pod |
+| `lab_pod_id` | Your dCloud POD number from the lab printout. Zero-padded to two digits, so pod 7 yields SSID `PSEUDOCO-POD07`. The padding is not cosmetic — the SSID must match a pre-configured group policy on the WLC. |
+| `lab_ap_macs` | Ethernet MAC of each access point in join order, colon-separated. List only the APs your pod actually has — `settings.json` always carries two AP entries, and the one whose `{APn_MAC}` finds no match stays unresolved and is skipped rather than sent to Catalyst Center as a bad MAC. Use the Ethernet MAC from `show ap summary`, not the Base Radio MAC. |
 
-Load it into your shell. **Ansible does not read `.env` by itself** — the CML
-inventory plugin reads these as environment variables:
+To try a different pod for one run without editing the file:
 
 ```bash
-set -a; . ./.env; set +a
+ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 ```
 
-Re-run that line in every new shell (or add it to `~/.bashrc`).
-
-> Values containing spaces **must** be quoted, e.g. `CML_LAB="BGP EVPN Campus"`.
-> Unquoted, `set -a; . ./.env` fails with `EVPN: command not found`.
+> Unlike `.vault`, `lab.yml` **is** tracked in git, so your edit shows up in
+> `git status` and will follow a `git pull` into a conflict. It holds no
+> secrets — a pod number and AP MACs only.
 
 ---
 
-## Step 7 — Create and encrypt the Catalyst Center vault
+## Step 7 — Verify, then run stage 01
 
-This is the file every playbook loads via `vars_files`. It must be a **YAML
-mapping**, never a bare password string.
-
-```bash
-cd ~/CatalystCenter-BGP-EVPN-VXLAN/CICD\ Pipeline/ansible
-
-cp inventory/group_vars/catalyst_center/vault.yml.example \
-   inventory/group_vars/catalyst_center/vault.yml
-
-vi inventory/group_vars/catalyst_center/vault.yml
-```
-
-The contents must look exactly like this — two keys, each `name: value`:
-
-```yaml
----
-catc_username: admin
-catc_password: <your Catalyst Center password>
-
-# Optional — only needed for stage 07 (GitHub template sync)
-# git_token: <github personal access token>
-```
-
-Now encrypt it. Because you are inside `CICD Pipeline/ansible`, `ansible.cfg` is
-picked up and the passphrase is read from `../.vault_pass` — you will **not** be
-prompted:
-
-```bash
-ansible-vault encrypt inventory/group_vars/catalyst_center/vault.yml
-# Encryption successful
-```
-
-Confirm it is encrypted and still decodes to a mapping:
-
-```bash
-head -1 inventory/group_vars/catalyst_center/vault.yml
-# $ANSIBLE_VAULT;1.1;AES256
-
-ansible-vault view inventory/group_vars/catalyst_center/vault.yml
-# catc_username: admin
-# catc_password: ...
-```
-
-To change a value later, edit in place — this decrypts, opens `$EDITOR`, and
-re-encrypts in one step:
-
-```bash
-ansible-vault edit inventory/group_vars/catalyst_center/vault.yml
-```
-
-### Optional group vaults
-
-Only needed for the SWIM and YANG Suite stages. Same pattern:
-
-```bash
-cp inventory/group_vars/image_servers/vars.yml.example  inventory/group_vars/image_servers/vars.yml
-cp inventory/group_vars/image_servers/vault.yml.example inventory/group_vars/image_servers/vault.yml
-ansible-vault encrypt inventory/group_vars/image_servers/vault.yml
-
-cp inventory/group_vars/yangsuite_servers/vars.yml.example  inventory/group_vars/yangsuite_servers/vars.yml
-cp inventory/group_vars/yangsuite_servers/vault.yml.example inventory/group_vars/yangsuite_servers/vault.yml
-ansible-vault encrypt inventory/group_vars/yangsuite_servers/vault.yml
-```
-
----
-
-## Step 8 — Verify, then run stage 01
-
-Every new shell needs these three lines:
-
-```bash
-source ~/tecops-venv/bin/activate
-cd ~/CatalystCenter-BGP-EVPN-VXLAN/CICD\ Pipeline && set -a && . ./.env && set +a
-cd ansible
-```
-
-Check the inventory resolves — CML groups appearing means the plugin, the SDK,
-and your `.env` are all working:
+From the `ansible/` directory, check the inventory resolves:
 
 ```bash
 ansible-inventory --graph
 ```
 
-Expected (abbreviated):
+Expected — two groups and nothing else:
 
 ```
 @all:
   |--@catalyst_center:
   |  |--catalyst_center_api
-  |--@iosxe:
-  |  |--@cat9000v-uadp:
-  |  |  |--leaf1
-  |  |  |--spine1
-  ...
+  |--@campus_evpn:
+  |  |--@evpn_leaves:
+  |  |  |--Site_105-Leaf1
+  |  |  |--Site_105-Leaf2
+  |  |--@evpn_border_spine:
+  |  |  |--Site_105-Border-Spine
 ```
 
-Three messages are normal and can be ignored:
-
-| Message | Why |
-|---------|-----|
-| `SSL Verification disabled` | `validate_certs: "no"` — CML uses a self-signed certificate |
-| `'Node.config' is deprecated` | `virl2_client` 2.9.x with `cisco.cml` 1.2.0, which still reads the old attribute. The `<2.10.0` pin is deliberate — 2.10 removes it and breaks the plugin |
-| `Found both group and host with same name: dhcp-server` | A CML node label matches a CML tag. Only matters if you `--limit dhcp-server` |
-| `Collection cisco.catalystcenter does not support Ansible version 2.15.x` | 2.9.0 is pinned on purpose — see Step 4 |
-
-Anything starting with `Failed to parse` is a real error — see Troubleshooting.
+`catalyst_center` is `localhost` driving the Catalyst Center REST API and is the
+target of stages `01`–`09`. `campus_evpn` is the three Site 105 switches over
+SSH, used only by stage `10`.
 
 Then run the first stage:
 
@@ -368,51 +239,78 @@ Continue with the stage order in [README.md](README.md#pipeline-order).
 
 ---
 
+## Collections
+
+`01_bootstrap_script_server.yml` installs the pinned Cisco collections into
+`~/venv`, so you normally never run `ansible-galaxy` by hand. If a stage reports
+a missing collection:
+
+```bash
+ansible-galaxy collection install -r collections/requirements.yml
+```
+
+| File | Target |
+|------|--------|
+| `collections/requirements.yml` | The script server and the Mac — ansible-core 2.17 |
+| `collections/requirements-jumphost.yml` | A Python 3.9 host capped at ansible-core 2.15. Each pin is the newest release that still admits 2.15. |
+
+`cisco.catalystcenter` must stay at **2.4.0 or newer** on either file. Older
+releases return results under `dnac_response` while every role here reads
+`catalystcenter_response`, which silently produces an empty site map.
+
+---
+
 ## Troubleshooting
 
-Add `-e catc_debug=true` to any Catalyst Center stage to print the full HTTP
-request and response for each API call.
+Add `-e catc_debug=true` (or `-e dnac_debug=true`) to any Catalyst Center stage
+to print the full HTTP request and response for each API call.
 
-> **Never share that output.** `catc_debug` also prints the `X-Auth-Token`
-> bearer JWT, which is a live credential for your Catalyst Center. Redact it
-> before pasting anywhere, and never commit a debug transcript.
+> **Never share that output.** Debug mode also prints the `X-Auth-Token` bearer
+> JWT, which is a live credential for your Catalyst Center. Redact it before
+> pasting anywhere, and never commit a debug transcript.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `specifies unknown plugin 'cisco.cml.cml_inventory'` | `cisco.cml` collection not installed | Step 4 |
-| `Collection <name> does not support Ansible version 2.15.x` | Collections installed from `requirements.yml` (2.17 control node) instead of `requirements-jumphost.yml`. The `cisco.catalystcenter` one is expected — see Step 4 | `ansible-galaxy collection install -r collections/requirements-jumphost.yml --force` |
-| Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` downgraded below 2.4.0 — it returns `dnac_response`, the roles read `catalystcenter_response`, so `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.9.0 --force` |
-| `No module named 'virl2_client'` on CML tasks | SDK missing from the active venv | `pip install 'virl2_client>=2.0.0,<2.10.0'` |
-| `ERROR! variable files must contain either a dictionary of variables ... Got: <your password>` | You pasted the raw password into `vault.yml` instead of `key: value` pairs | Rewrite `vault.yml` per Step 7, then re-encrypt |
-| `New Vault password:` prompt during `ansible-vault encrypt` | You ran it from the wrong directory, so `ansible.cfg` was not loaded | `cd` into `CICD Pipeline/ansible` first, or add `--vault-password-file ../.vault_pass` |
-| `Decryption failed` on any playbook | `.vault_pass` content ≠ the passphrase used to encrypt | Re-create `.vault_pass` (Step 5) or re-encrypt the vault with the current one |
-| `[Errno -2] Name or service not known` from the CML plugin | `CML_HOST` is empty — `.env` not exported into this shell | `set -a; . ./.env; set +a` from `CICD Pipeline/` |
-| `Client error - Authentication failed!` from the CML plugin | Wrong `CML_USERNAME` / `CML_PASSWORD`. Trailing `#` in a password is commonly dropped | Quote the value: `CML_PASSWORD="..."`, then test with `curl -sk -X POST "https://$CML_HOST/api/v0/authenticate" -H 'Content-Type: application/json' -d "{\"username\":\"$CML_USERNAME\",\"password\":\"$CML_PASSWORD\"}"` — expect HTTP 200 |
-| `./.env: line NN: EVPN: command not found` | Unquoted value with spaces in `.env` | Quote it: `CML_LAB="BGP EVPN Campus"` |
-| `Attempting to decrypt but no vault secrets found` | `.vault_pass` missing at `CICD Pipeline/.vault_pass` | Step 5 |
-| `ModuleNotFoundError: No module named 'apt_pkg'` after any `apt` command | `/usr/bin/python3` was repointed away from 3.8 | `sudo update-alternatives --set python3 /usr/bin/python3.8` |
-| `Network is unreachable` on `apt-get install` | Mirrors resolve to IPv6 first; the pod has no IPv6 route | `echo 'Acquire::ForceIPv4 "true";' \| sudo tee /etc/apt/apt.conf.d/99-force-ipv4` |
-| CML inventory returns zero hosts | Lab not started, or `CML_LAB` does not match the lab title exactly | Check the lab name in the CML UI and re-export `.env` |
-| Playbook cannot reach `198.18.129.100` | You are running from your laptop, not the jump host | SSH to the jump host first |
+| `Cannot reach 198.18.134.12:22` from `00_preflight.yml` | VPN down, or the pod is still booting | Reconnect Cisco Secure Client and wait a few minutes |
+| Hang or `Connection timed out` on `cat-center.corp.pseudoco.com` or `198.18.128.22–24` | Same — the VPN dropped mid-run | Reconnect, then re-run the stage |
+| `Name or service not known` for `corp.pseudoco.com` names | Lab DNS not first in `/etc/resolv.conf` | Re-run `01_bootstrap_script_server.yml` |
+| `Lab access vault not found. Expected Lab Topology/lab_access.yml above …` | You ran from outside the repo tree | `cd` into `evpn/ansible` first |
+| `Decryption failed` on any playbook | `.vault` content ≠ the passphrase the file was encrypted with | Re-create `.vault` (Step 2 / Step 5) |
+| `Attempting to decrypt but no vault secrets found` | `.vault` missing at the repository root | Step 2 / Step 5 |
+| `must decrypt to a mapping with a top-level lab_access key` | `lab_access.yml` was re-created without its `lab_access:` root key | Rebuild it from `lab_access.yml.example` and re-encrypt |
+| `ansible-playbook: not found` when driving Kali with `ansible … -m shell` | Non-login shells do not pick up `~/venv` from `.bashrc` | Call the full path: `/home/cisco/venv/bin/ansible-playbook` |
+| `02_sync_from_git.yml` fails on local changes | The Kali tree is dirty from ad-hoc file copies | Commit or revert on Kali, or re-run `01` |
+| Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
+| `'lab_pod_id' is undefined` on stage 07 | `lab.yml` was emptied or is not being loaded | Step 6 |
+| Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
+| `Collection <name> does not support Ansible version 2.15.x` | Collections from `requirements.yml` installed on a 2.15 host | Use `requirements-jumphost.yml` there |
 
 ---
 
 ## Reference — where everything lives
 
+The same tree exists on the Mac and on Kali; only `.vault` and the venvs differ.
+
 ```
-~/tecops-venv/                                   # Python 3.9 venv (Ansible)
-~/.ansible/collections/                          # Galaxy collections
-~/CatalystCenter-BGP-EVPN-VXLAN/
-└── CICD Pipeline/
-    ├── .vault_pass                              # vault passphrase   (you create, gitignored)
-    ├── .env                                     # CML/device creds   (you create, gitignored)
-    ├── Settings/settings.json                   # single source of truth for all stages
-    └── ansible/                                 # ← run every command from here
-        ├── ansible.cfg
-        ├── inventory/
-        │   ├── cml.yml                          # dynamic CML inventory
-        │   ├── static_inventory.yml
-        │   └── group_vars/
-        │       └── catalyst_center/vault.yml    # encrypted (you create, gitignored)
-        └── playbooks/                           # 01–11 stages
+~/cisco-one-experience-lab-automation/
+├── .vault                                  # lab passphrase (you create, gitignored)
+├── Lab Topology/
+│   ├── lab_access.yml                      # encrypted credential map (committed)
+│   └── PseudoCo_Lab_Access_Lookup.md       # host and URL index, no passwords
+└── ansible-automation/
+    ├── plugins/vars/lab_access.py          # injects lab_access into every play
+    ├── 00_scriptserver_bootstrap/          # ← run from the Mac
+    │   ├── .venv/                          # Mac Ansible venv (gitignored)
+    │   └── playbooks/                      # 00_preflight, 01_bootstrap, 02_sync
+    └── 01_campus/evpn/
+        ├── Catalyst Center Templates/      # DEFN / FUNC / FABRIC .j2
+        ├── Settings/settings.json          # single source of truth for stages 01–09
+        └── ansible/                        # ← run every pipeline command from here
+            ├── ansible.cfg
+            ├── inventory/
+            │   ├── static_inventory.yml
+            │   └── group_vars/all/lab.yml  # your POD number and AP MACs
+            └── playbooks/                  # 01–10 stages
+
+~/venv/                                     # script server Ansible venv (on PATH)
 ```

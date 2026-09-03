@@ -183,7 +183,7 @@ lab_ap_macs:
 A student edits those lines before running any wireless stage, or overrides them for a single run without touching the file:
 
 ```bash
-ansible-playbook playbooks/08_network_profile.yml -e lab_pod_id=7
+ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 ```
 
 So `settings.json` carries only the *shape* of the SSID, and the tooling renders it:
@@ -454,7 +454,7 @@ Set individual fields to `null` and `TemplateTarget` to `[]` when no Day-0 templ
 
 ### Wireless Profile
 
-The optional `wireless_profile` object binds a Catalyst Center **wireless network profile** to the site. Omit the key entirely for sites with no WLC — stage 08 then skips the wireless pass.
+The optional `wireless_profile` object binds a Catalyst Center **wireless network profile** to the site. Omit the key entirely for sites with no WLC — stage 07 then skips the wireless pass.
 
 A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 does: it holds a C9800 today and is expected to gain switches, so `HQ-Switching` and `HQ-Wireless` are bound to the same site path.
 
@@ -495,13 +495,13 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
 
 **The controller and the APs are at different sites.** DC-Site-10 owns the C9800, but the APs are on Site-105 VLAN 10, hanging off the `Gi1/0/2` trunk ports on the leaves. That is why `site_names` and `managed_ap_locations` both point at Site-105 while living on the DC-Site-10 row.
 
-Getting `site_names` wrong is not a quiet mistake. A wireless controller can only be provisioned for AP locations that already have a wireless profile bound; if the profile binds to DC-Site-10 instead of Site-105, stage 09 fails with `NCWL10001: Wireless profile is not configured for managed site <uuid>`.
+Getting `site_names` wrong is not a quiet mistake. A wireless controller can only be provisioned for AP locations that already have a wireless profile bound; if the profile binds to DC-Site-10 instead of Site-105, stage 08 fails with `NCWL10001: Wireless profile is not configured for managed site <uuid>`.
 
 ---
 
 ### Wireless Controller
 
-The optional `wireless_controller` object belongs on the row whose `device_list` contains the WLC. It drives the wireless provisioning pass added to stage 09.
+The optional `wireless_controller` object belongs on the row whose `device_list` contains the WLC. It drives the wireless provisioning pass added to stage 08.
 
 ```json
 "wireless_controller": {
@@ -522,13 +522,13 @@ The optional `wireless_controller` object belongs on the row whose `device_list`
 | `skip_ap_provision` | bool | Provision the controller without touching the APs it manages. |
 | `rolling_ap_upgrade` | object | Staged AP reboot behaviour during provisioning. `ap_reboot_percentage` is ignored unless `enable_rolling_ap_upgrade` is true. |
 
-Stage 09 provisions switches through `POST /dna/intent/api/v1/sda/provisionDevices`, which cannot set a wireless DeviceInfo role and returns `NCWL10092` for a controller. Devices whose Catalyst Center `family` contains `Wireless` are therefore split out of the SDA payload and sent down the wireless provisioning path instead. The whole wireless pass is gated behind `wireless_provision_enabled`, which defaults to `false` — run stage 09 with `-e wireless_provision_enabled=true` to opt in.
+Stage 08 provisions switches through `POST /dna/intent/api/v1/sda/provisionDevices`, which cannot set a wireless DeviceInfo role and returns `NCWL10092` for a controller. Devices whose Catalyst Center `family` contains `Wireless` are therefore split out of the SDA payload and sent down the wireless provisioning path instead. The whole wireless pass is gated behind `wireless_provision_enabled`, which defaults to `true` in `connection.yml` — run stage 08 with `-e wireless_provision_enabled=false` to leave controllers alone, since re-provisioning one bounces its APs.
 
 ---
 
 ### Wireless Design
 
-The optional `wireless_design` object defines the global wireless objects that must exist in Design → Network Settings → Wireless **before** a wireless profile can reference them. Stage 08 applies it ahead of the profile pass for that reason.
+The optional `wireless_design` object defines the global wireless objects that must exist in Design → Network Settings → Wireless **before** a wireless profile can reference them. Stage 07 applies it ahead of the profile pass for that reason.
 
 ```json
 "wireless_design": {
@@ -620,11 +620,11 @@ All three automation paths read `settings.json` from GitHub and iterate over eve
 | Network Settings | `GitOps-BuildSettings-v3` | `playbooks/02_network_settings.yml` | `network_settings.py` | `network_settings.*` |
 | Device Credentials | `GitOps-BuildSettings-v3` | `playbooks/03_credentials.yml` | `credentials.py` | `device_credentials.*` |
 | Device Discovery | `GitOps-DeviceDiscovery-v3` | `playbooks/04_device_discovery.yml` | `device_discovery.py` | `device_list`, `device_credentials.*` |
-| Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/08_network_profile.yml` | `network_profile.py` | `lab.*`, `network_profile.*`, `wireless_design.*`, `wireless_profile.*` |
-| Provisioning | `GitOps-Provisioning-v3` | `playbooks/09_provision_devices.yml` + `playbooks/10_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*` |
-| Access Points | — | `playbooks/14_wireless_accesspoints.yml` | — | `access_points[]` |
+| Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/07_network_profile.yml` | `network_profile.py` | `lab.*`, `network_profile.*`, `wireless_design.*`, `wireless_profile.*` |
+| Provisioning | `GitOps-Provisioning-v3` | `playbooks/08_provision_devices.yml` + `playbooks/09_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*` |
+| Access Points | — | `playbooks/13_wireless_accesspoints.yml` | — | `access_points[]` |
 
-All Ansible playbooks run from [`CICD Pipeline/ansible/`](../ansible/).
+All Ansible playbooks run from [`evpn/ansible/`](../ansible/).
 
 Each tooling path processes one project array element per loop iteration, applying all relevant fields for that site before moving to the next element.
 

@@ -1,9 +1,9 @@
 ---
 # =============================================================================
-# 08_network_profile.yml  —  Pipeline stage 08
+# 07_network_profile.yml  —  Pipeline stage 07
 # =============================================================================
 # Creates or updates Catalyst Center network profiles and binds them to sites.
-# The profile is the join between a site and the templates synced in stage 07 —
+# The profile is the join between a site and the templates synced in stage 06 —
 # without it, provisioning has nothing to push. Role: network_profile.
 #
 # Sourced:
@@ -38,18 +38,18 @@
 #   wireless_profile_list — same shape for the wireless WFM; empty when no row
 #     declares wireless_profile, in which case the wireless call is skipped.
 #   In Catalyst Center: a switching profile per project row attached to its
-#   site and applied during stage 09, plus a wireless profile on the sites that
+#   site and applied during stage 08, plus a wireless profile on the sites that
 #   declare one. A site may carry both — DC-Site-10 has a C9800 today and is
 #   expected to gain switches.
 #
-# Depends on: stage 07 (referenced template names must already exist)
-# Required by: stage 09 — provisioning a wireless controller fails with
+# Depends on: stage 06 (referenced template names must already exist)
+# Required by: stage 08 — provisioning a wireless controller fails with
 #   NCWL10001 until a wireless profile is bound to each of its managed AP sites
 # Modules: cisco.dnac.network_profile_switching_workflow_manager
 #          cisco.dnac.wireless_design_workflow_manager
 #          cisco.dnac.network_profile_wireless_workflow_manager
 #
-# Run: ansible-playbook playbooks/08_network_profile.yml
+# Run: ansible-playbook playbooks/07_network_profile.yml
 # =============================================================================
 - name: Create and Assign Network Profiles from settings.json
   hosts: catalyst_center

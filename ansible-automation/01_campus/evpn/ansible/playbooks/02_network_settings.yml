@@ -21,7 +21,7 @@
 # Produced:
 #   site_names — list of site paths derived from the hierarchy fields
 #   In Catalyst Center: network settings bound to each resolved site UUID,
-#   inherited by devices when they are provisioned in stage 09.
+#   inherited by devices when they are provisioned in stage 08.
 #
 # Depends on: stage 01 (site UUIDs must already exist)
 # Module: cisco.catalystcenter.sites_info (+ raw uri PUT)

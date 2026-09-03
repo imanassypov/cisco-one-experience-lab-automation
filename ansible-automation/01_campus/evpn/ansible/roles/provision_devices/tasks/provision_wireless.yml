@@ -1,5 +1,5 @@
 # ============================================================================
-# tasks/provision_wireless.yml  —  Pipeline stage 9.1
+# tasks/provision_wireless.yml  —  Pipeline stage 8.1
 # ============================================================================
 # Provisions wireless controllers, which the wired pass in provision_site.yml
 # deliberately leaves alone.

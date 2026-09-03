@@ -3,8 +3,8 @@
 # 05_assign_to_site.yml  —  Pipeline stage 05
 # =============================================================================
 # Moves discovered devices out of Global and into their designated site.
-# Site membership is what later stages key on — SWIM golden-image tagging
-# (06.2) and provisioning (09) both target devices by site. Role: assign_to_site.
+# Site membership is what later stages key on — provisioning (08) targets
+# devices by site. Role: assign_to_site.
 #
 # Sourced:
 #   settings.json → settings_data.project[] (via catc_common.load_settings):

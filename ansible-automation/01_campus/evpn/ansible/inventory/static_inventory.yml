@@ -1,5 +1,6 @@
 ---
-# Static Ansible inventory — hosts not sourced from CML (Catalyst Center API, infra utilities).
+# Static Ansible inventory — the only inventory source for this project:
+# the Catalyst Center API endpoint and the Site 105 EVPN fabric switches.
 # MCP bastion/Splunk: utils/mcp-ssh-server/inventory/static_hosts.yml (not Ansible).
 all:
   children:
@@ -11,16 +12,6 @@ all:
           ansible_host: localhost
           ansible_connection: local
           ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-    image_servers:
-      hosts:
-        swim_image_server:
-          ansible_host: "{{ image_server_ip }}"
-
-    yangsuite_servers:
-      hosts:
-        yangsuite_server:
-          ansible_host: "{{ yangsuite_server_ip }}"
 
     campus_evpn:
       vars:

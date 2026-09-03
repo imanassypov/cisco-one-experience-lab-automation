@@ -9,7 +9,7 @@
 
 ---
 # =============================================================================
-# template_sync / process-template.yml  —  Stage 07: build one template config
+# template_sync / process-template.yml  —  Stage 06: build one template config
 # =============================================================================
 # Turns one .j2 blob fetched from GitHub into a template_workflow_manager
 # config entry. Included once per element of sorted_template_files by

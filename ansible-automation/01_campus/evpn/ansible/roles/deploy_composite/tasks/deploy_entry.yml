@@ -1,5 +1,5 @@
 # ============================================================================
-# deploy_composite / deploy_entry.yml  —  Stage 10: deploy one composite entry
+# deploy_composite / deploy_entry.yml  —  Stage 09: deploy one composite entry
 # ============================================================================
 # Deploys a single composite template to its target devices. Included once per
 # element of _deploy_entries by roles/deploy_composite/tasks/main.yml.

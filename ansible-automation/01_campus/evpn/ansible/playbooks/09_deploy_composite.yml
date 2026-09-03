@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 10_deploy_composite.yml  —  Pipeline stage 10
+# 09_deploy_composite.yml  —  Pipeline stage 09
 # =============================================================================
 # Final stage: pushes the Day-N composite templates onto the target switches,
 # rendering the BGP EVPN VXLAN fabric configuration. Role: deploy_composite
@@ -32,10 +32,10 @@
 #   On devices: rendered IOS-XE fabric configuration (VRFs, loopbacks, NVE,
 #   BGP EVPN, overlay SVIs, multicast, NAC).
 #
-# Depends on: stage 07 (templates exist) and stage 09 (devices provisioned)
+# Depends on: stage 06 (templates exist) and stage 08 (devices provisioned)
 # Module: cisco.dnac.configuration_template_deploy_v2
 #
-# Run: ansible-playbook playbooks/10_deploy_composite.yml
+# Run: ansible-playbook playbooks/09_deploy_composite.yml
 # =============================================================================
 - name: Deploy Composite Templates to Managed Devices from settings.json
   hosts: catalyst_center

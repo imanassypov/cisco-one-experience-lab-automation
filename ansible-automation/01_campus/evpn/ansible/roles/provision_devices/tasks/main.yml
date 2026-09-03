@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# provision_devices / main.yml  —  Pipeline stage 9.0
+# provision_devices / main.yml  —  Pipeline stage 8.0
 # =============================================================================
 # Provisions fabric devices to sites via SDA provisionDevices API.
 # Groups management IPs by site path, resolves site + device UUIDs, skips
