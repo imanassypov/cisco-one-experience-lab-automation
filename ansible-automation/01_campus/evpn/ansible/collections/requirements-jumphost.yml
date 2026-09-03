@@ -9,11 +9,15 @@
 #
 #   ansible-galaxy collection install -r collections/requirements-jumphost.yml
 collections:
-  # EXCEPTION — 2.10.2 declares requires_ansible >=2.16. Do not drop below
-  # 2.4.0: roles read catalystcenter_response (introduced in 2.4.0).
+  # EXCEPTION — 2.11.0 declares requires_ansible >=2.16, same as the 2.10.2 it
+  # replaces, so this stays an exception to the 2.15 rule above. Do not drop
+  # below 2.11.0: it is the only build whose wireless_access_points_provision
+  # calls the SDK's ap_provision, which stage 08 needs to provision APs (see
+  # requirements.yml for the full explanation). Below 2.4.0 also breaks roles
+  # that read catalystcenter_response.
   # API profile for CatC 3.1.5 is 3.1.3.0 (see connection.yml).
   - name: cisco.catalystcenter
-    version: "2.10.2"
+    version: "2.11.0"
   - name: cisco.dnac
     version: "6.46.0"
   - name: cisco.ios

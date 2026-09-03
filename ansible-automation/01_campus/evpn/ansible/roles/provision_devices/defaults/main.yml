@@ -35,3 +35,21 @@ wireless_family_markers:
 # Set false to make the pass a no-op against an already-provisioned controller:
 #   -e force_wireless_provisioning=false
 force_wireless_provisioning: true
+
+# RF profile the AP pass (tasks/provision_accesspoints.yml) provisions an access
+# point with when nothing more specific applies.
+#
+# Not optional at the API: POST /wirelessAccessPoints/provision rejects a
+# payload without one, with NCWS14003 "RF Profile is required for default/empty
+# AP Zone". The UI hides this by preselecting whichever profile is marked
+# default under Design > Network Settings > Wireless > RF Profiles.
+#
+# Resolution order in the AP pass:
+#   1. access_points[].rf_profile in settings.json, for a per-AP override
+#   2. whichever profile Catalyst Center reports with defaultRfProfile true
+#   3. this value
+#
+# Step 3 is what this lab actually uses: CatC ships LOW, TYPICAL and HIGH, and
+# none of them is flagged as the default, so there is nothing to inherit.
+# TYPICAL is the middle of the three and the sane pick for an indoor pod.
+ap_default_rf_profile: TYPICAL

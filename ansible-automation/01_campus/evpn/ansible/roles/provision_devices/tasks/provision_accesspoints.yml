@@ -1,18 +1,19 @@
 # ============================================================================
 # tasks/provision_accesspoints.yml  —  Pipeline stage 8.2
 # ============================================================================
-# Names each access point and assigns it to the site whose APs the controller
-# provisioned in stage 8.1 manages.
+# Names each access point, assigns it to the site the controller provisioned in
+# stage 8.1 manages, and then provisions the AP itself.
 #
-# Catalyst Center never provisions an access point directly, and nothing lets
-# you hand one a policy tag or a site tag. Both are derived, in two moves: the
-# AP is assigned to a site, then the controller managing that site is
-# re-provisioned, at which point it takes the AP over and pushes the tags that
-# the wireless profile bound to that site implies. An AP that has had neither
-# done to it sits on default-site-tag and default-policy-tag, which map no
-# WLAN, so it broadcasts nothing.
+# That last part is what puts the tags on. Provisioning the controller creates
+# the WLAN and policy profiles; the policy and site tags that bind an AP to
+# those profiles are written only when the AP is provisioned — Step 34
+# "Provision the AP" of "Provision a Cisco Catalyst 9800 Series Wireless
+# Controller" in the Catalyst Center User Guide 3.1.x. An AP that is merely a
+# site member sits on default-site-tag and default-policy-tag, which map no
+# WLAN, so it broadcasts nothing however often the controller is re-pushed.
 #
-# Two modules, because neither does the whole job in a non-fabric deployment:
+# Three modules, because no single one does the whole job in a non-fabric
+# deployment:
 #
 #   accesspoint_workflow_manager  names the AP and sets its location, but only
 #     when the config carries no site key. Given a site it calls
@@ -20,7 +21,8 @@
 #     GET sda/get_device_info whether that controller is provisioned. This lab
 #     is BGP EVPN with non-fabric wireless, so the WLC is provisioned but holds
 #     no fabric role, the endpoint answers 400 "does not have any fabric role
-#     assigned", and the module aborts the run.
+#     assigned", and the module aborts the run. That is also why it cannot be
+#     used for the provisioning in Step G, even though it can provision.
 #
 #   assign_device_to_site  does the site assignment instead — the same module
 #     stage 05 uses for the switches, and it does not care about fabric roles.
@@ -28,8 +30,13 @@
 #     family and maps only Wireless Controller, Switches and Hubs and Routers,
 #     so a Unified AP falls through with no branch to handle it.
 #
+#   cisco.catalystcenter.wireless_access_points_provision  provisions the AP.
+#     It must come from cisco.catalystcenter 2.11.0 or newer; see Step G for
+#     why the same-named cisco.dnac module cannot be substituted.
+#
 # The AP reboots when its tags change and takes 1-3 minutes to rejoin, so this
-# is gated by ap_provision_enabled.
+# is gated by ap_provision_enabled, and Steps E and G each skip work that would
+# be a no-op rather than bouncing the AP on every run.
 #
 # Variables read from inventory / parent play scope:
 #   settings_data   — settings.json (catc_common.load_settings), already token
@@ -129,18 +136,22 @@
 
 # Example
 #   In : _ap_inventory_result.json.response = [
-#          { "hostname": "SITE-105-AP-1",
+#          { "id": "a1b2c3d4-0000-4444-8888-99990000aaaa",
+#            "hostname": "SITE-105-AP-1",
 #            "macAddress": "68:7d:b4:90:95:00",
 #            "apEthernetMacAddress": "04:5f:b9:ca:03:58",
 #            "managementIpAddress": "10.10.255.101",
 #            "siteHierarchy": null }
 #        ]
 #   Out: _ap_inventory_map = {
-#          "04:5f:b9:ca:03:58": { "radio_mac": "68:7d:b4:90:95:00",
+#          "04:5f:b9:ca:03:58": { "id":        "a1b2c3d4-0000-4444-8888-99990000aaaa",
+#                                 "radio_mac": "68:7d:b4:90:95:00",
 #                                 "mgmt_ip":   "10.10.255.101",
 #                                 "hostname":  "SITE-105-AP-1",
 #                                 "site":      "" }
 #        }
+# id is the device UUID that Step G hands to wireless_access_points_provision
+# as networkDevices[].deviceId.
 # Keys are lowercased on both sides so the comparison in Step C survives an
 # inventory that answers in upper case.
 - name: Build Ethernet MAC → inventory map
@@ -152,6 +163,7 @@
         {%- if d.apEthernetMacAddress is defined and d.apEthernetMacAddress -%}
           {%- set ns.result = ns.result | combine({
               d.apEthernetMacAddress | lower: {
+                'id':        d.id                   | default(''),
                 'radio_mac': d.macAddress           | default(''),
                 'mgmt_ip':   d.managementIpAddress  | default(''),
                 'hostname':  d.hostname             | default(''),
@@ -510,7 +522,197 @@
   ansible.builtin.debug:
     var: _ap_takeover_result
 
-# ── Step G: Summary ───────────────────────────────────────────────────────
+# ── Step G: Provision the access points ───────────────────────────────────
+#
+# This is the step that creates the AP's tags. Provisioning the controller
+# builds the WLAN and policy profiles; the policy and site tags that bind an AP
+# to those profiles are written only when the AP itself is provisioned. Cisco
+# documents it as Step 34 "Provision the AP" of "Provision a Cisco Catalyst
+# 9800 Series Wireless Controller", which points at "Provision Cisco APs on
+# day 1". Without it the AP stays on default-policy-tag and broadcasts nothing,
+# no matter how many times the controller is re-provisioned.
+#
+# The module is chosen deliberately, and the collection version matters:
+#   - accesspoint_workflow_manager can provision, but only when its config
+#     carries a site key — and that same key makes it call sda/get_device_info
+#     against the controller. This WLC is not in a fabric, so that 400s and the
+#     module aborts the whole play. It stays naming-only in Step D.
+#   - provision_workflow_manager branches on device family and handles only
+#     Wireless Controller / Switches and Hubs / Routers. Unified AP falls
+#     through with no handler.
+#   - cisco.dnac.wireless_access_points_provision, up to and including 6.51.0,
+#     declares siteId/networkDevices but calls the SDK's
+#     ap_provision_connectivity — the older /wireless/ap-provision, which wants
+#     an array body. Its options would go out as query parameters against an
+#     empty payload.
+# cisco.catalystcenter 2.11.0 is the one build wired to ap_provision, i.e.
+# POST /dna/intent/api/v1/wirelessAccessPoints/provision. That is why
+# collections/requirements.yml pins it. Do not swap in the cisco.dnac module
+# of the same name.
+#
+# rfProfileName is not optional. Leaving it out returns NCWS14003 "RF Profile
+# is required for default/empty AP Zone" — the wizard just hides that by
+# preselecting the profile marked default under Design > Network Settings >
+# Wireless > RF Profiles. See ap_default_rf_profile in defaults/main.yml for
+# how one gets chosen here.
+
+# Provisioning an AP disrupts it, so read state first and only provision what
+# needs it. provisioningStatus comes back false for an AP that has never been
+# provisioned, which keeps re-runs from bouncing APs that are already done.
+# force_reprovision re-asserts regardless — the API is documented as "Access
+# Point Provision and ReProvision".
+#
+# key is the Ethernet MAC, which is what _ap_declared already carries, so no
+# radio-MAC translation is needed here.
+- name: Read access point provisioning status
+  when: _ap_declared | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/wireless/accesspoint-configuration/summary?key={{ item.mac_address }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ _ap_declared }}"
+  loop_control:
+    label: "{{ item.ap_name | default(item.mac_address) }}"
+  register: _ap_status_results
+
+# Example - AP has never been provisioned
+#   In : _ap_status_results.results[0].json.provisioningStatus = false
+#   Out: _ap_unprovisioned = ["04:5f:b9:ca:03:58"]
+#
+# Example - a re-run after a successful provision
+#   In : provisioningStatus = true, force_reprovision = false
+#   Out: _ap_unprovisioned = []   → Step G provisions nothing, AP is not bounced
+- name: Determine which access points still need provisioning
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_unprovisioned: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for r in (_ap_status_results.results | default([])) -%}
+        {%- if not (r.json.provisioningStatus | default(false))
+             or (force_reprovision | default(false) | bool) -%}
+          {%- set ns.result = ns.result + [r.item.mac_address | lower] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+# CatC ships LOW, TYPICAL and HIGH and flags none of them as the default, so
+# this normally falls through to ap_default_rf_profile. The lookup is still
+# worth doing: it picks up a custom profile marked default later without anyone
+# having to edit the role.
+- name: List RF profiles
+  when: _ap_declared | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/wireless/rf-profile"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _ap_rf_result
+
+- name: Resolve the fallback RF profile
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_rf_fallback: >-
+      {{ (_ap_rf_result.json.response | default([]))
+         | selectattr('defaultRfProfile', 'defined')
+         | selectattr('defaultRfProfile')
+         | map(attribute='name') | first
+         | default(ap_default_rf_profile, true) }}
+
+# Groups the work the way the module wants it: one call per site and RF profile,
+# carrying that site's UUID and the device UUIDs of the APs to provision into
+# it. Grouping on the profile as well as the path matters because rfProfileName
+# is a property of the call, not of the device, so two APs on one floor with
+# different profiles have to go in separate calls. ap_names is only for logging.
+#
+# Example
+#   In : _ap_site_info_results.results[0].item.key
+#          = "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
+#        ...dnac_response.response[0].id = "919ce2a1-39b7-4c1f-a7ec-c76e50170ab7"
+#        _ap_unprovisioned = ["04:5f:b9:ca:03:58"]
+#        _ap_inventory_map["04:5f:b9:ca:03:58"].id = "c2627337-c197-4714-89f2-6fcaeac0f772"
+#        _ap_rf_fallback   = "TYPICAL"
+#   Out: _ap_provision_config = [
+#          { "site_path":  "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
+#            "site_id":    "919ce2a1-39b7-4c1f-a7ec-c76e50170ab7",
+#            "rf_profile": "TYPICAL",
+#            "network_devices": [ { "deviceId": "c2627337-c197-4714-89f2-6fcaeac0f772" } ],
+#            "ap_names":   ["SITE-105-AP-1"] } ]
+- name: Build access point provisioning config
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_provision_config: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for r in (_ap_site_info_results.results | default([])) -%}
+        {%- set path = r.item.key -%}
+        {%- set sid = r.dnac_response.response[0].id | default('') -%}
+        {%- set groups = namespace(by_rf={}) -%}
+        {%- for ap in _ap_declared -%}
+          {%- set eth = ap.mac_address | lower -%}
+          {%- if eth in _ap_inventory_map and eth in _ap_unprovisioned
+               and ap.site is defined and ap.site.floor is defined
+               and (ap.site.floor.parent_name ~ '/' ~ ap.site.floor.name) == path -%}
+            {%- set rf = ap.rf_profile | default(_ap_rf_fallback, true) -%}
+            {%- set entry = groups.by_rf.get(rf, {'devices': [], 'names': []}) -%}
+            {%- set groups.by_rf = groups.by_rf | combine({rf: {
+                  'devices': entry.devices + [{'deviceId': _ap_inventory_map[eth].id}],
+                  'names':   entry.names   + [ap.ap_name | default(eth)] }}) -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {%- if sid -%}
+          {%- for rf, g in groups.by_rf.items() -%}
+            {%- set ns.result = ns.result + [{'site_path': path, 'site_id': sid,
+                                              'rf_profile': rf,
+                                              'network_devices': g.devices,
+                                              'ap_names': g.names}] -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Access point provisioning config
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+  ansible.builtin.debug:
+    var: _ap_provision_config
+
+- name: Report that every access point is already provisioned
+  when:
+    - _ap_declared | length > 0
+    - _ap_provision_config | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      All {{ _ap_declared | length }} access point(s) already report
+      provisioningStatus true, so none were provisioned and none were bounced.
+      Re-run with -e force_reprovision=true to re-assert their tags.
+
+- name: Provision the access points
+  when:
+    - _ap_declared | length > 0
+    - _ap_provision_config | length > 0
+  cisco.catalystcenter.wireless_access_points_provision:
+    siteId: "{{ item.site_id }}"
+    rfProfileName: "{{ item.rf_profile }}"
+    networkDevices: "{{ item.network_devices }}"
+  loop: "{{ _ap_provision_config }}"
+  loop_control:
+    label: "{{ item.ap_names | join(', ') }} → {{ item.site_path }} ({{ item.rf_profile }})"
+  register: _ap_provision_result
+
+- name: --DEBUG-- Access point provisioning result
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+    - _ap_provision_config | length > 0
+  ansible.builtin.debug:
+    var: _ap_provision_result
+
+# ── Step H: Summary ───────────────────────────────────────────────────────
 - name: Access point provisioning summary
   when: _ap_declared | length > 0
   ansible.builtin.debug:
@@ -527,4 +729,7 @@
                                     | default('none — already members', true))]
          + ['│ WLC takeover  : ' + (_ap_takeover_result.msg
                                     | default('not needed') | string)]
+         + ['│ AP provision  : ' + ((_ap_provision_config | default([])
+                                     | map(attribute='ap_names') | flatten | join(', '))
+                                    | default('none — already provisioned', true))]
          + ['└─────────────────────────────────────────────────────────────────┘'] }}

@@ -45,10 +45,12 @@
 #   _site_device_map       — { "<site path>": ["198.19.1.3", "198.19.1.4"] }
 #   _wlc_provision_config  — one provision_workflow_manager entry per controller
 #   _ap_config             — one accesspoint_workflow_manager entry per AP
+#   _ap_provision_config   — one wireless_access_points_provision call per site
 #   In Catalyst Center: devices in PROVISIONED state with site settings and the
 #   switching profile applied — the precondition for stage 09 template deploy —
-#   controllers provisioned with the AP locations they serve, and APs named and
-#   assigned to their site.
+#   controllers provisioned with the AP locations they serve, and APs named,
+#   assigned to their site, and provisioned so their policy and site tags exist
+#   and they actually broadcast the SSID.
 #
 # Provisioning a controller reboots its APs when the managed AP locations
 # change, and assigning an AP to a new site reboots that AP; the lab documents
@@ -58,6 +60,9 @@
 # Modules: cisco.dnac.provision_workflow_manager (wireless pass)
 #          cisco.dnac.accesspoint_workflow_manager (AP pass, naming only)
 #          cisco.dnac.site_info + assign_device_to_site (AP site assignment)
+#          cisco.catalystcenter.wireless_access_points_provision (AP provision;
+#            needs collection 2.11.0+, and the cisco.dnac module of the same
+#            name will not work — see provision_accesspoints.yml Step G)
 #
 # Run: ansible-playbook playbooks/08_provision_devices.yml
 #      ansible-playbook playbooks/08_provision_devices.yml -e force_reprovision=true
@@ -106,6 +111,19 @@
       dnac_port: "{{ dnac_port }}"
       dnac_version: "{{ dnac_version }}"
       dnac_debug: "{{ dnac_debug }}"
+    # The AP provision step is the one task on the cisco.catalystcenter
+    # collection, so it takes catalystcenter_* parameter names. Values are the
+    # same connection; catalystcenter_debug is fed from dnac_debug rather than
+    # catc_debug because this play redefines catc_debug as its own verbose-output
+    # switch.
+    cisco.catalystcenter.wireless_access_points_provision:
+      catalystcenter_host: "{{ catc_host }}"
+      catalystcenter_username: "{{ catc_username }}"
+      catalystcenter_password: "{{ catc_password }}"
+      catalystcenter_verify: "{{ catc_verify }}"
+      catalystcenter_port: "{{ catc_port }}"
+      catalystcenter_version: "{{ catc_version }}"
+      catalystcenter_debug: "{{ dnac_debug }}"
   pre_tasks:
     - name: Obtain Catalyst Center auth token
       ansible.builtin.import_role:

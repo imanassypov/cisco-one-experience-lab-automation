@@ -2,9 +2,18 @@
 # Pins for Catalyst Center 3.1.5. The SDKs have no 3.1.5 API profile;
 # collections use API version 3.1.3.0 (see connection.yml).
 # cisco.catalystcenter 2.4.0+ is required (roles read catalystcenter_response).
+#
+# 2.11.0+ is required for AP provisioning. Its
+# wireless_access_points_provision is the only build of that module wired to
+# the SDK's ap_provision (POST /wirelessAccessPoints/provision, which takes
+# siteId + networkDevices). 2.10.2 and every cisco.dnac release through 6.51.0
+# wire it to ap_provision_connectivity instead, which is the older
+# /wireless/ap-provision and expects an array body — so the options go out as
+# query parameters against an empty payload. Use the cisco.catalystcenter copy
+# of this module, never the cisco.dnac one.
 collections:
   - name: cisco.catalystcenter
-    version: "2.10.2"
+    version: "2.11.0"
   - name: cisco.dnac
     version: "6.46.0"
   - name: cisco.ios
