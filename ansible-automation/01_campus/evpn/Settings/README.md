@@ -128,6 +128,7 @@ settings.json
     │   ├── profile_name               # Wireless profile name in Catalyst Center
     │   ├── site_names[]               # Site paths the profile is applied to
     │   ├── ssid_details[]             # SSID bindings; may be empty
+    │   ├── additional_interfaces[]    # Extra WLC interfaces on the profile
     │   └── DayNTemplateNames[]        # Optional wireless Day-N template bindings
     ├── wireless_controller{}          # Optional — the row that owns the WLC
     │   ├── managed_ap_locations[]     # Site paths whose APs this WLC manages
@@ -136,7 +137,8 @@ settings.json
     ├── wireless_design{}              # Optional — global wireless design objects
     │   ├── interfaces[]               # Wireless interfaces an SSID maps onto
     │   ├── ssids[]                    # Enterprise/Guest SSID definitions
-    │   └── flex_connect_configuration[]  # Per-site FlexConnect native VLAN
+    │   ├── flex_connect_configuration[]     # Per-site FlexConnect native VLAN
+    │   └── flex_connect_aaa_override[]      # Per-site Flex VLAN-name map (ISE AAA override)
     └── access_points[]                # Optional — APs physically at this site
         ├── mac_address                # {APn_MAC} token — see lab_ap_macs
         ├── ap_name                    # Friendly name to set on the AP
@@ -472,6 +474,11 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
             "local_to_vlan":  10
         }
     ],
+    "additional_interfaces": [
+        { "interface_name": "Main", "vlan_id": 10 },
+        { "interface_name": "PROD", "vlan_id": 101 },
+        { "interface_name": "IOT",  "vlan_id": 102 }
+    ],
     "DayNTemplateNames": [
         {
             "TemplateName":   null,
@@ -489,6 +496,7 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
 | `profile_name` | string | Wireless profile name in Catalyst Center. Created if absent, updated if present. |
 | `site_names` | array | Site paths the profile is applied to. Defaults to this row's own site path when omitted. Set it explicitly when the APs live somewhere other than the row that owns the WLC. |
 | `ssid_details` | array | Passed to the wireless workflow manager verbatim. Each element takes `ssid_name` and either `interface_name` or `vlan_group_name`, plus optional `enable_fabric`, `local_to_vlan`, `anchor_group_name`. An empty array binds the profile to the site with no SSIDs. |
+| `additional_interfaces` | array | Extra `{interface_name, vlan_id}` rows copied onto the wireless profile as CatC `additionalInterfaces`. These become **independent WLC interfaces**, not the FlexConnect VLAN-name table. Keep them so the design names exist on `HQ-Wireless`; they are not what ISE AAA override needs on the AP. |
 | `DayNTemplateNames` | array | Same shape as the switching block. Only `TemplateName` reaches the profile binding; an all-`null` row is dropped. |
 
 `interface_name` names an interface declared in `wireless_design.interfaces`, and is mandatory unless a `vlan_group_name` is given instead. `local_to_vlan` is what makes the SSID locally switched at the AP rather than tunnelled back to the controller. Both are VLAN 10 here because that is the native VLAN on the Site-105 AP trunk ports.
@@ -533,7 +541,10 @@ The optional `wireless_design` object defines the global wireless objects that m
 ```json
 "wireless_design": {
     "interfaces": [
-        { "interface_name": "PSEUDOCO-VLAN10", "vlan_id": 10 }
+        { "interface_name": "PSEUDOCO-VLAN10", "vlan_id": 10 },
+        { "interface_name": "Main",            "vlan_id": 10 },
+        { "interface_name": "PROD",            "vlan_id": 101 },
+        { "interface_name": "IOT",             "vlan_id": 102 }
     ],
     "ssids": [
         {
@@ -557,17 +568,30 @@ The optional `wireless_design` object defines the global wireless objects that m
             "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
             "vlan_id": 10
         }
+    ],
+    "flex_connect_aaa_override": [
+        {
+            "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
+            "vlans": [
+                { "vlan_name": "Main", "vlan_id": 10 },
+                { "vlan_name": "PROD", "vlan_id": 101 },
+                { "vlan_name": "IOT",  "vlan_id": 102 }
+            ]
+        }
     ]
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `interfaces` | array | Wireless interfaces to create, each `interface_name` plus `vlan_id`. Referenced by `wireless_profile.ssid_details[].interface_name`. |
+| `interfaces` | array | Wireless interfaces to create, each `interface_name` plus `vlan_id`. The SSID default (`PSEUDOCO-VLAN10`) is referenced by `wireless_profile.ssid_details[].interface_name`. `Main` / `PROD` / `IOT` must exist here so the profile can attach them as additional interfaces and so the names exist in Design. |
 | `ssids` | array | Passed to `wireless_design_workflow_manager` verbatim. `ssid_name` must equal `lab.wireless_ssid`. |
-| `flex_connect_configuration` | array | Per-site FlexConnect native VLAN. Set to VLAN 10 to match the AP trunk native VLAN at Site-105. |
+| `flex_connect_configuration` | array | Per-site FlexConnect native VLAN. Set to VLAN 10 to match the AP trunk native VLAN at Site-105. The design WFM will skip this when no override exists yet; stage 07 then PUTs `/wirelessSettings/flexConnectNativeVlan` and asserts the GET. |
+| `flex_connect_aaa_override` | array | Per-site FlexConnect AAA-override VLAN-name rows (`vlan_name` + `vlan_id`). This is the CatC object that renders `vlan-name` / `vlan-id` on the WLC Flex profile. Stage 07 PUTs `/wirelessSettings/flexConnectAaaOverride` and GET-asserts. Required when any designed SSID has `aaa.aaa_override: true` — ISE in this lab returns VLAN **names** `Main` / `PROD` / `IOT` (10 / 101 / 102), not `PSEUDOCO-VLAN10`. `additional_interfaces` on the wireless profile is not this map. |
 
-**An SSID binding needs an interface.** `network_profile_wireless_workflow_manager` rejects an `ssid_details` entry carrying only `local_to_vlan` — it requires either an `interface_name` or a `vlan_group_name`, and fails with *"Either VLAN Group Name or Interface Name required in playbook"*. `PSEUDOCO-VLAN10` exists for that reason, and is declared here rather than in the profile so the design pass creates it before the profile pass references it. All three VLAN references — the interface, the FlexConnect native VLAN, and `local_to_vlan` — are VLAN 10.
+**An SSID binding needs an interface.** `network_profile_wireless_workflow_manager` rejects an `ssid_details` entry carrying only `local_to_vlan` — it requires either an `interface_name` or a `vlan_group_name`, and fails with *"Either VLAN Group Name or Interface Name required in playbook"*. `PSEUDOCO-VLAN10` exists for that reason, and is declared here rather than in the profile so the design pass creates it before the profile pass references it.
+
+The SSID default, the FlexConnect native VLAN, and `local_to_vlan` are VLAN 10 (the AP trunk native). That is not enough for `aaa_override: true`. ISE authorization in this lab returns VLAN **names** `Main` / `PROD` / `IOT` matching the overlay VRFs (10 / 101 / 102). Those names must appear on `wireless_design.flex_connect_aaa_override` (and as design `interfaces`) or the WLC Flex profile will only map `PSEUDOCO-VLAN10` and clients will be excluded with `VLAN Failure`. `wireless_profile.additional_interfaces` stores the same names on `HQ-Wireless` as extra WLC interfaces; CatC does not copy that list into the Flex vlan-name table.
 
 `radio_bands` is `[2.4, 5]` rather than including 6 GHz because neither lab AP has a 6 GHz radio — the C9117AXI and the AP4800 are both Wi-Fi 6 at most. The AAA servers point at ISE on `198.18.5.101`, the same address as `network_settings.client_and_endpoint_aaa.primary_server_address`.
 

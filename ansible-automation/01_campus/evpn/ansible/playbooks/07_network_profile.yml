@@ -15,12 +15,16 @@
 #       Day0TemplateNames[] — optional onboarding templates
 #     wireless_design:      — optional; SSIDs and FlexConnect settings, created
 #       ssids[]               before any profile can reference them
-#       flex_connect_configuration[]
+#       flex_connect_configuration[]  — native VLAN (WFM + URI PUT)
+#       flex_connect_aaa_override[]   — ISE VLAN-name map (URI PUT only;
+#                                       the design WFM has no field for it)
 #     wireless_profile:     — optional, only sites with a WLC
 #       profile_name        — e.g. "HQ-Wireless"
 #       site_names[]        — sites this profile is bound to; a WLC cannot manage
 #                             a site's APs until one is bound (NCWL10001)
 #       ssid_details[]      — passed through to the WFM as-is; may be empty
+#       additional_interfaces[] — extra WLC interfaces on the profile (not the
+#                               Flex vlan-name table; that is flex_connect_aaa_override)
 #       DayNTemplateNames[] — optional wireless Day-N templates
 #     HierarchyParent/Area/Bldg/Floor — composed into the bound site path
 #   inventory/group_vars/all/lab.yml:
@@ -48,6 +52,11 @@
 # Modules: cisco.dnac.network_profile_switching_workflow_manager
 #          cisco.dnac.wireless_design_workflow_manager
 #          cisco.dnac.network_profile_wireless_workflow_manager
+#          cisco.catalystcenter.sites_info (Flex REST site UUID)
+#          ansible.builtin.uri (Flex native-VLAN PUT — the design WFM skips
+#          create when no override exists, which left WLC native VLAN 1;
+#          Flex AAA-override VLAN PUT — the WFM has no field, and
+#          additional_interfaces is not this map)
 #
 # Run: ansible-playbook playbooks/07_network_profile.yml
 # =============================================================================
@@ -87,6 +96,14 @@
       dnac_debug: "{{ dnac_debug }}"
       dnac_log_level: "{{ dnac_log_level }}"
       dnac_log: "{{ dnac_log }}"
+    cisco.catalystcenter.sites_info:
+      catalystcenter_host: "{{ catc_host }}"
+      catalystcenter_username: "{{ catc_username }}"
+      catalystcenter_password: "{{ catc_password }}"
+      catalystcenter_verify: "{{ catc_verify }}"
+      catalystcenter_port: "{{ catc_port }}"
+      catalystcenter_version: "{{ catc_version }}"
+      catalystcenter_debug: "{{ catc_debug }}"
   pre_tasks:
     - name: Load settings.json
       ansible.builtin.import_role:

@@ -1,0 +1,184 @@
+---
+# =============================================================================
+# network_profile / apply_flex_aaa_override.yml
+# =============================================================================
+# Pins FlexConnect AAA-override VLAN-name rows at one site. Loop variable:
+#   flex_aaa.site_name_hierarchy — CatC site path
+#   flex_aaa.vlans[]             — [{vlan_name, vlan_id}, ...]
+#
+# Why this API and not wireless_profile.additional_interfaces?
+# additionalInterfaces on HQ-Wireless are extra WLC interfaces ("in addition
+# to the interfaces mapped to SSIDs"). CatC does not copy them into the Flex
+# profile vlan-name table. ISE AAA override returns names (Main/PROD/IOT);
+# those names only land on the 9800 Flex profile from
+# PUT /sites/{siteId}/wirelessSettings/flexConnectAaaOverride — the sibling of
+# flexConnectNativeVlan. wireless_design_workflow_manager has no field for it.
+#
+# PUT replaces the site's override list. GET-assert the owned (non-inherited)
+# set equals intent, so stage 07 cannot succeed with an empty map.
+#
+# Parent scope: _catc_token, site_id_map, catc_host, catc_port, catc_verify
+# =============================================================================
+
+- name: "Reset per-site AAA-override facts  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_aaa_task_url: ""
+    _flex_aaa_site_id: ""
+    _flex_aaa_desired: []
+    _flex_aaa_have: []
+
+- name: "Resolve site UUID  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_aaa_site_id: "{{ site_id_map.get(flex_aaa.site_name_hierarchy, '') }}"
+
+- name: "Assert site UUID resolved  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.assert:
+    that: _flex_aaa_site_id | length > 0
+    fail_msg: >-
+      Site '{{ flex_aaa.site_name_hierarchy }}' is not in Catalyst Center
+      (site_id_map miss). Run stage 01 before stage 07.
+    success_msg: "Site ID {{ _flex_aaa_site_id }} for {{ flex_aaa.site_name_hierarchy }}"
+
+- name: "Build desired AAA-override VLAN set  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_aaa_desired: >-
+      {%- set ns = namespace(items=[]) -%}
+      {%- for v in flex_aaa.vlans -%}
+        {%- set ns.items = ns.items + [{
+              'vlanName': v.vlan_name,
+              'vlanId': (v.vlan_id | int)
+            }] -%}
+      {%- endfor -%}
+      {{ ns.items | sort(attribute='vlanName') }}
+
+- name: "GET FlexConnect AAA-override VLANs  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites/{{ _flex_aaa_site_id }}/wirelessSettings/flexConnectAaaOverride
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: [200, 404]
+  register: _flex_aaa_get
+
+- name: "--DEBUG-- FlexConnect AAA-override GET  | {{ flex_aaa.site_name_hierarchy }}"
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _flex_aaa_get.json
+
+- name: "Parse owned AAA-override VLAN set  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_aaa_have: >-
+      {%- set ns = namespace(items=[]) -%}
+      {%- set rows = (_flex_aaa_get.json | default({})).response | default([]) -%}
+      {%- if rows is mapping -%}
+        {%- set rows = [rows] -%}
+      {%- endif -%}
+      {%- for row in rows -%}
+        {%- set inherited = row.inheritedSiteNameHierarchy | default('') -%}
+        {%- if inherited == '' or inherited == flex_aaa.site_name_hierarchy -%}
+          {%- set ns.items = ns.items + [{
+                'vlanName': row.vlanName,
+                'vlanId': (row.vlanId | int)
+              }] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.items | sort(attribute='vlanName') }}
+
+# Local override already matches intent — skip the PUT. An inherited set that
+# happens to match is still PUT so this site owns the map (CatC generates the
+# Flex vlan-name table from the AP site, not from Global).
+- name: "Decide whether AAA-override PUT is required  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_aaa_needs_put: "{{ not (_flex_aaa_get.status == 200 and _flex_aaa_have == _flex_aaa_desired) }}"
+
+- name: "PUT FlexConnect AAA-override VLANs  | {{ flex_aaa.site_name_hierarchy }}"
+  when: _flex_aaa_needs_put | bool
+  ansible.builtin.uri:
+    url: >-
+      https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites/{{ _flex_aaa_site_id }}/wirelessSettings/flexConnectAaaOverride
+    method: PUT
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body: "{{ _flex_aaa_desired }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: [200, 202]
+  register: _flex_aaa_put
+
+- name: "Collect AAA-override task URL  | {{ flex_aaa.site_name_hierarchy }}"
+  when: _flex_aaa_needs_put | bool
+  ansible.builtin.set_fact:
+    _flex_aaa_task_url: "{{ ((_flex_aaa_put.json | default({})).response | default({})).url | default('') }}"
+
+- name: "Poll AAA-override task  | {{ flex_aaa.site_name_hierarchy }}"
+  when:
+    - _flex_aaa_needs_put | bool
+    - _flex_aaa_task_url | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ catc_host }}:{{ catc_port }}{{ _flex_aaa_task_url }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: 200
+  register: _flex_aaa_task
+  until: _flex_aaa_task.json.response.isError is defined
+  retries: 12
+  delay: 5
+
+- name: "Assert AAA-override task succeeded  | {{ flex_aaa.site_name_hierarchy }}"
+  when:
+    - _flex_aaa_needs_put | bool
+    - _flex_aaa_task_url | length > 0
+  ansible.builtin.assert:
+    that: not _flex_aaa_task.json.response.isError
+    fail_msg: >-
+      FlexConnect AAA-override PUT failed for '{{ flex_aaa.site_name_hierarchy }}':
+      {{ _flex_aaa_task.json.response.failureReason | default('unknown') }}
+    success_msg: >-
+      AAA-override VLANs queued for '{{ flex_aaa.site_name_hierarchy }}'.
+
+- name: "GET FlexConnect AAA-override VLANs after PUT  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites/{{ _flex_aaa_site_id }}/wirelessSettings/flexConnectAaaOverride
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: 200
+  register: _flex_aaa_verify
+
+- name: "Parse verified AAA-override VLAN set  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_aaa_verified: >-
+      {%- set ns = namespace(items=[]) -%}
+      {%- set rows = (_flex_aaa_verify.json | default({})).response | default([]) -%}
+      {%- if rows is mapping -%}
+        {%- set rows = [rows] -%}
+      {%- endif -%}
+      {%- for row in rows -%}
+        {%- set inherited = row.inheritedSiteNameHierarchy | default('') -%}
+        {%- if inherited == '' or inherited == flex_aaa.site_name_hierarchy -%}
+          {%- set ns.items = ns.items + [{
+                'vlanName': row.vlanName,
+                'vlanId': (row.vlanId | int)
+              }] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.items | sort(attribute='vlanName') }}
+
+- name: "Assert FlexConnect AAA-override VLANs  | {{ flex_aaa.site_name_hierarchy }}"
+  ansible.builtin.assert:
+    that: _flex_aaa_verified == _flex_aaa_desired
+    fail_msg: >-
+      FlexConnect AAA-override at '{{ flex_aaa.site_name_hierarchy }}' is
+      {{ _flex_aaa_verified | default([]) }}, expected {{ _flex_aaa_desired }}.
+      Stage 07 must not succeed with an empty map — ISE VLAN names never
+      reach the WLC Flex profile and clients fail with VLAN Failure.
+    success_msg: >-
+      FlexConnect AAA-override {{ _flex_aaa_desired | map(attribute='vlanName') | join(', ') }}
+      confirmed at '{{ flex_aaa.site_name_hierarchy }}'.

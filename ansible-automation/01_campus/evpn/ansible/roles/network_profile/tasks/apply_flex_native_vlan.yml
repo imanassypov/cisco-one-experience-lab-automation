@@ -1,0 +1,135 @@
+---
+# =============================================================================
+# network_profile / apply_flex_native_vlan.yml
+# =============================================================================
+# Pins FlexConnect native VLAN at one site. Loop variable: flex_native
+#   flex_native.site_name_hierarchy — CatC site path
+#   flex_native.vlan_id             — native VLAN (1–4094)
+#
+# Why raw URI instead of wireless_design_workflow_manager?
+# The collection only UPDATES an existing native-VLAN override. A site with
+# none is skipped ("Creation is not supported") and stage 07 still succeeds,
+# so the WLC Flex profile keeps native VLAN 1. PUT the override when GET does
+# not already show this site owning native vlan_id, then GET-assert.
+#
+# Parent scope: _catc_token, site_id_map, catc_host, catc_port, catc_verify
+# =============================================================================
+
+- name: "Reset per-site native VLAN facts  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_native_task_url: ""
+    _flex_site_id: ""
+
+- name: "Resolve site UUID  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_site_id: "{{ site_id_map.get(flex_native.site_name_hierarchy, '') }}"
+
+- name: "Assert site UUID resolved  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.assert:
+    that: _flex_site_id | length > 0
+    fail_msg: >-
+      Site '{{ flex_native.site_name_hierarchy }}' is not in Catalyst Center
+      (site_id_map miss). Run stage 01 before stage 07.
+    success_msg: "Site ID {{ _flex_site_id }} for {{ flex_native.site_name_hierarchy }}"
+
+- name: "GET FlexConnect native VLAN  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites/{{ _flex_site_id }}/wirelessSettings/flexConnectNativeVlan
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: [200, 404]
+  register: _flex_native_get
+
+- name: "--DEBUG-- FlexConnect native VLAN GET  | {{ flex_native.site_name_hierarchy }}"
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _flex_native_get.json
+
+- name: "Parse FlexConnect native VLAN GET  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_native_body: "{{ (_flex_native_get.json | default({})).response | default({}) }}"
+
+# Local override already at the requested VLAN — skip the PUT. An inherited
+# value that happens to match is still PUT so this site owns the override
+# (CatC generates the Flex native VLAN from the AP site, not from Global).
+- name: "Decide whether native VLAN PUT is required  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.set_fact:
+    _flex_native_needs_put: "{{ not (_flex_native_get.status == 200 and (_flex_native_body.nativeVlanId | default(-1) | int) == (flex_native.vlan_id | int) and (_flex_native_body.inheritedSiteNameHierarchy | default('')) == flex_native.site_name_hierarchy) }}"
+
+- name: "PUT FlexConnect native VLAN {{ flex_native.vlan_id }}  | {{ flex_native.site_name_hierarchy }}"
+  when: _flex_native_needs_put | bool
+  ansible.builtin.uri:
+    url: >-
+      https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites/{{ _flex_site_id }}/wirelessSettings/flexConnectNativeVlan
+    method: PUT
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body: "{{ {'nativeVlanId': flex_native.vlan_id | int} }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: [200, 202]
+  register: _flex_native_put
+
+- name: "Collect native VLAN task URL  | {{ flex_native.site_name_hierarchy }}"
+  when: _flex_native_needs_put | bool
+  ansible.builtin.set_fact:
+    _flex_native_task_url: "{{ ((_flex_native_put.json | default({})).response | default({})).url | default('') }}"
+
+- name: "Poll native VLAN task  | {{ flex_native.site_name_hierarchy }}"
+  when:
+    - _flex_native_needs_put | bool
+    - _flex_native_task_url | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ catc_host }}:{{ catc_port }}{{ _flex_native_task_url }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: 200
+  register: _flex_native_task
+  until: _flex_native_task.json.response.isError is defined
+  retries: 12
+  delay: 5
+
+- name: "Assert native VLAN task succeeded  | {{ flex_native.site_name_hierarchy }}"
+  when:
+    - _flex_native_needs_put | bool
+    - _flex_native_task_url | length > 0
+  ansible.builtin.assert:
+    that: not _flex_native_task.json.response.isError
+    fail_msg: >-
+      FlexConnect native VLAN PUT failed for '{{ flex_native.site_name_hierarchy }}':
+      {{ _flex_native_task.json.response.failureReason | default('unknown') }}
+    success_msg: >-
+      Native VLAN {{ flex_native.vlan_id }} queued for '{{ flex_native.site_name_hierarchy }}'.
+
+- name: "GET FlexConnect native VLAN after PUT  | {{ flex_native.site_name_hierarchy }}"
+  ansible.builtin.uri:
+    url: >-
+      https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites/{{ _flex_site_id }}/wirelessSettings/flexConnectNativeVlan
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify }}"
+    status_code: 200
+  register: _flex_native_verify
+
+- name: "Assert FlexConnect native VLAN is {{ flex_native.vlan_id }}  | {{ flex_native.site_name_hierarchy }}"
+  vars:
+    _verified: "{{ (_flex_native_verify.json | default({})).response | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - (_verified.nativeVlanId | default(-1) | int) == (flex_native.vlan_id | int)
+    fail_msg: >-
+      FlexConnect native VLAN at '{{ flex_native.site_name_hierarchy }}' is
+      {{ _verified.nativeVlanId | default('unset') }}
+      (inherited from {{ _verified.inheritedSiteNameHierarchy | default('unknown') }}),
+      expected {{ flex_native.vlan_id }}. Stage 07 must not succeed with native
+      VLAN 1 — the WLC Flex profile would mismatch the AP trunk.
+    success_msg: >-
+      FlexConnect native VLAN {{ flex_native.vlan_id }} confirmed at
+      '{{ flex_native.site_name_hierarchy }}'.

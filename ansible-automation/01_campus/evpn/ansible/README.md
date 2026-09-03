@@ -37,6 +37,7 @@ Python 3.9 caps ansible-core at 2.15, so such a host cannot run the 2.16+ collec
 ├── Settings/settings.json       # SSOT for all stages
 └── ansible/
     ├── GETTING_STARTED.md       # first-time setup (students start here)
+    ├── debug.md                 # WLC session: client cannot join PSEUDOCO-POD12
     ├── inventory/               # static_inventory.yml + group_vars
     ├── playbooks/               # 00_site_deploy orchestrator, 01–10 stages
     ├── roles/                   # site_hierarchy, template_sync, network_profile, provision_devices, …

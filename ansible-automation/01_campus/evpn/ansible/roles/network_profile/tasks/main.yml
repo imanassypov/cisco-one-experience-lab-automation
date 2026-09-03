@@ -128,8 +128,10 @@
 # only reference an SSID that already exists — so this runs before the profile
 # binding below, not after.
 #
-# The wireless_design block in settings.json is already snake_case and 1:1 with
-# the module schema, so each row's block becomes one config element verbatim.
+# The wireless_design block is mostly snake_case and 1:1 with the design WFM.
+# Only WFM keys are copied: interfaces, ssids, flex_connect_configuration.
+# flex_connect_aaa_override is a sibling we PUT ourselves — the collection has
+# no field for it, and passing it through would fail argspec.
 # Unlike the profile builders, no site path is derived here: FlexConnect names
 # its own site_name_hierarchy, and an SSID is global until a profile binds it.
 #
@@ -139,8 +141,12 @@
 #                      "wlan_profile_name": "PSEUDOCO-FLEX-Profile", ... }],
 #          "flex_connect_configuration": [
 #            { "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
-#              "vlan_id": 10 }] }
-#   Out: wireless_design_list = [ that same dict ]
+#              "vlan_id": 10 }],
+#          "flex_connect_aaa_override": [
+#            { "site_name_hierarchy": ".../Site-105/MAIN",
+#              "vlans": [{ "vlan_name": "Main", "vlan_id": 10 }, ...] }] }
+#   Out: wireless_design_list = [ interfaces + ssids + flex_connect_configuration ]
+#        flex_aaa_override_list is built separately for the URI PUT
 #   ssid_name arrives already substituted — settings.json carries
 #   "PSEUDOCO-POD{POD}" and catc_common.load_settings resolves {POD} from
 #   lab_pod_id before any role sees the data.
@@ -150,7 +156,20 @@
       {%- set ns = namespace(result=[]) -%}
       {%- for entry in settings_data.project -%}
         {%- if entry.wireless_design is defined and entry.wireless_design -%}
-          {%- set ns.result = ns.result + [entry.wireless_design] -%}
+          {%- set src = entry.wireless_design -%}
+          {%- set cfg = {} -%}
+          {%- if src.interfaces is defined and src.interfaces -%}
+            {%- set cfg = cfg | combine({'interfaces': src.interfaces}) -%}
+          {%- endif -%}
+          {%- if src.ssids is defined and src.ssids -%}
+            {%- set cfg = cfg | combine({'ssids': src.ssids}) -%}
+          {%- endif -%}
+          {%- if src.flex_connect_configuration is defined and src.flex_connect_configuration -%}
+            {%- set cfg = cfg | combine({'flex_connect_configuration': src.flex_connect_configuration}) -%}
+          {%- endif -%}
+          {%- if cfg -%}
+            {%- set ns.result = ns.result + [cfg] -%}
+          {%- endif -%}
         {%- endif -%}
       {%- endfor -%}
       {{ ns.result }}
@@ -206,6 +225,112 @@
         SSIDs: {{ wireless_design_list | map(attribute='ssids') | select('defined')
                   | flatten | map(attribute='ssid_name') | join(', ') }}
 
+# ── FlexConnect native VLAN and AAA-override VLAN names ───────────────────
+#
+# wireless_design_workflow_manager.flex_connect_configuration maps to
+# PUT /sites/{siteId}/wirelessSettings/flexConnectNativeVlan, but the
+# collection will only UPDATE an override that already exists. When Site-105
+# has none, it logs "Creation is not supported — skipping" and the play still
+# reports success. The generated Flex profile then keeps native VLAN 1, which
+# does not match the AP trunk (Gi1/0/2 native 10). PUT the override ourselves
+# and GET-assert it, so a skip cannot silently ship native VLAN 1.
+#
+# AAA-override VLAN names are a different CatC object: the sibling
+# /wirelessSettings/flexConnectAaaOverride. The design WFM has no field for
+# it. wireless_profile.additional_interfaces lands on HQ-Wireless as extra
+# WLC interfaces and is NOT copied into the Flex vlan-name table — that is
+# why 07/08 stored Main/PROD/IOT on the profile and the WLC Flex map still
+# only had PSEUDOCO-VLAN10. PUT this list and GET-assert it.
+- name: Build FlexConnect native VLAN apply list
+  ansible.builtin.set_fact:
+    flex_native_vlan_list: >-
+      {{ wireless_design_list
+         | map(attribute='flex_connect_configuration')
+         | select('defined')
+         | flatten
+         | selectattr('site_name_hierarchy', 'defined')
+         | selectattr('vlan_id', 'defined')
+         | list }}
+
+- name: Build FlexConnect AAA-override VLAN apply list
+  ansible.builtin.set_fact:
+    flex_aaa_override_list: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- set rows = (entry.wireless_design | default({})).flex_connect_aaa_override | default([]) -%}
+        {%- for item in rows -%}
+          {%- if item.site_name_hierarchy is defined and item.vlans | default([]) | length > 0 -%}
+            {%- set ns.result = ns.result + [item] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- FlexConnect AAA-override apply list
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: "{{ flex_aaa_override_list }}"
+
+- name: Detect whether any designed SSID enables AAA override
+  ansible.builtin.set_fact:
+    _wireless_aaa_override: >-
+      {{ true in (
+           wireless_design_list
+           | map(attribute='ssids')
+           | select('defined')
+           | flatten
+           | map(attribute='aaa')
+           | select('defined')
+           | map(attribute='aaa_override')
+           | list
+         ) }}
+
+- name: Assert AAA-override SSIDs have site Flex VLAN-name maps
+  when: _wireless_aaa_override | bool
+  ansible.builtin.assert:
+    that: >-
+      {{ flex_aaa_override_list
+         | selectattr('vlans', 'defined')
+         | map(attribute='vlans')
+         | reject('eq', [])
+         | list | length > 0 }}
+    fail_msg: >-
+      Designed SSIDs enable aaa_override, but wireless_design.flex_connect_aaa_override
+      is empty. ISE VLAN names never reach the WLC Flex profile and clients fail
+      with VLAN Failure. Add Main/PROD/IOT (10/101/102) under
+      flex_connect_aaa_override for the AP site.
+    success_msg: >-
+      {{ flex_aaa_override_list | length }} site(s) declare Flex AAA-override
+      VLAN names.
+
+- name: Authenticate for FlexConnect REST
+  when: (flex_native_vlan_list | length > 0) or (flex_aaa_override_list | length > 0)
+  ansible.builtin.import_role:
+    name: catc_common
+    tasks_from: auth_token
+
+- name: Resolve site UUIDs for FlexConnect REST
+  when: (flex_native_vlan_list | length > 0) or (flex_aaa_override_list | length > 0)
+  ansible.builtin.import_role:
+    name: catc_common
+    tasks_from: build_site_id_map
+
+- name: Apply FlexConnect native VLAN overrides
+  when: flex_native_vlan_list | length > 0
+  ansible.builtin.include_tasks: apply_flex_native_vlan.yml
+  loop: "{{ flex_native_vlan_list }}"
+  loop_control:
+    loop_var: flex_native
+    label: "{{ flex_native.site_name_hierarchy }} vlan {{ flex_native.vlan_id }}"
+
+- name: Apply FlexConnect AAA-override VLAN maps
+  when: flex_aaa_override_list | length > 0
+  ansible.builtin.include_tasks: apply_flex_aaa_override.yml
+  loop: "{{ flex_aaa_override_list }}"
+  loop_control:
+    loop_var: flex_aaa
+    label: "{{ flex_aaa.site_name_hierarchy }} ({{ flex_aaa.vlans | map(attribute='vlan_name') | join(', ') }})"
+
 # ── Wireless profile ──────────────────────────────────────────────────────
 #
 # Wireless profiles are optional — only rows that declare a wireless_profile
@@ -227,10 +352,13 @@
 # sharing a fact: the switching pass is live against the lab and is left
 # byte-identical.
 #
-# ssid_details passes through verbatim (snake_case, 1:1 with the module
-# schema). DayNTemplateNames keeps the PascalCase shape of its switching
-# sibling so stage 09 can consume TemplateTarget/DeployTemplate later; only
-# TemplateName survives into the profile binding.
+# ssid_details and additional_interfaces pass through verbatim (snake_case,
+# 1:1 with the module schema). additional_interfaces becomes CatC
+# additionalInterfaces — extra WLC interfaces, not the Flex vlan-name table.
+# ISE AAA-override names (Main/PROD/IOT) are PUT as flex_connect_aaa_override.
+# DayNTemplateNames keeps the PascalCase shape of its switching sibling so
+# stage 09 can consume TemplateTarget/DeployTemplate later; only TemplateName
+# survives into the profile binding.
 # Example - explicit site_names, as DC-Site-10 uses
 #   In : settings_data.project[0] = {
 #          "HierarchyParent": "Global/CALIFORNIA", "HierarchyArea": "San Jose",
@@ -240,12 +368,20 @@
 #            "site_names": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
 #            "ssid_details": [{ "ssid_name": "PSEUDOCO-POD12",
 #                               "enable_fabric": false, "local_to_vlan": 10 }],
+#            "additional_interfaces": [
+#              { "interface_name": "Main", "vlan_id": 10 },
+#              { "interface_name": "PROD", "vlan_id": 101 },
+#              { "interface_name": "IOT",  "vlan_id": 102 }],
 #            "DayNTemplateNames": [{ "TemplateName": null, ... }] } }
 #   Out: wireless_profile_list = [{
 #          "profile_name": "HQ-Wireless",
 #          "site_names": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
 #          "ssid_details": [{ "ssid_name": "PSEUDOCO-POD12",
-#                             "enable_fabric": false, "local_to_vlan": 10 }]
+#                             "enable_fabric": false, "local_to_vlan": 10 }],
+#          "additional_interfaces": [
+#            { "interface_name": "Main", "vlan_id": 10 },
+#            { "interface_name": "PROD", "vlan_id": 101 },
+#            { "interface_name": "IOT",  "vlan_id": 102 }]
 #        }]
 #
 # Example - no site_names, controller and APs in the same building
@@ -277,6 +413,9 @@
                          'site_names': prof.site_names | default([site_path], true)} -%}
           {%- if prof.ssid_details is defined and prof.ssid_details -%}
             {%- set cfg = cfg | combine({'ssid_details': prof.ssid_details}) -%}
+          {%- endif -%}
+          {%- if prof.additional_interfaces is defined and prof.additional_interfaces -%}
+            {%- set cfg = cfg | combine({'additional_interfaces': prof.additional_interfaces}) -%}
           {%- endif -%}
           {%- if prof.DayNTemplateNames is defined and prof.DayNTemplateNames -%}
             {%- set wtnames = prof.DayNTemplateNames

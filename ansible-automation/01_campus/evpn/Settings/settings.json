@@ -124,6 +124,20 @@
                         "local_to_vlan": 10
                     }
                 ],
+                "additional_interfaces": [
+                    {
+                        "interface_name": "Main",
+                        "vlan_id": 10
+                    },
+                    {
+                        "interface_name": "PROD",
+                        "vlan_id": 101
+                    },
+                    {
+                        "interface_name": "IOT",
+                        "vlan_id": 102
+                    }
+                ],
                 "DayNTemplateNames": [
                     {
                         "TemplateName": null,
@@ -149,6 +163,18 @@
                     {
                         "interface_name": "PSEUDOCO-VLAN10",
                         "vlan_id": 10
+                    },
+                    {
+                        "interface_name": "Main",
+                        "vlan_id": 10
+                    },
+                    {
+                        "interface_name": "PROD",
+                        "vlan_id": 101
+                    },
+                    {
+                        "interface_name": "IOT",
+                        "vlan_id": 102
                     }
                 ],
                 "ssids": [
@@ -179,6 +205,25 @@
                     {
                         "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
                         "vlan_id": 10
+                    }
+                ],
+                "flex_connect_aaa_override": [
+                    {
+                        "site_name_hierarchy": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
+                        "vlans": [
+                            {
+                                "vlan_name": "Main",
+                                "vlan_id": 10
+                            },
+                            {
+                                "vlan_name": "PROD",
+                                "vlan_id": 101
+                            },
+                            {
+                                "vlan_name": "IOT",
+                                "vlan_id": 102
+                            }
+                        ]
                     }
                 ]
             }
