@@ -61,7 +61,7 @@ ansible-playbook playbooks/00_site_deploy.yml
 | `05_assign_to_site.yml` | 5 | Assign devices to sites |
 | `06_template_sync.yml` | 6 | Template sync from GitHub or a local directory |
 | `07_network_profile.yml` | 7 | Network profiles (switching, wireless design, wireless) |
-| `08_provision_devices.yml` | 8 | Device provisioning (wired, then wireless controllers) |
+| `08_provision_devices.yml` | 8 | Device provisioning (wired, then wireless controllers, then APs) |
 | `09_deploy_composite.yml` | 9 | Composite template deploy |
 | `10_verify_collect_facts.yml` | 10 | Collect show-command evidence from the fabric |
 
@@ -263,6 +263,7 @@ DEBUG=true ansible-playbook playbooks/04_device_discovery.yml
 ansible-playbook playbooks/01_site_hierarchy.yml -e state=deleted
 ansible-playbook playbooks/06_template_sync.yml -e template_source=local
 ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
+ansible-playbook playbooks/08_provision_devices.yml -e ap_provision_enabled=false
 ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 ```
 

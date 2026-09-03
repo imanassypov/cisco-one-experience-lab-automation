@@ -597,7 +597,7 @@ The optional `access_points` array belongs on the row where the APs are physical
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `mac_address` | string | `{APn_MAC}` token, resolved from `lab_ap_macs` by index. The MAC is the only stable identifier — the AP carries a factory name until this stage renames it. |
+| `mac_address` | string | `{APn_MAC}` token, resolved from `lab_ap_macs` by index. Give the **Ethernet** MAC — the one printed on the AP and shown in the WLC's Ethernet MAC column. The MAC is the only stable identifier, since the AP carries a factory name until this stage renames it. |
 | `ap_name` | string | Friendly name to set on the AP. |
 | `location` | string | Free-text location description. |
 | `ap_mode` | string | `Local`, `Monitor`, `Sniffer` or `Bridge`. |
@@ -606,7 +606,11 @@ The optional `access_points` array belongs on the row where the APs are physical
 
 **MAC addresses are per-student, so they are tokens.** Each pod has its own APs, and the entries above resolve from `lab_ap_macs` in [`group_vars/all/lab.yml`](../ansible/inventory/group_vars/all/lab.yml) the same way `{POD}` resolves from `lab_pod_id` — see [Per-student values are not stored here](#per-student-values-are-not-stored-here). `{AP1_MAC}` takes the first MAC in that list, `{AP2_MAC}` the second, and an entry whose token has no matching MAC is skipped, so a one-AP pod needs no change here.
 
-Changing an AP's site assignment reboots it. The lab documents a 1–3 minute rejoin, so the stage that applies this block has to poll until the APs are registered again rather than assuming success.
+**Ethernet MAC in, radio MAC out.** Catalyst Center indexes an AP by its radio base MAC, so `GET /network-device?macAddress=<Ethernet MAC>` returns nothing and `accesspoint_workflow_manager` — which resolves an AP through that same query — would fail with *"either invalid or not present in the Cisco Catalyst Center"*. Stage 08 therefore lists the `Unified AP` family once, matches on `apEthernetMacAddress`, and substitutes the radio MAC before calling the module. Keep the Ethernet MAC in `lab.yml`; it is the number a student can actually find.
+
+**`site` is the field that matters.** Catalyst Center has no way to assign a policy tag or a site tag to an AP, and the module has no field for either. Tags are derived instead: assigning the AP to a site makes Catalyst Center generate the policy and site tags from the wireless profile bound to that site and push them to the controller. An AP with no site stays on `default-policy-tag`, which maps no WLAN, so it broadcasts nothing. This is why the block cannot simply name the AP and stop.
+
+Changing an AP's site assignment reboots it, and the lab documents a 1–3 minute rejoin. Set `ap_provision_enabled: false` in [`connection.yml`](../ansible/inventory/group_vars/catalyst_center/connection.yml) to skip the pass on a run that only needs to touch switches.
 
 ---
 
@@ -621,8 +625,7 @@ All three automation paths read `settings.json` from GitHub and iterate over eve
 | Device Credentials | `GitOps-BuildSettings-v3` | `playbooks/03_credentials.yml` | `credentials.py` | `device_credentials.*` |
 | Device Discovery | `GitOps-DeviceDiscovery-v3` | `playbooks/04_device_discovery.yml` | `device_discovery.py` | `device_list`, `device_credentials.*` |
 | Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/07_network_profile.yml` | `network_profile.py` | `lab.*`, `network_profile.*`, `wireless_design.*`, `wireless_profile.*` |
-| Provisioning | `GitOps-Provisioning-v3` | `playbooks/08_provision_devices.yml` + `playbooks/09_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*` |
-| Access Points | — | `playbooks/13_wireless_accesspoints.yml` | — | `access_points[]` |
+| Provisioning | `GitOps-Provisioning-v3` | `playbooks/08_provision_devices.yml` + `playbooks/09_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*`, `access_points[]` |
 
 All Ansible playbooks run from [`evpn/ansible/`](../ansible/).
 

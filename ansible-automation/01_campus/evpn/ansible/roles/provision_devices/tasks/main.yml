@@ -6,6 +6,9 @@
 # Groups management IPs by site path, resolves site + device UUIDs, skips
 # already-provisioned devices unless force_reprovision=true.
 #
+# Wireless controllers and access points cannot use that API and follow in
+# their own passes — Steps 5 and 6 below.
+#
 # Prerequisites (playbook pre_tasks):
 #   catc_common.auth_token    → _catc_token
 #   catc_common.load_settings → settings_data
@@ -152,3 +155,26 @@
 - name: Provision wireless controllers
   when: wireless_provision_enabled | default(true) | bool
   ansible.builtin.include_tasks: provision_wireless.yml
+
+# ── Step 6: Configure access points ───────────────────────────────────────
+#
+# Names each AP and assigns it to its site. The site assignment is what makes
+# the controller serve it: Catalyst Center derives the policy and site tags
+# from the wireless profile bound to that site and pushes them, so an AP with
+# no site stays on default tags and broadcasts no SSID.
+#
+# Runs after the controller pass because the AP is provisioned against the
+# controller's managed AP locations, which Step 5 sets.
+# Tasks: tasks/provision_accesspoints.yml
+#
+# Gated by ap_provision_enabled because assigning a site reboots the AP.
+- name: Report that access point provisioning is disabled
+  when: not (ap_provision_enabled | default(true) | bool)
+  ansible.builtin.debug:
+    msg: >-
+      ap_provision_enabled is false — leaving access points on their current
+      names and tags. Set it true to name and site-assign them.
+
+- name: Configure access points
+  when: ap_provision_enabled | default(true) | bool
+  ansible.builtin.include_tasks: provision_accesspoints.yml

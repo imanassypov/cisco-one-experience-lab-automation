@@ -98,6 +98,10 @@ task_poll_delay: 10
 # APs whenever a controller's managed AP locations change, so a run that only
 # needs to touch switches can skip it.
 wireless_provision_enabled: true
+# Access points are named and site-assigned in a third pass, after the
+# controllers. Set false to leave them alone: assigning a site provisions the
+# AP and reboots it, and it takes 1-3 minutes to rejoin.
+ap_provision_enabled: true
 
 # Deploy composite (stage 9)
 force_push_template: true

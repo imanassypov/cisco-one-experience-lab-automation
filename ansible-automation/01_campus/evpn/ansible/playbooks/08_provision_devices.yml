@@ -2,21 +2,25 @@
 # =============================================================================
 # 08_provision_devices.yml  —  Pipeline stage 08
 # =============================================================================
-# Provisions fabric devices to their sites in two passes.
+# Provisions fabric devices to their sites in three passes.
 #
 # Wired devices go through the SDA provisionDevices API, applying the network
 # settings from stage 02 and the profile from stage 07. Wireless controllers
 # cannot use that API — it has no way to set a wireless DeviceInfo role and
 # answers NCWL10092 — so they are deferred to a second pass built on
 # provision_workflow_manager, which also assigns their managed AP locations.
+# Access points follow in a third pass that names them and assigns them to
+# their site, which is what makes Catalyst Center push a policy and site tag
+# for them; there is no way to set either tag directly.
 #
 # Role: provision_devices
 #   wired    — roles/provision_devices/tasks/provision_site.yml (per site)
 #   wireless — roles/provision_devices/tasks/provision_wireless.yml (once)
+#   APs      — roles/provision_devices/tasks/provision_accesspoints.yml (once)
 #
 # The wired pass calls the Catalyst Center REST API directly with a bearer
-# token; module_defaults below apply only to the wireless pass, which uses a
-# workflow manager module and therefore needs per-module credentials.
+# token; module_defaults below apply to the two wireless passes, which use
+# workflow manager modules and therefore need per-module credentials.
 #
 # Sourced (pre_tasks, order matters):
 #   catc_common tasks_from: auth_token    → _catc_token (X-Auth-Token for raw uri calls)
@@ -26,10 +30,13 @@
 #     HierarchyParent/Area/Bldg/Floor — composed into the target site path
 #     wireless_controller — optional; managed_ap_locations, skip_ap_provision,
 #                           rolling_ap_upgrade for the WLC in that row
+#     access_points — optional; name, location, mode and site per AP, keyed by
+#                     the AP's Ethernet MAC from lab.yml via an {APn_MAC} token
 #   connection.yml:
 #     force_reprovision (false) — set true to re-provision already-provisioned
 #       devices; also drives force_provisioning on the wireless pass
 #     wireless_provision_enabled (true) — set false to leave WLCs alone
+#     ap_provision_enabled (true) — set false to leave APs alone
 #     task_poll_retries (60), task_poll_delay (10) — async task polling
 #     dnac_host/port/version/verify
 #   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
@@ -37,19 +44,24 @@
 # Produced:
 #   _site_device_map       — { "<site path>": ["198.19.1.3", "198.19.1.4"] }
 #   _wlc_provision_config  — one provision_workflow_manager entry per controller
+#   _ap_config             — one accesspoint_workflow_manager entry per AP
 #   In Catalyst Center: devices in PROVISIONED state with site settings and the
 #   switching profile applied — the precondition for stage 09 template deploy —
-#   and controllers provisioned with the AP locations they serve.
+#   controllers provisioned with the AP locations they serve, and APs named and
+#   assigned to their site.
 #
 # Provisioning a controller reboots its APs when the managed AP locations
-# change; the lab documents a 1-3 minute rejoin.
+# change, and assigning an AP to a new site reboots that AP; the lab documents
+# a 1-3 minute rejoin for both.
 #
 # Depends on: stages 01, 02, 05 and 07
-# Modules: cisco.dnac.provision_workflow_manager (wireless pass only)
+# Modules: cisco.dnac.provision_workflow_manager (wireless pass)
+#          cisco.dnac.accesspoint_workflow_manager (AP pass)
 #
 # Run: ansible-playbook playbooks/08_provision_devices.yml
 #      ansible-playbook playbooks/08_provision_devices.yml -e force_reprovision=true
 #      ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
+#      ansible-playbook playbooks/08_provision_devices.yml -e ap_provision_enabled=false
 # =============================================================================
 - name: Provision Devices to Site in Catalyst Center from settings.json
   hosts: catalyst_center
@@ -58,6 +70,16 @@
     catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
   module_defaults:
     cisco.dnac.provision_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+    cisco.dnac.accesspoint_workflow_manager:
       dnac_host: "{{ dnac_host }}"
       dnac_username: "{{ catc_username }}"
       dnac_password: "{{ catc_password }}"

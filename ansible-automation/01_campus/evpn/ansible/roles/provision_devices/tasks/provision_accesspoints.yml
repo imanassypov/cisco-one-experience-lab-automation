@@ -1,0 +1,263 @@
+# ============================================================================
+# tasks/provision_accesspoints.yml  —  Pipeline stage 8.2
+# ============================================================================
+# Names each access point and assigns it to the site whose APs the controller
+# provisioned in stage 8.1 manages.
+#
+# Site assignment is the operative step. Catalyst Center has no notion of
+# handing an AP a policy tag or a site tag directly, and
+# accesspoint_workflow_manager has no field for either. Tags are derived: the
+# AP is assigned to a site, the wireless profile from stage 07 is bound to
+# that site, and Catalyst Center generates the site and policy tags and pushes
+# them to the controller. An AP with no site sits on default-site-tag and
+# default-policy-tag, which map no WLAN, so it broadcasts nothing.
+#
+# The AP reboots when its tags change and takes 1-3 minutes to rejoin, so this
+# is gated by ap_provision_enabled.
+#
+# Variables read from inventory / parent play scope:
+#   settings_data   — settings.json (catc_common.load_settings), already token
+#                     substituted, so access_points[].mac_address is a real MAC
+#   _catc_token     — short-lived JWT for the inventory lookup
+#   dnac_host / dnac_port / dnac_verify
+# ============================================================================
+---
+
+# ── Step A: Collect the declared access points ────────────────────────────
+#
+# Every access_points entry across all project rows, flattened. The entries in
+# settings.json are already shaped for accesspoint_workflow_manager, so they
+# are carried verbatim rather than rebuilt field by field; only mac_address is
+# rewritten later, in Step C.
+#
+# An entry whose mac_address still holds a literal {APn_MAC} is dropped here.
+# settings.json carries an entry per AP the site could have, while lab.yml
+# lists only the MACs of the pod actually in front of the student, so the
+# loader deliberately leaves the surplus tokens unresolved for this filter.
+#
+# Example - a two-AP site in a pod that has one AP
+#   In : settings_data.project[2].access_points = [
+#          { "mac_address": "04:5f:b9:ca:03:58", "ap_name": "SITE-105-AP-1",
+#            "location": "Leaf1", "ap_mode": "Local",
+#            "is_assigned_site_as_location": "Disabled",
+#            "site": { "floor": { "name": "MAIN",
+#                                 "parent_name": "Global/NORTH CAROLINA/Durham/Site-105" } } },
+#          { "mac_address": "{AP2_MAC}", "ap_name": "SITE-105-AP-2", ... }
+#        ]
+#   Out: _ap_declared   = [ the SITE-105-AP-1 entry ]
+#        _ap_unresolved = ["SITE-105-AP-2"]
+- name: Build declared access point list
+  ansible.builtin.set_fact:
+    _ap_declared: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- for ap in entry.access_points | default([]) -%}
+          {%- if '{' not in (ap.mac_address | default('')) -%}
+            {%- set ns.result = ns.result + [ap] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+    _ap_unresolved: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- for ap in entry.access_points | default([]) -%}
+          {%- if '{' in (ap.mac_address | default('')) -%}
+            {%- set ns.result = ns.result + [ap.ap_name | default(ap.mac_address)] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Declared access point list
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _ap_declared
+
+- name: Report access points this pod does not have
+  when: _ap_unresolved | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      Skipping {{ _ap_unresolved | join(', ') }} — no matching entry in
+      lab_ap_macs, so the {APn_MAC} token was never filled. Add the MAC to
+      inventory/group_vars/all/lab.yml if this pod does have the AP.
+
+- name: Report that no site declares an access point
+  when: _ap_declared | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      No resolvable access_points entry in settings.json — nothing to name or
+      assign. Controllers were handled by the wireless pass above.
+
+# ── Step B: Map Ethernet MAC to the MAC inventory answers on ──────────────
+#
+# lab.yml holds the Ethernet MAC, because that is what is printed on the AP
+# and shown in the WLC's Ethernet MAC column, so it is the number a student
+# can actually find. Catalyst Center indexes an AP by its radio base MAC
+# instead: GET network-device?macAddress=<Ethernet MAC> returns zero devices,
+# and the module resolves an AP by passing mac_address straight into that same
+# query, so handing it the Ethernet MAC fails with "either invalid or not
+# present in the Cisco Catalyst Center".
+#
+# Listing the Unified AP family once and matching on apEthernetMacAddress
+# gives the translation, and doubles as the presence check: an AP that has not
+# joined the controller is simply absent from the response.
+- name: List access points known to Catalyst Center
+  when: _ap_declared | length > 0
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/network-device?family=Unified%20AP"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _ap_inventory_result
+
+# Example
+#   In : _ap_inventory_result.json.response = [
+#          { "hostname": "SITE-105-AP-1",
+#            "macAddress": "68:7d:b4:90:95:00",
+#            "apEthernetMacAddress": "04:5f:b9:ca:03:58",
+#            "siteHierarchy": null }
+#        ]
+#   Out: _ap_eth_to_radio = {
+#          "04:5f:b9:ca:03:58": { "radio_mac": "68:7d:b4:90:95:00",
+#                                 "hostname":  "SITE-105-AP-1",
+#                                 "site":      "" }
+#        }
+# Keys are lowercased on both sides so the comparison in Step C survives an
+# inventory that answers in upper case.
+- name: Build Ethernet MAC → radio MAC map
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_eth_to_radio: >-
+      {%- set ns = namespace(result={}) -%}
+      {%- for d in (_ap_inventory_result.json.response | default([])) -%}
+        {%- if d.apEthernetMacAddress is defined and d.apEthernetMacAddress -%}
+          {%- set ns.result = ns.result | combine({
+              d.apEthernetMacAddress | lower: {
+                'radio_mac': d.macAddress | default(''),
+                'hostname':  d.hostname   | default(''),
+                'site':      d.siteHierarchy | default('') or ''
+              }
+          }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Ethernet MAC → radio MAC map
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+  ansible.builtin.debug:
+    var: _ap_eth_to_radio
+
+# ── Step C: Build the access point config ─────────────────────────────────
+#
+# Each declared entry passes through with mac_address swapped for the radio
+# MAC, which is the only edit the module needs. A declared AP missing from the
+# map has not joined the controller and is collected separately rather than
+# sent, because the module fails the whole run on an unresolvable identifier.
+#
+# Example
+#   In : _ap_declared     = [ { "mac_address": "04:5f:b9:ca:03:58",
+#                              "ap_name": "SITE-105-AP-1", ... } ]
+#        _ap_eth_to_radio = { "04:5f:b9:ca:03:58": { "radio_mac": "68:7d:b4:90:95:00", ... } }
+#   Out: _ap_config  = [ { "mac_address": "68:7d:b4:90:95:00",
+#                          "ap_name": "SITE-105-AP-1", "location": "Leaf1",
+#                          "ap_mode": "Local",
+#                          "is_assigned_site_as_location": "Disabled",
+#                          "site": { "floor": { ... } } } ]
+#        _ap_absent  = []
+- name: Build access point config
+  when: _ap_declared | length > 0
+  ansible.builtin.set_fact:
+    _ap_config: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for ap in _ap_declared -%}
+        {%- set eth = ap.mac_address | lower -%}
+        {%- if eth in _ap_eth_to_radio -%}
+          {%- set ns.result = ns.result
+                + [ap | combine({'mac_address': _ap_eth_to_radio[eth].radio_mac})] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+    _ap_absent: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for ap in _ap_declared -%}
+        {%- if (ap.mac_address | lower) not in _ap_eth_to_radio -%}
+          {%- set ns.result = ns.result
+                + [(ap.ap_name | default('unnamed')) ~ ' (' ~ ap.mac_address ~ ')'] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Access point config
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+  ansible.builtin.debug:
+    var: _ap_config
+
+# A MAC in lab.yml that inventory has never seen is a typo or an AP that never
+# joined. Failing here beats letting the module report an opaque "invalid or
+# not present" for the whole batch.
+- name: Assert every declared access point has joined the controller
+  when: _ap_declared | length > 0
+  ansible.builtin.assert:
+    that: _ap_absent | length == 0
+    fail_msg: >-
+      Not found among the Unified AP devices in Catalyst Center:
+      {{ _ap_absent | join(', ') }}.
+      Check the Ethernet MAC in inventory/group_vars/all/lab.yml, and confirm
+      the AP has joined the controller — 'show ap summary' on the WLC.
+    success_msg: >-
+      {{ _ap_config | length }} access point(s) to configure.
+
+# Site assignment is the whole point of the stage; an entry without one would
+# name the AP and leave it on default tags, broadcasting nothing.
+- name: Assert every access point names a site
+  when: _ap_declared | length > 0
+  ansible.builtin.assert:
+    that: item.site | default({}) | length > 0
+    fail_msg: >-
+      Access point {{ item.ap_name | default(item.mac_address) }} has no site.
+      Add a site block to its access_points entry in settings.json — without
+      one Catalyst Center pushes no policy or site tag and the AP serves no SSID.
+  loop: "{{ _ap_config }}"
+  loop_control:
+    label: "{{ item.ap_name | default(item.mac_address) }}"
+
+# ── Step D: Configure ─────────────────────────────────────────────────────
+#
+# The module polls its own async tasks, so there is no task-ID plumbing here.
+# It is idempotent on name and location, but assigning a site the AP is not
+# yet in provisions it, which reboots it.
+- name: Configure and site-assign access points
+  when: _ap_declared | length > 0
+  cisco.dnac.accesspoint_workflow_manager:
+    state: merged
+    config: "{{ _ap_config }}"
+  register: _ap_provision_result
+
+- name: --DEBUG-- Access point provisioning result
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+  ansible.builtin.debug:
+    var: _ap_provision_result
+
+# ── Step E: Summary ───────────────────────────────────────────────────────
+- name: Access point provisioning summary
+  when: _ap_declared | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      {{ ['┌─────────────────────────────────────────────────────────────────┐']
+         + ['│ Access points : ' + (_ap_config | length) | string]
+         + (_ap_config | map(attribute='ap_name')
+            | zip(_ap_config | map(attribute='mac_address'))
+            | map('join', ' → ') | map('regex_replace', '^', '│   ') | list)
+         + ['│ Skipped       : ' + (_ap_unresolved | join(', ') | default('none', true))]
+         + ['│ Changed       : ' + (_ap_provision_result.changed | default(false)) | string]
+         + ['│ Status        : ' + (_ap_provision_result.msg | default('see task output') | string)]
+         + ['└─────────────────────────────────────────────────────────────────┘'] }}
