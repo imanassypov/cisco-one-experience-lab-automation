@@ -13,7 +13,25 @@
 # default-policy-tag, which map no WLAN, so it broadcasts nothing.
 #
 # The AP reboots when its tags change and takes 1-3 minutes to rejoin, so this
-# is gated by ap_provision_enabled.
+# is gated by ap_provision_enabled — which is currently false, because the
+# module call in Step D cannot succeed here.
+#
+# KNOWN BLOCKER. Whenever a config entry carries a site,
+# accesspoint_workflow_manager calls verify_wlc_provision on the AP's
+# associated controller, and that helper decides whether the controller is
+# provisioned by calling the SDA endpoint sda/get_device_info. This WLC is
+# non-fabric wireless on a BGP EVPN lab, so it has no fabric role, the call
+# answers 400 "This device does not have any fabric role assigned to it for
+# deviceManagementIpAddress = 198.18.5.103", and the module aborts the run.
+# The module assumes any site-assigned AP lives in an SDA fabric.
+#
+# The obvious alternatives do not work either: provision_workflow_manager
+# resolves family Unified AP to a device type of None and has branches only
+# for wired and Wireless Controller, and accesspoint_location_workflow_manager
+# handles floor-map coordinates rather than site assignment. Everything up to
+# Step D is verified against the live lab and left in place; only the module
+# call needs replacing, either with the raw site-assign and provision APIs or
+# by driving the controller directly with the tags the lab pre-builds.
 #
 # Variables read from inventory / parent play scope:
 #   settings_data   — settings.json (catc_common.load_settings), already token

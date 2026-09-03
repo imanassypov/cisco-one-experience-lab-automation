@@ -99,9 +99,17 @@ task_poll_delay: 10
 # needs to touch switches can skip it.
 wireless_provision_enabled: true
 # Access points are named and site-assigned in a third pass, after the
-# controllers. Set false to leave them alone: assigning a site provisions the
-# AP and reboots it, and it takes 1-3 minutes to rejoin.
-ap_provision_enabled: true
+# controllers. Off, because the pass cannot currently succeed on this lab:
+# accesspoint_workflow_manager validates the AP's controller through the SDA
+# endpoint GET sda/get_device_info whenever the config carries a site, and this
+# WLC is non-fabric wireless on a BGP EVPN lab, so it has no fabric role and
+# the call answers 400 "does not have any fabric role assigned". Turning this
+# on would fail stage 08 and with it the 00_site_deploy orchestrator.
+#
+# Set true once the pass has a path that does not go through that module —
+# see roles/provision_devices/tasks/provision_accesspoints.yml. Note that
+# assigning a site provisions the AP and reboots it, 1-3 minutes to rejoin.
+ap_provision_enabled: false
 
 # Deploy composite (stage 9)
 force_push_template: true
