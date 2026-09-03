@@ -11,7 +11,7 @@
 # Zero-padded to two digits when substituted, so pod 7 yields PSEUDOCO-POD07.
 # The SSID must match a pre-configured group policy on the WLC that carries the
 # authentication settings, so the padding is not cosmetic.
-lab_pod_id: 12
+lab_pod_id: 24
 
 # ── {AP1_MAC}, {AP2_MAC} ─────────────────────────────────────────────────────
 # Ethernet MAC of each access point, in join order, colon-separated. A pod has
