@@ -259,7 +259,9 @@ router bgp {{FABRIC_BGP_ASN}}
    neighbor {{iface.neighbour}} activate
    neighbor {{iface.neighbour}} send-community both
 {% endfor %}
+{% if DEFN_NODE_ROLES['BORDER'] | length > 1 %}
    maximum-paths ibgp {{ DEFN_NODE_ROLES['BORDER'] | length }}
+{% endif %}
 ! @start-ignore-compliance
    exit-address-family
 ! @end-ignore-compliance

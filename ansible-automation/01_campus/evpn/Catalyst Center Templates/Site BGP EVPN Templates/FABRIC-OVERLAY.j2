@@ -27,7 +27,9 @@ router bgp {{FABRIC_BGP_ASN}}
  advertise l2vpn evpn
  import path selection all
  redistribute connected
+{% if DEFN_NODE_ROLES['SPINE'] | length > 1 %}
  maximum-paths ibgp {{ DEFN_NODE_ROLES['SPINE'] | length }}
+{% endif %}
  exit-address-family
  !
     {% endif %}

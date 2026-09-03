@@ -243,7 +243,6 @@ template WIRED_MAB_OPEN
 !
 ! @end-ignore-compliance
 ip tftp source-interface GigabitEthernet0/0
-ip ssh version 2
 !
 ip access-list extended {{ DEFN_NAC_IBNS['critical_acl'] }}
  10 permit ip any any
