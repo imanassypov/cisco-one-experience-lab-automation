@@ -18,10 +18,12 @@
 {# Dummy set to satisfy CatC static UDV scanner - overridden at runtime by for-loop #}
 {% set vrf = {'name': '', 'id': '', 'mdt_default': '', 'mdt_data': '', 'l3_vlan': '', 'l3_vni': ''} %}
 {# =========================================== #}
-{# BGP Border Prefix-List to prevent loops     #}
+{# RR: advertise only locally originated EVPN  #}
+{# ^$ = empty AS-path. Do not transit DMZ or   #}
+{# other sites through this campus.            #}
 {# =========================================== #}
 {% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['RR'] %}
-ip as-path access-list 100 permit _$
+ip as-path access-list 100 permit ^$
 !
 route-map EVPN-PEER-BORDER-OUT permit 10 
  match as-path 100
