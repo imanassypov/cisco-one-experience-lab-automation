@@ -44,7 +44,7 @@ Stages, in order, from `ansible/playbooks/`:
 | `03_credentials.yml` | Device credentials in CatC (CLI, SNMP, HTTP, NETCONF) |
 | `04_device_discovery.yml` | Discovery |
 | `05_assign_to_site.yml` | Assign devices to sites |
-| `06_template_sync.yml` | Publish `.j2` into CatC projects; build composite `BGP-EVPN-BUILD` |
+| `06_template_sync.yml` | Sync Jinja from a local folder or GitHub into a CatC CLI project (`Site-105`) |
 | `07_network_profile.yml` | Network profile (switching, wireless design, wireless) |
 | `08_provision_devices.yml` | Provision wired devices, then wireless controllers |
 | `09_deploy_composite.yml` | Deploy composite (do not run until asked) |

@@ -58,12 +58,16 @@ discovery_http_write_credentials:
     - description: HTTPS Write
       username: netadmin
 
-# Template sync / GitHub (stage 6)
-# template_source selects where the .j2 templates and composite YAML are read from:
-#   git   — GitHub REST API, using git_repo / git_branch / git_token below
-#   local — a directory on the machine running Ansible, rooted at template_local_root
-# git_repo_subfolders applies to both: its paths are relative to the repository
-# root (git) or to template_local_root (local).
+# Template sync (stage 6)
+# template_source: local | git
+#   local — find .j2 / composite YAML under template_local_root (this lab)
+#   git   — GitHub REST API using git_repo + git_branch
+# git_repo_subfolders applies to BOTH sources. Each row is one CatC CLI
+# project: path is relative to template_local_root (local) or the repo root
+# (git); project_name is the Template Hub project (created if missing).
+# One campus EVPN site = one folder of templates = one project_name.
+# git_token: optional PAT for private GitHub (or rate-limit). Pass with -e
+# from the environment; do not commit a token here.
 template_source: local
 # playbook_dir is evpn/ansible/playbooks; two dirname calls land on evpn/,
 # which holds the vendored "Catalyst Center Templates/" tree.

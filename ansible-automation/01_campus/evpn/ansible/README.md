@@ -13,7 +13,7 @@ Run the playbooks in numerical order:
 3. Create and assign device credentials.
 4. Discover the WLC and campus switches.
 5. Assign discovered devices to sites.
-6. synchronize the EVPN Jinja templates into Catalyst Center.
+6. Sync EVPN Jinja into a Catalyst Center CLI project (local folder or GitHub).
 7. Create switching and wireless network profiles.
 8. Provision the switches, WLC, and access points.
 9. Deploy the EVPN composite template to the switches.
@@ -404,7 +404,7 @@ Verified on Kali against stock dCloud CatC (2026-09-15): `failed=0`,
 `changed=1` (Phase A workflow manager only).
 
 ```text
-4 site assignment(s), N missing global type(s), state=merged
+4 site assignment(s), 0 missing global type(s), state=merged
 1 total: ['defaultNetConfPort']
 changed: [catalyst_center_api]   # Phase A — Manage CLI, SNMP, and HTTP credentials
 
@@ -414,14 +414,15 @@ NETCONF credential 'defaultNetConfPort' (port 830) already exists with matching 
 Successfully provisioned 4 CLI/SNMP/HTTP site assignment(s)
 
 PLAY RECAP
-catalyst_center_api : ok=…  changed=1  failed=0
+catalyst_center_api : ok=29  changed=1  failed=0  skipped=21
 ```
 
-`N missing global type(s)` is how many WFM keys were absent from the GET-by-subtype
-lists (`CLI Admin`, `SNMPv2c Read`, `SNMPv2c Write`, `HTTPS Read`, `HTTPS Write`).
-Stock dCloud usually already has all five; a missing type is created then assigned
-to the four MAIN floors. Pass `-e catc_debug=true` to print `wfm_config` if you
-need to see which type it was.
+`0 missing global type(s)` is the expected stock-dCloud result: all five WFM
+descriptions (`CLI Admin`, `SNMPv2c Read`, `SNMPv2c Write`, `HTTPS Read`,
+`HTTPS Write`) were already in the GET-by-subtype lists, so Phase A only
+**assigns** them and creates nothing. A non-zero count means that many
+descriptions were absent and were created before being assigned. Pass
+`-e catc_debug=true` to print `wfm_config` if you need to see which type it was.
 
 NETCONF CREATE/UPDATE and Phase C delete are skipped when port 830 already
 exists as `defaultNetConfPort` and `state=merged`.
@@ -454,11 +455,19 @@ jobs and removes their old history.
 
 ### What it accomplishes
 
-This stage asks Catalyst Center to contact and inventory:
+This stage asks Catalyst Center to contact and inventory the WLC and the
+three Site-105 switches. DC-Site-11 and Site-106 have no `discovery` block,
+so they never get a job.
 
-- The C9800 WLC at `198.18.5.103`, with NETCONF enabled.
-- The three Site-105 switches at loopbacks `172.30.255.1–3`, with NETCONF
-  disabled and loopbacks preferred as management addresses.
+### What each job is
+
+| Job | Range | NETCONF | Mgmt IP |
+| --- | --- | --- | --- |
+| `C9800-WLC` | `198.18.5.103` | on, port 830 | none / device IP |
+| `Site-105-Discovery` | `172.30.255.1–3` | off | UseLoopBack |
+
+Both jobs look up stage 03 globals by name: `CLI Admin`, `SNMPv2c Read` /
+`SNMPv2c Write`, `HTTPS Read` / `HTTPS Write`.
 
 ### Data read from settings.json
 
@@ -494,16 +503,31 @@ ansible-playbook playbooks/04_device_discovery.yml
 
 ### Important expected output
 
+Verified on Kali against stock dCloud CatC (2026-09-15): `failed=0`,
+`changed=1`.
+
 ```text
+Settings data loaded — 4 entries found.
 2 discovery task(s) to run.
 changed: [catalyst_center_api] => (item=C9800-WLC)
 changed: [catalyst_center_api] => (item=Site-105-Discovery)
 Device discovery submitted successfully
 Discovery tasks run: 2
+C9800-WLC, Site-105-Discovery
+
+PLAY RECAP
+catalyst_center_api : ok=11  changed=1  failed=0  skipped=5
 ```
 
-Inspect the discovery result details even if the play succeeds: a job can
-complete while an individual device is unreachable.
+Four `project[]` rows load, but only two have a `discovery` block. DC-Site-11
+and Site-106 have empty `device_list` and no job, so they never appear in the
+loop. Recap `changed=1` is one looped `discovery_workflow_manager` task with
+two items, not a single job.
+
+The module **submits** the jobs (and waits on CatC's discovery task). Play
+success is not the same as every IP being reachable. Re-running deletes any
+existing job with the same name and starts a new one, which is why both items
+report `changed` even when the devices are already in Inventory.
 
 ### Where to verify in Catalyst Center
 
@@ -525,12 +549,17 @@ present. They may still be unassigned or under Global until stage 05.
 
 ### What it accomplishes
 
-This stage assigns discovered inventory devices to the correct floor:
+This stage assigns discovered inventory devices to the correct floor.
+DC-Site-11 and Site-106 have empty `device_list`, so they never appear.
 
-- WLC `198.18.5.103` → DC-Site-10/MAIN
-- Switch loopbacks `172.30.255.1–3` → Site-105/MAIN
+### What each assignment is
 
-DC-Site-11 and Site-106 have empty device lists, so nothing is assigned there.
+| Site path | IPs |
+| --- | --- |
+| `Global/CALIFORNIA/San Jose/DC-Site-10/MAIN` | WLC `198.18.5.103` |
+| `Global/NORTH CAROLINA/Durham/Site-105/MAIN` | Switch loopbacks `172.30.255.1`, `.2`, `.3` |
+
+This does **not** provision devices and does **not** assign access points.
 
 ### Data read from settings.json
 
@@ -554,15 +583,26 @@ ansible-playbook playbooks/05_assign_to_site.yml
 
 ### Important expected output
 
+Verified on Kali against stock dCloud CatC (2026-09-15): `failed=0`,
+`changed=0`.
+
 ```text
+Settings data loaded — 4 entries found.
 2 site(s) to assign devices to.
-TASK [assign_to_site : Look up site UUIDs]
-TASK [assign_to_site : Assign devices to site]
+ok: [catalyst_center_api] => (item=Global/CALIFORNIA/San Jose/DC-Site-10/MAIN)
+ok: [catalyst_center_api] => (item=Global/NORTH CAROLINA/Durham/Site-105/MAIN)
 Device-to-site assignment submitted successfully
+Sites processed: Global/CALIFORNIA/San Jose/DC-Site-10/MAIN, Global/NORTH CAROLINA/Durham/Site-105/MAIN
+
+PLAY RECAP
+catalyst_center_api : ok=12  changed=0  failed=0  skipped=6
 ```
 
-“Submitted” is important: this role does not poll the returned execution URL.
-Verify the result in the UI before continuing.
+Four `project[]` rows load; only two have a non-empty `device_list`. Recap
+`changed=0` with `ok` on both assign items is success when the devices are
+**already** at those floors (this lab after a previous 05 run). A first-time
+assign may report `changed`. The play still prints “submitted successfully”
+because the role does **not** poll CatC’s execution URL.
 
 ### Where to verify in Catalyst Center
 
@@ -583,64 +623,184 @@ to the wrong site; correct that in CatC before proceeding.
 
 ### What it accomplishes
 
-This stage uploads the vendored DEFN, FUNC, and FABRIC Jinja templates into the
-CatC project `Site-105`, followed by the composite
-`BGP-EVPN-BUILD.j2`. Stage 09 later renders and deploys that composite.
+This stage copies DEFN, FUNC, and FABRIC Jinja plus the composite YAML into
+Catalyst Center **Tools > Template Hub**. It does **not** push CLI onto
+switches; stage 09 later deploys the composite `BGP-EVPN-BUILD.j2`.
 
-The configured source is `local`: files come from
-`../Catalyst Center Templates/Site BGP EVPN Templates` in the Kali checkout.
+A **CLI project** is created if it does not already exist. This lab’s project
+is named **Site-105**. Students should see that project after the first
+successful run, with the regular templates and the composite inside it.
 
-### Data read
+The playbook can read those files from **either** a local folder on the
+machine running Ansible **or** a GitHub repository. GitHub may be public
+(anonymous) or **private** (authenticated with a personal access token).
+This lab defaults to the local vendored tree on Kali.
 
-Stage 06 does **not** read `settings.json` or require the pod number. It reads
-template controls from `connection.yml`:
+### One CLI project per campus site
 
-- `template_source` and `template_local_root`
-- `git_repo`, `git_branch`, and `git_repo_subfolders`
-- template extension, version, device type, and summary defaults
-- Catalyst Center connection settings
+EVPN templates are **per campus fabric**, not global. Each site has its own
+hostnames, loopbacks, VRFs, L3OUT, and client ports in the DEFN files.
+FABRIC templates `{% include %}` those helpers as
+`{{ TEMPLATE_PROJECT_NAME }}/DEFN-….j2`, so DEFN, FUNC, FABRIC, and the
+composite must live in the **same** CatC project.
+
+Do not share one Template Hub project across two campus sites. A second
+campus needs a **second folder of templates** and a **second CLI project**
+(another `git_repo_subfolders` row with its own `path` and `project_name`).
+This lab syncs only Site-105.
+
+### How the CatC project name is derived
+
+Each `git_repo_subfolders` row becomes one Template Hub **CLI** project.
+The name is chosen in this order:
+
+1. The row’s explicit `project_name` — **use this**. Lab value: `Site-105`.
+2. If that key is missing or empty: the last segment of `path`
+   (`Site BGP EVPN Templates`).
+3. If `path` is also empty: the parent folder of the first `.j2` file.
+
+`template_workflow_manager` **creates** the CLI project when the name is
+new, or updates and versions templates when the project already exists.
+Always set `project_name` so Hub names stay site IDs, not folder titles.
+
+### How to choose and configure the source
+
+Edit
+`inventory/group_vars/catalyst_center/connection.yml`, or override any key
+with `-e` on the command line. Stage 06 does **not** read `settings.json`.
+
+| Variable | What it controls |
+| --- | --- |
+| `template_source` | `local` (scan a directory) or `git` (GitHub REST API). Lab default: `local`. |
+| `template_local_root` | Root directory when `local`. Lab: `evpn/` (two dirnames up from `playbooks/`). |
+| `git_repo` | `https://github.com/<org>/<repo>.git` when `git`. |
+| `git_branch` | Branch to read (lab: `main`). |
+| `git_repo_subfolders` | List of `{path, project_name}`. **Used for both local and git.** `path` is relative to `template_local_root` or the Git repo root. |
+| `git_token` | Optional GitHub PAT for **private** repos (or to raise the anonymous rate limit). Unused when `local`. Never commit a token. |
+| `template_extension` | File suffix to sync (lab: `j2`). |
+| `include_diff_header` | If true and `git`, prepend commit-diff comments. Lab: `false`. |
+
+**Local folder (this lab’s default).** Ansible finds `.j2` and composite YAML
+under `template_local_root` + each `path`. No GitHub calls.
+
+```yaml
+template_source: local
+template_local_root: "{{ playbook_dir | dirname | dirname }}"
+git_repo_subfolders:
+  - path: "Catalyst Center Templates/Site BGP EVPN Templates"
+    project_name: "Site-105"
+```
+
+On Kali that folder is
+`~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/Catalyst Center Templates/Site BGP EVPN Templates`.
+To use another tree: `-e template_local_root=/path/to/evpn`.
+
+**Public GitHub.** Set `template_source: git`. Keep `git_repo`, `git_branch`,
+and `git_repo_subfolders`. Leave `git_token` unset. The role lists the tree
+and fetches blobs from `api.github.com` (about 60 anonymous requests/hour).
+
+```bash
+ansible-playbook playbooks/06_template_sync.yml -e template_source=git
+```
+
+**Private GitHub.** Same as public, plus a token with classic `repo` scope or
+fine-grained **Contents: Read**. Export it in the shell and pass it at
+runtime (or a gitignored vault extra). Do **not** put a PAT in
+`connection.yml` or this README:
+
+```bash
+export GITHUB_TOKEN=...   # your PAT; do not commit this
+ansible-playbook playbooks/06_template_sync.yml \
+  -e template_source=git \
+  -e git_token="{{ lookup('env', 'GITHUB_TOKEN') }}"
+```
+
+HTTP 401 means a bad token; unset `git_token` for a public repo. HTTP 404
+usually means a wrong `git_repo` / `git_branch`, or a private repo without a
+token.
+
+**Second campus site** (example only — add only when that site’s DEFNs exist):
+
+```yaml
+git_repo_subfolders:
+  - path: "Catalyst Center Templates/Site BGP EVPN Templates"
+    project_name: "Site-105"
+  - path: "Catalyst Center Templates/Site 106 BGP EVPN Templates"
+    project_name: "Site-106"
+```
+
+That creates (or updates) two CLI projects: **Site-105** and **Site-106**.
 
 ### Catalyst Center APIs
 
-Writes are managed by `cisco.dnac.template_workflow_manager`, which uses the
-Template Programmer project/template APIs to create or update projects,
-templates, and committed versions. These APIs are in the
-`/dna/intent/api/v1/template-programmer/` family.
+Writes use `cisco.dnac.template_workflow_manager`
+(`/dna/intent/api/v1/template-programmer/`). That module creates the CLI
+project if needed, then commits regular templates and the composite.
 
-When `template_source=git`, the role also performs read-only GitHub API calls.
-In the default local mode, it reads the filesystem only before contacting CatC.
+When `template_source=git`, the role also GETs GitHub
+`/repos/{slug}`, `/branches/{branch}`, `/git/trees/{branch}?recursive=1`,
+raw file URLs, and optionally commits. Local mode never calls GitHub.
 
 ### Run it
+
+Lab default (local tree on Kali):
 
 ```bash
 ansible-playbook playbooks/06_template_sync.yml
 ```
 
-To state the local source explicitly:
+Force local, or point at another tree:
 
 ```bash
 ansible-playbook playbooks/06_template_sync.yml -e template_source=local
+ansible-playbook playbooks/06_template_sync.yml \
+  -e template_source=local \
+  -e template_local_root=/path/to/evpn
+```
+
+Read from GitHub instead:
+
+```bash
+ansible-playbook playbooks/06_template_sync.yml -e template_source=git
 ```
 
 ### Important expected output
 
+Verified on Kali, `template_source=local` (2026-09-15): `failed=0`,
+`changed=2`. Commit messages were `Synced from local directory 2026-09-15 17:19:50`.
+
 ```text
+Subfolder synced: Catalyst Center Templates/Site BGP EVPN Templates
+Project: Site-105
+Regular templates synced: 24
+Composite templates synced: 1
+
 Template synchronization completed successfully
 Projects synced: 1
+
+PLAY RECAP
+catalyst_center_api : ok=126  changed=2  failed=0  skipped=27
 ```
 
-The per-project summary reports templates and composites synchronized. Changed
-Jinja creates a new committed CatC version; unchanged content should be a no-op.
+`changed=2` is the two `template_workflow_manager` calls (24 regular
+templates, then composite `BGP-EVPN-BUILD.j2`). DEBUG tasks that print full
+Jinja are skipped unless `-e catc_debug=true` — do not enable that on a shared
+terminal; the output is huge.
+
+A later run can still report `changed` when CatC commits a new version.
+Success is recap `failed=0` and `Projects synced: 1` with project `Site-105`.
 
 ### Where to verify in Catalyst Center
 
-Open **Tools > Template Hub** (called Template Editor on some releases), then
-open project **Site-105**. Confirm:
+Open **Tools > Template Hub** (Template Editor on some releases). A **CLI**
+project named **Site-105** must exist (created on first sync if missing).
+Inside it confirm:
 
-- DEFN and FUNC helper templates exist.
-- The FABRIC templates exist.
-- Composite `BGP-EVPN-BUILD.j2` exists and has committed members.
-- Catalyst 9300 is among the supported device types.
+- DEFN and FUNC helpers.
+- FABRIC templates (24 regular files in this lab).
+- Composite `BGP-EVPN-BUILD.j2` with the FABRIC members listed in
+  `BGP-EVPN-BUILD.yml`.
+- Catalyst 9300 among supported device types.
 
 Uploading templates does not deploy them.
 
@@ -1044,20 +1204,31 @@ verified the student's pod and AP values.
   from Global:** expected on stock dCloud. Those values already match Global;
   CatC will not create a floor override. Check timezone and MOTD for a
   site-local change. See stage 02 “CatC UX: Inherited from Global is success”.
-- **Stage 03 `N missing global type(s)` and Phase A `changed`:** success if
-  recap `failed=0`. One or more CLI/SNMP/HTTP descriptions were absent from
-  the GET list, so the workflow manager merged them and assigned four MAIN
-  floors. NETCONF “already exists” with skipped CREATE is the stock dCloud
-  path. Check Design > Network Settings > Device Credentials for a duplicate
-  name if a global was created instead of bound.
+- **Stage 03 reports `0 missing global type(s)` but Phase A is `changed`:**
+  expected. Nothing was created; the workflow manager re-applied the CLI,
+  SNMP, and HTTP assignments to the four MAIN floors. Success is recap
+  `failed=0`, not `changed=0`. A non-zero missing count means a description
+  was absent and got created — check Design > Network Settings > Device
+  Credentials for a duplicate name in that case.
 - **Vault file missing on Kali:** rerun collection 00 from the student laptop.
   Do not recreate the demo passphrase manually on Kali.
 - **CatC name does not resolve:** reconnect the dCloud VPN and rerun the laptop
   bootstrap so lab DNS is restored.
-- **Discovery completes but devices are absent:** inspect each discovery
-  result under Tools > Discovery; completion does not guarantee reachability.
-- **Stage 05 says submitted but the site is unchanged:** check whether the
-  device is already assigned elsewhere; the API does not move assigned devices.
+- **Stage 04 recap `changed=1` with two `changed` items:** one looped task,
+  two jobs (`C9800-WLC`, `Site-105-Discovery`). That is success if `failed=0`.
+  Site-11 and Site-106 do not create discovery jobs. Then open **Tools >
+  Discovery** and confirm each job completed with reachable devices — the
+  play can succeed while a host is still down.
+- **Stage 05 recap `changed=0` with two `ok` assign items:** success if
+  `failed=0`. The WLC and three loopbacks were already at DC-Site-10/MAIN and
+  Site-105/MAIN. “Submitted successfully” does not poll CatC; confirm the Site
+  column in **Provision > Inventory**. If the site is unchanged and a device
+  was already assigned elsewhere, this API will not move it.
+- **Stage 06 GitHub 401:** `git_token` was rejected. For a public repo, unset
+  it. For a private repo, use a PAT with repo/contents read and do not commit
+  it.
+- **Stage 06 GitHub 404:** wrong `git_repo` / `git_branch`, or a private repo
+  without a token. Local mode does not use GitHub.
 - **Stage 07 fails after changing pod numbers:** merge mode leaves the old SSID.
   Restore the intended pod and inspect the shared wireless profile.
 - **Stage 10 times out on `198.18.128.22–24`:** the dCloud VPN is usually down.
