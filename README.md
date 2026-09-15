@@ -6,38 +6,38 @@ Connect **Cisco Secure Client / AnyConnect** to the dCloud session before any SS
 
 ## Development workflow
 
-Playbooks are written on the Mac, published to GitHub, and executed on the bootstrapped Kali script server.
+Playbooks are written on the student laptop. Collection `00` is also run there and fully prepares Kali. Campus and later collections execute on the bootstrapped script server.
 
 ```mermaid
 flowchart LR
-  Mac["Mac: edit playbooks"]
+  Laptop["Student laptop: author + run 00"]
   GitHub["GitHub main"]
-  Script["Kali script server 198.18.134.12"]
-  Mac -->|"commit and push"| GitHub
-  GitHub -->|"02_sync_from_git or git pull"| Script
-  Script -->|"ansible-playbook on PATH"| Lab["Lab devices"]
+  Script["Kali: Python, Ansible, SDKs"]
+  Laptop -->|"commit and push"| GitHub
+  Laptop -->|"00: bootstrap and 02_sync_from_git"| Script
+  GitHub -->|"cloned onto Kali by 00"| Script
+  Script -->|"01_campus and later ansible-playbook"| Lab["Lab devices"]
 ```
 
-1. **Develop locally** in this repo (`ansible-automation/`). Do not author new playbooks on the script server.
+1. **Develop on the student laptop** in this repo (`ansible-automation/`). Do not author new playbooks on the script server.
 2. **Push to GitHub** (`origin` / `main`): https://github.com/imanassypov/cisco-one-experience-lab-automation
-3. **Refresh the script server checkout** (VPN up), from the Mac:
+3. **Prep the script server from the laptop** (VPN up). Collection `00` is the complete prep — packages, `~/venv`, Ansible, collections, SDKs, DNS, the git checkout, and a copy of the laptop `.vault` (dCloud demo only; change this for production):
 
    ```bash
-   cd ansible-automation/00_scriptserver_bootstrap
+   cd ansible-automation
    source .venv/bin/activate
-   ansible-playbook playbooks/02_sync_from_git.yml
+   cd 00_scriptserver_bootstrap
+   ansible-playbook playbooks/00_preflight.yml
+   ansible-playbook playbooks/01_bootstrap_script_server.yml
    ```
 
-   That clones or updates `~/cisco-one-experience-lab-automation` on the script server.
-4. **Test on the script server** (SSH as `cisco`). Ansible is already on PATH from bootstrap:
+   Later laptop-side refreshes of the Kali tree: `playbooks/02_sync_from_git.yml` (git only). Never run collection `00` on Kali.
+4. **Run every later collection on Kali** (SSH as `cisco`). Python, Ansible, collections, and SDKs are already in `~/venv` and on PATH:
 
    ```bash
-   # once per checkout: cp .vault.example .vault  (repo root, gitignored)
    cd ~/cisco-one-experience-lab-automation/ansible-automation/<collection>
    ansible-playbook playbooks/00_....yml
    ```
-
-   You can also `git pull` in that directory instead of running `02_sync_from_git.yml`.
 
 ## Lab references
 
@@ -63,9 +63,10 @@ Playbooks live under `ansible-automation/`. Numbered folders follow lab-build or
 Use a **project-local virtualenv** on the Mac (do not install Ansible system-wide):
 
 ```bash
-cd ansible-automation/00_scriptserver_bootstrap
+cd ansible-automation
 ./setup-local-venv.sh
 source .venv/bin/activate
+cd 00_scriptserver_bootstrap
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```

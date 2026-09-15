@@ -7,30 +7,50 @@
       This role supports Kali Linux, other Debian/Ubuntu, and RedHat/CentOS/Rocky.
   when: ansible_os_family not in ["Debian", "RedHat"]
 
-- name: Find HashiCorp apt sources that break Kali apt update
-  ansible.builtin.find:
-    paths:
+# HashiCorp has no kali-rolling Release file. The dCloud image may put that
+# repo in sources.list (which find-on-sources.list.d misses) or in a drop-in.
+- name: Locate HashiCorp apt sources that break Kali apt update
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Rl
+      - --include=*.list
+      - --include=*.sources
+      - --include=sources.list
+      - -E
+      - apt\.releases\.hashicorp\.com
+      - /etc/apt/sources.list
       - /etc/apt/sources.list.d
-    patterns: "*"
-    contains: 'apt\.releases\.hashicorp\.com'
-  become: true
   register: script_server_hashicorp_apt
+  changed_when: false
+  failed_when: script_server_hashicorp_apt.rc not in [0, 1]
+  become: true
   when: ansible_distribution == "Kali"
 
-- name: Disable HashiCorp apt sources with no kali-rolling Release file
+- name: Disable HashiCorp drop-in apt sources
   ansible.builtin.command:
     argv:
       - mv
-      - "{{ item.path }}"
-      - "{{ item.path }}.disabled-by-cisco-one"
-    creates: "{{ item.path }}.disabled-by-cisco-one"
+      - "{{ item }}"
+      - "{{ item }}.disabled-by-cisco-one"
+    creates: "{{ item }}.disabled-by-cisco-one"
   become: true
-  loop: "{{ script_server_hashicorp_apt.files | default([]) }}"
+  loop: "{{ script_server_hashicorp_apt.stdout_lines | default([]) | select('match', '^/etc/apt/sources\\.list\\.d/') | list }}"
   loop_control:
-    label: "{{ item.path }}"
+    label: "{{ item }}"
   when:
     - ansible_distribution == "Kali"
-    - script_server_hashicorp_apt.files | default([]) | length > 0
+    - item | length > 0
+
+- name: Comment HashiCorp entries in /etc/apt/sources.list
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list
+    regexp: '^([^#\n]*apt\.releases\.hashicorp\.com.*)$'
+    replace: '# disabled-by-cisco-one \1'
+  become: true
+  when:
+    - ansible_distribution == "Kali"
+    - "'/etc/apt/sources.list' in (script_server_hashicorp_apt.stdout_lines | default([]))"
 
 - name: Install Debian family packages (Kali, Ubuntu, Debian)
   ansible.builtin.apt:

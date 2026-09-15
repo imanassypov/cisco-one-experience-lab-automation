@@ -16,6 +16,7 @@ Host and URL index: [PseudoCo_Lab_Access_Lookup.md](../../Lab%20Topology/PseudoC
 - Pinned Cisco Galaxy collections (`cisco.ios`, `cisco.catalystcenter` 2.10.2, `cisco.dnac` 6.46.0, `cisco.ise`, `cisco.nxos`, `cisco.meraki`)
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Git checkout of this repo at `~/cisco-one-experience-lab-automation` (the only project tree on the script server)
+- Copies the laptop repo-root `.vault` onto that checkout (dCloud demo only — change this for production)
 - Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
 
 ## Playbook sequence
@@ -32,15 +33,15 @@ Later collections (`01_campus` and onward) will use the same `00_`, `01_`, … n
 
 ## Prerequisites on the Mac
 
-Python 3 with the `venv` module (macOS / Xcode CLT or `brew install python`). Ansible and its dependencies are installed **only** into this collection's `.venv` (gitignored). Do not `brew install ansible` or `pip install` into the system Python.
+Python 3 with the `venv` module (macOS / Xcode CLT or `brew install python`). Ansible and its dependencies are installed **only** into the shared `ansible-automation/.venv` (gitignored). Do not `brew install ansible` or `pip install` into the system Python.
 
 ```bash
-cd ansible-automation/00_scriptserver_bootstrap
+cd ansible-automation
 ./setup-local-venv.sh
 source .venv/bin/activate
 ```
 
-That installs the pins in `requirements.txt` (`ansible-core`, `paramiko`, `netaddr`) — the same versions the script server venv will get.
+That installs the pins in `ansible-automation/requirements.txt` (`ansible-core`, `paramiko`, `netaddr`) — the same versions the script server venv will get.
 
 `ansible.cfg` reads the repo-root `.vault` (gitignored) to decrypt `Lab Topology/lab_access.yml`. If it is missing, from the repository root: `cp .vault.example .vault` and put the lab vault password on a single line. Do not commit `.vault`.
 
@@ -49,13 +50,14 @@ The inventory uses Paramiko so password auth works on macOS without `sshpass`.
 ## Run
 
 ```bash
-cd ansible-automation/00_scriptserver_bootstrap
+cd ansible-automation
 source .venv/bin/activate
+cd 00_scriptserver_bootstrap
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml
 ansible-playbook playbooks/02_sync_from_git.yml
 ```
 
-After bootstrap, later collections are developed on the Mac, pushed to GitHub, then synced and run **on** the script server. See the root README development workflow.
+After bootstrap, **stop using the Mac venv for playbooks.** Later collections (`01_campus` and onward) always run **on Kali** from `~/cisco-one-experience-lab-automation`, with Ansible on PATH from `~/venv`. See the root README development workflow.
 
-SSH to the script server and confirm `ansible-playbook --version` works without activating that host's venv. Test from `~/cisco-one-experience-lab-automation`. Recreate the repo-root `.vault` there after clone.
+`00_preflight`, `01_bootstrap`, and `02_sync_from_git` stay laptop-only (they SSH to this host). `01` and `02` copy the laptop `.vault` onto Kali so later collections can decrypt `lab_access.yml`. That shared password is acceptable only for the dCloud demo; a production setup must use a unique vault password and must not copy it this way. Confirm `ansible-playbook --version` works in an interactive Kali shell without `source ~/venv/bin/activate`.

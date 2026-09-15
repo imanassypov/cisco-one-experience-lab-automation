@@ -4,6 +4,10 @@ script_server_bin_path: "{{ ansible_user_dir }}/bin"
 script_server_git_repo: https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 script_server_repo_dest: "{{ ansible_user_dir }}/cisco-one-experience-lab-automation"
 script_server_git_version: main
+# Laptop repo-root .vault (gitignored). Copied onto Kali for the dCloud demo.
+# Never put the vault password in this file.
+script_server_controller_vault: "{{ playbook_dir }}/../../../.vault"
+script_server_remote_vault: "{{ script_server_repo_dest }}/.vault"
 script_server_bashrc: "{{ ansible_user_dir }}/.bashrc"
 script_server_profile: "{{ ansible_user_dir }}/.profile"
 script_server_zshrc: "{{ ansible_user_dir }}/.zshrc"

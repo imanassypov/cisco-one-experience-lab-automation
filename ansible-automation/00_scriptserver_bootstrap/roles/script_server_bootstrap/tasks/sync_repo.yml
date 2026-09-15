@@ -7,6 +7,11 @@
     update: true
     accept_hostkey: true
   register: script_server_git_sync
+  # The dCloud VPN path to github.com drops intermittently; a clone failure
+  # here aborts the whole bootstrap.
+  until: script_server_git_sync is succeeded
+  retries: 3
+  delay: 5
 
 - name: Show the script-server checkout
   ansible.builtin.debug:
@@ -15,3 +20,34 @@
       is at {{ script_server_repo_dest }}
       ({{ script_server_git_sync.after | default('updated') }}).
       Test playbooks from that tree; Ansible is already on PATH.
+
+- name: Require the laptop .vault before copying it to Kali
+  ansible.builtin.stat:
+    path: "{{ script_server_controller_vault }}"
+  delegate_to: localhost
+  become: false
+  register: script_server_controller_vault_stat
+
+- name: Fail when the laptop .vault is missing
+  ansible.builtin.assert:
+    that:
+      - script_server_controller_vault_stat.stat.exists | default(false)
+      - script_server_controller_vault_stat.stat.isreg | default(false)
+    fail_msg: >-
+      Create the gitignored repo-root .vault on the student laptop first
+      (cp .vault.example .vault). Bootstrap copies that file to Kali so
+      later collections can decrypt lab_access.yml.
+
+- name: Copy the dCloud demo .vault onto the script server checkout
+  ansible.builtin.copy:
+    src: "{{ script_server_controller_vault }}"
+    dest: "{{ script_server_remote_vault }}"
+    mode: "0600"
+  no_log: true
+
+- name: Remind that the copied .vault is dCloud-demo only
+  ansible.builtin.debug:
+    msg:
+      - "Copied the laptop .vault to {{ script_server_remote_vault }} (mode 0600)."
+      - "dCloud PseudoCo demo: the vault password is shared on purpose so Kali can decrypt lab_access.yml."
+      - "PRODUCTION: change this. Do not copy a shared vault password onto a remote host. Use a unique password per environment and inject it from a secret store."

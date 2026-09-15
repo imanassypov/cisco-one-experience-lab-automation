@@ -9,17 +9,17 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 
 ## Workflow
 
-- Author playbooks on the Mac in this repo. Do not write new playbooks on Kali.
+- Author playbooks on the student laptop (this Mac) in this repo. Do not write new playbooks on Kali.
 - Commit/push only when the user asks. Remote: `https://github.com/imanassypov/cisco-one-experience-lab-automation` (`main`, public).
-- Test on the Kali script server after it has `main` at `~/cisco-one-experience-lab-automation`.
-- Mac refresh (VPN up): `ansible-automation/00_scriptserver_bootstrap` venv, then `playbooks/01_bootstrap_script_server.yml` (also git-pulls) or `playbooks/02_sync_from_git.yml` (git only). Kali tree is often dirty from ad-hoc file copies; `02` fails until those are committed or reverted.
-- On Kali, Ansible is on PATH from `~/venv`. Recreate the repo-root `.vault` there after clone (gitignored). One line only, same password as the Mac.
-- Run CatC stages from Mac via `00_scriptserver_bootstrap` `.venv` → `ansible script_server -m shell` in `~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible`. Copy Mac-only edits to Kali first when git is stale.
+- **Collection `00_scriptserver_bootstrap` runs entirely on the student laptop** (`ansible-automation/.venv`, paramiko SSH). That is `00_preflight`, `01_bootstrap_script_server`, and `02_sync_from_git`. Together they fully prepare Kali: packages, `~/venv`, Ansible, Galaxy collections, CatC SDKs, lab DNS, `~/cisco-one-experience-lab-automation`, and a copy of the laptop `.vault`. Never run collection `00` on Kali.
+- **Every playbook after `00` runs on Kali** (campus EVPN `01`–`10`, and `02_`–`06_` when they exist): SSH as `cisco`, `cd ~/cisco-one-experience-lab-automation/ansible-automation/<collection>`, Ansible already on PATH from `~/venv`. Do not drive those stages from the laptop with `ansible script_server -m shell`.
+- Laptop refresh of the Kali tree (VPN up): still collection `00` — `01_bootstrap_script_server.yml` (reinstall + git) or `02_sync_from_git.yml` (git only). Kali tree is often dirty from ad-hoc file copies; `02` fails until those are committed or reverted. On Kali, `git pull` is optional; it is not a substitute for running `00` from the laptop.
+- `00` copies the gitignored laptop `.vault` onto Kali so later collections can decrypt `lab_access.yml`. That shared password is dCloud-demo only; a production setup must use a unique vault password and must not copy it this way. Do not put the password in playbooks.
 
 ## Script server
 
 - Kali Linux at `198.18.134.12`. SSH user and password come from `lab_access.script_server` in `Lab Topology/lab_access.yml`. Bootstrap sets resolver to lab DNS `198.18.5.102` (fallback `198.18.128.1`) so `corp.pseudoco.com` names resolve.
-- Mac controller: project `.venv` via `setup-local-venv.sh`; `ansible_connection: paramiko`.
+- Student laptop runs collection `00` only: `ansible-automation/.venv` via `ansible-automation/setup-local-venv.sh`; `ansible_connection: paramiko`. That collection completely preps the script server. All later collections execute on Kali.
 - Only project tree on Kali: `~/cisco-one-experience-lab-automation`. Never create `~/cisco-one-automation`.
 
 ## Collections
