@@ -592,7 +592,8 @@
       {%- set ns = namespace(result=[]) -%}
       {%- for r in (_ap_status_results.results | default([])) -%}
         {%- if not (r.json.provisioningStatus | default(false))
-             or (force_reprovision | default(false) | bool) -%}
+             or (force_reprovision | default(false) | bool)
+             or (force_ap_provision | default(false) | bool) -%}
           {%- set ns.result = ns.result + [r.item.mac_address | lower] -%}
         {%- endif -%}
       {%- endfor -%}
@@ -689,7 +690,10 @@
     msg: >-
       All {{ _ap_declared | length }} access point(s) already report
       provisioningStatus true, so none were provisioned and none were bounced.
-      Re-run with -e force_reprovision=true to re-assert their tags.
+      Re-run with -e force_ap_provision=true to re-assert their tags
+      without touching the switches or the WLC. Do not use
+      force_reprovision=true for this — that PUT-reprovisions the
+      fabric switches.
 
 - name: Provision the access points
   when:

@@ -19,10 +19,13 @@
 lab_pod_id: REPLACE_ME
 
 # ── {AP1_MAC}, {AP2_MAC} ─────────────────────────────────────────────────────
-# Ethernet MAC of each access point, in join order, colon-separated. A pod has
-# one or two APs; list only the ones present. settings.json entries whose token
-# has no matching entry here are dropped, so a single-AP pod needs no other
-# change.
+# Leave this list empty through the first stage 08 and through stage 09.
+# The composite (stage 09) programs Gi1/0/2 as the AP trunk (native VLAN 10).
+# Until that lands, the AP cannot join the WLC and CatC has no Unified AP
+# row. After at least one AP is Registered, put its Ethernet MAC here
+# (colon-separated) and re-run stage 08. One join is enough; do not wait
+# for a second. List only APs that show in `show ap summary`. settings.json
+# rows whose {APn_MAC} has no nth entry here are dropped.
 #
 # Read them off the controller with:
 #   show ap summary

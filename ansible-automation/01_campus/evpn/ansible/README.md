@@ -15,9 +15,13 @@ Run the playbooks in numerical order:
 5. Assign discovered devices to sites.
 6. Sync EVPN Jinja into a Catalyst Center CLI project (local folder or GitHub).
 7. Create switching and wireless network profiles.
-8. Provision the switches, WLC, and access points.
-9. Deploy the EVPN composite template to the switches.
+8. Provision the switches and WLC. Leave `lab_ap_macs` empty — no AP is in
+   Catalyst Center inventory yet.
+9. Deploy the EVPN composite. That programs the AP-facing leaf ports so an
+   AP can join the WLC and appear as a Unified AP in Inventory.
 10. SSH to the switches and collect read-only verification evidence.
+11. After at least one AP is Registered, put its Ethernet MAC in
+    `lab_ap_macs` and re-run stage 08 for the AP provision pass.
 
 Stages 01–09 use the Catalyst Center API. Stage 10 is the only playbook that
 logs in to the switches.
@@ -31,9 +35,14 @@ Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
   with Python, Ansible, Cisco collections, SDKs, lab DNS, the Git checkout, and
   a copy of the demo `.vault`.
 - SSH to Kali. All commands below run there, not on the student laptop.
-- Set `lab_pod_id` and `lab_ap_macs` in
-  `inventory/group_vars/all/lab.yml`. The committed pod value is
-  `REPLACE_ME`; stages that load `settings.json` stop until you replace it.
+- Set `lab_pod_id` in `inventory/group_vars/all/lab.yml`. The committed
+  value is `REPLACE_ME`; stages that load `settings.json` stop until you
+  replace it. Leave `lab_ap_macs: []` until **after** stage 09. Stage 08
+  provision does not program AP ports. The composite does (`Gi1/0/2` trunk,
+  native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
+  CAPWAP-join, so Catalyst Center has no Unified AP to provision. After
+  stage 09, **one** Registered AP is enough — put that Ethernet MAC in
+  `lab_ap_macs` (first entry is `{AP1_MAC}`) and re-run stage 08.
 - Run every command from this directory so Ansible finds `ansible.cfg`:
 
 ```bash
@@ -538,7 +547,9 @@ Open **Tools > Discovery** and confirm:
 - The result details show the expected devices as reachable.
 
 Then open **Provision > Inventory**. Confirm the WLC and all three switches are
-present. They may still be unassigned or under Global until stage 05.
+present. They may still be unassigned or under Global until stage 05. Do
+**not** expect a Unified AP here — stage 04 never discovers APs, and the AP
+cannot join until stage 09 programs `Gi1/0/2`.
 
 ---
 
@@ -813,15 +824,19 @@ Uploading templates does not deploy them.
 
 ### What it accomplishes
 
-This stage ties the design together:
+This stage ties switching profiles, the student SSID, FlexConnect, and
+`HQ-Wireless` together. DC-Site-11 and Site-106 get switching profiles only
+(no wireless block). Uploading a profile does not provision devices.
 
-- Creates/updates four switching network profiles.
-- Assigns `BGP-EVPN-BUILD.j2` as the Site-105 Day-N template.
-- Creates the student SSID `PSEUDOCO-PODnn`.
-- Creates the wireless interfaces and FlexConnect design.
-- Sets Site-105 FlexConnect native VLAN 10.
-- Sets ISE AAA-override VLAN names Main, PROD, and IOT.
-- Binds the SSID to Site-105/MAIN through wireless profile `HQ-Wireless`.
+### What each pass is
+
+| Pass | What CatC gets |
+| --- | --- |
+| Switching profiles | `HQ-Switching`, `Remote-DC-Switching`, `BGP-EVPN-Switching`, `Branch-Switching`. Only `BGP-EVPN-Switching` binds Day-N `BGP-EVPN-BUILD.j2` to Site-105/MAIN. |
+| Wireless design | SSID `PSEUDOCO-PODnn` (this run: `PSEUDOCO-POD12`), interfaces Main/PROD/IOT, FlexConnect at Site-105/MAIN. |
+| Flex native VLAN | Site-105/MAIN native VLAN **10** (URI GET/PUT, not the design WFM). |
+| Flex AAA-override | VLAN **names** Main, PROD, IOT at Site-105/MAIN so ISE can pick VRF. |
+| Wireless profile | `HQ-Wireless` assigned to Site-105/MAIN, carrying the student SSID. |
 
 ### Data read from settings.json
 
@@ -878,14 +893,45 @@ ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 
 ### Important expected output
 
+Verified on Kali against stock dCloud CatC (2026-09-15): `failed=0`,
+`changed=3`, SSID `PSEUDOCO-POD12`.
+
 ```text
+Settings data loaded — 4 entries found.
 4 network profile(s) to create/update.
-Switching network profile(s) created/updated successfully
-SSID name 'PSEUDOCO-PODnn' resolved.
-Wireless design object(s) created/updated successfully
-FlexConnect native VLAN 10 ...
-Wireless network profile(s) created/updated successfully
+changed: [catalyst_center_api]   # Create/update switching network profile
+Profiles processed: HQ-Switching, Remote-DC-Switching, BGP-EVPN-Switching, Branch-Switching
+
+SSID name 'PSEUDOCO-POD12' resolved.
+changed: [catalyst_center_api]   # Create/update wireless design objects
+SSIDs: PSEUDOCO-POD12
+
+1 site(s) declare Flex AAA-override VLAN names.
+Site ID 919ce2a1-… for Global/NORTH CAROLINA/Durham/Site-105/MAIN
+ok: … PUT FlexConnect native VLAN 10 …
+FlexConnect native VLAN 10 confirmed at '…/Site-105/MAIN'.
+ok: … PUT FlexConnect AAA-override VLANs …
+FlexConnect AAA-override IOT, Main, PROD confirmed at '…/Site-105/MAIN'.
+
+changed: [catalyst_center_api]   # Create/update wireless network profile
+Profiles processed: HQ-Wireless
+
+PLAY RECAP
+catalyst_center_api : ok=55  changed=3  failed=0  skipped=15
 ```
+
+`changed=3` is the three workflow-manager tasks (switching, wireless design,
+wireless profile). Recap is not four profiles plus Flex. The Flex native and
+AAA-override PUTs often report `ok` when the GET already matches VLAN 10 and
+names Main/PROD/IOT — that is still success; the asserts must print
+**confirmed**.
+
+`{POD}` came from `lab_pod_id` (12 → `PSEUDOCO-POD12`). If that assert shows
+`PSEUDOCO-POD{POD}` or `REPLACE_ME`, stop and fix `lab.yml`.
+
+The `17 existing sites` dump is the hierarchy UUID map used only to resolve
+Site-105/MAIN for the Flex URIs. DEBUG tasks that dump full WFM payloads stay
+skipped unless `-e catc_debug=true`.
 
 ### Where to verify in Catalyst Center
 
@@ -923,16 +969,23 @@ the stock dCloud SSID `PSEUDOCO-POD#`.
 
 ### What it accomplishes
 
-Provisioning makes CatC apply the site settings and profiles created earlier.
-This stage runs three passes:
+Provisioning applies site settings and profiles. Three passes, in order:
 
-1. Provision the three Site-105 switches.
-2. Provision the WLC and its managed AP location.
-3. Name, site-assign, and provision APs so CatC creates their policy, site, and
-   RF tags.
+### What each pass is
 
-Without the AP provision action, an AP can remain on default tags and fail to
-broadcast the student SSID.
+| Pass | Devices | How |
+| --- | --- | --- |
+| Wired (`provision_site.yml`) | Site-105 loopbacks `172.30.255.1–3` | `POST /sda/provisionDevices`. Already-provisioned switches are skipped unless `-e force_reprovision=true`. |
+| Wireless (`provision_wireless.yml`) | WLC `198.18.5.103` at DC-Site-10/MAIN | `provision_workflow_manager`. Deferred from the wired pass (`NCWL10092`). Default `force_wireless_provisioning: true` so a changed managed AP location actually lands. |
+| Access points (`provision_accesspoints.yml`) | Rows in `access_points[]` whose `{APn_MAC}` resolved from `lab_ap_macs` | Name, assign site, then `wireless_access_points_provision`. Empty `lab_ap_macs` skips the whole pass. |
+
+The WLC is listed in DC-Site-10’s `device_list` but is **not** sent to the SDA
+provision API. APs are not in `device_list` and are **not** expected in
+Inventory on this first run. Stage 08 does not program `Gi1/0/2`. The AP
+cannot join until stage 09 deploys the composite. Leave `lab_ap_macs: []`
+so the AP pass skips. After stage 09, fill the Ethernet MAC and re-run 08
+for name / site / provision. Without that later pass, a joined AP stays on
+default tags and never broadcasts `PSEUDOCO-PODnn`.
 
 ### Data read from settings.json
 
@@ -943,8 +996,9 @@ broadcast the student SSID.
 - `project[].access_points[].mac_address`
 - AP name, mode, location, floor/site, and optional RF profile
 
-AP `{APn_MAC}` values come from `lab_ap_macs`. Enter the AP's **Ethernet MAC**,
-not its radio MAC. Unresolved AP rows are skipped.
+AP `{APn_MAC}` values come from `lab_ap_macs`. On the first 08 leave the
+list empty. After stage 09, enter the AP's **Ethernet MAC**, not its radio
+MAC. Unresolved AP rows are skipped.
 
 ### Catalyst Center APIs
 
@@ -971,7 +1025,7 @@ profile. This lab defaults to `TYPICAL`.
 
 ### Run it
 
-Review the settings and AP MACs first, then:
+Review the settings. On the first run, `lab_ap_macs` should still be empty:
 
 ```bash
 ansible-playbook playbooks/08_provision_devices.yml
@@ -981,33 +1035,63 @@ Do not add force flags during a normal student run.
 
 ### Important expected output
 
-Healthy output includes summaries showing:
+Verified on Kali (2026-09-15): `failed=0`, `changed=1`. Wired Site-105 was
+first-time POST SUCCESS; WLC was deferred then force-provisioned; AP pass
+skipped because `lab_ap_macs: []`.
 
-- Wired devices submitted or already provisioned.
-- Wireless controller provisioned with its managed AP location.
-- Unresolved AP token rows skipped.
-- AP already in its site or newly assigned.
-- AP `provisioningStatus` true, or a successful AP provision task.
+```text
+2 site(s) / 4 device(s) to provision.
 
-The exact CatC task text varies. The play must end with `failed=0`.
+# DC-Site-10/MAIN — WLC only
+Deferring 1 wireless device(s) … NCWL10092 … 198.18.5.103
+Status        : DEFERRED — wireless device(s) handled by the later passes
+New (POST)    : 0   Reprov (PUT) : 0   Wireless defer: 1
+
+# Site-105/MAIN — three 9300s
+FAILED - RETRYING: … Poll POST provision task … (60 retries left).
+Status        : SUCCESS
+New (POST)    : 3 device(s)
+Progress      : Provisioning Devices | Status: successful | 3 child operation(s)
+[1/3] … [2/3] … [3/3] status: SUCCESS | detail: TASK_PROVISION
+
+# Wireless pass
+1 wireless controller(s) to provision.
+changed: [catalyst_center_api]   # Provision wireless controllers
+198.18.5.103 → Global/CALIFORNIA/San Jose/DC-Site-10/MAIN
+AP locations  : Global/NORTH CAROLINA/Durham/Site-105/MAIN
+Force provis  : True
+Status        : Wireless device(s) '198.18.5.103' provisioned successfully.
+
+# AP pass (this lab.yml)
+Skipping SITE-105-AP-1, SITE-105-AP-2 — no matching entry in lab_ap_macs …
+No resolvable access_points entry … nothing to name or assign.
+
+PLAY RECAP
+catalyst_center_api : ok=58  changed=1  failed=0  skipped=79
+```
+
+`FAILED - RETRYING` is the wired-task poll (same idea as stage 02), not a play
+failure. Recap `changed=1` is the **WLC** workflow manager only. The Site-105
+`uri` POST is recorded as `ok` even when CatC created three new provisions.
+
+A later run typically skips the three switches (“already provisioned”) and
+still force-provisions the WLC unless `-e force_wireless_provisioning=false`.
+Do not fill `lab_ap_macs` or chase a Unified AP row yet. Stage 09 programs
+the AP ports. After a Unified AP appears in Inventory, the MAC + AP-pass
+re-run (and its expected output) is under stage 09.
 
 ### Where to verify in Catalyst Center
 
-Open **Provision > Inventory**:
+Open **Provision > Inventory**. After this first 08, expect **four**
+reachable devices — **no Unified AP**:
 
-- Site-105 switches should show provisioned.
-- The WLC should show provisioned under DC-Site-10/MAIN.
-- The AP should have the expected name and provisioning status.
+- Site-105 switches provisioned at Site-105/MAIN
+- WLC provisioned at DC-Site-10/MAIN
 
-Inspect AP configuration/tags:
-
-- Site tag should point at Site-105.
-- Policy tag should map `PSEUDOCO-FLEX-Profile`.
-- RF tag should be `TYPICAL` unless overridden.
-
-An AP's `siteHierarchy` field or location can remain empty/default even after a
-successful provision. Confirm membership from the site side and confirm the
-tags. AP location is a separate CatC workflow.
+CDP on Leaf1/Leaf2 `Gi1/0/2` only means the AP is powered. Stage 04 does
+not discover APs (the WLC RANGE job is `198.18.5.103` only). Stage 08 does
+not set the AP trunk. Do not expect the AP on the WLC or in CatC until
+stage 09 has deployed.
 
 ### Disruption warning
 
@@ -1025,13 +1109,25 @@ provisioned unless forced. AP provisioning is skipped when
 
 ### What it accomplishes
 
-This is the stage that builds the live EVPN/VXLAN fabric. CatC renders
-`BGP-EVPN-BUILD.j2` and copies the resulting VRF, VLAN, NVE, multicast, BGP
-EVPN, overlay, NAC, and telemetry configuration to:
+This is the stage that builds the live EVPN/VXLAN fabric **and** programs
+the AP-facing ports. CatC renders `BGP-EVPN-BUILD.j2` (DEFN/FUNC/FABRIC,
+including `DEFN-CLIENT-PORTS.j2` on `Gi1/0/2`) and copies it to the three
+Site-105 loopbacks. Four `project[]` rows load; only Site-105 has
+`DeployTemplate: true`, so the play queues **one** composite.
 
-- `172.30.255.1` — Site_105-Leaf1
-- `172.30.255.2` — Site_105-Leaf2
-- `172.30.255.3` — Site_105-Border-Spine
+Until this deploy lands, `Gi1/0/2` is still access/VLAN 1. The AP can show
+in CDP but cannot get a VLAN 10 address or CAPWAP-join the WLC. Catalyst
+Center therefore has **no Unified AP** after stages 04–08. The AP appears
+in **Provision > Inventory** only after this composite programs the trunk
+and the AP joins.
+
+### What each target is
+
+| Loopback | Role | Hostname |
+| --- | --- | --- |
+| `172.30.255.1` | Leaf | `Site_105-Leaf1` |
+| `172.30.255.2` | Leaf | `Site_105-Leaf2` |
+| `172.30.255.3` | Spine + RR + border | `Site_105-Border-Spine` |
 
 ### Data read from settings.json
 
@@ -1069,28 +1165,306 @@ ansible-playbook playbooks/09_deploy_composite.yml
 
 ### Important expected output
 
+Verified on Kali (2026-09-15): `failed=0`, `changed=0`. All three devices
+`SUCCESS` under one Template Deployment ID.
+
 ```text
+Settings data loaded — 4 entries found.
 1 composite deployment(s) to process.
-TASK [... deploy ... 172.30.255.1]
-TASK [... deploy ... 172.30.255.2]
-TASK [... deploy ... 172.30.255.3]
-Deployment summary | BGP-EVPN-BUILD.j2
+ok: … Deploy composite template | BGP-EVPN-BUILD.j2  (172.30.255.1, .2, .3)
+
+FAILED - RETRYING: … Poll async task status | BGP-EVPN-BUILD.j2 (60 retries left).
+ok: … 172.30.255.1 → <taskId>
+ok: … 172.30.255.2 → <taskId>
+ok: … 172.30.255.3 → <taskId>
+
+Device: 172.30.255.1 | deploymentId: <uuid> | result: SUCCESS
+Device: 172.30.255.2 | deploymentId: <same uuid> | result: SUCCESS
+Device: 172.30.255.3 | deploymentId: <same uuid> | result: SUCCESS
+
+│ Template         │ BGP-EVPN-BUILD.j2
+│ Project          │ Site-105
+│ Site             │ Global/NORTH CAROLINA/Durham/Site-105/MAIN
+│ Target devices   │ 172.30.255.1, 172.30.255.2, 172.30.255.3
+│ API errors       │ none
+│ 172.30.255.1–3   │ SUCCESS
+
+PLAY RECAP
+catalyst_center_api : ok=31  changed=0  failed=0  skipped=13
 ```
 
-Review every row in the final deployment summary. The role continues across
-per-device failures so one failure does not hide the other device results.
+`FAILED - RETRYING` is the deploy-task poll, not a play failure. Recap
+`changed=0` is normal: the deploy `uri` calls are `ok`. One `deploymentId`
+shared across three IPs is CatC grouping one Template Hub job, not a bug.
 
-CatC task `SUCCESS` proves that CatC accepted/completed its workflow; it does
-not by itself prove that EVPN is healthy. Run stage 10.
+The role continues across per-device failures so one red row does not hide
+the others. CatC `SUCCESS` means the workflow finished; it does **not** prove
+EVPN or the AP trunk is in running-config. Run stage 10, and on each leaf:
+
+```text
+show running-config interface GigabitEthernet1/0/2
+show nve peers
+show bgp l2vpn evpn summary
+```
+
+Expect trunk native VLAN 10 on `Gi1/0/2` after this deploy. That port
+programming is what makes AP discovery possible. Stage 08 provision does
+not push it.
+
+Verified on Leaf1/Leaf2 after the 2026-09-15 deploy: both `Gi1/0/2` blocks
+match `DEFN-CLIENT-PORTS.j2` (description `AP`, trunk, native 10, allowed
+`10,101,102`, CTS SGT 2, portfast trunk). Leaf2 NVE is the fuller picture:
+L3CP `110010`/`110101`/`110102` (Main/PROD/IOT) to `.1` and `.3`, plus L2CP
+`100010` (VLAN 10) to the other leaf. Leaf1 can take a few extra minutes to
+show IOT `110102` and L2CP `100010`; re-run `show nve peers` before assuming
+a miss. VLAN names on the box are `Main` / `PROD` / `IOT`.
 
 ### Where to verify in Catalyst Center
 
-Open **Tools > Template Hub > Site-105 > BGP-EVPN-BUILD.j2** and inspect its
-deployment history or Activities. Confirm successful deployment to all three
-loopback targets.
+Open **Tools > Template Hub > Site-105 > BGP-EVPN-BUILD.j2** and inspect
+deployment history / Activities. Confirm SUCCESS to `172.30.255.1–3`.
 
-Also inspect the devices under **Provision > Inventory**, but use stage 10 for
-the authoritative CLI state.
+Then open **Provision > Inventory** (all families, or the Wireless
+Controllers / Switches / Access Points chips). This is the first stage
+where a Unified AP is expected. After the composite programs `Gi1/0/2`
+and at least one AP joins, expect **five** reachable rows. Verified
+2026-09-15:
+
+| Device (inventory name) | IP | Family | Site | Provisioning |
+| --- | --- | --- | --- | --- |
+| `C9800.corp.pseudoco.com` | `198.18.5.103` | Wireless Controller | DC-Site-10/MAIN | Success |
+| `Site-105-Border-Spine…` | `172.30.255.3` | Switches and Hubs | Site-105/MAIN | Success |
+| `Site-105-Leaf1…` | `172.30.255.1` | Switches and Hubs | Site-105/MAIN | Success |
+| `Site-105-Leaf2…` | `172.30.255.2` | Switches and Hubs | Site-105/MAIN | Success |
+| `SITE_105-Pod09-AP-1` (WLC name) | `10.10.255.101` | Unified AP | **Unassigned** | **Not Provisioned** |
+
+The four wired/WLC rows were already Success after stage 08. The fifth
+row is new here: CatC learned the AP **from the WLC after the join**,
+not from stage 04 RANGE jobs and not from stage 08 provision. Stage 10
+is still the authoritative switch running-config.
+
+### Inventory: at least one AP discovered
+
+Give the AP a few minutes after the deploy to DHCP on VLAN 10 and
+CAPWAP-join `198.18.5.103`. Then filter Inventory **Access Points**.
+
+**One Unified AP is enough.** Do not hunt a second CDP neighbor. Success
+looks like:
+
+- Family **Unified AP**
+- Reachable
+- IP on VLAN 10 (this lab: `10.10.255.101`)
+- Site **Unassigned** (normal until you re-run 08 with a MAC)
+- Provisioning **Not Provisioned** (normal until that AP pass)
+- Name still the WLC name (`SITE_105-Pod09-AP-1` is fine)
+
+If that row is missing, confirm the trunk landed, then the join:
+
+```text
+show running-config interface GigabitEthernet1/0/2
+show vlan brief | include 10
+show cdp neighbors GigabitEthernet1/0/2 detail
+```
+
+On the WLC (use `198.18.5.103`, not the `.102` in `lab_access['C9800-WLC']`).
+Commands from the Catalyst 9800 Command Reference and Cisco’s 9800 AP-join
+tech note
+([218396](https://www.cisco.com/c/en/us/support/docs/wireless/catalyst-9800-series-wireless-controllers/218396-troubleshoot-catalyst-9800-ap-join-or-di.html)):
+
+```text
+show ap summary
+show wireless stats ap join summary
+show wireless stats ap discovery
+```
+
+`Registered` on `show ap summary` is the join. Use
+`show wireless stats ap join summary` (not `show ap join stats`) for a
+Not Joined / last failure phase. If an AP has a VLAN 10 IP but never
+appears, check discovery counters, then on a C9117/AP4800 console use
+the Catalyst 9100 AP Command Reference: `show capwap client rcb` and,
+to drop a leftover primary WLC, `capwap ap erase all` (not classic-IOS
+`clear capwap private-config`).
+
+An AP’s `siteHierarchy` can stay null even after a later assign. Read
+membership from the site, not only the Inventory Site column.
+
+### Next: put the Ethernet MAC in lab.yml and provision the AP
+
+1. On the WLC, Ethernet MAC from `show ap summary` ([9800 Command
+   Reference](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/command-reference/b_wireless_cr/show-commands.html)).
+   This lab: `084f.a950.f028` → `08:4f:a9:50:f0:28`. Use **Ethernet**, not
+   Radio MAC (`10b3.d66c.c860`). CatC search uses radio MAC; `lab_ap_macs`
+   does not.
+
+2. On Kali, in `inventory/group_vars/all/lab.yml`, one entry is enough
+   (`{AP1_MAC}`). Do not commit this file if it is only your pod:
+
+   ```yaml
+   lab_ap_macs:
+     - "08:4f:a9:50:f0:28"
+   ```
+
+   `{AP2_MAC}` stays empty and that `access_points[]` row is dropped.
+
+3. Re-run stage 08 so the AP pass can name, site-assign, and provision.
+   Wired devices stay skipped if already provisioned. Disable the **wireless
+   pass** WLC force so that pass does not bounce the controller:
+
+   ```bash
+   ansible-playbook playbooks/08_provision_devices.yml \
+     -e force_wireless_provisioning=false
+   ```
+
+   If you omit that extra, the wireless pass force-provisions the WLC
+   again (`force_wireless_provisioning` defaults to true). The AP pass
+   still re-provisions the WLC **once** when it assigns a new AP (takeover
+   so tags land). That is separate from the extra above; see the recap
+   below.
+
+4. Open **Provision > Inventory** again. Right after the play, verified
+   2026-09-15 18:17:
+
+   | Device | IP | Family | Site | Provisioning |
+   | --- | --- | --- | --- | --- |
+   | `C9800.corp.pseudoco.com` | `198.18.5.103` | Wireless Controller | DC-Site-10/MAIN | Success |
+   | three Site-105 9300s | `172.30.255.1–3` | Switches and Hubs | Site-105/MAIN | Success |
+   | `SITE-105-AP-1` | `10.10.255.101` | Unified AP | **Site-105/MAIN** | **Configuring** |
+
+   Compared with the post-09 row: the WLC name `SITE_105-Pod09-AP-1` is
+   gone, the AP is no longer Unassigned / Not Provisioned, and it is at
+   Site-105/MAIN. **Configuring** is the provision job still running (AP
+   reboot + tag apply). Wait a few minutes and refresh — it should become
+   **Success**. Do not re-run 08 while it says Configuring.
+
+   **Default tags on the WLC while Inventory says Configuring are
+   expected.** CatC 3.1.x creates and attaches site / policy / RF tags
+   only during AP provision, not when the WLC is provisioned or the AP
+   is named and site-assigned
+   ([Wireless Network Configuration Use Cases](https://www.cisco.com/c/en/us/td/docs/cloud-systems-management/network-automation-and-management/catalyst-center/3-1-x/user_guide/b_cisco_catalyst_center_user_guide_3_1_x/m-wireless-network-configuration-use-cases.html)).
+   The play returning `ok` only submitted that job. Until it finishes,
+   **Monitoring > Wireless > AP Statistics** still shows
+   `default-policy-tag` / `default-site-tag`, and AP uptime can stay
+   days (no reset yet). Verified 2026-09-15 18:24 on
+   `SITE-105-AP-1` at `10.10.255.101` (Registered, Healthy, uptime
+   ~3d 18h).
+
+   After Inventory is **Success**, the WLC should show CatC-generated
+   tags (this lab historically `ST_Durha_Site-105_…` /
+   `PT_Durha_Site-_MAIN_…` / `TYPICAL`, policy mapping
+   `PSEUDOCO-FLEX-Profile`, Tag Source Static) and a short uptime.
+   Official check on the 9800, from the
+   [9800 Command Reference](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/command-reference/b_wireless_cr/show-commands.html)
+   and
+   [Configuration Model — Verifying](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/config-guide/newconfigmodel/b_catalyst-9800-configuration-model/m_validating_configuration.html):
+
+   ```text
+   show ap tag summary
+   ```
+
+   While Inventory is still Configuring, this lab showed (2026-09-15):
+
+   ```text
+   SITE-105-AP-1  084f.a950.f028  default-site-tag  default-policy-tag
+                  default-rf-tag  No  Default
+   ```
+
+   `Tag Source Default` is the 9800 factory assignment. The play’s
+   `Provision the access points` `ok` only means CatC accepted the job;
+   the role does not wait for tags to land. Do not assign tags by hand.
+
+   After Success, expect CatC names and `Tag Source Static`. Verified
+   2026-09-15: Inventory can already show `SITE-105-AP-1` Reachable /
+   Site-105/MAIN / **Success** while `show ap tag summary` is still
+   `default-*-tag` / **Default**. CatC recorded the workflow; the 9800
+   did not attach tags. A normal 08 re-run then skips Step G
+   (`provisioningStatus` true).
+
+   Re-assert **only** the AP provision call (no switch PUT, no WLC
+   force):
+
+   ```bash
+   ansible-playbook playbooks/08_provision_devices.yml \
+     -e force_ap_provision=true \
+     -e force_wireless_provisioning=false
+   ```
+
+   Or, in CatC, provision only that AP: Inventory → select
+   `SITE-105-AP-1` → Actions → Provision → Provision Device
+   ([Provision Cisco APs on day 1](https://www.cisco.com/c/en/us/td/docs/cloud-systems-management/network-automation-and-management/catalyst-center/3-1-x/user_guide/b_cisco_catalyst_center_user_guide_3_1_x/m_provision-wireless-devices.html#id_91719)).
+   Open **See Details** for the CatC error if it fails again.
+
+   **Do not re-provision the WLC in the CatC UI.** `198.18.5.103` is
+   shared across pods. A controller re-provision without Skip AP
+   Provision also reprovisions every AP it manages
+   ([3.1.x use cases](https://www.cisco.com/c/en/us/td/docs/cloud-systems-management/network-automation-and-management/catalyst-center/3-1-x/user_guide/b_cisco_catalyst_center_user_guide_3_1_x/m-wireless-network-configuration-use-cases.html)).
+   Do not use `-e force_reprovision=true` — that PUT-reprovisions the
+   three fabric switches.
+
+### Important expected output (AP pass after stage 09)
+
+Verified on Kali (2026-09-15) with one Ethernet MAC in `lab_ap_macs` and
+`-e force_wireless_provisioning=false`: `failed=0`, `changed=2`.
+
+```text
+2 site(s) / 4 device(s) to provision.
+
+# Wired — both sites already done
+DC-Site-10/MAIN  : DEFERRED — WLC 198.18.5.103 (NCWL10092)
+Site-105/MAIN    : SKIPPED — 3 already-provisioned (172.30.255.1–3)
+
+# Wireless pass — the -e extra
+1 wireless controller(s) to provision.
+Force provis  : False
+Changed       : False
+Status        : Wireless device(s) '198.18.5.103' already provisioned.
+
+# AP pass
+Skipping SITE-105-AP-2 — no matching entry in lab_ap_macs …
+1 access point(s) to configure.
+changed: … Name and locate access points
+ok:      … Assign access points to their site
+1 controller(s) to re-provision.
+changed: … Re-provision controllers to take over the new access points
+ok:      … Provision the access points
+           SITE-105-AP-1 → …/Site-105/MAIN (TYPICAL)
+
+│ Access points : 1
+│   SITE-105-AP-1 → 10:b3:d6:6c:c8:60
+│ Site          : Global/NORTH CAROLINA/Durham/Site-105/MAIN
+│ Skipped       : SITE-105-AP-2
+│ Named changed : True
+│ Newly joined  : 10.10.255.101
+│ WLC takeover  : Wireless device(s) '198.18.5.103' provisioned successfully.
+│ AP provision  : SITE-105-AP-1
+
+PLAY RECAP
+catalyst_center_api : ok=73  changed=2  failed=0  skipped=64
+```
+
+What that means:
+
+- Wired skip + wireless **Force False / already provisioned** is the
+  extra working. Recap `changed` is **not** that wireless pass.
+- `changed=2` is **Name and locate** plus **WLC takeover**. The AP pass
+  always forces that takeover when `_ap_pending` is non-empty (the AP
+  was just assigned). `force_wireless_provisioning=false` does not gate
+  it; `force_reprovision` does. A later 08 with the same MAC skips
+  assign, skips takeover, and does not reboot the AP.
+- `SITE-105-AP-2` skipped is success for a one-AP pod.
+- The summary MAC `10:b3:d6:6c:c8:60` is the **radio** MAC CatC uses to
+  name the AP. `lab_ap_macs` stays the Ethernet MAC; the role translates.
+- `Newly joined : 10.10.255.101` is the AP management IP just assigned
+  to Site-105/MAIN.
+- `Provision the access points` reporting `ok` (not `changed`) is still
+  the provision call — `AP provision : SITE-105-AP-1` means it ran
+  because `provisioningStatus` was false. A second run prints
+  “already report provisioningStatus true”.
+
+The AP reboots while tags apply. Inventory often shows **Configuring**
+for several minutes (verified 2026-09-15 immediately after this recap),
+then **Success**. Filter **Access Points** if the Site column still looks
+empty (`siteHierarchy` can stay null). Do not treat Configuring as a
+failed play, and do not re-run 08 to “finish” it.
 
 ### Disruption warning
 
@@ -1229,8 +1603,38 @@ verified the student's pod and AP values.
   it.
 - **Stage 06 GitHub 404:** wrong `git_repo` / `git_branch`, or a private repo
   without a token. Local mode does not use GitHub.
+- **Stage 07 recap `changed=3`:** the three workflow managers. Flex native /
+  AAA-override `ok` with “confirmed” is success when VLAN 10 and names
+  Main/PROD/IOT already match. Success is `failed=0` and SSID
+  `PSEUDOCO-PODnn` resolved, not `changed=0`.
 - **Stage 07 fails after changing pod numbers:** merge mode leaves the old SSID.
   Restore the intended pod and inspect the shared wireless profile.
+- **Stage 08: DC-Site-10 is `DEFERRED` and Site-105 shows `FAILED - RETRYING`:**
+  expected. The WLC cannot use `sda/provisionDevices` (`NCWL10092`); the
+  wireless pass provisions it. The retry banner is the wired POST poll. Success
+  is Site-105 `SUCCESS` with 3 child tasks, WLC “provisioned successfully”,
+  and recap `failed=0`. Recap `changed=1` is the WLC only.
+- **Stage 08 skips SITE-105-AP-1/AP-2:** expected on the first 08.
+  `lab_ap_macs` stays empty until after stage 09. CDP on the leaf is not a
+  CatC discovery and does not mean the AP has joined.
+- **AP-pass 08 after 09, `changed=2`:** expected. Wireless pass stays
+  `Force False` / already provisioned. The two changes are name/locate
+  and the one-time WLC takeover for the newly assigned AP. `SITE-105-AP-2`
+  skipped is a one-AP pod. Summary `→ 10:b3:d6:6c:c8:60` is radio MAC,
+  not a wrong `lab_ap_macs` entry.
+- **Inventory AP shows Configuring; WLC still default-policy-tag /
+  default-site-tag:** expected. Tags attach only when AP provision
+  finishes (CatC 3.1.x use cases). Name `SITE-105-AP-1` plus site
+  Site-105/MAIN can land first. Wait for Inventory Success, then
+  `show ap tag summary`. Do not re-run 08 while Configuring.
+- **AP on CDP, missing on WLC/CatC before stage 09:** expected. Stage 08
+  does not program `Gi1/0/2`. After the composite deploy, confirm trunk
+  native 10, VLAN 10 + NVE up, AP DHCP, then CAPWAP to `198.18.5.103`.
+  See stage 09 “Inventory: at least one AP discovered”.
+- **Stage 09 recap `changed=0` with `FAILED - RETRYING` then three SUCCESS
+  rows:** expected. Poll, not failure. Shared `deploymentId` is one CatC job.
+  Still verify CLI (stage 10 / `Gi1/0/2`); do not re-run 09 on a live lab
+  unless asked.
 - **Stage 10 times out on `198.18.128.22–24`:** the dCloud VPN is usually down.
 
 Use `-e catc_debug=true` or `-e dnac_debug=true` only when troubleshooting.

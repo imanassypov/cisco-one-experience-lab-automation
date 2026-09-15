@@ -1,0 +1,14 @@
+---
+description: Validate recommended Cisco CLI against public Cisco guides for that product
+alwaysApply: true
+---
+
+# Cisco CLI from public guides only
+
+Before recommending any Cisco IOS-XE, WLC, or AP command (show, debug, or config):
+
+1. Look up the **public** Cisco document for that product and software train (Command Reference, Software Configuration Guide, or Cisco-published troubleshooting tech note).
+2. Recommend only commands that appear there, with the **exact** syntax from that page.
+3. Cite the guide title and URL in the same answer.
+4. Do not reuse AireOS / classic IOS AP syntax on Catalyst 9800 or AP-COS (C9117, AP4800, Catalyst 9100). Example: `show ap join stats` is not the 9800 command; use `show wireless stats ap join summary`. Example: `clear capwap private-config` is classic IOS AP; on AP-COS use `capwap ap erase all`.
+5. If no public command is found, say so and point at the UI path or the guide instead of inventing CLI.

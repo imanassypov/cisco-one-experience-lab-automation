@@ -112,6 +112,10 @@ wireless_provision_enabled: true
 # fabric role assigned" for the non-fabric WLC in this lab. The pass now uses
 # assign_device_to_site for that step and never reaches the fabric check.
 ap_provision_enabled: true
+# force_ap_provision is a role default (false). Use it as an extra when CatC
+# already shows the AP Success but the 9800 still has Tag Source Default:
+#   -e force_ap_provision=true -e force_wireless_provisioning=false
+# Do not set force_reprovision for that case.
 
 # Deploy composite (stage 9)
 force_push_template: true

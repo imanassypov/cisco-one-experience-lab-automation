@@ -201,7 +201,7 @@ vi inventory/group_vars/all/lab.yml
 | Variable | Value |
 |----------|-------|
 | `lab_pod_id` | Your dCloud POD number from the lab printout (integer). The file ships as `REPLACE_ME`; stages 01–05 and 07–09 **fail** until you set it, so a skipped edit cannot push another student's SSID (`PSEUDOCO-PODnn`) onto the shared WLC. Zero-padded to two digits at run time, so pod 7 yields `PSEUDOCO-POD07`. The pod is **only** that SSID — not switch IPs or site paths. Which playbooks use it: [README — lab_pod_id](README.md#lab_pod_id--wlan-ssid-only). |
-| `lab_ap_macs` | Ethernet MAC of each access point in join order, colon-separated. Ships as an empty list. List only the APs your pod actually has — `settings.json` always carries two AP entries, and the one whose `{APn_MAC}` finds no match stays unresolved and is skipped rather than sent to Catalyst Center as a bad MAC. Use the Ethernet MAC from `show ap summary`, not the Base Radio MAC. |
+| `lab_ap_macs` | Leave `[]` until **after** stage 09. The composite programs the AP trunk (`Gi1/0/2`, native VLAN 10); until then the AP cannot join the WLC and Catalyst Center has no Unified AP. After at least one AP is Registered, put that **Ethernet** MAC here (colon-separated, first entry is `{AP1_MAC}`), then re-run stage 08. One join is enough. `settings.json` always carries two AP rows; an `{APn_MAC}` with no list entry is skipped. Do not use the Base Radio MAC. |
 
 To try a different pod for one run without editing the file:
 

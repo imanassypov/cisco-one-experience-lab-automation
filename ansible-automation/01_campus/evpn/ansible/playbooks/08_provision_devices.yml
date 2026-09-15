@@ -66,6 +66,8 @@
 #
 # Run: ansible-playbook playbooks/08_provision_devices.yml
 #      ansible-playbook playbooks/08_provision_devices.yml -e force_reprovision=true
+#      ansible-playbook playbooks/08_provision_devices.yml \
+#        -e force_ap_provision=true -e force_wireless_provisioning=false
 #      ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
 #      ansible-playbook playbooks/08_provision_devices.yml -e ap_provision_enabled=false
 # =============================================================================
