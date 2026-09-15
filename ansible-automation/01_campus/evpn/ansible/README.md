@@ -332,8 +332,17 @@ Do not expect switch running configuration to change yet.
 ### What it accomplishes
 
 This stage makes sure Catalyst Center has the global credentials it needs to
-manage devices, then assigns CLI and SNMP credentials to each `MAIN` floor.
-NETCONF port 830 is reconciled separately.
+manage devices, then assigns CLI, SNMP, and HTTP(S) credentials to each
+`MAIN` floor. NETCONF port 830 is reconciled separately.
+
+Phase A **GETs first** (`HTTP_READ` / `HTTP_WRITE` and the CLI/SNMP subtypes)
+only to list descriptions already in Design. The workflow manager still does
+the create and the site bind. We skip putting a type in
+`global_credential_details` when its description is already present so this
+lab **binds** `HTTPS Read` / `HTTPS Write` (and `CLI Admin`, SNMP) instead of
+POSTing a second global with the same label. Discovery in stage 04 looks up
+those names; a duplicate description would break that lookup. The GET is also
+how four identical `project[]` rows become **one** create payload, not four.
 
 ### Data read from settings.json
 
@@ -342,20 +351,24 @@ From `project[].device_credentials`:
 - `cli_credential` — description, username, password, enable password
 - `snmp_v2c_read` — description and read community
 - `snmp_v2c_write` — description and write community
+- `https_read` — description, username, password, port (443)
+- `https_write` — description, username, password, port (443)
 - `netconf_credential` — description and port
 
 From `project[].assign_credentials`:
 
-- `site_name` — site paths that receive the CLI/SNMP credential assignment
+- `site_name` — site paths that receive the CLI/SNMP/HTTP credential assignment
 
 Repeated global credentials are deduplicated by description before processing.
+Stage 04 discovery refers to the same descriptions (`HTTPS Read`, `HTTPS Write`).
 
 ### Catalyst Center APIs
 
-The `cisco.dnac.device_credential_workflow_manager` handles CLI/SNMP reads,
-creates, updates, and site assignments, including:
+The `cisco.dnac.device_credential_workflow_manager` handles CLI, SNMP, and
+HTTP(S) reads, creates, updates, and site assignments, including:
 
-- `GET /dna/intent/api/v1/global-credential`
+- `GET /dna/intent/api/v1/global-credential` (`CLI`, `SNMPV2_*`, `HTTP_READ`,
+  `HTTP_WRITE`)
 - `POST` or `PUT /dna/intent/api/v2/global-credential`
 - `GET /dna/intent/api/v1/sites/{id}/deviceCredentials`
 - `POST /dna/intent/api/v1/sites/{id}/deviceCredentials`
@@ -367,6 +380,18 @@ NETCONF uses:
 - `POST` or `PUT /dna/intent/api/v1/global-credential/netconf`
 - `GET /dna/intent/api/v1/task/{taskId}` — poll completion
 
+CLI/SNMP/HTTP go through `device_credential_workflow_manager`. That module
+**has no NETCONF type**, so Phase A cannot create port 830. There is a
+separate `cisco.dnac.netconf_credential` module, but CatC's create/update
+calls return **HTTP 202** with a task id, and that module does not handle
+that async body correctly (it treats the job as finished or errors). Stage 03
+therefore uses `uri` for POST/PUT and polls the task itself.
+
+Reads still use `cisco.dnac.global_credential_info`. Existence is keyed by
+**port**, not description: CatC allows only one NETCONF credential per port,
+and stock dCloud already owns 830 as `defaultNetConfPort`. A description-only
+create would hit "Duplicate credential".
+
 ### Run it
 
 ```bash
@@ -375,16 +400,35 @@ ansible-playbook playbooks/03_credentials.yml
 
 ### Important expected output
 
-On stock dCloud, the named global credentials normally already exist:
+Verified on Kali against stock dCloud CatC (2026-09-15): `failed=0`,
+`changed=1` (Phase A workflow manager only).
 
 ```text
-4 site assignment(s), 0 missing global type(s), state=merged
-1 existing: {...}
+4 site assignment(s), N missing global type(s), state=merged
+1 total: ['defaultNetConfPort']
+changed: [catalyst_center_api]   # Phase A — Manage CLI, SNMP, and HTTP credentials
+
+1 existing: {'830': {'id': '...', 'description': 'defaultNetConfPort'}}
 NETCONF credential 'defaultNetConfPort' (port 830) already exists with matching description — no action needed.
-Successfully provisioned 4 CLI/SNMP site assignment(s)
+
+Successfully provisioned 4 CLI/SNMP/HTTP site assignment(s)
+
+PLAY RECAP
+catalyst_center_api : ok=…  changed=1  failed=0
 ```
 
-If a global object is missing, expect a created or updated message instead.
+`N missing global type(s)` is how many WFM keys were absent from the GET-by-subtype
+lists (`CLI Admin`, `SNMPv2c Read`, `SNMPv2c Write`, `HTTPS Read`, `HTTPS Write`).
+Stock dCloud usually already has all five; a missing type is created then assigned
+to the four MAIN floors. Pass `-e catc_debug=true` to print `wfm_config` if you
+need to see which type it was.
+
+NETCONF CREATE/UPDATE and Phase C delete are skipped when port 830 already
+exists as `defaultNetConfPort` and `state=merged`.
+
+A later re-run may show `0 missing global type(s)` and still `changed=1` if
+the workflow manager re-applies site assignments. Success is recap `failed=0`
+and the four-site complete message, not `changed=0`.
 
 ### Where to verify in Catalyst Center
 
@@ -394,11 +438,11 @@ global objects exist:
 - CLI Admin
 - SNMPv2c Read
 - SNMPv2c Write
+- HTTPS Read
+- HTTPS Write
 - defaultNetConfPort (830)
 
-Select each `MAIN` floor and confirm the CLI and SNMP credentials are assigned.
-Stage 03 does not create the pre-existing `HTTPS Read` and `HTTPS Write`
-credentials used by discovery.
+Select each `MAIN` floor and confirm CLI, SNMP, and HTTP credentials are assigned.
 
 ---
 
@@ -1000,6 +1044,12 @@ verified the student's pod and AP values.
   from Global:** expected on stock dCloud. Those values already match Global;
   CatC will not create a floor override. Check timezone and MOTD for a
   site-local change. See stage 02 “CatC UX: Inherited from Global is success”.
+- **Stage 03 `N missing global type(s)` and Phase A `changed`:** success if
+  recap `failed=0`. One or more CLI/SNMP/HTTP descriptions were absent from
+  the GET list, so the workflow manager merged them and assigned four MAIN
+  floors. NETCONF “already exists” with skipped CREATE is the stock dCloud
+  path. Check Design > Network Settings > Device Credentials for a duplicate
+  name if a global was created instead of bound.
 - **Vault file missing on Kali:** rerun collection 00 from the student laptop.
   Do not recreate the demo passphrase manually on Kali.
 - **CatC name does not resolve:** reconnect the dCloud VPN and rerun the laptop

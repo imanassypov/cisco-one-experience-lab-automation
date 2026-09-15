@@ -63,6 +63,18 @@
                     "description": "SNMPv2c Write",
                     "write_community": "RW"
                 },
+                "https_read": {
+                    "description": "HTTPS Read",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
+                },
+                "https_write": {
+                    "description": "HTTPS Write",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
+                },
                 "netconf_credential": {
                     "description": "defaultNetConfPort",
                     "netconf_port": "830"
@@ -288,6 +300,18 @@
                     "description": "SNMPv2c Write",
                     "write_community": "RW"
                 },
+                "https_read": {
+                    "description": "HTTPS Read",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
+                },
+                "https_write": {
+                    "description": "HTTPS Write",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
+                },
                 "netconf_credential": {
                     "description": "defaultNetConfPort",
                     "netconf_port": "830"
@@ -378,6 +402,18 @@
                 "snmp_v2c_write": {
                     "description": "SNMPv2c Write",
                     "write_community": "RW"
+                },
+                "https_read": {
+                    "description": "HTTPS Read",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
+                },
+                "https_write": {
+                    "description": "HTTPS Write",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
                 },
                 "netconf_credential": {
                     "description": "defaultNetConfPort",
@@ -514,6 +550,18 @@
                 "snmp_v2c_write": {
                     "description": "SNMPv2c Write",
                     "write_community": "RW"
+                },
+                "https_read": {
+                    "description": "HTTPS Read",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
+                },
+                "https_write": {
+                    "description": "HTTPS Write",
+                    "username": "netadmin",
+                    "password": "C1sco12345",
+                    "port": 443
                 },
                 "netconf_credential": {
                     "description": "defaultNetConfPort",

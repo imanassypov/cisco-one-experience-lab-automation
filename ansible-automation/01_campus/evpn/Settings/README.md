@@ -322,7 +322,7 @@ Client and endpoint AAA configuration (ISE/RADIUS for 802.1X and MAB). Applied t
 
 ### Device Credentials
 
-The `device_credentials` object names the **live** Catalyst Center Design globals (not a second copy). Stage `03` creates a description only if it is missing, then binds that same global to each site via `assign_credentials`. PseudoCo lab names: `CLI Admin`, `SNMPv2c Read`, `SNMPv2c Write`, `defaultNetConfPort` (port 830).
+The `device_credentials` object names the **live** Catalyst Center Design globals (not a second copy). Stage `03` creates a description only if it is missing, then binds that same global to each site via `assign_credentials`. PseudoCo lab names: `CLI Admin`, `SNMPv2c Read`, `SNMPv2c Write`, `HTTPS Read`, `HTTPS Write`, `defaultNetConfPort` (port 830).
 
 #### `cli_credential`
 
@@ -353,6 +353,17 @@ SNMP v2c read-write community string.
 | `description` | Label used to identify this credential in Catalyst Center |
 | `write_community` | SNMPv2c write community string |
 
+#### `https_read` / `https_write`
+
+HTTP(S) credentials used by Catalyst Center discovery (WLC GUI, HTTP APIs). Stage 03 creates them if missing and assigns them with CLI/SNMP. Stage 04 discovery refers to the same descriptions.
+
+| Field | Description |
+|-------|-------------|
+| `description` | Live Design names: `HTTPS Read` and `HTTPS Write` |
+| `username` | HTTP user (`netadmin` on this lab) |
+| `password` | HTTP password. **Treat as a credential — protect in production.** |
+| `port` | HTTPS port (lab: `443`) |
+
 #### `netconf_credential`
 
 NETCONF over SSH credential.
@@ -366,7 +377,7 @@ NETCONF over SSH credential.
 
 #### `assign_credentials`
 
-Per-site bind of those globals. `site_name` is the MAIN floor path. CLI/SNMP descriptions are taken from the same row's `device_credentials` so four project rows do not create four global copies.
+Per-site bind of those globals. `site_name` is the MAIN floor path. CLI/SNMP/HTTP descriptions are taken from the same row's `device_credentials` so four project rows do not create four global copies.
 
 ```json
 "assign_credentials": {
@@ -388,7 +399,7 @@ Per-site bind of those globals. `site_name` is the MAIN floor path. CLI/SNMP des
 
 ### Discovery
 
-Optional `discovery` object consumed by stage `04`. When present, it is the discovery job SSOT (name, RANGE, credentials). Global credential **descriptions** must already exist in CatC Design; this block does not store HTTP/CLI passwords.
+Optional `discovery` object consumed by stage `04`. When present, it is the discovery job SSOT (name, RANGE, credentials). Global credential **descriptions** must match `device_credentials` (stage 03); this block does not store HTTP/CLI passwords.
 
 | Field | Description |
 | --- | --- |
@@ -763,6 +774,18 @@ The following is a complete, annotated single-site `settings.json` entry:
                 "snmp_v2c_write": {
                     "description":     "RW",
                     "write_community": "RW"
+                },
+                "https_read": {
+                    "description": "HTTPS Read",
+                    "username":    "netadmin",
+                    "password":    "C1sco12345",
+                    "port":        443
+                },
+                "https_write": {
+                    "description": "HTTPS Write",
+                    "username":    "netadmin",
+                    "password":    "C1sco12345",
+                    "port":        443
                 },
                 "netconf_credential": {
                     "description":  "NETCONF-netadmin",

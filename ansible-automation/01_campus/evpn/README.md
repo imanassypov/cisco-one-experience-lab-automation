@@ -41,7 +41,7 @@ Stages, in order, from `ansible/playbooks/`:
 | `00_site_deploy.yml` | Orchestrator (later stages) |
 | `01_site_hierarchy.yml` | CatC site hierarchy |
 | `02_network_settings.yml` | DNS/NTP/AAA from Settings |
-| `03_credentials.yml` | Device credentials in CatC |
+| `03_credentials.yml` | Device credentials in CatC (CLI, SNMP, HTTP, NETCONF) |
 | `04_device_discovery.yml` | Discovery |
 | `05_assign_to_site.yml` | Assign devices to sites |
 | `06_template_sync.yml` | Publish `.j2` into CatC projects; build composite `BGP-EVPN-BUILD` |
