@@ -171,10 +171,8 @@ Every student in the dCloud environment runs this same repository against their 
 
 ```yaml
 # ansible/inventory/group_vars/all/lab.yml
-lab_pod_id: 12
-lab_ap_macs:
-  - "0c:d0:f8:9a:1a:58"
-  - "10:b3:d6:73:a6:e8"
+lab_pod_id: REPLACE_ME   # your dCloud POD number, e.g. 7
+lab_ap_macs: []          # Ethernet MACs of this pod's APs
 ```
 
 | Token | Source variable | Substitution |

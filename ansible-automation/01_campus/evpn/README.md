@@ -53,15 +53,18 @@ Safe to inspect after the repo-root `.vault` can decrypt `Lab Topology/lab_acces
 
 ### Vault
 
-One file at the repository root unlocks `Lab Topology/lab_access.yml` for every collection:
+`.vault` at the repository root unlocks `Lab Topology/lab_access.yml` for every
+collection. Create it on the **student laptop** (gitignored). Collection `00`
+copies it onto Kali during bootstrap — do not recreate it by hand on the script
+server.
 
 ```bash
 cd ~/cisco-one-experience-lab-automation
-cp .vault.example .vault   # one line: lab vault password
-ansible-vault view "Lab Topology/lab_access.yml"
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault
 ```
 
-Do not commit `.vault` or an unencrypted `lab_access.yml`.
+Do not commit `.vault` or an unencrypted `lab_access.yml`. The shared dCloud
+demo password is laptop→Kali copy only; change that for production.
 
 ### Run (script server)
 

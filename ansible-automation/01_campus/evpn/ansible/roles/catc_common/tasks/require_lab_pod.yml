@@ -1,0 +1,15 @@
+---
+# Fail before any CatC write if the student left the shared lab.yml placeholder.
+# A hardcoded pod in git would let one student push another pod's SSID onto the
+# shared WLC.
+- name: Require lab_pod_id to be this student's dCloud pod
+  ansible.builtin.assert:
+    that:
+      - lab_pod_id is defined
+      - lab_pod_id | string != "REPLACE_ME"
+      - lab_pod_id | int > 0
+    fail_msg: >-
+      Set lab_pod_id to your dCloud POD number (integer, from the lab printout)
+      in inventory/group_vars/all/lab.yml, or pass -e lab_pod_id=<n>.
+      The committed value is REPLACE_ME so a skipped edit cannot push
+      another student's SSID (PSEUDOCO-PODnn) onto the shared WLC.

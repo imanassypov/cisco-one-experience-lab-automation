@@ -5,13 +5,18 @@
 # settings.json carries {TOKEN} placeholders; the values below fill them in at
 # run time. Override any of them for a single run instead of editing this file:
 #   ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
+#
+# Leave REPLACE_ME / the empty MAC list in git. Stages that load settings.json
+# refuse to run until lab_pod_id is a real pod number, so a skipped edit cannot
+# push another student's SSID onto the shared WLC.
 
 # ── {POD} ────────────────────────────────────────────────────────────────────
 # dCloud POD number from the lab printout. Ask a proctor if you cannot find it.
-# Zero-padded to two digits when substituted, so pod 7 yields PSEUDOCO-POD07.
-# The SSID must match a pre-configured group policy on the WLC that carries the
-# authentication settings, so the padding is not cosmetic.
-lab_pod_id: 12
+# Integer, no quotes. Zero-padded to two digits when substituted, so pod 7
+# yields PSEUDOCO-POD07. The SSID must match a pre-configured group policy on
+# the WLC that carries the authentication settings, so the padding is not
+# cosmetic.
+lab_pod_id: REPLACE_ME
 
 # ── {AP1_MAC}, {AP2_MAC} ─────────────────────────────────────────────────────
 # Ethernet MAC of each access point, in join order, colon-separated. A pod has
@@ -23,6 +28,7 @@ lab_pod_id: 12
 #   show ap summary
 # or from Configuration > Wireless > Access Points in the WLC web UI, using the
 # Ethernet MAC column rather than the Base Radio MAC.
-lab_ap_macs:
-  - "04:5f:b9:ca:03:58"   # {AP1_MAC} — SITE-105-AP-1
-  # - "10:b3:d6:73:a6:e8" # {AP2_MAC} — SITE-105-AP-2, absent from this pod
+#
+# Examples (uncomment and replace with YOUR APs):
+#   - "aa:bb:cc:dd:ee:ff"   # {AP1_MAC}
+lab_ap_macs: []

@@ -200,8 +200,8 @@ vi inventory/group_vars/all/lab.yml
 
 | Variable | Value |
 |----------|-------|
-| `lab_pod_id` | Your dCloud POD number from the lab printout. Zero-padded to two digits, so pod 7 yields SSID `PSEUDOCO-POD07`. The padding is not cosmetic — the SSID must match a pre-configured group policy on the WLC. |
-| `lab_ap_macs` | Ethernet MAC of each access point in join order, colon-separated. List only the APs your pod actually has — `settings.json` always carries two AP entries, and the one whose `{APn_MAC}` finds no match stays unresolved and is skipped rather than sent to Catalyst Center as a bad MAC. Use the Ethernet MAC from `show ap summary`, not the Base Radio MAC. |
+| `lab_pod_id` | Your dCloud POD number from the lab printout (integer). The file ships as `REPLACE_ME`; stages 01–05 and 07–09 **fail** until you set it, so a skipped edit cannot push another student's SSID (`PSEUDOCO-PODnn`) onto the shared WLC. Zero-padded to two digits at run time, so pod 7 yields `PSEUDOCO-POD07`. The pod is **only** that SSID — not switch IPs or site paths. Which playbooks use it: [README — lab_pod_id](README.md#lab_pod_id--wlan-ssid-only). |
+| `lab_ap_macs` | Ethernet MAC of each access point in join order, colon-separated. Ships as an empty list. List only the APs your pod actually has — `settings.json` always carries two AP entries, and the one whose `{APn_MAC}` finds no match stays unresolved and is skipped rather than sent to Catalyst Center as a bad MAC. Use the Ethernet MAC from `show ap summary`, not the Base Radio MAC. |
 
 To try a different pod for one run without editing the file:
 
@@ -217,16 +217,33 @@ ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 
 ## Step 7 — Verify, then run stage 01
 
-Still on Kali, from the `ansible/` directory, check the inventory resolves:
+Still on Kali, from the `ansible/` directory, check the inventory resolves.
+
+`ansible-inventory` is a **read-only** inspector. It does not SSH to switches
+or call Catalyst Center. It loads the same files `ansible-playbook` will use,
+then prints the host/group tree. Run it here because Ansible only reads
+`ansible.cfg` from the **current** directory.
+
+That `ansible.cfg` points at:
+
+| Setting | File | What the student sees |
+|---------|------|------------------------|
+| `inventory` | `inventory/static_inventory.yml` | Groups and hostnames (`catalyst_center_api`, the three `Site_105-*` switches) and their `ansible_host` IPs |
+| `vault_password_file` | repo-root `.vault` | Unlocks `Lab Topology/lab_access.yml` |
+| `vars_plugins` | `ansible-automation/plugins/vars/lab_access.py` | Injects `lab_access` so each switch can resolve `ansible_user` / `ansible_password` |
+
+`--graph` prints **names and groups only**. It does not print IPs or passwords.
+Empty `@ungrouped` is normal — Ansible always creates that group.
 
 ```bash
 ansible-inventory --graph
 ```
 
-Expected — two groups and nothing else:
+You should see:
 
 ```
 @all:
+  |--@ungrouped:
   |--@catalyst_center:
   |  |--catalyst_center_api
   |--@campus_evpn:
@@ -246,6 +263,38 @@ Then run the first stage:
 ```bash
 ansible-playbook playbooks/01_site_hierarchy.yml
 ```
+
+dCloud Catalyst Center already has this hierarchy. A successful first run
+against a stock pod looks like:
+
+```
+TASK [site_hierarchy : Site hierarchy provisioning complete]
+ok: [catalyst_center_api] => {
+    "msg": [
+        "Created 0, updated 0, skipped 16",
+        "skipped  Global/CALIFORNIA",
+        "skipped  Global/NEW YORK",
+        "skipped  Global/NORTH CAROLINA",
+        "skipped  Global/TEXAS",
+        "skipped  Global/CALIFORNIA/San Jose",
+        "skipped  Global/NEW YORK/New York",
+        "skipped  Global/NORTH CAROLINA/Durham",
+        "skipped  Global/TEXAS/Richardson",
+        "skipped  Global/CALIFORNIA/San Jose/DC-Site-10",
+        "skipped  Global/NEW YORK/New York/DC-Site-11",
+        "skipped  Global/NORTH CAROLINA/Durham/Site-105",
+        "skipped  Global/TEXAS/Richardson/Site-106",
+        "skipped  Global/CALIFORNIA/San Jose/DC-Site-10/MAIN",
+        "skipped  Global/NEW YORK/New York/DC-Site-11/MAIN",
+        "skipped  Global/NORTH CAROLINA/Durham/Site-105/MAIN",
+        "skipped  Global/TEXAS/Richardson/Site-106/MAIN"
+    ]
+}
+```
+
+Play recap should show `changed=0`. The play still built `site_id_map` for
+later stages. `created` / `updated` appear only if a path is missing or an
+UPDATE actually changed CatC (`-e site_hierarchy_update_existing=true`).
 
 Continue with the stage order in [README.md](README.md#pipeline-order).
 
@@ -293,7 +342,7 @@ to print the full HTTP request and response for each API call.
 | `ansible-playbook: not found` in a non-interactive SSH command | Non-login shells do not pick up `~/venv` from `.bashrc` | Use an interactive SSH session, or call `/home/cisco/venv/bin/ansible-playbook` |
 | `02_sync_from_git.yml` fails on local changes | The Kali tree is dirty from ad-hoc file copies | Commit or revert on Kali, or re-run `01` |
 | Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
-| `'lab_pod_id' is undefined` on stage 07 | `lab.yml` was emptied or is not being loaded | Step 6 |
+| `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | Step 6 was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
 | Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
 | `Collection <name> does not support Ansible version 2.15.x` | Collections from `requirements.yml` installed on a 2.15 host | Use `requirements-jumphost.yml` there |
 

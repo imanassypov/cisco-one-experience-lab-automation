@@ -55,7 +55,7 @@ ansible-playbook playbooks/00_site_deploy.yml
 | Playbook | Stage | Description |
 |----------|-------|-------------|
 | `00_site_deploy.yml` | 0 | Orchestrator — imports stages 1–9 |
-| `01_site_hierarchy.yml` | 1 | Build site hierarchy |
+| `01_site_hierarchy.yml` | 1 | Build site hierarchy (dCloud stock pod: skipped 16, `changed=0`) |
 | `02_network_settings.yml` | 2 | Apply network settings |
 | `03_credentials.yml` | 3 | CLI/SNMP/NETCONF credentials |
 | `04_device_discovery.yml` | 4 | Device discovery |
@@ -229,8 +229,39 @@ inventory = inventory/static_inventory.yml
 | File | Purpose |
 |------|---------|
 | `inventory/static_inventory.yml` | Catalyst Center API endpoint (`localhost`) and the three Site 105 EVPN switches |
-| `inventory/group_vars/all/` | `lab.yml` — per-student `lab_pod_id` and `lab_ap_macs` |
+| `inventory/group_vars/all/` | `lab.yml` — per-student `lab_pod_id` (`REPLACE_ME` until edited) and `lab_ap_macs` |
 | `inventory/group_vars/catalyst_center/` | `connection.yml` plus the vault holding CatC credentials |
+
+### `lab_pod_id` — WLAN SSID only
+
+The pod number is **not** a switch IP, site path, or Catalyst Center hostname.
+`load_settings` substitutes `{POD}` (zero-padded, so `7` → `07`) and the only
+runtime meaning is the WLAN name **`PSEUDOCO-PODnn`**. That string must match
+the pre-configured WLC group policy for this student's pod. dCloud's stock
+SSID `PSEUDOCO-POD#` is unrelated.
+
+`settings.json` carries `PSEUDOCO-POD{POD}` in three places: `lab.wireless_ssid`
+(documentation only; playbooks do not read it), DC-Site-10
+`wireless_design.ssids[].ssid_name`, and DC-Site-10
+`wireless_profile.ssid_details[].ssid_name` (profile **HQ-Wireless**, site
+Site-105/MAIN).
+
+`lab.yml` ships `lab_pod_id: REPLACE_ME` so a skipped edit cannot push another
+student's SSID onto the shared WLC.
+
+| Playbook | `{POD}` / SSID | Purpose |
+|----------|----------------|---------|
+| `01_site_hierarchy.yml` | Gate only | Loads settings; fails if `REPLACE_ME`. Does not send an SSID. |
+| `02_network_settings.yml` | Gate only | Same. |
+| `03_credentials.yml` | Gate only | Same. |
+| `04_device_discovery.yml` | Gate only | Same. |
+| `05_assign_to_site.yml` | Gate only | Same. |
+| `06_template_sync.yml` | Not used | Fabric Jinja → CatC Template Programmer. |
+| `07_network_profile.yml` | **Writes the SSID** | Wireless design creates WLAN `PSEUDOCO-PODnn` on the 9800; HQ-Wireless binds it to Site-105 APs. This is the play that would clobber another pod if `lab.yml` were still hardcoded. |
+| `08_provision_devices.yml` | Indirect | Provisions WLC/APs onto tags that already carry whatever SSID stage 07 created. |
+| `09_deploy_composite.yml` | Gate only | Day-N composite; loads settings, no SSID write. |
+| `10_verify_collect_facts.yml` | Not used | SSH `ios_command` on the three fabric switches. |
+| `00_site_deploy.yml` | Via stage 01 first | Orchestrator; stops at the first stage that loads settings if the pod is unset. |
 
 Two groups exist. Stages `01`–`09` target `catalyst_center`, which is
 `localhost` talking to the Catalyst Center REST API. Stage `10` targets

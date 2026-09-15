@@ -20,6 +20,9 @@
 #   catc_debug          — optional; dumps resolved path, token map and JSON when true
 # =============================================================================
 
+- name: Require a real lab_pod_id before substituting tokens
+  ansible.builtin.include_tasks: require_lab_pod.yml
+
 # Ansible's file lookup needs a resolvable path; relative paths anchor to playbooks/.
 # Example
 #   In : settings_json_path = "../../Settings/settings.json"
