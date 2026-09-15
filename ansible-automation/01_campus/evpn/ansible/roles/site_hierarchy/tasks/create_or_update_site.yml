@@ -345,3 +345,23 @@
   when:
     - catc_debug | default(false) | bool
     - not _exists
+
+- name: "Record outcome  | {{ _path }}"
+  ansible.builtin.set_fact:
+    site_hierarchy_results: "{{ site_hierarchy_results | default([]) + [_site_hierarchy_row] }}"
+  vars:
+    _site_hierarchy_action: >-
+      {%- if not (_exists | bool) -%}
+      created
+      {%- elif _type == 'area' and _area_update is defined and _area_update is changed -%}
+      updated
+      {%- elif _type == 'building' and _building_update is defined and _building_update is changed -%}
+      updated
+      {%- elif _type == 'floor' and _floor_update is defined and _floor_update is changed -%}
+      updated
+      {%- else -%}
+      skipped
+      {%- endif -%}
+    _site_hierarchy_row:
+      action: "{{ _site_hierarchy_action }}"
+      line: "{{ _site_hierarchy_action }}  {{ _path }}"

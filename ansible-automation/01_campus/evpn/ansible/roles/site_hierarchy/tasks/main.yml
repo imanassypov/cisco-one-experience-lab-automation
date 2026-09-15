@@ -460,6 +460,11 @@
     #     PUT  /dna/intent/api/v2/buildings/{id}    (building)
     #     PUT  /dna/intent/api/v2/floors/{id}       (floor)
     #
+- name: "Phase B — Reset per-run outcome log"
+  ansible.builtin.set_fact:
+    site_hierarchy_results: []
+  when: (state | default('merged')) == 'merged'
+
 - name: "Phase B — Create/update sites"
   ansible.builtin.include_tasks: create_or_update_site.yml
   loop: "{{ site_configs_list }}"
@@ -497,9 +502,18 @@
 # ── Summary ───────────────────────────────────────────────────────────────────
 - name: Site hierarchy provisioning complete
   # Final confirmation message — no API call, purely informational.
-  debug:
-    msg:
-      - >-
-        {{ 'Deleted' if (state | default('merged')) == 'deleted'
-           else 'Created/updated' }} {{ site_configs_list | length }} site(s)
-      - "Site paths: {{ all_site_paths | join(', ') }}"
+  ansible.builtin.debug:
+    msg: "{{ [_site_hierarchy_done] + _site_hierarchy_lines }}"
+  vars:
+    _hier_results: "{{ site_hierarchy_results | default([]) }}"
+    _n_created: "{{ _hier_results | selectattr('action', 'equalto', 'created') | list | length }}"
+    _n_updated: "{{ _hier_results | selectattr('action', 'equalto', 'updated') | list | length }}"
+    _n_skipped: "{{ _hier_results | selectattr('action', 'equalto', 'skipped') | list | length }}"
+    _site_hierarchy_done: >-
+      {{ 'Deleted ' ~ (site_configs_list | length) ~ ' site(s)'
+         if (state | default('merged')) == 'deleted'
+         else 'Created ' ~ _n_created ~ ', updated ' ~ _n_updated ~ ', skipped ' ~ _n_skipped }}
+    _site_hierarchy_lines: >-
+      {{ all_site_paths | default([])
+         if (state | default('merged')) == 'deleted'
+         else (_hier_results | map(attribute='line') | list) }}

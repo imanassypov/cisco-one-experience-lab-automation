@@ -4,3 +4,4 @@
 # Existing sites are left as-is. CREATE still runs for missing paths.
 # Re-enable: -e site_hierarchy_update_existing=true
 site_hierarchy_update_existing: false
+site_hierarchy_results: []
