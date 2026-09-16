@@ -1618,10 +1618,10 @@ driven from the script server, not your laptop:
 | `evidence/stage10-verification.md` | Reading in a terminal or editor, diffing between runs |
 | `evidence/stage10-verification.html` | A formal verification report for sharing or printing |
 
-Read the markdown on Kali with `glow` (installed by the bootstrap):
+Read the markdown on the script server with any pager:
 
 ```bash
-glow -p evidence/stage10-verification.md
+less evidence/stage10-verification.md
 ```
 
 Or pull either file back:

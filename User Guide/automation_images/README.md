@@ -54,7 +54,7 @@ change its tag from `src="" data-missing="NAME.png"` to `src="automation_images/
 | Filename | What to capture |
 |---|---|
 | `a3-evidence-html-report.png` | `evidence/stage10-verification.html` open in a browser |
-| `a3-glow-md-report.png` | `glow -p evidence/stage10-verification.md` in the terminal |
+| `a3-md-report.png` | `less evidence/stage10-verification.md` in the terminal |
 
 ### A4 — Template Model
 
