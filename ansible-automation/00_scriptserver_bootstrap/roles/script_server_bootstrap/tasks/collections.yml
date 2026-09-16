@@ -7,12 +7,17 @@
 
 # --force is required: without it ansible-galaxy skips a collection that is
 # already present at any version, so a bumped pin is silently never applied.
+# Retries because the dCloud VPN path to galaxy.ansible.com drops
+# intermittently, the same reason sync_repo.yml retries its clone.
 - name: Install pinned Ansible collections with the venv ansible-galaxy
   ansible.builtin.command:
     cmd: >-
       {{ script_server_venv_path }}/bin/ansible-galaxy collection install
       -r {{ script_server_venv_path }}/requirements.yml --force
   register: script_server_galaxy
+  until: script_server_galaxy.rc == 0
+  retries: 4
+  delay: 10
   changed_when: >-
     'Nothing to do.' not in script_server_galaxy.stdout
     and 'is already installed' not in script_server_galaxy.stdout
