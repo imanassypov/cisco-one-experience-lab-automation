@@ -33,6 +33,11 @@ script_server_netaddr_version: "1.3.0"
 # Official SDKs for CatC 3.1.3.0 API (3.1.5 appliance; no 3.1.5 SDK profile).
 script_server_catalystcentersdk_version: "3.1.3.0.1"
 script_server_dnacentersdk_version: "2.10.6"
+# Genie parsers back every stage 10 check. Pinned together because a parser
+# schema change renames keys and would silently break checks — the same class of
+# drift as an unpinned collection.
+script_server_genie_version: "26.8"
+script_server_pyats_version: "26.8"
 
 script_server_python_packages:
   - "ansible-core=={{ script_server_ansible_core_version }}"
@@ -40,6 +45,12 @@ script_server_python_packages:
   - "netaddr=={{ script_server_netaddr_version }}"
   - "catalystcentersdk=={{ script_server_catalystcentersdk_version }}"
   - "dnacentersdk=={{ script_server_dnacentersdk_version }}"
+  # Stage 10 parses every CLI response with Genie instead of matching text, so
+  # pyATS is required. Both packages are needed: genie alone does not pull
+  # pyats, and the import fails with "No module named 'pyats'". Adds roughly
+  # 700 MB to the venv.
+  - "genie=={{ script_server_genie_version }}"
+  - "pyats=={{ script_server_pyats_version }}"
 
 script_server_cli_binaries:
   - ansible

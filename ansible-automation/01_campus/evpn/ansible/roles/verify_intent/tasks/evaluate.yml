@@ -66,7 +66,6 @@
     _verify_matrix: >-
       {{ (_verify_matrix | default([]))
          + [item | combine({'skipped': _skip | bool,
-                            'expect':  [] if (_skip | bool) else _expect,
                             'pairs':   [] if (_skip | bool) else _pairs})] }}
   loop: "{{ _verify_pairs }}"
   loop_control:
@@ -75,7 +74,6 @@
     host: "{{ item.device }}"
     _chk: "{{ verify_checks | selectattr('id', 'equalto', item.id) | first }}"
     _skip: "{{ _chk.skip_when | default(false) }}"
-    _expect: "{{ _chk.expect | default([]) }}"
     _pairs: "{{ _chk.pairs | default([]) }}"
 
 - name: --DEBUG-- Expanded check matrix
@@ -84,18 +82,15 @@
     var: _verify_matrix
 
 # Example - one row
-#   In : row = {"id": "vrf_defined", "device": "Site_105-Leaf1...",
-#               "command": "show vrf",
-#               "expect": ["(?m)^\\s*Main\\s", "(?m)^\\s*PROD\\s"]}
-#        _cli_output[device]["show vrf"] contains both
+#   In : row = {"id": "vrf_rd", "device": "Site_105-Leaf1...",
+#               "pairs": [{"label": "Main RD", "intended": "172.30.255.1:10",
+#                          "observed": "172.30.255.1:10"}]}
 #   Out: {"status": "PASS", "missing": [],
-#         "details": [{"pattern": "(?m)^\\s*Main\\s", "found": true,
-#                      "observed": "Main 172.30.255.1:10 ipv4 Vl1010"}, ...]}
+#         "details": [{"pattern": "Main RD = 172.30.255.1:10", "found": true,
+#                      "observed": "172.30.255.1:10"}]}
 #
-# details carries the observed line behind every expectation so the report can
-# put intended and actual side by side. The line-wise lookup is tried first
-# because it reads best; patterns that deliberately span lines (NVE peer state,
-# AP tag source) fall back to the matched fragment with whitespace collapsed.
+# Comparison is exact string equality on a parsed field. details carries both
+# sides so the report can put intended and observed next to each other.
 #
 # NOT_VERIFIED is distinct from FAIL on purpose: it means Catalyst Center never
 # gave us the output, so the check has no verdict. Counting that as a pass would
@@ -108,13 +103,16 @@
       {%- for row in _verify_matrix -%}
         {%- set out = (_cli_output.get(row.device, {})).get(row.command, none) -%}
         {%- set details = [] -%}
-        {%- if row.skipped or (row.expect | length == 0 and row.pairs | default([]) | length == 0) -%}
+        {%- if row.skipped -%}
           {%- set status = 'SKIPPED' -%}
           {%- set missing = [] -%}
         {%- elif out is none -%}
           {%- set status = 'NOT_VERIFIED' -%}
           {%- set missing = [] -%}
-        {%- elif row.pairs | default([]) | length > 0 -%}
+        {%- elif row.pairs | length == 0 -%}
+          {%- set status = 'SKIPPED' -%}
+          {%- set missing = [] -%}
+        {%- else -%}
           {%- set miss = [] -%}
           {%- for p in row.pairs -%}
             {%- set hit = (p.intended | string) == (p.observed | string) -%}
@@ -128,23 +126,6 @@
           {%- endfor -%}
           {%- set status = 'FAIL' if miss | length > 0 else 'PASS' -%}
           {%- set missing = miss -%}
-        {%- else -%}
-          {%- set miss = [] -%}
-          {%- for rx in row.expect -%}
-            {%- set hit = out is search(rx) -%}
-            {%- set line = (out.split('\n') | select('search', rx) | list
-                            | first) | default('', true) -%}
-            {%- set frag = (out | regex_search(rx)) | default('', true) -%}
-            {%- set seen = (line if line | trim else frag)
-                           | regex_replace('\s+', ' ') | trim -%}
-            {%- set _ = details.append({'pattern': rx, 'found': hit,
-                                        'observed': seen[:180]}) -%}
-            {%- if not hit -%}
-              {%- set _ = miss.append(rx) -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {%- set status = 'FAIL' if miss | length > 0 else 'PASS' -%}
-          {%- set missing = miss -%}
         {%- endif -%}
         {%- set ns.result = ns.result + [{
               'id':      row.id,
@@ -152,7 +133,7 @@
               'device':  row.device,
               'command': row.command,
               'status':  status,
-              'expected_count': (row.expect | length) + (row.pairs | default([]) | length),
+              'expected_count': row.pairs | length,
               'details': details,
               'missing': missing}] -%}
       {%- endfor -%}

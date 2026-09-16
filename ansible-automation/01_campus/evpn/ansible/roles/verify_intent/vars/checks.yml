@@ -3,288 +3,510 @@
 # ============================================================================
 # The commands to collect, and the checks to run against them.
 #
-# Each check produces one row per in-scope device. Fields:
+# Every check is structured: expectations are compared against fields parsed out
+# of the CLI by Genie, never matched against text. `show running-config` is
+# deliberately absent — every intent it used to prove has an operational
+# equivalent that parses, and those prove the fabric is *working* rather than
+# merely configured. A `member vni` line says nothing about whether the VNI came
+# up; `show nve vni` reports vni_state directly.
+#
+# Each check yields one row per in-scope device. Fields:
 #   id        — stable identifier, used in the report
 #   title     — human wording
 #   scope     — switch | wlc
-#   command   — which collected output to search
-#   expect    — Jinja expression returning a LIST of regexes, all of which must
-#               match the output for the device to pass. Evaluated per device
-#               with `host` (the CatC FQDN) in scope, alongside _intent_fabric
-#               and _intent_settings.
-#   pairs     — alternative to expect, for structured checks. Jinja expression
-#               returning a LIST of {label, intended, observed}. Each pair
-#               passes on exact equality. Use with the genie_parse filter to
-#               compare parsed values instead of matching text. Gated by
-#               verify_use_genie because it needs pyATS installed.
-#   skip_when — optional Jinja expression; true means the check does not apply
-#               to that device (for example L3OUT only exists on the border).
+#   command   — which collected output to parse
+#   pairs     — Jinja expression returning a LIST of {label, intended, observed}.
+#               Each pair passes on exact string equality. Evaluated per device
+#               with `host` (the CatC FQDN) in scope, alongside _intent_fabric,
+#               _intent_settings, _vrf_by_id and _cli_output.
+#   skip_when — optional; true means the check does not apply to that device.
 #
-# Regexes are deliberately loose on whitespace: IOS pads columns differently
-# across platforms and software versions, and this stage verifies intent, not
-# formatting.
+# Every pairs expression opens with the same guard:
+#
+#   {%- set out = (_cli_output | default({})).get(host, {}).get('<cmd>', '') -%}
+#   {%- if not out -%}{{ [] }}{%- else -%} ... {%- endif -%}
+#
+# That is load-bearing. Referencing verify_checks templates every expression in
+# this file, including for the empty host the pairing task uses, so an
+# unguarded genie_parse would be handed an empty string and abort the play.
 # ============================================================================
 ---
 
-# Six switch commands, three controller commands. Command Runner caps a request
-# at five, so run_commands.yml chunks these.
+# Command Runner caps a request at five commands, so run_commands.yml chunks
+# these. Eight switch commands is two requests, same as before dropping
+# running-config — but a far smaller payload.
 verify_commands:
   switch:
-    - show running-config
     - show vrf
-    - show vlan brief
+    - show vlan
+    - show nve vni
     - show nve peers
-    - show bgp l2vpn evpn summary
     - show ip interface brief
+    - show ip interface
+    - show interfaces status
+    - show ip bgp all summary
   wlc:
     - show wlan summary
-    - show ap tag summary
     - show ap summary
+    - show ap tag summary
 
 verify_checks:
-  # ── Structured prototype ───────────────────────────────────────────────
-  #
-  # Same intent as vrf_rd below, expressed against Genie's parsed structure
-  # instead of a regex. Only runs when verify_use_genie is true.
-  #
-  # ShowVrf yields:
-  #   {"vrf": {"Main": {"route_distinguisher": "172.30.255.1:10",
-  #                     "interfaces": ["Vlan10", "Vlan1010"]}}}
-  #
-  # The regex form of this check originally matched 172.30.255.1:10 inside
-  # 172.30.255.1:102 and reported the wrong VRF's line as proof; a lookahead
-  # patched it. Exact equality on a parsed field cannot make that mistake.
-  # The guards below are load-bearing. Referencing verify_checks templates every
-  # expression in this file, including this one, so genie_parse would be called
-  # even for devices this check skips — and on a control node without pyATS that
-  # aborts the whole play. Short-circuiting inside the expression is what keeps
-  # the filter from being invoked at all.
-  - id: vrf_rd_parsed
-    title: VRF route distinguishers (parsed)
-    scope: switch
-    command: show vrf
-    skip_when: "{{ not (verify_use_genie | default(false) | bool) }}"
-    pairs: >-
-      {%- set raw = _cli_output | default({}) | d({}) -%}
-      {%- set out = (raw.get(host, {}) if host else {}).get('show vrf', '') -%}
-      {%- if not (verify_use_genie | default(false) | bool) or not out -%}
-        {{ [] }}
-      {%- else -%}
-        {%- set ns = namespace(r=[]) -%}
-        {%- set lo = _intent_fabric.loop_underlay.get(host, '') -%}
-        {%- set parsed = out | genie_parse('show vrf') -%}
-        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
-          {%- set name = _vrf_by_id[vid].name -%}
-          {%- set ns.r = ns.r + [{
-                'label':    name ~ ' route distinguisher',
-                'intended': lo ~ ':' ~ vid,
-                'observed': (parsed.vrf | default({})).get(name, {})
-                            .get('route_distinguisher', '(vrf absent)')}] -%}
-        {%- endfor -%}
-        {{ ns.r }}
-      {%- endif -%}
-
-  # ── Fabric intent, from the DEFN templates ─────────────────────────────
+  # ── VRFs ───────────────────────────────────────────────────────────────
   - id: vrf_defined
     title: VRFs defined
     scope: switch
     command: show vrf
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
-        {%- set ns.r = ns.r + ['(?m)^\s*' ~ (_vrf_by_id[vid].name | regex_escape) ~ '\s'] -%}
-      {%- endfor -%}
-      {{ ns.r }}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show vrf', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show vrf') -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+          {%- set name = _vrf_by_id[vid].name -%}
+          {%- set ns.r = ns.r + [{'label': 'VRF ' ~ name,
+                'intended': name,
+                'observed': name if name in (p.vrf | default({})) else 'absent'}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
 
+  # Exact field equality; the old regex form matched :10 inside :102.
   - id: vrf_rd
     title: VRF route distinguishers
     scope: switch
     command: show vrf
-    # (?!\d) stops RD :10 matching inside :102.
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- set lo = _intent_fabric.loop_underlay.get(host, '') -%}
-      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
-        {%- set ns.r = ns.r + [((lo ~ ':' ~ vid) | regex_escape) ~ '(?!\d)'] -%}
-      {%- endfor -%}
-      {{ ns.r }}
-
-  - id: l3_vlans
-    title: L3VNI transit VLANs present
-    scope: switch
-    command: show vlan brief
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
-        {%- set ns.r = ns.r + ['(?m)^' ~ (_vrf_by_id[vid].l3_vlan) ~ '\s'] -%}
-      {%- endfor -%}
-      {{ ns.r }}
-
-  - id: overlay_vlans
-    title: Tenant overlay VLANs present
-    scope: switch
-    command: show vlan brief
-    # FABRIC-OVERLAY.j2 skips the L2 sections on SPINE and BORDER, so only
-    # CLIENT nodes carry tenant VLANs and SVIs.
-    skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for o in _intent_fabric.overlay -%}
-        {%- for vid in o.vlan_ids -%}
-          {%- set ns.r = ns.r + ['(?m)^' ~ vid ~ '\s'] -%}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show vrf', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show vrf') -%}
+        {%- set lo = _intent_fabric.loop_underlay.get(host, '') -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+          {%- set name = _vrf_by_id[vid].name -%}
+          {%- set ns.r = ns.r + [{'label': name ~ ' RD',
+                'intended': lo ~ ':' ~ vid,
+                'observed': (p.vrf | default({})).get(name, {})
+                            .get('route_distinguisher', 'absent')}] -%}
         {%- endfor -%}
-      {%- endfor -%}
-      {{ ns.r }}
-
-  - id: l3vni_configured
-    title: L3VNI to VLAN mapping in running-config
-    scope: switch
-    command: show running-config
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
-        {%- set ns.r = ns.r + ['member\s+vni\s+' ~ _vrf_by_id[vid].l3_vni] -%}
-      {%- endfor -%}
-      {{ ns.r }}
-
-  - id: loopback0
-    title: Underlay loopback address
-    scope: switch
-    command: show running-config
-    expect: >-
-      {{ ['ip\s+address\s+'
-          ~ (_intent_fabric.loop_underlay.get(host, '') | regex_escape)
-          ~ '\s+255\.255\.255\.255'] }}
-
-  - id: bgp_asn
-    title: BGP autonomous system
-    scope: switch
-    command: show running-config
-    expect: "{{ ['router\\s+bgp\\s+' ~ _intent_fabric.bgp_asn] }}"
-
-  - id: nve_peers
-    title: NVE peers established to the other fabric nodes
-    scope: switch
-    command: show nve peers
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for h, ip in _intent_fabric.loop_underlay.items() -%}
-        {%- if h != host -%}
-          {%- set ns.r = ns.r + [(ip | regex_escape) ~ '[\s\S]{0,200}?UP'] -%}
-        {%- endif -%}
-      {%- endfor -%}
-      {{ ns.r }}
-
-  - id: evpn_sessions
-    title: EVPN sessions up to the route reflector
-    scope: switch
-    command: show bgp l2vpn evpn summary
-    # The RR peers everyone else; on the RR itself the clients appear instead.
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- set rrs = _intent_fabric.node_roles.get('RR', []) -%}
-      {%- if host in rrs -%}
-        {%- for h, ip in _intent_fabric.loop_underlay.items() -%}
-          {%- if h != host -%}
-            {%- set ns.r = ns.r + ['(?m)^' ~ (ip | regex_escape) ~ '\s+\d+\s+\d+.*\s\d+$'] -%}
-          {%- endif -%}
-        {%- endfor -%}
-      {%- else -%}
-        {%- for rr in rrs -%}
-          {%- set ns.r = ns.r + ['(?m)^'
-                ~ (_intent_fabric.loop_underlay.get(rr, '') | regex_escape)
-                ~ '\s+\d+\s+\d+.*\s\d+$'] -%}
-        {%- endfor -%}
+        {{ ns.r }}
       {%- endif -%}
-      {{ ns.r }}
+
+  # ── L3VNI ──────────────────────────────────────────────────────────────
+  - id: l3vni_vlan
+    title: L3VNI bound to its transit VLAN
+    scope: switch
+    command: show nve vni
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show nve vni', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show nve vni') -%}
+        {%- set nve = p.nve1 | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+          {%- set v = _vrf_by_id[vid] -%}
+          {%- set ns.r = ns.r + [{'label': 'VNI ' ~ v.l3_vni ~ ' VLAN',
+                'intended': v.l3_vlan,
+                'observed': nve.get(v.l3_vni, {}).get('vlan', 'VNI absent')}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # The running-config check this replaces proved only that a line existed.
+  - id: l3vni_state
+    title: L3VNI operationally up
+    scope: switch
+    command: show nve vni
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show nve vni', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show nve vni') -%}
+        {%- set nve = p.nve1 | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+          {%- set v = _vrf_by_id[vid] -%}
+          {%- set ns.r = ns.r + [{'label': 'VNI ' ~ v.l3_vni ~ ' (' ~ v.name ~ ') state',
+                'intended': 'Up',
+                'observed': nve.get(v.l3_vni, {}).get('vni_state', 'VNI absent')}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  - id: l3vni_vrf
+    title: L3VNI bound to its VRF
+    scope: switch
+    command: show nve vni
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show nve vni', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show nve vni') -%}
+        {%- set nve = p.nve1 | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+          {%- set v = _vrf_by_id[vid] -%}
+          {%- set ns.r = ns.r + [{'label': 'VNI ' ~ v.l3_vni ~ ' VRF',
+                'intended': v.name,
+                'observed': nve.get(v.l3_vni, {}).get('vrf', 'VNI absent')}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # ── Tenant overlay, CLIENT nodes only ──────────────────────────────────
+  #
+  # FABRIC-OVERLAY.j2 skips the L2 sections on SPINE and BORDER, so tenant
+  # VLANs, SVIs and helpers exist only on the leaves.
+  - id: overlay_vlans
+    title: Tenant overlay VLANs active
+    scope: switch
+    command: show vlan
+    skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show vlan', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show vlan') -%}
+        {%- set vl = p.vlans | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for o in _intent_fabric.overlay -%}
+          {%- for vid in o.vlan_ids -%}
+            {%- set ns.r = ns.r + [{'label': 'VLAN ' ~ vid ~ ' (' ~ o.vrf ~ ')',
+                  'intended': 'active',
+                  'observed': vl.get(vid | string, {}).get('state', 'VLAN absent')}] -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
 
   - id: overlay_svis
-    title: Tenant SVIs present with the declared address
+    title: Tenant SVI addresses
     scope: switch
-    command: show running-config
+    command: show ip interface brief
     skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for o in _intent_fabric.overlay -%}
-        {%- for vid, v in o.vlans.items() -%}
-          {%- set ns.r = ns.r + ['ip\s+address\s+'
-                ~ (v.ipaddr | regex_escape)] -%}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip interface brief', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip interface brief') -%}
+        {%- set intf = p.interface | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for o in _intent_fabric.overlay -%}
+          {%- for vid, v in o.vlans.items() -%}
+            {%- set ns.r = ns.r + [{'label': 'Vlan' ~ vid ~ ' address',
+                  'intended': v.ipaddr.split(' ')[0],
+                  'observed': intf.get('Vlan' ~ vid, {}).get('ip_address', 'SVI absent')}] -%}
+          {%- endfor -%}
         {%- endfor -%}
-      {%- endfor -%}
-      {{ ns.r }}
+        {{ ns.r }}
+      {%- endif -%}
+
+  - id: overlay_svis_up
+    title: Tenant SVIs up
+    scope: switch
+    command: show ip interface brief
+    skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip interface brief', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip interface brief') -%}
+        {%- set intf = p.interface | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for o in _intent_fabric.overlay -%}
+          {%- for vid, v in o.vlans.items() -%}
+            {%- set ns.r = ns.r + [{'label': 'Vlan' ~ vid ~ ' protocol',
+                  'intended': 'up',
+                  'observed': intf.get('Vlan' ~ vid, {}).get('protocol', 'SVI absent')}] -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
 
   - id: dhcp_helper
     title: DHCP helper on tenant SVIs
     scope: switch
-    command: show running-config
+    command: show ip interface
     skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for o in _intent_fabric.overlay -%}
-        {%- for vid, v in o.vlans.items() -%}
-          {%- if v.dhcp_helper | default('') -%}
-            {%- set ns.r = ns.r + ['helper-address\s+.*'
-                  ~ (v.dhcp_helper | regex_escape)] -%}
-          {%- endif -%}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip interface', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip interface') -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for o in _intent_fabric.overlay -%}
+          {%- for vid, v in o.vlans.items() -%}
+            {%- if v.dhcp_helper | default('') -%}
+              {%- set helpers = (p.get('Vlan' ~ vid, {}).get('helper_address') or []) -%}
+              {%- set ns.r = ns.r + [{'label': 'Vlan' ~ vid ~ ' helper',
+                    'intended': v.dhcp_helper,
+                    'observed': (helpers | first) if helpers else 'none configured'}] -%}
+            {%- endif -%}
+          {%- endfor -%}
         {%- endfor -%}
-      {%- endfor -%}
-      {{ ns.r | unique }}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # ── Underlay ───────────────────────────────────────────────────────────
+  - id: loopback0
+    title: Underlay loopback address and state
+    scope: switch
+    command: show ip interface brief
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip interface brief', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip interface brief') -%}
+        {%- set lo = (p.interface | default({})).get('Loopback0', {}) -%}
+        {{ [{'label': 'Loopback0 address',
+             'intended': _intent_fabric.loop_underlay.get(host, ''),
+             'observed': lo.get('ip_address', 'Loopback0 absent')},
+            {'label': 'Loopback0 protocol',
+             'intended': 'up',
+             'observed': lo.get('protocol', 'Loopback0 absent')}] }}
+      {%- endif -%}
 
   - id: client_ports
-    title: Client-facing ports configured
+    title: Client-facing ports present with the declared mode
     scope: switch
-    command: show running-config
+    command: show interfaces status
     skip_when: "{{ host not in _intent_fabric.client_ports }}"
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for p in _intent_fabric.client_ports.get(host, []) -%}
-        {%- set ns.r = ns.r + ['interface\s+' ~ (p.port | regex_escape)] -%}
-      {%- endfor -%}
-      {{ ns.r }}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show interfaces status', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show interfaces status') -%}
+        {%- set intf = p.interfaces | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for port in _intent_fabric.client_ports.get(host, []) -%}
+          {%- set seen = intf.get(port.port, {}).get('vlan', '') -%}
+          {%- set ns.r = ns.r + [{'label': port.port ~ ' mode',
+                'intended': 'trunk' if port.mode == 'trunk' else 'access',
+                'observed': 'port absent' if not seen else
+                            ('trunk' if seen == 'trunk' else
+                             ('routed' if seen == 'routed' else 'access'))}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # ── BGP ────────────────────────────────────────────────────────────────
+  - id: bgp_asn
+    title: BGP autonomous system
+    scope: switch
+    command: show ip bgp all summary
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip bgp all summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip bgp all summary') -%}
+        {{ [{'label': 'local ASN',
+             'intended': _intent_fabric.bgp_asn | string,
+             'observed': p.bgp_id | default('absent') | string}] }}
+      {%- endif -%}
+
+  # Genie reports state_pfxrcd as a prefix count when a session is established,
+  # and as Idle/Active/Connect when it is not.
+  - id: evpn_sessions
+    title: EVPN sessions established
+    scope: switch
+    command: show ip bgp all summary
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip bgp all summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip bgp all summary') -%}
+        {%- set nbrs = ((p.vrf | default({})).get('default', {})).neighbor | default({}) -%}
+        {%- set rrs = _intent_fabric.node_roles.get('RR', []) -%}
+        {%- set peers = [] -%}
+        {%- if host in rrs -%}
+          {%- for h, ip in _intent_fabric.loop_underlay.items() -%}
+            {%- if h != host -%}{%- set _ = peers.append(ip) -%}{%- endif -%}
+          {%- endfor -%}
+        {%- else -%}
+          {%- for rr in rrs -%}
+            {%- set _ = peers.append(_intent_fabric.loop_underlay.get(rr, '')) -%}
+          {%- endfor -%}
+        {%- endif -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for ip in peers -%}
+          {%- set afs = nbrs.get(ip, {}).get('address_family', {}) -%}
+          {%- set states = afs.values() | map(attribute='state_pfxrcd') | select('defined') | list -%}
+          {%- set est = states | select('match', '^[0-9]+$') | list -%}
+          {%- set ns.r = ns.r + [{'label': 'peer ' ~ ip,
+                'intended': 'established',
+                'observed': 'established' if est else
+                            ((states | first) if states else 'no session')}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  - id: nve_peers
+    title: NVE peers up
+    scope: switch
+    command: show nve peers
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show nve peers', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show nve peers') -%}
+        {%- set vnis = ((p.interface | default({})).get('nve1', {})).vni | default({}) -%}
+        {%- set states = {} -%}
+        {%- for vni, vd in vnis.items() -%}
+          {%- for ip, pd in (vd.peer_ip | default({})).items() -%}
+            {%- set _ = states.update({ip: pd.state | default('')}) -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for h, ip in _intent_fabric.loop_underlay.items() -%}
+          {%- if h != host -%}
+            {%- set ns.r = ns.r + [{'label': 'peer ' ~ ip,
+                  'intended': 'UP',
+                  'observed': states.get(ip, 'no peer')}] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
 
   - id: l3out_neighbours
     title: L3OUT BGP neighbours on the border
     scope: switch
-    command: show running-config
+    command: show ip bgp all summary
     skip_when: "{{ host not in _intent_fabric.l3out_nodes }}"
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for l in _intent_fabric.l3out -%}
-        {%- if l.node == host -%}
-          {%- for i in l.interfaces -%}
-            {%- set ns.r = ns.r + ['neighbor\s+' ~ (i.neighbour | regex_escape)
-                  ~ '\s+remote-as\s+' ~ l.neighbour_asn] -%}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ip bgp all summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ip bgp all summary') -%}
+        {%- set all_nbrs = {} -%}
+        {%- for vrf, vd in (p.vrf | default({})).items() -%}
+          {%- for ip, nd in (vd.neighbor | default({})).items() -%}
+            {%- set _ = all_nbrs.update({ip: nd}) -%}
           {%- endfor -%}
-        {%- endif -%}
-      {%- endfor -%}
-      {{ ns.r }}
+        {%- endfor -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for l in _intent_fabric.l3out -%}
+          {%- if l.node == host -%}
+            {%- for i in l.interfaces -%}
+              {%- set afs = all_nbrs.get(i.neighbour, {}).get('address_family', {}) -%}
+              {%- set asns = afs.values() | map(attribute='as') | select('defined')
+                             | map('string') | list -%}
+              {%- set ns.r = ns.r + [{'label': l.vrf ~ ' neighbour ' ~ i.neighbour ~ ' ASN',
+                    'intended': l.neighbour_asn | string,
+                    'observed': (asns | first) if asns else 'no session'}] -%}
+            {%- endfor -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
 
-  # ── Wireless intent, from settings.json ────────────────────────────────
+  # ── Wireless ───────────────────────────────────────────────────────────
   - id: wlan_ssid
     title: SSID provisioned on the controller
     scope: wlc
     command: show wlan summary
-    expect: "{{ [_intent_settings.ssid | regex_escape] }}"
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show wlan summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show wlan summary') -%}
+        {%- set wlans = (p.wlan_summary | default({})).wlan_id | default({}) -%}
+        {%- set ssids = wlans.values() | map(attribute='ssid') | list -%}
+        {%- set want = _intent_settings.ssid -%}
+        {{ [{'label': 'SSID ' ~ want,
+             'intended': want,
+             'observed': want if want in ssids else (ssids | join(', ') or 'no WLANs')}] }}
+      {%- endif -%}
+
+  - id: wlan_ssid_up
+    title: SSID administratively up
+    scope: wlc
+    command: show wlan summary
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show wlan summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show wlan summary') -%}
+        {%- set wlans = (p.wlan_summary | default({})).wlan_id | default({}) -%}
+        {%- set want = _intent_settings.ssid -%}
+        {%- set match = wlans.values() | selectattr('ssid', 'equalto', want) | list -%}
+        {{ [{'label': want ~ ' status',
+             'intended': 'UP',
+             'observed': (match | first).status | default('UP') if match else 'SSID absent'}] }}
+      {%- endif -%}
 
   - id: ap_joined
-    title: Access points joined
+    title: Access points registered
     scope: wlc
     command: show ap summary
-    expect: >-
-      {{ _intent_settings.access_points | map(attribute='name')
-         | select('ne', '') | map('regex_escape') | list }}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ap summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ap summary') -%}
+        {%- set aps = p.ap_name | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for ap in _intent_settings.access_points -%}
+          {%- if ap.name -%}
+            {%- set ns.r = ns.r + [{'label': ap.name ~ ' state',
+                  'intended': 'Registered',
+                  'observed': aps.get(ap.name, {}).get('state', 'AP absent')}] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
 
+  - id: ap_ethernet_mac
+    title: Access point Ethernet MAC matches settings.json
+    scope: wlc
+    command: show ap summary
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ap summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ap summary') -%}
+        {%- set aps = p.ap_name | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for ap in _intent_settings.access_points -%}
+          {%- if ap.name -%}
+            {%- set want = ap.mac | replace(':', '') -%}
+            {%- set seen = aps.get(ap.name, {}).get('ethernet_mac', '') | replace('.', '') -%}
+            {%- set ns.r = ns.r + [{'label': ap.name ~ ' Ethernet MAC',
+                  'intended': want,
+                  'observed': seen if seen else 'AP absent'}] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # Tag Source Static is what proves stage 08 provisioned the AP; an AP left on
+  # the factory tags reads Default and serves no SSID.
   - id: ap_tag_source
-    title: Access point on Catalyst Center tags, not factory defaults
+    title: Access point on Catalyst Center tags
     scope: wlc
     command: show ap tag summary
-    # Tag Source Static is what proves stage 08 provisioned the AP: an AP left
-    # on default-policy-tag reads Default and serves no SSID.
-    expect: >-
-      {%- set ns = namespace(r=[]) -%}
-      {%- for ap in _intent_settings.access_points -%}
-        {%- if ap.name -%}
-          {%- set ns.r = ns.r + [(ap.name | regex_escape) ~ '[\s\S]{0,200}?Static'] -%}
-        {%- endif -%}
-      {%- endfor -%}
-      {{ ns.r }}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ap tag summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ap tag summary') -%}
+        {%- set aps = p.ap_name | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for ap in _intent_settings.access_points -%}
+          {%- if ap.name -%}
+            {%- set ns.r = ns.r + [{'label': ap.name ~ ' tag source',
+                  'intended': 'Static',
+                  'observed': aps.get(ap.name, {}).get('tag_source', 'AP absent')}] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # The exact tag names are generated by Catalyst Center and cannot be predicted
+  # here, so the intent is "not the factory default".
+  - id: ap_tags_not_default
+    title: Access point site and policy tags are not the factory defaults
+    scope: wlc
+    command: show ap tag summary
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ap tag summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ap tag summary') -%}
+        {%- set aps = p.ap_name | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for ap in _intent_settings.access_points -%}
+          {%- if ap.name -%}
+            {%- for key, label in [('policy_tag_name', 'policy tag'),
+                                   ('site_tag_name', 'site tag')] -%}
+              {%- set seen = aps.get(ap.name, {}).get(key, '') -%}
+              {%- set ns.r = ns.r + [{'label': ap.name ~ ' ' ~ label,
+                    'intended': 'Catalyst Center generated',
+                    'observed': 'Catalyst Center generated'
+                                if (seen and not seen.startswith('default-'))
+                                else (seen or 'AP absent')}] -%}
+            {%- endfor -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}

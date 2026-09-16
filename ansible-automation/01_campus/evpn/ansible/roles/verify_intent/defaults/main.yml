@@ -27,10 +27,4 @@ verify_report_path: "{{ playbook_dir }}/../evidence/stage10-verification.md"
 # Center, never from the repo checkout — stage 06 seeds CatC from git or a local
 # folder, and stage 10 must verify what was actually deployed.
 verify_defn_prefix: "DEFN-"
-
-# Enable the structured checks that parse CLI output with Genie instead of
-# matching text. Needs pyATS in the Ansible interpreter (~720 MB installed):
-#   pip install genie pyats
-# Off by default so stage 10 runs anywhere; the regex checks cover the same
-# ground. See vars/checks.yml 'pairs' and filter_plugins/genie.py.
 verify_use_genie: false

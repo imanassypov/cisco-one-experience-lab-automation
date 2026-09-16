@@ -1543,12 +1543,22 @@ GET  /dna/intent/api/v1/task/{taskId}
 GET  /dna/intent/api/v1/file/{fileId}
 ```
 
-Collected per switch: `show running-config`, `show vrf`, `show vlan brief`,
-`show nve peers`, `show bgp l2vpn evpn summary`, `show ip interface brief`.
-Per controller: `show wlan summary`, `show ap tag summary`, `show ap summary`.
+Collected per switch: `show vrf`, `show vlan`, `show nve vni`, `show nve peers`,
+`show ip interface brief`, `show ip interface`, `show interfaces status`,
+`show ip bgp all summary`.
+Per controller: `show wlan summary`, `show ap summary`, `show ap tag summary`.
 
-> Command Runner rejects more than **five commands per request**, so the role
-> chunks them. Any command Catalyst Center refuses is reported as
+Every response is parsed with **Genie** and compared field by field — no text
+matching. `show running-config` is deliberately not collected: each intent it
+used to prove has an operational equivalent that parses, and those prove the
+fabric is working rather than merely configured. `show nve vni` reports
+`vni_state`, `show interfaces status` reports `connected`, `show ip interface
+brief` reports `protocol up`; a config line proves none of that.
+
+> pyATS/Genie is therefore a hard dependency, installed by
+> `00_scriptserver_bootstrap` (pinned `genie==26.8`, `pyats==26.8`; about
+> 700 MB). Command Runner also rejects more than **five commands per request**,
+> so the role chunks them. Any command Catalyst Center refuses is reported as
 > `NOT VERIFIED` rather than silently passing.
 
 ### Run it
@@ -1567,11 +1577,11 @@ ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
 
 ```text
 │ Devices       : 4  (Site_105-Leaf1, Site_105-Leaf2, Site_105-Border-Spine, C9800)
-│ Checks        : 42
-│ Pass          : 36
+│ Checks        : 51
+│ Pass          : 44
 │ Fail          : 0
 │ Not verified  : 0
-│ Not applicable: 6
+│ Not applicable: 7
 │ Report        : …/evidence/stage10-verification.md
 ```
 
@@ -1595,8 +1605,8 @@ scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/0
 
 It contains the result counts, the device list, which Catalyst Center template
 IDs the intent came from, and a per-device table putting each intended value
-next to the matching text observed on the device, plus the exact patterns behind
-any failure. Raw command output is not included — re-run with
+next to the field parsed from the device, plus the mismatches behind any
+failure. Raw command output is not included — re-run with
 `-e catc_debug=true` if you need to see it.
 
 ### Where to verify in Catalyst Center

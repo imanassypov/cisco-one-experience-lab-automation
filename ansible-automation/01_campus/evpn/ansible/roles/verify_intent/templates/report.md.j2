@@ -44,14 +44,10 @@ wireless VLANs {{ _intent_settings.wireless_vlans | join(', ') }},
 
 ## Checks
 
-Intended values are the expectations derived from `settings.json` and the DEFN
-templates; observed values are the matching text from the device output. The
-regex metacharacters used to match are stripped for readability — the exact
-patterns appear under any failure below.
+Intended values come from `settings.json` and the DEFN templates; observed
+values are the corresponding field parsed out of the device's CLI output with
+Genie. Every comparison is exact equality on a parsed field.
 
-{% macro readable(rx) -%}
-{{ rx | regex_replace('\\(\\?m\\)', '') | regex_replace('\\(\\?[!=][^)]*\\)', '') | regex_replace('\\[\\\\s\\\\S\\]\\{[^}]*\\}\\??', ' … ') | regex_replace('\\\\s\\+', ' ') | regex_replace('\\\\s\\*', ' ') | regex_replace('\\\\s', ' ') | regex_replace('\\\\d\\+', 'N') | regex_replace('\\.\\*', '…') | regex_replace('\\\\', '') | regex_replace('[\\^\\$]', '') | regex_replace('  +', ' ') | trim }}
-{%- endmacro %}
 {% for dev in _verify_devices %}
 ### {{ dev.hostname }} ({{ dev.ip }})
 
@@ -60,7 +56,7 @@ patterns appear under any failure below.
 {% for r in _verify_results | selectattr('device', 'equalto', dev.hostname) %}
 {% if r.details %}
 {% for d in r.details %}
-| {{ r.title if loop.first else '' }} | {{ ('PASS' if d.found else '**FAIL**') }} | `{{ readable(d.pattern) }}` | {% if d.found %}`{{ d.observed }}`{% else %}_not found in `{{ r.command }}`_{% endif %} |
+| {{ r.title if loop.first else '' }} | {{ ('PASS' if d.found else '**FAIL**') }} | `{{ d.pattern }}` | {% if d.found %}`{{ d.observed }}`{% else %}**`{{ d.observed }}`**{% endif %} |
 {% endfor %}
 {% else %}
 | {{ r.title }} | {{ r.status }} | {{ 'not applicable to this device' if r.status == 'SKIPPED' else 'no output collected' }} | — |
@@ -69,12 +65,12 @@ patterns appear under any failure below.
 
 {% set failures = _verify_results | selectattr('device', 'equalto', dev.hostname) | selectattr('status', 'equalto', 'FAIL') | list %}
 {% if failures %}
-Exact patterns that did not match:
+Mismatches:
 
 {% for f in failures %}
 - **{{ f.title }}** (`{{ f.command }}`)
 {% for m in f.missing %}
-  - `{{ m }}`
+  - {{ m }}
 {% endfor %}
 {% endfor %}
 {% endif %}

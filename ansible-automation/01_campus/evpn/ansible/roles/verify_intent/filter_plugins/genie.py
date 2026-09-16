@@ -11,8 +11,8 @@
 # Usage in a check:
 #   {{ output | genie_parse('show vrf') }}
 #
-# pyATS is optional: verify_use_genie defaults false and the regex checks stand
-# on their own, so a control node without pyATS still runs stage 10 in full.
+# pyATS is a hard dependency of stage 10 since every check is structured;
+# 00_scriptserver_bootstrap installs it. See vars/checks.yml.
 # ============================================================================
 import json
 
@@ -26,8 +26,9 @@ def genie_parse(output, command, os_name="iosxe"):
     except ImportError as exc:
         raise AnsibleFilterError(
             "genie_parse needs pyATS/Genie, which is not installed in the "
-            "Ansible interpreter. Install it with 'pip install genie pyats', "
-            "or leave verify_use_genie false to use the regex checks. "
+            "Ansible interpreter. Stage 10 parses every command, so this is a "
+            "hard dependency: run 00_scriptserver_bootstrap, or "
+            "'pip install genie pyats' into the venv running Ansible. "
             "Import error: {0}".format(exc)
         )
 
