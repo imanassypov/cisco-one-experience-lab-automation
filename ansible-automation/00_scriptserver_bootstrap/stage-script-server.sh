@@ -85,35 +85,74 @@ refresh_kali_keyring() {
 
 say "Staging $(hostname) from ${REPO_ROOT}"
 
-# python3-venv and python3-dev are not installed on a stock Kali image, and pip
-# needs a compiler for the crypto wheels.
-say "Installing base packages (sudo may prompt for your password)"
-disable_hashicorp_sources
+PY_VER="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 
-# Answer the libc6 service-restart question up front instead of at the prompt.
-echo 'libraries/restart-without-asking boolean true' | sudo debconf-set-selections
+# Cheapest reliable test for a usable venv module: build a throwaway one.
+venv_works() {
+  local probe rc=0
+  probe="$(mktemp -d)"
+  "$PYTHON" -m venv "${probe}/v" >/dev/null 2>&1 || rc=1
+  rm -rf "$probe"
+  return "$rc"
+}
 
-# A broken third-party source must not abort the run, so inspect the log rather
-# than trusting the exit code.
-apt_get update >"$APT_LOG" 2>&1 || true
-if grep -qiE 'Missing key|NO_PUBKEY|signature verification failed' "$APT_LOG"; then
-  refresh_kali_keyring
+# This image tracks kali-rolling and kali-last-snapshot at the same time, so the
+# candidate version of a base package can be far ahead of what is installed
+# (python3 3.13 installed, 3.14 offered; gcc 14 installed, 16 offered). Naming
+# an already-installed package asks apt to upgrade it, and upgrading python3
+# breaks the ~120 installed python3-* packages that require python3 (< 3.14).
+# So: probe for the capability, and install only what is genuinely absent.
+install_missing_packages() {
+  local missing=()
+  command -v git >/dev/null 2>&1 || missing+=(git)
+  # Versioned, never the python3-venv metapackage - that one now points at the
+  # next interpreter and would drag the whole system forward.
+  venv_works || missing+=("python${PY_VER}-venv")
+
+  if ((${#missing[@]} == 0)); then
+    say "Base packages already present (python ${PY_VER}, git, venv)"
+    return 0
+  fi
+
+  say "Installing missing packages: ${missing[*]}"
+  disable_hashicorp_sources
+
+  # debconf-set-selections wants four fields: package question type value.
+  echo 'libc6 libraries/restart-without-asking boolean true' | sudo debconf-set-selections
+
   apt_get update >"$APT_LOG" 2>&1 || true
-fi
+  if grep -qiE 'Missing key|NO_PUBKEY|signature verification failed' "$APT_LOG"; then
+    refresh_kali_keyring
+    apt_get update >"$APT_LOG" 2>&1 || true
+  fi
 
-if ! apt_get install -y --no-install-recommends \
-     git python3 python3-pip python3-venv python3-dev gcc libffi-dev libssl-dev; then
-  printf '\n--- last 20 lines of apt-get update ---\n' >&2
-  tail -20 "$APT_LOG" >&2
-  die "Package installation failed. The apt output above usually names the repository at fault."
-fi
+  if ! apt_get install -y --no-install-recommends "${missing[@]}"; then
+    printf '\n--- last 20 lines of apt-get update ---\n' >&2
+    tail -20 "$APT_LOG" >&2
+    die "Could not install: ${missing[*]}
+       This image mixes kali-rolling with kali-last-snapshot, so apt may be
+       offering versions that conflict with what is installed. Do NOT run
+       'apt --fix-broken install' - it will try to upgrade the whole system.
+       Ask a proctor, or install just the one package by hand:
+         sudo apt-get install -y --no-install-recommends ${missing[*]}"
+  fi
+
+  venv_works || die "python${PY_VER}-venv installed but '${PYTHON} -m venv' still fails."
+}
+
+install_missing_packages
 
 say "Creating the virtualenv at ${VENV}"
 [[ -x "${VENV}/bin/python" ]] || "$PYTHON" -m venv "$VENV"
 
 say "Installing pinned Python packages"
 "${VENV}/bin/pip" install --quiet --upgrade pip
-"${VENV}/bin/pip" install --quiet -r "$REQUIREMENTS"
+if ! "${VENV}/bin/pip" install --quiet -r "$REQUIREMENTS"; then
+  die "pip could not install the pinned packages.
+       If it failed building a wheel, this python (${PY_VER}) has no prebuilt
+       one and needs a compiler:
+         sudo apt-get install -y --no-install-recommends python${PY_VER}-dev gcc"
+fi
 
 say "Staged: $("${VENV}/bin/ansible" --version | head -1)"
 

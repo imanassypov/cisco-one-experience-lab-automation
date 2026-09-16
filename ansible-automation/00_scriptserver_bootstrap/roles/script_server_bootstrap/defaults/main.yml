@@ -70,10 +70,15 @@ script_server_cli_binaries:
 
 script_server_debian_packages:
   - git
-  - python3
   - python3-pip
-  - python3-venv
-  - python3-dev
+  # Versioned, matching the running interpreter. The python3-venv / python3-dev
+  # metapackages track the distro's *next* Python, and this image runs
+  # kali-rolling alongside kali-last-snapshot, so pulling them would upgrade
+  # python3 and break the ~120 installed python3-* packages pinned to < the
+  # next version. Everything else here is already on the image, and
+  # state: present leaves installed packages at their current version.
+  - "python{{ ansible_python.version.major }}.{{ ansible_python.version.minor }}-venv"
+  - "python{{ ansible_python.version.major }}.{{ ansible_python.version.minor }}-dev"
   - gcc
   - libffi-dev
   - libssl-dev
