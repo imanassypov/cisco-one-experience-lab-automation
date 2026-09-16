@@ -21,6 +21,28 @@
       ({{ script_server_git_sync.after | default('updated') }}).
       Test playbooks from that tree; Ansible is already on PATH.
 
+# lab.yml is gitignored, so a fresh clone does not have one and the stages that
+# read lab_pod_id / lab_ap_macs would fail on an undefined variable. force: no
+# means an existing file — the student's pod values — is never overwritten, so
+# this is safe on every re-run.
+- name: Seed pod-local lab.yml from the tracked example
+  ansible.builtin.copy:
+    src: "{{ script_server_lab_vars_example }}"
+    dest: "{{ script_server_lab_vars }}"
+    remote_src: true
+    force: false
+    mode: "0644"
+  register: script_server_lab_seeded
+
+- name: Remind the student to fill in the pod values
+  when: script_server_lab_seeded.changed
+  ansible.builtin.debug:
+    msg:
+      - "Created {{ script_server_lab_vars }} from the example."
+      - "Set lab_pod_id to your dCloud pod number before running stage 07."
+      - "Add each access point's Ethernet MAC to lab_ap_macs before stage 08."
+      - "The file is gitignored, so your values survive every later git pull."
+
 - name: Require the laptop .vault before copying it to Kali
   ansible.builtin.stat:
     path: "{{ script_server_controller_vault }}"

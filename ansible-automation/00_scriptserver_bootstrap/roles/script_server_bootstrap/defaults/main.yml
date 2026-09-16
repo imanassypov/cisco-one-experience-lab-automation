@@ -8,6 +8,11 @@ script_server_git_version: main
 # Never put the vault password in this file.
 script_server_controller_vault: "{{ playbook_dir }}/../../../.vault"
 script_server_remote_vault: "{{ script_server_repo_dest }}/.vault"
+# Pod-local values (lab_pod_id, lab_ap_macs). Gitignored so the working tree
+# stays clean and ansible.builtin.git can keep updating the checkout; seeded
+# from the tracked example on first bootstrap and never overwritten after.
+script_server_lab_vars: "{{ script_server_repo_dest }}/ansible-automation/01_campus/evpn/ansible/inventory/group_vars/all/lab.yml"
+script_server_lab_vars_example: "{{ script_server_lab_vars }}.example"
 script_server_bashrc: "{{ ansible_user_dir }}/.bashrc"
 script_server_profile: "{{ ansible_user_dir }}/.profile"
 script_server_zshrc: "{{ ansible_user_dir }}/.zshrc"

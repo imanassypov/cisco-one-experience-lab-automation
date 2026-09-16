@@ -5,6 +5,12 @@
 **/secrets.yml
 !**/secrets.yml.example
 **/evidence/
+# Pod-local lab values. Every student must set lab_pod_id and lab_ap_macs, so
+# tracking this file made the working tree permanently dirty and blocked
+# ansible.builtin.git from ever updating the checkout again. Seed it from
+# lab.yml.example, which is tracked.
+**/group_vars/all/lab.yml
+!**/group_vars/all/lab.yml.example
 
 # Python
 __pycache__/

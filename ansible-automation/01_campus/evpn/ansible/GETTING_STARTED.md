@@ -191,7 +191,8 @@ the passphrase onto Kali by hand.
 Every student runs the same repo against a different pod, so the values that
 differ live in one file: `inventory/group_vars/all/lab.yml`. `settings.json`
 carries `{POD}` and `{APn_MAC}` placeholders that are filled in from it at run
-time.
+time. The bootstrap creates the file from `lab.yml.example`; it is gitignored,
+so it is yours to edit and no `git pull` will touch it.
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
@@ -209,9 +210,16 @@ To try a different pod for one run without editing the file:
 ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 ```
 
-> Unlike `.vault`, `lab.yml` **is** tracked in git, so your edit shows up in
-> `git status` and will follow a `git pull` into a conflict. It holds no
-> secrets — a pod number and AP MACs only.
+> `lab.yml` is **gitignored**, so your pod values survive every later `git pull`
+> and the bootstrap can keep updating the checkout. The bootstrap seeds it from
+> the tracked `lab.yml.example` on first run and never overwrites it after. It
+> holds no secrets — a pod number and AP MACs only.
+>
+> If `lab.yml` is missing, copy it back:
+>
+> ```bash
+> cp inventory/group_vars/all/lab.yml.example inventory/group_vars/all/lab.yml
+> ```
 
 ---
 

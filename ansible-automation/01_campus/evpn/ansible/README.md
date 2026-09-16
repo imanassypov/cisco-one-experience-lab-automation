@@ -35,9 +35,10 @@ Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
   with Python, Ansible, Cisco collections, SDKs, lab DNS, the Git checkout, and
   a copy of the demo `.vault`.
 - SSH to Kali. All commands below run there, not on the student laptop.
-- Set `lab_pod_id` in `inventory/group_vars/all/lab.yml`. The committed
-  value is `REPLACE_ME`; stages that load `settings.json` stop until you
-  replace it. Leave `lab_ap_macs: []` until **after** stage 09. Stage 08
+- Set `lab_pod_id` in `inventory/group_vars/all/lab.yml`. The bootstrap seeds
+  that file from `lab.yml.example` with `REPLACE_ME`; stages that load
+  `settings.json` stop until you replace it. The file is gitignored, so your
+  values survive later pulls. Leave `lab_ap_macs: []` until **after** stage 09. Stage 08
   provision does not program AP ports. The composite does (`Gi1/0/2` trunk,
   native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
   CAPWAP-join, so Catalyst Center has no Unified AP to provision. After
