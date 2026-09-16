@@ -3696,6 +3696,21 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 <div class="admonition">
 <p>👀 <strong>Why the access point could not be provisioned earlier.</strong> Until stage 09 ran, the switch port the access point is plugged into was not a trunk, so the access point could not reach the controller and could not register. That is why stages 04 and 08 never discovered one. The ordering is deliberate, not a bug.</p>
 </div>
+<h4>The sequence, end to end</h4>
+<p>Wireless is the one part of this lab that cannot be done in a single pass, because a physical device has to boot and find its controller in the middle of it. The order is fixed:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 8%;">#</th><th style="width: 34%;">What happens</th><th style="width: 58%;">Why it cannot happen sooner</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>Stage <strong>09</strong> deploys the composite, building the EVPN fabric</td><td>This is what turns <code>Gi1/0/2</code> into the access-point trunk</td></tr>
+<tr><td>2</td><td>The access point boots and registers to the 9800</td><td>It needs the trunk from step 1. Takes a few minutes</td></tr>
+<tr><td>3</td><td>Catalyst Center learns the access point from the controller</td><td>A further sync delay — the controller knows first</td></tr>
+<tr><td>4</td><td>The access point is assigned to <strong>Site-105</strong></td><td>Stage 08 does this, but only once you give it the MAC</td></tr>
+<tr><td>5</td><td>Stage <strong>08</strong> re-runs and provisions the access point</td><td>Writes the real site and policy tags, so the access point serves your SSID</td></tr>
+</tbody>
+</table>
+<p>Steps 4 and 5 are both stage 08 — you run it once, and it assigns then provisions. The waiting is in steps 2 and 3.</p>
 <hr>
 <h4>Step 1 — Verify the SSID</h4>
 <p>Log into the controller using the Chrome bookmark (<strong>C9800-WLC</strong>) or browse to <strong>https://wlc.corp.pseudoco.com</strong> with <strong>admin/C1sco12345</strong>.</p>
@@ -3711,11 +3726,16 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 <p>You can confirm the same thing from the command line on the controller:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show wlan summary</pre>
 <hr>
-<h4>Step 2 — Wait for the access point to register</h4>
-<p>With <code>Gi1/0/2</code> now trunked, the access point can find the controller. Go to <strong>Configuration &gt; Wireless &gt; Access Points</strong> and wait for it to appear as <strong>Registered</strong>. This usually takes a few minutes after stage 09 completes.</p>
+<h4>Step 2 — Wait for the access point to appear, in two places</h4>
+<p>With <code>Gi1/0/2</code> now trunked, the access point can find the controller. It then has to show up <strong>twice</strong>, a few minutes apart — and it is the second one that stage 08 actually needs.</p>
+<p><strong>First, on the controller.</strong> Go to <strong>Configuration &gt; Wireless &gt; Access Points</strong> and wait for it to appear as <strong>Registered</strong>. This usually takes a few minutes after stage 09 completes.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show ap summary</pre>
 <p>Note the access point's <strong>Ethernet MAC address</strong> — you need it in the next step. It is the wired MAC, not the radio MAC.</p>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a6-ap-registered.png" alt="9800 Access Points page showing the AP registered" width="865" height="400"></p>
+<p><strong>Then, in Catalyst Center.</strong> The controller syncs its access point list up to Catalyst Center, which lags the controller by a few more minutes. Check <strong>Provision &gt; Inventory</strong>, or filter for Unified APs, until the access point is listed there too.</p>
+<div class="admonition warning">
+<p>🛑 <strong>This is the wait people get wrong.</strong> Stage 08 looks the access point up in <em>Catalyst Center</em> by its Ethernet MAC — not on the controller. Run it while the access point is Registered on the 9800 but not yet in Catalyst Center inventory and it fails the assertion that the access point has joined, even though the controller plainly shows it. If that happens, wait a few minutes and re-run; nothing is broken.</p>
+</div>
 <hr>
 <h4>Step 3 — Let Catalyst Center provision the access point</h4>
 <p>Back on the script server, add the MAC address to the one file you own:</p>
@@ -3728,7 +3748,8 @@ vi inventory/group_vars/all/lab.yml</pre>
 <div class="admonition warning">
 <p>🛑 <strong>Do not omit <code>-e wireless_provision_enabled=false</code>.</strong> The 9800 controller is shared between pods. Re-provisioning it reboots every access point it manages — including other students'. The flag skips the controller and provisions only your access point.</p>
 </div>
-<p>Stage 08 gives the access point a name, assigns it to the Site-105 floor, and provisions it with the typical RF profile.</p>
+<p>Stage 08 now does three things in order: it <strong>names</strong> the access point, <strong>assigns it to the Site-105 floor</strong>, and then <strong>provisions</strong> it with the typical RF profile.</p>
+<p>The middle step is the one that matters most, and it is easy to underrate. An access point that is merely known to Catalyst Center still sits on <code>default-site-tag</code> and <code>default-policy-tag</code>, which map to no WLAN at all — so it broadcasts nothing. Assigning it to Site-105 is what lets the provision step write real tags onto the controller and bind the access point to your SSID. Re-pushing the controller instead would not fix it, and would reboot every other pod's access points.</p>
 <hr>
 <h4>Step 4 — Confirm the tags came from Catalyst Center</h4>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show ap tag summary</pre>

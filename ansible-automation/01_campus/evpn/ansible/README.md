@@ -20,8 +20,9 @@ Run the playbooks in numerical order:
 9. Deploy the EVPN composite. That programs the AP-facing leaf ports so an
    AP can join the WLC and appear as a Unified AP in Inventory.
 10. SSH to the switches and collect read-only verification evidence.
-11. After at least one AP is Registered, put its Ethernet MAC in
-    `lab_ap_macs` and re-run stage 08 for the AP provision pass.
+11. Once the AP is Registered on the WLC **and** visible in Catalyst Center
+    Inventory, put its Ethernet MAC in `lab_ap_macs` and re-run stage 08. That
+    pass names the AP, assigns it to Site-105, then provisions it.
 
 Stages 01–09 use the Catalyst Center API. Stage 10 is the only playbook that
 logs in to the switches.
@@ -44,7 +45,11 @@ Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
   provision does not program AP ports. The composite does (`Gi1/0/2` trunk,
   native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
   CAPWAP-join, so Catalyst Center has no Unified AP to provision. After
-  stage 09, **one** Registered AP is enough — put that Ethernet MAC in
+  stage 09, **one** AP is enough — but wait until it is Registered on the WLC
+  **and** has synced through to Catalyst Center Inventory, which lags the
+  controller by a few minutes. Stage 08 resolves the AP from Catalyst Center by
+  Ethernet MAC, so running it while only the WLC knows the AP fails the
+  "has joined the controller" assertion. Then put that Ethernet MAC in
   `lab_ap_macs` (first entry is `{AP1_MAC}`) and re-run stage 08.
 - Run every command from this directory so Ansible finds `ansible.cfg`:
 
