@@ -1,0 +1,43 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#f0f6fa"
+    primaryTextColor: "#1b262c"
+    primaryBorderColor: "#049fd9"
+    lineColor: "#5a7181"
+    fontSize: "15px"
+  flowchart:
+    htmlLabels: true
+    nodeSpacing: 34
+    rankSpacing: 42
+---
+flowchart LR
+  subgraph GIT["① Git repository — where you make changes"]
+    direction TB
+    DEFN["<b>DEFN-*.j2 · 11 files</b><br/>pure data, zero CLI<br/>ROLES · VRF · OVERLAY · LOOPBACKS<br/>VNIOFFSETS · L3OUT · CLIENT-PORTS<br/>NAC · MCAST · DMZ-TUNNELS · TELEMETRY"]
+    FUNC["<b>FUNC-*.j2 · 2 files</b><br/>reusable macros<br/>VRF-LOOKUP · CLIENT-PORTS"]
+    FABRIC["<b>FABRIC-*.j2 · 11 files</b><br/>renderers — emit IOS-XE CLI<br/>VRF → LOOPBACKS → DMZ-TUNNELS → L3OUT<br/>→ NVE → MCAST → EVPN → OVERLAY<br/>→ NAC → CLIENT-PORTS → TELEMETRY"]
+    MANIFEST["<b>BGP-EVPN-BUILD.yml</b><br/>ordered list of FABRIC members only<br/><i>DEFN and FUNC are never listed here</i>"]
+  end
+
+  CATC["<b>② Catalyst Center</b><br/>CLI project <b>Site-105</b><br/>24 templates + 1 composite<br/><i>one project per campus site</i>"]
+  DEV["<b>③ Site-105 switches</b><br/>Leaf1 · Leaf2 · Border-Spine"]
+
+  DEFN -- "{% include %}" --> FABRIC
+  FUNC -- "{% include %}" --> FABRIC
+  FABRIC -- "listed in order by" --> MANIFEST
+  MANIFEST -- "<b>Stage 06</b><br/>template_sync" --> CATC
+  CATC -- "<b>Stage 09</b><br/>deploy_composite" --> DEV
+  DEV -. "<b>Stage 10</b> · verify_intent" .-> CATC
+
+  classDef defn fill:#eaf4fb,stroke:#049fd9,stroke-width:2px
+  classDef func fill:#f3ecfa,stroke:#7d3cb5,stroke-width:2px
+  classDef fab fill:#eafaf1,stroke:#2ecc71,stroke-width:2px
+  classDef man fill:#fdf6ec,stroke:#e6a23c,stroke-width:2px
+  classDef plat fill:#1b262c,stroke:#049fd9,color:#ffffff,stroke-width:2px
+  class DEFN defn
+  class FUNC func
+  class FABRIC fab
+  class MANIFEST man
+  class CATC,DEV plat
