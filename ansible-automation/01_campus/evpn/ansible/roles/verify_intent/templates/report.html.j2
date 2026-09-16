@@ -1,241 +1,278 @@
-{#- Self-contained HTML report: no external CSS, JS or fonts, because the file -#}
-{#- is read off the Kali script server or copied to a laptop with no network.  -#}
+{#- Formal verification report. Monochrome, print-friendly, no external assets, -#}
+{#- because it is read on the script server or copied to a laptop offline.      -#}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stage 10 — Intent verification — {{ _verify_counts.fail | int > 0 and 'FAILED' or 'PASSED' }}</title>
+<title>Intent Verification Report — Stage 10</title>
 <style>
-  :root {
-    --bg:#0f1720; --panel:#16212e; --line:#24354a; --text:#e6edf3; --muted:#8b9bb0;
-    --pass:#2ea043; --fail:#f85149; --warn:#d29922; --skip:#6e7781; --link:#58a6ff;
-  }
+  :root { --ink:#1a1a1a; --muted:#5f6b76; --rule:#d5d9dd; --rule-strong:#9aa3ac; --shade:#f4f5f6; }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text);
-         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
-  a { color:var(--link); text-decoration:none; }
-  a:hover { text-decoration:underline; }
-  .wrap { max-width:1280px; margin:0 auto; padding:24px; }
-  header { border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:24px; }
-  h1 { margin:0 0 4px; font-size:22px; }
-  h2 { margin:32px 0 12px; font-size:17px; border-bottom:1px solid var(--line); padding-bottom:6px; }
-  h3 { margin:28px 0 10px; font-size:15px; }
-  .sub { color:var(--muted); font-size:13px; }
-  .banner { display:inline-block; padding:6px 14px; border-radius:6px; font-weight:600;
-            letter-spacing:.3px; margin-top:10px; }
-  .banner.ok { background:rgba(46,160,67,.15); color:var(--pass); border:1px solid var(--pass); }
-  .banner.bad { background:rgba(248,81,73,.15); color:var(--fail); border:1px solid var(--fail); }
-  .cards { display:flex; gap:12px; flex-wrap:wrap; margin:16px 0 8px; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px;
-          padding:12px 18px; min-width:120px; }
-  .card .n { font-size:24px; font-weight:600; }
-  .card .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
-  .n.pass{color:var(--pass);} .n.fail{color:var(--fail);}
-  .n.warn{color:var(--warn);} .n.skip{color:var(--skip);}
-  table { width:100%; border-collapse:collapse; background:var(--panel);
-          border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-bottom:8px; }
-  th,td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line);
-          vertical-align:top; font-size:13px; }
-  th { background:#1b2735; color:var(--muted); font-weight:600;
-       text-transform:uppercase; font-size:11px; letter-spacing:.5px; }
-  tr:last-child td { border-bottom:none; }
-  tr.fail-row td { background:rgba(248,81,73,.07); }
-  code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px;
-         background:rgba(110,118,129,.15); padding:1px 5px; border-radius:4px; }
-  .pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px;
-          font-weight:600; letter-spacing:.3px; }
-  .pill.PASS { background:rgba(46,160,67,.18); color:var(--pass); }
-  .pill.FAIL { background:rgba(248,81,73,.18); color:var(--fail); }
-  .pill.NOT_VERIFIED { background:rgba(210,153,34,.18); color:var(--warn); }
-  .pill.SKIPPED { background:rgba(110,118,129,.18); color:var(--skip); }
-  .toc { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px 20px; }
-  .toc ul { margin:6px 0 0; padding-left:18px; }
-  .toc li { margin:3px 0; }
-  .toc .counts { color:var(--muted); font-size:12px; }
-  .devhead { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
-  .back { font-size:12px; color:var(--muted); }
-  footer { margin-top:40px; padding-top:16px; border-top:1px solid var(--line);
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:#fff; color:var(--ink);
+    font:15px/1.6 "Segoe UI", Helvetica, Arial, sans-serif;
+    font-variant-numeric:tabular-nums;
+  }
+  .page { max-width:960px; margin:0 auto; padding:56px 48px 72px; }
+  a { color:inherit; text-decoration:none; border-bottom:1px solid var(--rule-strong); }
+  a:hover { border-bottom-color:var(--ink); }
+
+  .doc-title { font-size:26px; font-weight:600; letter-spacing:-.2px; margin:0; }
+  .doc-sub { color:var(--muted); font-size:14px; margin:6px 0 0; }
+  .rule { border:0; border-top:2px solid var(--ink); margin:20px 0 0; }
+
+  h2 { font-size:15px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       margin:44px 0 14px; padding-bottom:7px; border-bottom:1px solid var(--rule-strong); }
+  h3 { font-size:15px; font-weight:600; margin:30px 0 10px; }
+  p { margin:0 0 12px; }
+  .muted { color:var(--muted); }
+  .small { font-size:13px; }
+
+  table { width:100%; border-collapse:collapse; margin:0 0 16px; font-size:14px; }
+  caption { text-align:left; color:var(--muted); font-size:13px; padding-bottom:6px; }
+  th, td { text-align:left; padding:7px 12px 7px 0; border-bottom:1px solid var(--rule);
+           vertical-align:top; }
+  thead th { border-bottom:1px solid var(--rule-strong); font-weight:600; font-size:12px;
+             letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  tbody tr:last-child td { border-bottom:1px solid var(--rule-strong); }
+  td.status { white-space:nowrap; width:1%; padding-right:24px; }
+  .exception td { background:var(--shade); }
+  .exception td.status { font-weight:600; }
+
+  code, .mono { font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:13px; }
+  code { background:none; padding:0; }
+
+  dl.meta { display:grid; grid-template-columns:200px 1fr; gap:0; margin:0;
+            border-top:1px solid var(--rule); font-size:14px; }
+  dl.meta dt { padding:7px 0; color:var(--muted); border-bottom:1px solid var(--rule); }
+  dl.meta dd { padding:7px 0; margin:0; border-bottom:1px solid var(--rule); }
+
+  ol.toc { margin:0; padding-left:20px; font-size:14px; }
+  ol.toc li { margin:4px 0; }
+  ol.toc ol { padding-left:20px; margin:4px 0; }
+
+  .statement { border-left:3px solid var(--ink); padding:2px 0 2px 16px; margin:0 0 18px;
+               font-size:15px; }
+  .backlink { font-size:12px; color:var(--muted); font-weight:400; letter-spacing:0;
+              text-transform:none; margin-left:10px; }
+  .backlink a { border-bottom:none; }
+  footer { margin-top:48px; padding-top:14px; border-top:1px solid var(--rule);
            color:var(--muted); font-size:12px; }
-  .filterbar { margin:12px 0; }
-  button { background:var(--panel); color:var(--text); border:1px solid var(--line);
-           border-radius:6px; padding:6px 12px; font-size:12px; cursor:pointer; }
-  button:hover { border-color:var(--link); }
-  button.active { border-color:var(--link); color:var(--link); }
+
+  @media print {
+    .page { padding:0; max-width:none; }
+    a { border-bottom:none; }
+    h2 { page-break-after:avoid; }
+    table, tr { page-break-inside:avoid; }
+    .toc-section { page-break-after:always; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="page" id="top">
 
-<header id="top">
-  <h1>Stage 10 — Intent verification</h1>
-  <div class="sub">
-    Generated {{ '%Y-%m-%d %H:%M:%S' | strftime }} UTC by <code>10_verify_intent.yml</code>
-  </div>
-  {% if _verify_counts.fail | int > 0 %}
-  <div class="banner bad">FAILED — {{ _verify_counts.fail }} mismatch(es)</div>
-  {% else %}
-  <div class="banner ok">PASSED — fabric matches declared intent</div>
+<p class="doc-title">Intent Verification Report</p>
+<p class="doc-sub">Campus BGP EVPN fabric — pipeline stage 10</p>
+<hr class="rule">
+
+<h2>Document control</h2>
+<dl class="meta">
+  <dt>Report generated</dt><dd>{{ '%Y-%m-%d %H:%M:%S' | strftime }} UTC</dd>
+  <dt>Produced by</dt><dd><code>playbooks/10_verify_intent.yml</code></dd>
+  <dt>Intent sources</dt>
+  <dd><code>settings.json</code> and <code>{{ verify_defn_prefix }}*.j2</code> as held in Catalyst Center Template Programmer</dd>
+  <dt>Evidence collection</dt><dd>Catalyst Center Command Runner; responses parsed with Genie</dd>
+  <dt>Devices in scope</dt><dd>{{ _verify_devices | length }}</dd>
+  <dt>Controls evaluated</dt><dd>{{ _verify_results | length }}</dd>
+  <dt>Assessment</dt>
+  <dd>{% if _verify_counts.fail | int > 0 %}Non-conformant — {{ _verify_counts.fail }} exception(s){% else %}Conformant — no exceptions{% endif %}</dd>
+</dl>
+
+<h2>Contents</h2>
+<div class="toc-section">
+<ol class="toc">
+  <li><a href="#s1">Conclusion</a></li>
+  <li><a href="#s2">Scope</a></li>
+  <li><a href="#s3">Basis of verification</a></li>
+  <li><a href="#s4">Findings</a>
+    <ol>
+    {% for dev in _verify_devices %}
+      <li><a href="#dev-{{ loop.index }}">{{ dev.hostname }}</a></li>
+    {% endfor %}
+    </ol>
+  </li>
+  <li><a href="#s5">Control index</a></li>
+  {% if _verify_blacklisted | length > 0 %}
+  <li><a href="#s6">Limitations of scope</a></li>
   {% endif %}
-</header>
-
-<div class="cards">
-  <div class="card"><div class="n pass">{{ _verify_counts.pass }}</div><div class="l">Pass</div></div>
-  <div class="card"><div class="n fail">{{ _verify_counts.fail }}</div><div class="l">Fail</div></div>
-  <div class="card"><div class="n warn">{{ _verify_counts.not_verified }}</div><div class="l">Not verified</div></div>
-  <div class="card"><div class="n skip">{{ _verify_counts.skipped }}</div><div class="l">Not applicable</div></div>
-  <div class="card"><div class="n">{{ _verify_devices | length }}</div><div class="l">Devices</div></div>
+</ol>
 </div>
 
-<p class="sub">
-  Declared intent comes from <code>settings.json</code> and the <code>DEFN-*.j2</code>
-  templates <strong>as stored in Catalyst Center</strong>, so this reflects what was
-  actually deployed rather than what the repository currently says. Live state is
-  collected through Catalyst Center Command Runner and parsed with Genie; every
-  comparison is exact equality on a parsed field.
+<h2 id="s1">1. Conclusion</h2>
+{% if _verify_counts.fail | int > 0 %}
+<p class="statement">
+  The deployed fabric does <strong>not</strong> conform to the declared intent.
+  {{ _verify_counts.fail }} of {{ (_verify_counts.pass | int) + (_verify_counts.fail | int) }}
+  evaluated controls returned an exception. Details are recorded in section 4.
 </p>
+{% else %}
+<p class="statement">
+  The deployed fabric conforms to the declared intent. All
+  {{ _verify_counts.pass }} evaluated controls passed, with no exceptions.
+</p>
+{% endif %}
 
-<h2 id="index">Index</h2>
-<div class="toc">
-  <strong>Devices</strong>
-  <ul>
-  {% for dev in _verify_devices %}
-    {% set rows = _verify_results | selectattr('device', 'equalto', dev.hostname) | list %}
-    {% set f = rows | selectattr('status', 'equalto', 'FAIL') | list | length %}
-    <li>
-      <a href="#dev-{{ loop.index }}">{{ dev.hostname }}</a>
-      <span class="counts">
-        — {{ dev.ip }} · {{ dev.role }} ·
-        {{ rows | selectattr('status', 'equalto', 'PASS') | list | length }} pass{% if f %},
-        <span style="color:var(--fail)">{{ f }} fail</span>{% endif %}
-      </span>
-    </li>
-  {% endfor %}
-  </ul>
-
-  <strong style="display:block;margin-top:14px">Checks</strong>
-  <ul>
-  {% for cid in _verify_results | map(attribute='id') | unique | list %}
-    {% set rows = _verify_results | selectattr('id', 'equalto', cid) | list %}
-    {% set f = rows | selectattr('status', 'equalto', 'FAIL') | list | length %}
-    <li>
-      <a href="#check-{{ cid }}">{{ (rows | first).title }}</a>
-      <span class="counts">— <code>{{ (rows | first).command }}</code>{% if f %},
-        <span style="color:var(--fail)">{{ f }} fail</span>{% endif %}</span>
-    </li>
-  {% endfor %}
-  </ul>
-
-  <ul style="margin-top:14px">
-    <li><a href="#devices">Device inventory</a></li>
-    <li><a href="#sources">Intent sources</a></li>
-    {% if _verify_blacklisted | length > 0 %}<li><a href="#notverified">Not verified</a></li>{% endif %}
-  </ul>
-</div>
-
-<h2 id="devices">Device inventory</h2>
 <table>
-  <tr><th>Management IP</th><th>Catalyst Center hostname</th><th>Family</th><th>Role</th></tr>
+  <caption>Table 1 — Summary of results</caption>
+  <thead><tr><th>Outcome</th><th>Controls</th><th>Basis</th></tr></thead>
+  <tbody>
+    <tr><td>Pass</td><td>{{ _verify_counts.pass }}</td>
+        <td class="muted">Observed value equals the declared value</td></tr>
+    <tr><td>Exception</td><td>{{ _verify_counts.fail }}</td>
+        <td class="muted">Observed value differs from the declared value</td></tr>
+    <tr><td>Not verified</td><td>{{ _verify_counts.not_verified }}</td>
+        <td class="muted">No evidence returned; no opinion expressed</td></tr>
+    <tr><td>Not applicable</td><td>{{ _verify_counts.skipped }}</td>
+        <td class="muted">Control does not apply to the device's role</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s2">2. Scope</h2>
+<p>
+  The devices below were assessed. Each is managed by Catalyst Center and was
+  addressed through Command Runner using its inventory management address.
+</p>
+<table>
+  <caption>Table 2 — Devices in scope</caption>
+  <thead><tr><th>Management address</th><th>Catalyst Center hostname</th><th>Family</th><th>Role</th></tr></thead>
+  <tbody>
   {% for d in _verify_devices %}
-  <tr><td><code>{{ d.ip }}</code></td><td><code>{{ d.hostname }}</code></td>
-      <td>{{ d.family }}</td><td>{{ d.role }}</td></tr>
+    <tr><td class="mono">{{ d.ip }}</td><td class="mono">{{ d.hostname }}</td>
+        <td>{{ d.family }}</td><td>{{ d.role }}</td></tr>
   {% endfor %}
+  </tbody>
 </table>
 
-<h2 id="sources">Intent sources</h2>
-<p class="sub">Fabric definitions read from Catalyst Center Template Programmer:</p>
+<h2 id="s3">3. Basis of verification</h2>
+<p>
+  Declared intent was taken from the template definitions held in Catalyst Center,
+  not from the source repository. Stage 06 seeds Catalyst Center from either a
+  Git repository or a local folder; this assessment therefore reflects the
+  definitions that were actually deployed. The revision of each definition used
+  is recorded below.
+</p>
 <table>
-  <tr><th>Template</th><th>Project</th><th>Template ID</th><th>Last updated</th></tr>
+  <caption>Table 3 — Template definitions relied upon</caption>
+  <thead><tr><th>Definition</th><th>Project</th><th>Identifier</th><th>Last updated</th></tr></thead>
+  <tbody>
   {% for t in _defn_templates %}
-  <tr><td><code>{{ t.name }}</code></td><td>{{ t.project }}</td>
-      <td><code>{{ t.id }}</code></td>
-      <td>{{ ('%Y-%m-%d %H:%M' | strftime((t.last_update | int) / 1000)) if (t.last_update | int) > 0 else 'n/a' }}</td></tr>
+    <tr><td class="mono">{{ t.name }}</td><td>{{ t.project }}</td>
+        <td class="mono small">{{ t.id }}</td>
+        <td>{{ ('%Y-%m-%d %H:%M' | strftime((t.last_update | int) / 1000)) if (t.last_update | int) > 0 else 'not recorded' }}</td></tr>
   {% endfor %}
+  </tbody>
 </table>
-<p class="sub">
-  From <code>settings.json</code>: SSID <code>{{ _intent_settings.ssid }}</code>,
-  wireless VLANs {{ _intent_settings.wireless_vlans | join(', ') }},
-  {{ _intent_settings.access_points | length }} access point(s).
+<p class="small muted">
+  Additionally from <code>settings.json</code>: wireless SSID
+  <code>{{ _intent_settings.ssid }}</code>; wireless VLANs
+  {{ _intent_settings.wireless_vlans | join(', ') }};
+  {{ _intent_settings.access_points | length }} declared access point(s).
 </p>
 
-<h2 id="results">Results by device</h2>
-<div class="filterbar">
-  <button id="btn-all" class="active" onclick="showAll()">Show all</button>
-  <button id="btn-fail" onclick="showFail()">Failures only</button>
-</div>
+<h2 id="s4">4. Findings</h2>
+<p>
+  Each row states one declared value and the corresponding value observed on the
+  device. Comparison is exact equality against a field parsed from the command
+  output. Rows marked <strong>Exception</strong> are shaded.
+</p>
 
-{#- Anchors are emitted at a check's first occurrence on any device, not on the -#}
-{#- first device: the wireless checks never appear on a switch, so keying off    -#}
-{#- device 1 would leave their index links dangling.                             -#}
 {% set seen = namespace(ids=[]) %}
 {% for dev in _verify_devices %}
 {% set devidx = loop.index %}
+{% set rows = _verify_results | selectattr('device', 'equalto', dev.hostname) | list %}
+{% set devfail = rows | selectattr('status', 'equalto', 'FAIL') | list | length %}
 <h3 id="dev-{{ devidx }}">
-  <span class="devhead">{{ dev.hostname }}
-    <span class="sub">{{ dev.ip }} · {{ dev.role }}</span>
-    <a class="back" href="#index">back to index</a>
-  </span>
+  4.{{ devidx }} {{ dev.hostname }}
+  <span class="backlink">{{ dev.ip }} · {{ devfail }} exception(s) · <a href="#top">top</a></span>
 </h3>
 <table>
-  <tr><th style="width:24%">Check</th><th style="width:9%">Result</th>
-      <th style="width:33%">Intended</th><th style="width:34%">Observed</th></tr>
-  {% for r in _verify_results | selectattr('device', 'equalto', dev.hostname) %}
+  <caption>Table {{ 3 + devidx }} — Controls evaluated on {{ dev.hostname }}</caption>
+  <thead><tr><th style="width:22%">Control</th><th>Result</th>
+             <th style="width:32%">Declared</th><th style="width:32%">Observed</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
     {% set anchor = r.id not in seen.ids %}
     {% if anchor %}{% set _ = seen.ids.append(r.id) %}{% endif %}
     {% if r.details %}
       {% for d in r.details %}
-      <tr class="{{ 'fail-row' if not d.found }}" data-status="{{ 'FAIL' if not d.found else 'PASS' }}">
+      <tr{% if not d.found %} class="exception"{% endif %}>
         <td>{% if loop.first %}<span {% if anchor %}id="check-{{ r.id }}"{% endif %}>{{ r.title }}</span>{% endif %}</td>
-        <td><span class="pill {{ 'FAIL' if not d.found else 'PASS' }}">{{ 'FAIL' if not d.found else 'PASS' }}</span></td>
-        <td><code>{{ d.pattern }}</code></td>
-        <td><code>{{ d.observed }}</code></td>
+        <td class="status">{{ 'Exception' if not d.found else 'Pass' }}</td>
+        <td class="mono">{{ d.pattern }}</td>
+        <td class="mono">{{ d.observed }}</td>
       </tr>
       {% endfor %}
     {% else %}
-      <tr data-status="{{ r.status }}">
+      <tr>
         <td><span {% if anchor %}id="check-{{ r.id }}"{% endif %}>{{ r.title }}</span></td>
-        <td><span class="pill {{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td>
-        <td colspan="2" class="sub">
-          {{ 'not applicable to this device' if r.status == 'SKIPPED' else 'no output collected for ' }}
-          {% if r.status != 'SKIPPED' %}<code>{{ r.command }}</code>{% endif %}
+        <td class="status">{{ 'Not applicable' if r.status == 'SKIPPED' else 'Not verified' }}</td>
+        <td colspan="2" class="muted">
+          {% if r.status == 'SKIPPED' %}Control does not apply to this device's role.
+          {% else %}No output returned for <code>{{ r.command }}</code>.{% endif %}
         </td>
       </tr>
     {% endif %}
   {% endfor %}
+  </tbody>
 </table>
 {% endfor %}
 
+<h2 id="s5">5. Control index</h2>
+<p>Each control, the command providing its evidence, and its outcome across the devices in scope.</p>
+<table>
+  <caption>Table {{ 4 + (_verify_devices | length) }} — Controls</caption>
+  <thead><tr><th style="width:34%">Control</th><th>Evidence</th><th>Pass</th><th>Exception</th><th>Other</th></tr></thead>
+  <tbody>
+  {% for cid in _verify_results | map(attribute='id') | unique | list %}
+    {% set rows = _verify_results | selectattr('id', 'equalto', cid) | list %}
+    {% set p = rows | selectattr('status', 'equalto', 'PASS') | list | length %}
+    {% set f = rows | selectattr('status', 'equalto', 'FAIL') | list | length %}
+    <tr>
+      <td><a href="#check-{{ cid }}">{{ (rows | first).title }}</a></td>
+      <td class="mono">{{ (rows | first).command }}</td>
+      <td>{{ p }}</td><td>{{ f }}</td><td>{{ rows | length - p - f }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
 {% if _verify_blacklisted | length > 0 %}
-<h2 id="notverified">Not verified</h2>
-<p class="sub">
-  Catalyst Center Command Runner refused these commands, so the checks that depend
-  on them have no verdict. They are reported, not scored.
+<h2 id="s6">6. Limitations of scope</h2>
+<p>
+  Catalyst Center declined to execute the commands below, so the controls
+  relying on them could not be evaluated. No opinion is expressed on those
+  controls; they are excluded from the counts in section 1.
 </p>
 <table>
-  <tr><th>Device</th><th>Command</th><th>Reason</th></tr>
+  <caption>Table {{ 5 + (_verify_devices | length) }} — Commands not executed</caption>
+  <thead><tr><th>Device</th><th>Command</th><th>Disposition</th></tr></thead>
+  <tbody>
   {% for b in _verify_blacklisted %}
-  <tr><td><code>{{ b.device }}</code></td><td><code>{{ b.command }}</code></td><td>{{ b.bucket }}</td></tr>
+    <tr><td class="mono">{{ b.device }}</td><td class="mono">{{ b.command }}</td><td>{{ b.bucket }}</td></tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endif %}
 
 <footer>
-  {{ _verify_results | length }} check row(s) across {{ _verify_devices | length }} device(s).
-  Read-only: stage 10 issues GETs and Command Runner read requests only.
-  <a href="#top">back to top</a>
+  This assessment is read-only: it issues Catalyst Center GET requests and
+  Command Runner read requests only, and makes no change to any device.
+  {{ _verify_results | length }} control(s) evaluated across
+  {{ _verify_devices | length }} device(s).
 </footer>
 
 </div>
-<script>
-function setFilter(failOnly) {
-  document.querySelectorAll('tr[data-status]').forEach(function (tr) {
-    tr.style.display = (failOnly && tr.dataset.status !== 'FAIL') ? 'none' : '';
-  });
-  document.getElementById('btn-all').classList.toggle('active', !failOnly);
-  document.getElementById('btn-fail').classList.toggle('active', failOnly);
-}
-function showAll()  { setFilter(false); }
-function showFail() { setFilter(true); }
-</script>
 </body>
 </html>

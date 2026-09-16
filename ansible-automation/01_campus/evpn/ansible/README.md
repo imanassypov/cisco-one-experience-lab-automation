@@ -1583,6 +1583,7 @@ ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
 │ Not verified  : 0
 │ Not applicable: 7
 │ Report        : …/evidence/stage10-verification.md
+│ HTML          : …/evidence/stage10-verification.html
 ```
 
 `Not applicable` is expected: `FABRIC-OVERLAY.j2` skips the L2 sections on
@@ -1590,24 +1591,33 @@ SPINE and BORDER, so tenant VLAN, SVI and DHCP-helper checks do not apply to
 `Site_105-Border-Spine`, and client-port checks do not apply to a device with
 no `DEFN_CLIENT_PORTS` entry.
 
-The report is written on **the host that ran the play** — Kali when driven from
-the script server, not your laptop:
+Two reports are written, both on **the host that ran the play** — Kali when
+driven from the script server, not your laptop:
 
-```text
-evidence/stage10-verification.md
-```
+| File | Use |
+| --- | --- |
+| `evidence/stage10-verification.md` | Reading in a terminal or editor, diffing between runs |
+| `evidence/stage10-verification.html` | A formal verification report for sharing or printing |
 
-Read it there, or pull it back:
+Read the markdown on Kali with `glow` (installed by the bootstrap):
 
 ```bash
-scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage10-verification.md .
+glow -p evidence/stage10-verification.md
 ```
 
-It contains the result counts, the device list, which Catalyst Center template
-IDs the intent came from, and a per-device table putting each intended value
-next to the field parsed from the device, plus the mismatches behind any
-failure. Raw command output is not included — re-run with
-`-e catc_debug=true` if you need to see it.
+Or pull either file back:
+
+```bash
+scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage10-verification.html .
+```
+
+Both contain the result counts, the devices in scope, which Catalyst Center
+template revisions the intent came from, and a per-device table putting each
+declared value next to the value observed on the device, plus the exceptions
+behind any failure. The HTML version adds a contents list, a control index, and
+numbered sections, and is self-contained — no external CSS, fonts or scripts —
+so it opens offline and prints cleanly. Raw command output is in neither;
+re-run with `-e catc_debug=true` if you need it.
 
 ### Where to verify in Catalyst Center
 
