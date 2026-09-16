@@ -68,23 +68,28 @@ script_server_cli_binaries:
   - ansible-doc
   - ansible-inventory
 
+# Required. Without these the pipeline cannot run. Versioned venv, never the
+# python3-venv metapackage: that one tracks the distro's *next* Python, and this
+# image runs kali-rolling alongside kali-last-snapshot, so pulling it would
+# upgrade python3 and break the ~120 installed python3-* packages pinned below
+# the next version. state: present leaves installed packages at their version.
 script_server_debian_packages:
   - git
   - python3-pip
-  # Versioned, matching the running interpreter. The python3-venv / python3-dev
-  # metapackages track the distro's *next* Python, and this image runs
-  # kali-rolling alongside kali-last-snapshot, so pulling them would upgrade
-  # python3 and break the ~120 installed python3-* packages pinned to < the
-  # next version. Everything else here is already on the image, and
-  # state: present leaves installed packages at their current version.
   - "python{{ ansible_python.version.major }}.{{ ansible_python.version.minor }}-venv"
+
+# Best effort - a failure here is reported and skipped, never fatal.
+# The pinned wheels are prebuilt for this interpreter, so the toolchain is only
+# needed if pip has to compile something; glow just renders the stage 10 report
+# in the terminal; sshpass is only for password SSH, which nothing here uses now
+# that collection 00 runs locally. On the dCloud image these often cannot be
+# installed without upgrading libc6, which would break the system.
+script_server_debian_optional_packages:
   - "python{{ ansible_python.version.major }}.{{ ansible_python.version.minor }}-dev"
   - gcc
   - libffi-dev
   - libssl-dev
   - sshpass
-  # Renders the stage 10 verification report in the terminal. Packaged in Kali
-  # (2.1.2-1 in kali-last-snapshot), so no third-party apt source is needed.
   - glow
 
 script_server_redhat_packages:

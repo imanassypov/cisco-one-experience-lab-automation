@@ -48,7 +48,8 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 ## What the bootstrap installs
 
 - Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
-- OS packages: `git`, Python 3, `pip`, `venv`, `sshpass`, `glow`, and compiler headers
+- Required OS packages: `git`, `pip`, and the versioned `pythonX.Y-venv`
+- Optional OS packages, installed one at a time and **skipped without failing** if the image will not allow them: the compiler toolchain, `sshpass`, and `glow`. None are required — the pinned wheels are prebuilt, so a compiler is only needed if pip has to build one, and `glow` merely pretty-prints the stage 10 report
 - The user virtualenv at `~/venv` (Ansible is **not** installed with apt/yum)
 - Pinned `ansible-core`, `paramiko`, `netaddr`, plus `genie` and `pyats` — stage 10 parses every CLI response with Genie, which adds roughly 700 MB
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
@@ -56,6 +57,8 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 - Pinned Cisco Galaxy collections — see [`files/requirements.yml`](roles/script_server_bootstrap/files/requirements.yml) for the authoritative versions
 - On Kali, disables the HashiCorp apt source if it targets `kali-rolling` (that repo has no Release file and breaks `apt update`)
 - Seeds `inventory/group_vars/all/lab.yml` from the tracked example, and never overwrites it afterwards
+
+> **Why so little is installed from apt.** The dCloud image tracks `kali-rolling` and `kali-last-snapshot` at the same time, so apt offers base packages far newer than what is installed — `python3` 3.14 against 3.13, `libc6` 2.43 against 2.40. Asking apt for an already-installed package is an upgrade request, and upgrading `python3` breaks the ~120 installed `python3-*` packages that require an older one. So the bootstrap names as little as possible and never runs `apt --fix-broken install`, which would attempt exactly that system-wide upgrade.
 
 ## Playbook sequence
 

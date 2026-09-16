@@ -67,6 +67,39 @@
     NEEDRESTART_SUSPEND: "1"
   when: ansible_os_family == "Debian"
 
+# One at a time, so a single uninstallable convenience does not take the rest
+# with it. These are not required to run the pipeline.
+- name: Install optional Debian family packages
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  become: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+    NEEDRESTART_MODE: a
+    NEEDRESTART_SUSPEND: "1"
+  loop: "{{ script_server_debian_optional_packages }}"
+  loop_control:
+    label: "{{ item }}"
+  register: script_server_optional_apt
+  ignore_errors: true
+  when: ansible_os_family == "Debian"
+
+- name: Report optional packages that could not be installed
+  ansible.builtin.debug:
+    msg:
+      - "Skipped, not installable on this image: {{ script_server_optional_skipped | join(', ') }}"
+      - "None of these are required. The pinned wheels are prebuilt, so the compiler is only needed if pip has to build one."
+      - "Without glow, read the stage 10 report with 'less evidence/stage10-verification.md' or open the .html file."
+  vars:
+    script_server_optional_skipped: >-
+      {{ script_server_optional_apt.results | default([])
+         | selectattr('failed', 'defined') | selectattr('failed')
+         | map(attribute='item') | list }}
+  when:
+    - ansible_os_family == "Debian"
+    - script_server_optional_skipped | length > 0
+
 - name: Install RedHat family packages
   ansible.builtin.package:
     name: "{{ script_server_redhat_packages }}"
