@@ -1,14 +1,15 @@
 # ============================================================================
 # verify_intent / tasks/report.yml  —  Stage 10.7
 # ============================================================================
-# Writes the markdown report, prints the console summary, and only then fails.
+# Writes the markdown and HTML reports, prints the console summary, and only
+# then fails.
 #
 # Failing last is deliberate: the operator gets the whole matrix, not the first
 # mismatch. NOT_VERIFIED rows never fail the play — Command Runner refusing a
 # command is not the fabric's fault — but they are counted and listed so partial
 # coverage is never mistaken for a clean run.
 #
-# The report lands on whichever host ran the play. Driven from the Kali script
+# Both reports land on whichever host ran the play. Driven from the Kali script
 # server, that is Kali, not the laptop.
 #
 # Consumes: _verify_results, _verify_counts, _verify_devices, _cli_output,
@@ -26,6 +27,12 @@
   ansible.builtin.template:
     src: report.md.j2
     dest: "{{ verify_report_path }}"
+    mode: "0644"
+
+- name: Write the HTML verification report
+  ansible.builtin.template:
+    src: report.html.j2
+    dest: "{{ verify_report_html_path }}"
     mode: "0644"
 
 - name: Verification summary
@@ -47,8 +54,7 @@
                   | map('regex_replace', '\..*$', ''))
             | map('join', ' on ') | map('regex_replace', '^', '│   FAIL: ')
             | list)
-         + ['│ Report        : ' + verify_report_path]
-         + ['└─────────────────────────────────────────────────────────────────┘'] }}
+         + ['│ Report        : ' + verify_report_path]         + ['│ HTML          : ' + verify_report_html_path]         + ['└─────────────────────────────────────────────────────────────────┘'] }}
 
 - name: Report that some checks had no verdict
   when: (_verify_counts.not_verified | int) > 0

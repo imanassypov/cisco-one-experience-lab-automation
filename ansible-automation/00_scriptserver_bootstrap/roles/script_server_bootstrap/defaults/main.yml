@@ -71,6 +71,9 @@ script_server_debian_packages:
   - libffi-dev
   - libssl-dev
   - sshpass
+  # Renders the stage 10 verification report in the terminal. Packaged in Kali
+  # (2.1.2-1 in kali-last-snapshot), so no third-party apt source is needed.
+  - glow
 
 script_server_redhat_packages:
   - git
