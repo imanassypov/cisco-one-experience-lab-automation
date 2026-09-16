@@ -31,12 +31,11 @@ flowchart LR
 
    ```bash
    ./stage-script-server.sh
-   source ~/venv/bin/activate
-   ansible-playbook playbooks/00_preflight.yml
-   ansible-playbook playbooks/01_bootstrap_script_server.yml
+   ~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+   ~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
    ```
 
-   To pick up lab changes published later: `ansible-playbook playbooks/02_sync_from_git.yml` (git only).
+   Call `ansible-playbook` by full path until `01` has run — that is what puts `~/venv/bin` on `PATH`. To pick up lab changes published later: `ansible-playbook playbooks/02_sync_from_git.yml` (git only).
 4. **Run every later collection from the same checkout.** Ansible, collections, and SDKs are already in `~/venv` and on PATH:
 
    ```bash
@@ -72,9 +71,8 @@ ssh cisco@198.18.134.12
 git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 ./stage-script-server.sh
-source ~/venv/bin/activate
-ansible-playbook playbooks/00_preflight.yml
-ansible-playbook playbooks/01_bootstrap_script_server.yml
+~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```
 
 See [00_scriptserver_bootstrap/README.md](ansible-automation/00_scriptserver_bootstrap/README.md) for details.

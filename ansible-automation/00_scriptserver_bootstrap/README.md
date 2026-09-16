@@ -21,15 +21,16 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 # 3. Stage the box. Prompts once for your dCloud POD number.
 ./stage-script-server.sh
 
-# 4. Bootstrap
-source ~/venv/bin/activate
-ansible-playbook playbooks/00_preflight.yml
-ansible-playbook playbooks/01_bootstrap_script_server.yml
+# 4. Bootstrap. Uses the venv directly - nothing to activate.
+~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```
 
 You can clone anywhere — `~/cisco-one-experience-lab-automation` is only a convention. Every path is derived from where the playbook lives, so a clone under any directory works.
 
 The staging script also writes the repo-root `.vault` for you and seeds `lab.yml` with the pod number you entered, so there is nothing to create by hand. To skip the prompt on an unattended re-run: `LAB_POD_ID=7 ./stage-script-server.sh`.
+
+> Call `ansible-playbook` by its full path until `01` has run — that is the playbook that puts `~/venv/bin` on `PATH`. After it completes, a new shell can just run `ansible-playbook`. If apt offers to install `ansible-core`, say no: that would be an unpinned copy outside the venv.
 
 ## Why a staging script before Ansible
 

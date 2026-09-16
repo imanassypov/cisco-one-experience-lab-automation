@@ -215,11 +215,15 @@ say "Pod ${LAB_POD_ID} written to lab.yml (SSID will be PSEUDOCO-POD$(printf '%0
 
 cat <<EOF
 
-Then bootstrap this host:
+Now bootstrap this host. These use the venv directly, so there is nothing to
+activate first:
 
-  source ${VENV}/bin/activate
   cd ${REPO_ROOT}/ansible-automation/00_scriptserver_bootstrap
-  ansible-playbook playbooks/00_preflight.yml
-  ansible-playbook playbooks/01_bootstrap_script_server.yml
+  ${VENV}/bin/ansible-playbook playbooks/00_preflight.yml
+  ${VENV}/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
+
+After that, 01 puts ${VENV}/bin on your PATH, so a new shell can just run
+'ansible-playbook'. If apt ever offers to install ansible-core, say no - that
+would be an unpinned copy outside the venv.
 
 EOF

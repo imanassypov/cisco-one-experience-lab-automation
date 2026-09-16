@@ -126,16 +126,24 @@ no `ansible.cfg`; inside a collection directory the config supplies it.
 
 ## Step 4 — Bootstrap the script server
 
-Activate the staging venv, then run the two bootstrap playbooks from
-`00_scriptserver_bootstrap/`. Both target this host over a **local** connection —
-there is no SSH hop and no remote credentials.
+Run the two bootstrap playbooks from `00_scriptserver_bootstrap/`. Both target
+this host over a **local** connection — there is no SSH hop and no remote
+credentials.
+
+Call them by full path. `~/venv/bin` is not on your `PATH` yet — putting it
+there is one of the things `01` does, which is the usual chicken-and-egg of
+bootstrapping.
 
 ```bash
-source ~/venv/bin/activate
 cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
-ansible-playbook playbooks/00_preflight.yml
-ansible-playbook playbooks/01_bootstrap_script_server.yml
+~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```
+
+> If your shell says `ansible-playbook: command not found` and apt offers to
+> install `ansible-core`, answer **no**. That would install an unpinned Ansible
+> outside the venv, at a different version from every other student. Use the
+> full path above, or `source ~/venv/bin/activate` first.
 
 | Playbook | What it does |
 |----------|--------------|

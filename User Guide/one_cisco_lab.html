@@ -3000,11 +3000,14 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 <hr>
 <h4>Step 4 — Bootstrap the script server</h4>
 <p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 10 needs to parse device output.</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">source ~/venv/bin/activate
-cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+<p>Call them by their full path. <code>~/venv/bin</code> is not on your <code>PATH</code> yet — putting it there is one of the jobs of the second playbook.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 
-ansible-playbook playbooks/00_preflight.yml
-ansible-playbook playbooks/01_bootstrap_script_server.yml</pre>
+~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml</pre>
+<div class="admonition warning">
+<p>🛑 <strong>If your shell says <code>ansible-playbook: command not found</code></strong> and offers to install <code>ansible-core</code> with apt, answer <strong>no</strong>. That installs an unpinned Ansible outside the virtual environment, at a different version from every other student. Use the full path above instead.</p>
+</div>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
 <tr><th style="width: 32%;">Playbook</th><th style="width: 68%;">What it does</th></tr>
