@@ -12,6 +12,11 @@
 #               match the output for the device to pass. Evaluated per device
 #               with `host` (the CatC FQDN) in scope, alongside _intent_fabric
 #               and _intent_settings.
+#   pairs     — alternative to expect, for structured checks. Jinja expression
+#               returning a LIST of {label, intended, observed}. Each pair
+#               passes on exact equality. Use with the genie_parse filter to
+#               compare parsed values instead of matching text. Gated by
+#               verify_use_genie because it needs pyATS installed.
 #   skip_when — optional Jinja expression; true means the check does not apply
 #               to that device (for example L3OUT only exists on the border).
 #
@@ -37,6 +42,48 @@ verify_commands:
     - show ap summary
 
 verify_checks:
+  # ── Structured prototype ───────────────────────────────────────────────
+  #
+  # Same intent as vrf_rd below, expressed against Genie's parsed structure
+  # instead of a regex. Only runs when verify_use_genie is true.
+  #
+  # ShowVrf yields:
+  #   {"vrf": {"Main": {"route_distinguisher": "172.30.255.1:10",
+  #                     "interfaces": ["Vlan10", "Vlan1010"]}}}
+  #
+  # The regex form of this check originally matched 172.30.255.1:10 inside
+  # 172.30.255.1:102 and reported the wrong VRF's line as proof; a lookahead
+  # patched it. Exact equality on a parsed field cannot make that mistake.
+  # The guards below are load-bearing. Referencing verify_checks templates every
+  # expression in this file, including this one, so genie_parse would be called
+  # even for devices this check skips — and on a control node without pyATS that
+  # aborts the whole play. Short-circuiting inside the expression is what keeps
+  # the filter from being invoked at all.
+  - id: vrf_rd_parsed
+    title: VRF route distinguishers (parsed)
+    scope: switch
+    command: show vrf
+    skip_when: "{{ not (verify_use_genie | default(false) | bool) }}"
+    pairs: >-
+      {%- set raw = _cli_output | default({}) | d({}) -%}
+      {%- set out = (raw.get(host, {}) if host else {}).get('show vrf', '') -%}
+      {%- if not (verify_use_genie | default(false) | bool) or not out -%}
+        {{ [] }}
+      {%- else -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- set lo = _intent_fabric.loop_underlay.get(host, '') -%}
+        {%- set parsed = out | genie_parse('show vrf') -%}
+        {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+          {%- set name = _vrf_by_id[vid].name -%}
+          {%- set ns.r = ns.r + [{
+                'label':    name ~ ' route distinguisher',
+                'intended': lo ~ ':' ~ vid,
+                'observed': (parsed.vrf | default({})).get(name, {})
+                            .get('route_distinguisher', '(vrf absent)')}] -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
   # ── Fabric intent, from the DEFN templates ─────────────────────────────
   - id: vrf_defined
     title: VRFs defined

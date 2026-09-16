@@ -66,7 +66,8 @@
     _verify_matrix: >-
       {{ (_verify_matrix | default([]))
          + [item | combine({'skipped': _skip | bool,
-                            'expect':  [] if (_skip | bool) else _expect})] }}
+                            'expect':  [] if (_skip | bool) else _expect,
+                            'pairs':   [] if (_skip | bool) else _pairs})] }}
   loop: "{{ _verify_pairs }}"
   loop_control:
     label: "{{ item.id }} / {{ item.device | regex_replace('\\..*$', '') }}"
@@ -75,6 +76,7 @@
     _chk: "{{ verify_checks | selectattr('id', 'equalto', item.id) | first }}"
     _skip: "{{ _chk.skip_when | default(false) }}"
     _expect: "{{ _chk.expect | default([]) }}"
+    _pairs: "{{ _chk.pairs | default([]) }}"
 
 - name: --DEBUG-- Expanded check matrix
   when: catc_debug | default(false) | bool
@@ -106,12 +108,26 @@
       {%- for row in _verify_matrix -%}
         {%- set out = (_cli_output.get(row.device, {})).get(row.command, none) -%}
         {%- set details = [] -%}
-        {%- if row.skipped or row.expect | length == 0 -%}
+        {%- if row.skipped or (row.expect | length == 0 and row.pairs | default([]) | length == 0) -%}
           {%- set status = 'SKIPPED' -%}
           {%- set missing = [] -%}
         {%- elif out is none -%}
           {%- set status = 'NOT_VERIFIED' -%}
           {%- set missing = [] -%}
+        {%- elif row.pairs | default([]) | length > 0 -%}
+          {%- set miss = [] -%}
+          {%- for p in row.pairs -%}
+            {%- set hit = (p.intended | string) == (p.observed | string) -%}
+            {%- set _ = details.append({'pattern': p.label ~ ' = ' ~ p.intended,
+                                        'found': hit,
+                                        'observed': p.observed | string}) -%}
+            {%- if not hit -%}
+              {%- set _ = miss.append(p.label ~ ': expected ' ~ p.intended
+                                      ~ ', got ' ~ p.observed) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- set status = 'FAIL' if miss | length > 0 else 'PASS' -%}
+          {%- set missing = miss -%}
         {%- else -%}
           {%- set miss = [] -%}
           {%- for rx in row.expect -%}
@@ -136,7 +152,7 @@
               'device':  row.device,
               'command': row.command,
               'status':  status,
-              'expected_count': row.expect | length,
+              'expected_count': (row.expect | length) + (row.pairs | default([]) | length),
               'details': details,
               'missing': missing}] -%}
       {%- endfor -%}
