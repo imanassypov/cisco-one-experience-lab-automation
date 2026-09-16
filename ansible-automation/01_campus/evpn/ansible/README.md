@@ -1544,10 +1544,26 @@ GET  /dna/intent/api/v1/task/{taskId}
 GET  /dna/intent/api/v1/file/{fileId}
 ```
 
-Collected per switch: `show vrf`, `show vlan`, `show nve vni`, `show nve peers`,
-`show ip interface brief`, `show ip interface`, `show interfaces status`,
-`show ip bgp all summary`.
-Per controller: `show wlan summary`, `show ap summary`, `show ap tag summary`.
+Collected per switch (`Site_105-Leaf1`, `Site_105-Leaf2`, `Site_105-Border-Spine`):
+
+| Command | Intent it proves |
+| --- | --- |
+| `show vrf` | Every declared VRF exists, with the right route distinguisher |
+| `show vlan` | Tenant overlay VLANs are present and active |
+| `show nve vni` | Each L3VNI is bound to its transit VLAN and VRF, and is operationally up |
+| `show nve peers` | VXLAN tunnels to the other fabric nodes are up |
+| `show ip interface brief` | Underlay loopbacks and tenant SVIs carry the declared addresses and are up |
+| `show ip interface` | DHCP helper addresses are applied to the tenant SVIs |
+| `show interfaces status` | Client-facing ports exist in the declared mode and are connected |
+| `show ip bgp all summary` | Correct BGP AS, EVPN sessions established, L3OUT neighbours up on the border |
+
+Collected per wireless controller (`C9800`):
+
+| Command | Intent it proves |
+| --- | --- |
+| `show wlan summary` | The `settings.json` SSID is provisioned and administratively up |
+| `show ap summary` | The declared access points are registered, with matching Ethernet MACs |
+| `show ap tag summary` | APs carry the Catalyst Center site and policy tags, not the factory defaults |
 
 Every response is parsed with **Genie** and compared field by field — no text
 matching. `show running-config` is deliberately not collected: each intent it
@@ -1619,6 +1635,18 @@ behind any failure. The HTML version adds a contents list, a control index, and
 numbered sections, and is self-contained — no external CSS, fonts or scripts —
 so it opens offline and prints cleanly. Raw command output is in neither;
 re-run with `-e catc_debug=true` if you need it.
+
+`evidence/` is deliberately gitignored so live run output never lands in the
+repo. For illustration, a captured pair from a passing run is committed
+separately:
+
+| Sample | View it |
+| --- | --- |
+| [`docs/sample-reports/stage10-verification.md`](docs/sample-reports/stage10-verification.md) | Renders directly on GitHub |
+| [`docs/sample-reports/stage10-verification.html`](docs/sample-reports/stage10-verification.html) | Download and open in a browser — GitHub shows HTML as source |
+
+These are a point-in-time snapshot of Site-105, not output from your pod. Use
+them to see the report shape before you run the stage.
 
 ### Where to verify in Catalyst Center
 

@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intent Verification Report — Stage 10</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5f6b76; --rule:#d5d9dd; --rule-strong:#9aa3ac; --shade:#f4f5f6; }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:#fff; color:var(--ink);
+    font:15px/1.6 "Segoe UI", Helvetica, Arial, sans-serif;
+    font-variant-numeric:tabular-nums;
+  }
+  .page { max-width:960px; margin:0 auto; padding:56px 48px 72px; }
+  a { color:inherit; text-decoration:none; border-bottom:1px solid var(--rule-strong); }
+  a:hover { border-bottom-color:var(--ink); }
+
+  .doc-title { font-size:26px; font-weight:600; letter-spacing:-.2px; margin:0; }
+  .doc-sub { color:var(--muted); font-size:14px; margin:6px 0 0; }
+  .rule { border:0; border-top:2px solid var(--ink); margin:20px 0 0; }
+
+  h2 { font-size:15px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       margin:44px 0 14px; padding-bottom:7px; border-bottom:1px solid var(--rule-strong); }
+  h3 { font-size:15px; font-weight:600; margin:30px 0 10px; }
+  p { margin:0 0 12px; }
+  .muted { color:var(--muted); }
+  .small { font-size:13px; }
+
+  table { width:100%; border-collapse:collapse; margin:0 0 16px; font-size:14px; }
+  caption { text-align:left; color:var(--muted); font-size:13px; padding-bottom:6px; }
+  th, td { text-align:left; padding:7px 12px 7px 0; border-bottom:1px solid var(--rule);
+           vertical-align:top; }
+  thead th { border-bottom:1px solid var(--rule-strong); font-weight:600; font-size:12px;
+             letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  tbody tr:last-child td { border-bottom:1px solid var(--rule-strong); }
+  td.status { white-space:nowrap; width:1%; padding-right:24px; }
+  .exception td { background:var(--shade); }
+  .exception td.status { font-weight:600; }
+
+  code, .mono { font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:13px; }
+  code { background:none; padding:0; }
+
+  dl.meta { display:grid; grid-template-columns:200px 1fr; gap:0; margin:0;
+            border-top:1px solid var(--rule); font-size:14px; }
+  dl.meta dt { padding:7px 0; color:var(--muted); border-bottom:1px solid var(--rule); }
+  dl.meta dd { padding:7px 0; margin:0; border-bottom:1px solid var(--rule); }
+
+  ol.toc { margin:0; padding-left:20px; font-size:14px; }
+  ol.toc li { margin:4px 0; }
+  ol.toc ol { padding-left:20px; margin:4px 0; }
+
+  .statement { border-left:3px solid var(--ink); padding:2px 0 2px 16px; margin:0 0 18px;
+               font-size:15px; }
+  .backlink { font-size:12px; color:var(--muted); font-weight:400; letter-spacing:0;
+              text-transform:none; margin-left:10px; }
+  .backlink a { border-bottom:none; }
+  footer { margin-top:48px; padding-top:14px; border-top:1px solid var(--rule);
+           color:var(--muted); font-size:12px; }
+
+  @media print {
+    .page { padding:0; max-width:none; }
+    a { border-bottom:none; }
+    h2 { page-break-after:avoid; }
+    table, tr { page-break-inside:avoid; }
+    .toc-section { page-break-after:always; }
+  }
+</style>
+</head>
+<body>
+<div class="page" id="top">
+
+<p class="doc-title">Intent Verification Report</p>
+<p class="doc-sub">Campus BGP EVPN fabric — pipeline stage 10</p>
+<hr class="rule">
+
+<h2>Document control</h2>
+<dl class="meta">
+  <dt>Report generated</dt><dd>2026-09-16 10:13:18 UTC</dd>
+  <dt>Produced by</dt><dd><code>playbooks/10_verify_intent.yml</code></dd>
+  <dt>Intent sources</dt>
+  <dd><code>settings.json</code> and <code>DEFN-*.j2</code> as held in Catalyst Center Template Programmer</dd>
+  <dt>Evidence collection</dt><dd>Catalyst Center Command Runner; responses parsed with Genie</dd>
+  <dt>Devices in scope</dt><dd>4</dd>
+  <dt>Controls evaluated</dt><dd>51</dd>
+  <dt>Assessment</dt>
+  <dd>Conformant — no exceptions</dd>
+</dl>
+
+<h2>Contents</h2>
+<div class="toc-section">
+<ol class="toc">
+  <li><a href="#s1">Conclusion</a></li>
+  <li><a href="#s2">Scope</a></li>
+  <li><a href="#s3">Basis of verification</a></li>
+  <li><a href="#s4">Findings</a>
+    <ol>
+          <li><a href="#dev-1">Site_105-Leaf1.corp.pseudoco.com</a></li>
+          <li><a href="#dev-2">Site_105-Leaf2.corp.pseudoco.com</a></li>
+          <li><a href="#dev-3">Site_105-Border-Spine.corp.pseudoco.com</a></li>
+          <li><a href="#dev-4">C9800.corp.pseudoco.com</a></li>
+        </ol>
+  </li>
+  <li><a href="#s5">Control index</a></li>
+  </ol>
+</div>
+
+<h2 id="s1">1. Conclusion</h2>
+<p class="statement">
+  The deployed fabric conforms to the declared intent. All
+  44 evaluated controls passed, with no exceptions.
+</p>
+
+<table>
+  <caption>Table 1 — Summary of results</caption>
+  <thead><tr><th>Outcome</th><th>Controls</th><th>Basis</th></tr></thead>
+  <tbody>
+    <tr><td>Pass</td><td>44</td>
+        <td class="muted">Observed value equals the declared value</td></tr>
+    <tr><td>Exception</td><td>0</td>
+        <td class="muted">Observed value differs from the declared value</td></tr>
+    <tr><td>Not verified</td><td>0</td>
+        <td class="muted">No evidence returned; no opinion expressed</td></tr>
+    <tr><td>Not applicable</td><td>7</td>
+        <td class="muted">Control does not apply to the device's role</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s2">2. Scope</h2>
+<p>
+  The devices below were assessed. Each is managed by Catalyst Center and was
+  addressed through Command Runner using its inventory management address.
+</p>
+<table>
+  <caption>Table 2 — Devices in scope</caption>
+  <thead><tr><th>Management address</th><th>Catalyst Center hostname</th><th>Family</th><th>Role</th></tr></thead>
+  <tbody>
+      <tr><td class="mono">172.30.255.1</td><td class="mono">Site_105-Leaf1.corp.pseudoco.com</td>
+        <td>Switches and Hubs</td><td>switch</td></tr>
+      <tr><td class="mono">172.30.255.2</td><td class="mono">Site_105-Leaf2.corp.pseudoco.com</td>
+        <td>Switches and Hubs</td><td>switch</td></tr>
+      <tr><td class="mono">172.30.255.3</td><td class="mono">Site_105-Border-Spine.corp.pseudoco.com</td>
+        <td>Switches and Hubs</td><td>switch</td></tr>
+      <tr><td class="mono">198.18.5.103</td><td class="mono">C9800.corp.pseudoco.com</td>
+        <td>Wireless Controller</td><td>wlc</td></tr>
+    </tbody>
+</table>
+
+<h2 id="s3">3. Basis of verification</h2>
+<p>
+  Declared intent was taken from the template definitions held in Catalyst Center,
+  not from the source repository. Stage 06 seeds Catalyst Center from either a
+  Git repository or a local folder; this assessment therefore reflects the
+  definitions that were actually deployed. The revision of each definition used
+  is recorded below.
+</p>
+<table>
+  <caption>Table 3 — Template definitions relied upon</caption>
+  <thead><tr><th>Definition</th><th>Project</th><th>Identifier</th><th>Last updated</th></tr></thead>
+  <tbody>
+      <tr><td class="mono">DEFN-BORDER-DMZ-TUNNELS.j2</td><td>Site-105</td>
+        <td class="mono small">eb6701a3-4b80-4c0a-a806-7cf363ec9141</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-CLIENT-PORTS.j2</td><td>Site-105</td>
+        <td class="mono small">19f95673-76a9-4c18-9bdb-eccb32b8b4b7</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-L3OUT.j2</td><td>Site-105</td>
+        <td class="mono small">174412e9-c286-489e-910d-2fbfcee5af3e</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-LOOPBACKS.j2</td><td>Site-105</td>
+        <td class="mono small">0b1a18c6-d41d-43db-aeed-b9d14c00c1c5</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-MCAST.j2</td><td>Site-105</td>
+        <td class="mono small">67224eb3-c18f-41a8-bf7f-b326f167e44e</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-NAC.j2</td><td>Site-105</td>
+        <td class="mono small">459e601b-fe30-4571-b004-5380be60cdfd</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-OVERLAY.j2</td><td>Site-105</td>
+        <td class="mono small">d1659043-f7bb-42df-8aa2-96e8a993d0f6</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-ROLES.j2</td><td>Site-105</td>
+        <td class="mono small">66c2c21d-6fc4-4431-b086-3a499b7f1324</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-TELEMETRY-SPLUNK.j2</td><td>Site-105</td>
+        <td class="mono small">cde9cc44-12fb-444d-b88e-65cd1b4dca03</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-VNIOFFSETS.j2</td><td>Site-105</td>
+        <td class="mono small">e7b8a6ce-6cc7-496f-820a-86fb21f80ae8</td>
+        <td>2026-09-15 17:20</td></tr>
+      <tr><td class="mono">DEFN-VRF.j2</td><td>Site-105</td>
+        <td class="mono small">e8c85b71-3e8f-43a5-94b6-dd0528b348e0</td>
+        <td>2026-09-15 17:20</td></tr>
+    </tbody>
+</table>
+<p class="small muted">
+  Additionally from <code>settings.json</code>: wireless SSID
+  <code>PSEUDOCO-POD12</code>; wireless VLANs
+  10, 101, 102;
+  1 declared access point(s).
+</p>
+
+<h2 id="s4">4. Findings</h2>
+<p>
+  Each row states one declared value and the corresponding value observed on the
+  device. Comparison is exact equality against a field parsed from the command
+  output. Rows marked <strong>Exception</strong> are shaded.
+</p>
+
+<h3 id="dev-1">
+  4.1 Site_105-Leaf1.corp.pseudoco.com
+  <span class="backlink">172.30.255.1 · 0 exception(s) · <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 4 — Controls evaluated on Site_105-Leaf1.corp.pseudoco.com</caption>
+  <thead><tr><th style="width:22%">Control</th><th>Result</th>
+             <th style="width:32%">Declared</th><th style="width:32%">Observed</th></tr></thead>
+  <tbody>
+                          <tr>
+        <td><span id="check-vrf_defined">VRFs defined</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF Main = Main</td>
+        <td class="mono">Main</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF PROD = PROD</td>
+        <td class="mono">PROD</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF IOT = IOT</td>
+        <td class="mono">IOT</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-vrf_rd">VRF route distinguishers</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Main RD = 172.30.255.1:10</td>
+        <td class="mono">172.30.255.1:10</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">PROD RD = 172.30.255.1:101</td>
+        <td class="mono">172.30.255.1:101</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">IOT RD = 172.30.255.1:102</td>
+        <td class="mono">172.30.255.1:102</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-l3vni_vlan">L3VNI bound to its transit VLAN</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 VLAN = 1010</td>
+        <td class="mono">1010</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 VLAN = 1101</td>
+        <td class="mono">1101</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 VLAN = 1102</td>
+        <td class="mono">1102</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-l3vni_state">L3VNI operationally up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 (Main) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 (PROD) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 (IOT) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-l3vni_vrf">L3VNI bound to its VRF</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 VRF = Main</td>
+        <td class="mono">Main</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 VRF = PROD</td>
+        <td class="mono">PROD</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 VRF = IOT</td>
+        <td class="mono">IOT</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-overlay_vlans">Tenant overlay VLANs active</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VLAN 10 (Main) = active</td>
+        <td class="mono">active</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VLAN 101 (PROD) = active</td>
+        <td class="mono">active</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VLAN 102 (IOT) = active</td>
+        <td class="mono">active</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-overlay_svis">Tenant SVI addresses</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan10 address = 10.10.255.1</td>
+        <td class="mono">10.10.255.1</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan101 address = 10.101.255.1</td>
+        <td class="mono">10.101.255.1</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan102 address = 10.102.255.1</td>
+        <td class="mono">10.102.255.1</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-overlay_svis_up">Tenant SVIs up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan10 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan101 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan102 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-dhcp_helper">DHCP helper on tenant SVIs</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan10 helper = 198.18.5.102</td>
+        <td class="mono">198.18.5.102</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan101 helper = 198.18.5.102</td>
+        <td class="mono">198.18.5.102</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan102 helper = 198.18.5.102</td>
+        <td class="mono">198.18.5.102</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-loopback0">Underlay loopback address and state</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Loopback0 address = 172.30.255.1</td>
+        <td class="mono">172.30.255.1</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Loopback0 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-client_ports">Client-facing ports present with the declared mode</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">GigabitEthernet1/0/1 mode = access</td>
+        <td class="mono">access</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">GigabitEthernet1/0/2 mode = trunk</td>
+        <td class="mono">trunk</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">GigabitEthernet1/0/3 mode = access</td>
+        <td class="mono">access</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-bgp_asn">BGP autonomous system</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">local ASN = 65535</td>
+        <td class="mono">65535</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-evpn_sessions">EVPN sessions established</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.3 = established</td>
+        <td class="mono">established</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-nve_peers">NVE peers up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.2 = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.3 = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+                              <tr>
+        <td><span id="check-l3out_neighbours">L3OUT BGP neighbours on the border</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+        </tbody>
+</table>
+<h3 id="dev-2">
+  4.2 Site_105-Leaf2.corp.pseudoco.com
+  <span class="backlink">172.30.255.2 · 0 exception(s) · <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 5 — Controls evaluated on Site_105-Leaf2.corp.pseudoco.com</caption>
+  <thead><tr><th style="width:22%">Control</th><th>Result</th>
+             <th style="width:32%">Declared</th><th style="width:32%">Observed</th></tr></thead>
+  <tbody>
+                          <tr>
+        <td><span >VRFs defined</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF Main = Main</td>
+        <td class="mono">Main</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF PROD = PROD</td>
+        <td class="mono">PROD</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF IOT = IOT</td>
+        <td class="mono">IOT</td>
+      </tr>
+                                    <tr>
+        <td><span >VRF route distinguishers</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Main RD = 172.30.255.2:10</td>
+        <td class="mono">172.30.255.2:10</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">PROD RD = 172.30.255.2:101</td>
+        <td class="mono">172.30.255.2:101</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">IOT RD = 172.30.255.2:102</td>
+        <td class="mono">172.30.255.2:102</td>
+      </tr>
+                                    <tr>
+        <td><span >L3VNI bound to its transit VLAN</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 VLAN = 1010</td>
+        <td class="mono">1010</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 VLAN = 1101</td>
+        <td class="mono">1101</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 VLAN = 1102</td>
+        <td class="mono">1102</td>
+      </tr>
+                                    <tr>
+        <td><span >L3VNI operationally up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 (Main) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 (PROD) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 (IOT) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+                                    <tr>
+        <td><span >L3VNI bound to its VRF</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 VRF = Main</td>
+        <td class="mono">Main</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 VRF = PROD</td>
+        <td class="mono">PROD</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 VRF = IOT</td>
+        <td class="mono">IOT</td>
+      </tr>
+                                    <tr>
+        <td><span >Tenant overlay VLANs active</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VLAN 10 (Main) = active</td>
+        <td class="mono">active</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VLAN 101 (PROD) = active</td>
+        <td class="mono">active</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VLAN 102 (IOT) = active</td>
+        <td class="mono">active</td>
+      </tr>
+                                    <tr>
+        <td><span >Tenant SVI addresses</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan10 address = 10.10.255.1</td>
+        <td class="mono">10.10.255.1</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan101 address = 10.101.255.1</td>
+        <td class="mono">10.101.255.1</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan102 address = 10.102.255.1</td>
+        <td class="mono">10.102.255.1</td>
+      </tr>
+                                    <tr>
+        <td><span >Tenant SVIs up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan10 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan101 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan102 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+                                    <tr>
+        <td><span >DHCP helper on tenant SVIs</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan10 helper = 198.18.5.102</td>
+        <td class="mono">198.18.5.102</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan101 helper = 198.18.5.102</td>
+        <td class="mono">198.18.5.102</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Vlan102 helper = 198.18.5.102</td>
+        <td class="mono">198.18.5.102</td>
+      </tr>
+                                    <tr>
+        <td><span >Underlay loopback address and state</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Loopback0 address = 172.30.255.2</td>
+        <td class="mono">172.30.255.2</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Loopback0 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+                                    <tr>
+        <td><span >Client-facing ports present with the declared mode</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">GigabitEthernet1/0/1 mode = access</td>
+        <td class="mono">access</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">GigabitEthernet1/0/2 mode = trunk</td>
+        <td class="mono">trunk</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">GigabitEthernet1/0/3 mode = access</td>
+        <td class="mono">access</td>
+      </tr>
+                                    <tr>
+        <td><span >BGP autonomous system</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">local ASN = 65535</td>
+        <td class="mono">65535</td>
+      </tr>
+                                    <tr>
+        <td><span >EVPN sessions established</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.3 = established</td>
+        <td class="mono">established</td>
+      </tr>
+                                    <tr>
+        <td><span >NVE peers up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.1 = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.3 = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+                              <tr>
+        <td><span >L3OUT BGP neighbours on the border</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+        </tbody>
+</table>
+<h3 id="dev-3">
+  4.3 Site_105-Border-Spine.corp.pseudoco.com
+  <span class="backlink">172.30.255.3 · 0 exception(s) · <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 6 — Controls evaluated on Site_105-Border-Spine.corp.pseudoco.com</caption>
+  <thead><tr><th style="width:22%">Control</th><th>Result</th>
+             <th style="width:32%">Declared</th><th style="width:32%">Observed</th></tr></thead>
+  <tbody>
+                          <tr>
+        <td><span >VRFs defined</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF Main = Main</td>
+        <td class="mono">Main</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF PROD = PROD</td>
+        <td class="mono">PROD</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VRF IOT = IOT</td>
+        <td class="mono">IOT</td>
+      </tr>
+                                    <tr>
+        <td><span >VRF route distinguishers</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Main RD = 172.30.255.3:10</td>
+        <td class="mono">172.30.255.3:10</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">PROD RD = 172.30.255.3:101</td>
+        <td class="mono">172.30.255.3:101</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">IOT RD = 172.30.255.3:102</td>
+        <td class="mono">172.30.255.3:102</td>
+      </tr>
+                                    <tr>
+        <td><span >L3VNI bound to its transit VLAN</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 VLAN = 1010</td>
+        <td class="mono">1010</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 VLAN = 1101</td>
+        <td class="mono">1101</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 VLAN = 1102</td>
+        <td class="mono">1102</td>
+      </tr>
+                                    <tr>
+        <td><span >L3VNI operationally up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 (Main) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 (PROD) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 (IOT) state = Up</td>
+        <td class="mono">Up</td>
+      </tr>
+                                    <tr>
+        <td><span >L3VNI bound to its VRF</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110010 VRF = Main</td>
+        <td class="mono">Main</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110101 VRF = PROD</td>
+        <td class="mono">PROD</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">VNI 110102 VRF = IOT</td>
+        <td class="mono">IOT</td>
+      </tr>
+                              <tr>
+        <td><span >Tenant overlay VLANs active</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+                        <tr>
+        <td><span >Tenant SVI addresses</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+                        <tr>
+        <td><span >Tenant SVIs up</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+                        <tr>
+        <td><span >DHCP helper on tenant SVIs</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+                              <tr>
+        <td><span >Underlay loopback address and state</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Loopback0 address = 172.30.255.3</td>
+        <td class="mono">172.30.255.3</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">Loopback0 protocol = up</td>
+        <td class="mono">up</td>
+      </tr>
+                              <tr>
+        <td><span >Client-facing ports present with the declared mode</span></td>
+        <td class="status">Not applicable</td>
+        <td colspan="2" class="muted">
+          Control does not apply to this device's role.
+                  </td>
+      </tr>
+                              <tr>
+        <td><span >BGP autonomous system</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">local ASN = 65535</td>
+        <td class="mono">65535</td>
+      </tr>
+                                    <tr>
+        <td><span >EVPN sessions established</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.1 = established</td>
+        <td class="mono">established</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.2 = established</td>
+        <td class="mono">established</td>
+      </tr>
+                                    <tr>
+        <td><span >NVE peers up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.1 = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">peer 172.30.255.2 = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+                                    <tr>
+        <td><span >L3OUT BGP neighbours on the border</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">Main neighbour 192.168.255.0 ASN = 65534</td>
+        <td class="mono">65534</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">PROD neighbour 192.168.255.2 ASN = 65534</td>
+        <td class="mono">65534</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">IOT neighbour 192.168.255.4 ASN = 65534</td>
+        <td class="mono">65534</td>
+      </tr>
+              </tbody>
+</table>
+<h3 id="dev-4">
+  4.4 C9800.corp.pseudoco.com
+  <span class="backlink">198.18.5.103 · 0 exception(s) · <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 7 — Controls evaluated on C9800.corp.pseudoco.com</caption>
+  <thead><tr><th style="width:22%">Control</th><th>Result</th>
+             <th style="width:32%">Declared</th><th style="width:32%">Observed</th></tr></thead>
+  <tbody>
+                          <tr>
+        <td><span id="check-wlan_ssid">SSID provisioned on the controller</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">SSID PSEUDOCO-POD12 = PSEUDOCO-POD12</td>
+        <td class="mono">PSEUDOCO-POD12</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-wlan_ssid_up">SSID administratively up</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">PSEUDOCO-POD12 status = UP</td>
+        <td class="mono">UP</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-ap_joined">Access points registered</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">SITE-105-AP-1 state = Registered</td>
+        <td class="mono">Registered</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-ap_ethernet_mac">Access point Ethernet MAC matches settings.json</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">SITE-105-AP-1 Ethernet MAC = 084fa950f028</td>
+        <td class="mono">084fa950f028</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-ap_tag_source">Access point on Catalyst Center tags</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">SITE-105-AP-1 tag source = Static</td>
+        <td class="mono">Static</td>
+      </tr>
+                                    <tr>
+        <td><span id="check-ap_tags_not_default">Access point site and policy tags are not the factory defaults</span></td>
+        <td class="status">Pass</td>
+        <td class="mono">SITE-105-AP-1 policy tag = Catalyst Center generated</td>
+        <td class="mono">Catalyst Center generated</td>
+      </tr>
+            <tr>
+        <td></td>
+        <td class="status">Pass</td>
+        <td class="mono">SITE-105-AP-1 site tag = Catalyst Center generated</td>
+        <td class="mono">Catalyst Center generated</td>
+      </tr>
+              </tbody>
+</table>
+
+<h2 id="s5">5. Control index</h2>
+<p>Each control, the command providing its evidence, and its outcome across the devices in scope.</p>
+<table>
+  <caption>Table 8 — Controls</caption>
+  <thead><tr><th style="width:34%">Control</th><th>Evidence</th><th>Pass</th><th>Exception</th><th>Other</th></tr></thead>
+  <tbody>
+                  <tr>
+      <td><a href="#check-vrf_defined">VRFs defined</a></td>
+      <td class="mono">show vrf</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-vrf_rd">VRF route distinguishers</a></td>
+      <td class="mono">show vrf</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-l3vni_vlan">L3VNI bound to its transit VLAN</a></td>
+      <td class="mono">show nve vni</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-l3vni_state">L3VNI operationally up</a></td>
+      <td class="mono">show nve vni</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-l3vni_vrf">L3VNI bound to its VRF</a></td>
+      <td class="mono">show nve vni</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-overlay_vlans">Tenant overlay VLANs active</a></td>
+      <td class="mono">show vlan</td>
+      <td>2</td><td>0</td><td>1</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-overlay_svis">Tenant SVI addresses</a></td>
+      <td class="mono">show ip interface brief</td>
+      <td>2</td><td>0</td><td>1</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-overlay_svis_up">Tenant SVIs up</a></td>
+      <td class="mono">show ip interface brief</td>
+      <td>2</td><td>0</td><td>1</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-dhcp_helper">DHCP helper on tenant SVIs</a></td>
+      <td class="mono">show ip interface</td>
+      <td>2</td><td>0</td><td>1</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-loopback0">Underlay loopback address and state</a></td>
+      <td class="mono">show ip interface brief</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-client_ports">Client-facing ports present with the declared mode</a></td>
+      <td class="mono">show interfaces status</td>
+      <td>2</td><td>0</td><td>1</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-bgp_asn">BGP autonomous system</a></td>
+      <td class="mono">show ip bgp all summary</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-evpn_sessions">EVPN sessions established</a></td>
+      <td class="mono">show ip bgp all summary</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-nve_peers">NVE peers up</a></td>
+      <td class="mono">show nve peers</td>
+      <td>3</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-l3out_neighbours">L3OUT BGP neighbours on the border</a></td>
+      <td class="mono">show ip bgp all summary</td>
+      <td>1</td><td>0</td><td>2</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-wlan_ssid">SSID provisioned on the controller</a></td>
+      <td class="mono">show wlan summary</td>
+      <td>1</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-wlan_ssid_up">SSID administratively up</a></td>
+      <td class="mono">show wlan summary</td>
+      <td>1</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-ap_joined">Access points registered</a></td>
+      <td class="mono">show ap summary</td>
+      <td>1</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-ap_ethernet_mac">Access point Ethernet MAC matches settings.json</a></td>
+      <td class="mono">show ap summary</td>
+      <td>1</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-ap_tag_source">Access point on Catalyst Center tags</a></td>
+      <td class="mono">show ap tag summary</td>
+      <td>1</td><td>0</td><td>0</td>
+    </tr>
+                  <tr>
+      <td><a href="#check-ap_tags_not_default">Access point site and policy tags are not the factory defaults</a></td>
+      <td class="mono">show ap tag summary</td>
+      <td>1</td><td>0</td><td>0</td>
+    </tr>
+    </tbody>
+</table>
+
+
+<footer>
+  This assessment is read-only: it issues Catalyst Center GET requests and
+  Command Runner read requests only, and makes no change to any device.
+  51 control(s) evaluated across
+  4 device(s).
+</footer>
+
+</div>
+</body>
+</html>
