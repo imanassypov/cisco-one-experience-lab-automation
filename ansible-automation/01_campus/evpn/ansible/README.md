@@ -1594,8 +1594,10 @@ scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/0
 ```
 
 It contains the result counts, the device list, which Catalyst Center template
-IDs the intent came from, a per-device check matrix, the exact patterns that
-failed to match, and the raw command output in a collapsible appendix.
+IDs the intent came from, and a per-device table putting each intended value
+next to the matching text observed on the device, plus the exact patterns behind
+any failure. Raw command output is not included — re-run with
+`-e catc_debug=true` if you need to see it.
 
 ### Where to verify in Catalyst Center
 

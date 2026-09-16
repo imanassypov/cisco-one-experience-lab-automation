@@ -92,21 +92,3 @@ depend on them have no verdict. They are reported, not scored.
 | `{{ b.device }}` | `{{ b.command }}` | {{ b.bucket }} |
 {% endfor %}
 {% endif %}
-
-## Raw command output
-
-{% for host, commands in _cli_output.items() %}
-<details>
-<summary>{{ host }}</summary>
-
-{% for cmd, text in commands.items() %}
-#### `{{ cmd }}`
-
-```text
-{{ text }}
-```
-
-{% endfor %}
-</details>
-
-{% endfor %}
