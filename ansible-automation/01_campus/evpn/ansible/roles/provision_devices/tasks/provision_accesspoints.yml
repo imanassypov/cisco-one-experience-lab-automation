@@ -31,6 +31,9 @@
 #     That is also why it cannot do the provisioning in Step F, even though its
 #     access_point_provision_new() builds the correct call — that helper is
 #     only reachable through the site key that arms the gate.
+#     Raised upstream 2026-09-15:
+#     https://github.com/cisco-en-programmability/catalystcenter-ansible/issues/71
+#     If that is fixed, Steps D-F can collapse into the one module.
 #
 #   assign_device_to_site  does the site assignment — the same module stage 05
 #     uses for the switches, and it does not care about fabric roles.
