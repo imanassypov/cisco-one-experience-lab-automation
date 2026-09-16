@@ -35,11 +35,24 @@ def genie_parse(output, command, os_name="iosxe"):
     device = Device(name="verify_intent", os=os_name)
     device.custom.setdefault("abstraction", {})["order"] = ["os"]
 
+    # Genie signals "the command ran but there was nothing to parse" by raising
+    # rather than returning {}. Imported defensively because the module path has
+    # moved between Genie releases; the class-name check below is the fallback.
+    try:
+        from genie.metaparser.util.exceptions import SchemaEmptyParserError
+    except ImportError:
+        SchemaEmptyParserError = ()
+
     try:
         parsed = device.parse(command, output=output)
     except Exception as exc:
-        # A parser that finds nothing raises rather than returning {}, and an
-        # unparsed command is not the same as a failed check — surface which.
+        # An empty parse is a real device state, not a tooling failure: a fabric
+        # with no NVE peers or a controller with no APs genuinely has nothing to
+        # report. Return {} so the check reports 'absent' and fails on its own
+        # terms, instead of aborting the whole run.
+        if isinstance(exc, SchemaEmptyParserError) or \
+                type(exc).__name__ == "SchemaEmptyParserError":
+            return {}
         raise AnsibleFilterError(
             "Genie could not parse '{0}' for os '{1}': {2}: {3}".format(
                 command, os_name, type(exc).__name__, exc

@@ -1580,6 +1580,14 @@ brief` reports `protocol up`; a config line proves none of that.
 > so the role chunks them. Any command Catalyst Center refuses is reported as
 > `NOT VERIFIED` rather than silently passing.
 
+> **An empty response is a result, not an error.** Genie raises
+> `SchemaEmptyParserError` when a command runs but has nothing to report — a
+> fabric with no NVE peers, or a controller with no access points joined. The
+> `genie_parse` filter turns that into an empty dict, so the check reports the
+> value as absent and fails on its own terms. Only a genuine parsing problem,
+> such as a missing parser, aborts the run. Run stage 10 before stage 09 and you
+> will see those checks fail, which is the correct answer.
+
 ### Run it
 
 ```bash
