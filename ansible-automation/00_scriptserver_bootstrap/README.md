@@ -18,20 +18,18 @@ ssh cisco@198.18.134.12
 git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 
-# 3. Stage the box: base packages + a virtualenv with ansible-core
+# 3. Stage the box. Prompts once for your dCloud POD number.
 ./stage-script-server.sh
 
-# 4. Create the vault password file (passphrase comes from your proctor)
-read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP
-chmod 600 ../../.vault
-
-# 5. Bootstrap
+# 4. Bootstrap
 source ~/venv/bin/activate
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```
 
 You can clone anywhere — `~/cisco-one-experience-lab-automation` is only a convention. Every path is derived from where the playbook lives, so a clone under any directory works.
+
+The staging script also writes the repo-root `.vault` for you and seeds `lab.yml` with the pod number you entered, so there is nothing to create by hand. To skip the prompt on an unattended re-run: `LAB_POD_ID=7 ./stage-script-server.sh`.
 
 ## Why a staging script before Ansible
 
@@ -41,7 +39,8 @@ You can clone anywhere — `~/cisco-one-experience-lab-automation` is only a con
 | --- | --- | --- |
 | Base packages | `stage-script-server.sh` | `git`, `python3`, `pip`, `venv`, `python3-dev`, `gcc`, `libffi-dev`, `libssl-dev` |
 | Virtualenv at `~/venv` | `stage-script-server.sh` | Pins from [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `netaddr`, both CatC SDKs |
-| Everything else | `01_bootstrap_script_server.yml` | DNS, PATH, Galaxy collections, Genie/pyATS, `lab.yml` seeding |
+| `.vault` and `lab.yml` | `stage-script-server.sh` | Writes the vault passphrase and the POD number it prompted for |
+| Everything else | `01_bootstrap_script_server.yml` | DNS, PATH, Galaxy collections, Genie/pyATS |
 
 The script is idempotent — re-running it is harmless. It refuses to run on anything other than Linux, so running it on your laptop by mistake fails immediately and prints the SSH command you actually wanted.
 
@@ -71,11 +70,11 @@ Later collections (`01_campus` and onward) use the same `00_`, `01_`, … naming
 
 ## The vault password file
 
-`ansible.cfg` reads the repo-root `.vault` (gitignored) to decrypt `Lab Topology/lab_access.yml`. You create it by hand on the script server in step 4 above; it is never copied between machines.
+`ansible.cfg` reads the repo-root `.vault` (gitignored) to decrypt `Lab Topology/lab_access.yml`. `stage-script-server.sh` writes it for you with the shared lab passphrase.
 
 Preflight proves the passphrase actually works before anything is changed — a wrong passphrase fails there with a readable message instead of an opaque decrypt error mid-run.
 
-> **Production note.** In this dCloud lab a single shared passphrase decrypts `lab_access.yml`, which is acceptable for a disposable demo environment. A production setup must use a unique vault password per environment and inject it from a secret store rather than writing it to disk.
+> **This is encryption theatre, on purpose.** `lab_access.yml` is committed **and** the passphrase that opens it is in `stage-script-server.sh`, so anyone with the repository can read every lab credential. That is an acceptable trade for a disposable dCloud pod whose credentials are already public demo values, and it removes a step students routinely got wrong. It is **not** a pattern to copy: a real environment needs a unique passphrase per environment, kept out of the repository and injected from a secret store. Override it here with `VAULT_PASSPHRASE=... ./stage-script-server.sh`.
 
 ## After bootstrap
 

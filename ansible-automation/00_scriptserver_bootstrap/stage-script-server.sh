@@ -17,6 +17,13 @@ REQUIREMENTS="${REPO_ROOT}/ansible-automation/requirements.txt"
 VENV="${VENV:-${HOME}/venv}"
 PYTHON="${PYTHON:-python3}"
 VAULT_FILE="${REPO_ROOT}/.vault"
+LAB_VARS="${REPO_ROOT}/ansible-automation/01_campus/evpn/ansible/inventory/group_vars/all/lab.yml"
+
+# Shared dCloud demo passphrase. Override for any environment that is not this
+# throwaway lab: VAULT_PASSPHRASE=... ./stage-script-server.sh
+VAULT_PASSPHRASE="${VAULT_PASSPHRASE:-C1sco12345}"
+# Set LAB_POD_ID=n to skip the prompt (useful for unattended re-runs).
+LAB_POD_ID="${LAB_POD_ID:-}"
 
 say() { printf '\n==> %s\n' "$1"; }
 die() { printf '\nERROR: %s\n' "$1" >&2; exit 1; }
@@ -110,19 +117,42 @@ say "Installing pinned Python packages"
 
 say "Staged: $("${VENV}/bin/ansible" --version | head -1)"
 
+# The vault passphrase is a well-known shared value in this demo lab, so there
+# is nothing to protect by prompting for it. See the README: this is not a
+# pattern to carry into production.
 if [[ ! -f "$VAULT_FILE" ]]; then
-  cat <<EOF
-
-NEXT: create the vault password file. Ask your proctor for the passphrase.
-
-  read -rs -p 'Lab vault password: ' VP && printf '%s' "\$VP" > "$VAULT_FILE" && unset VP
-  chmod 600 "$VAULT_FILE"
-
-EOF
+  printf '%s' "$VAULT_PASSPHRASE" > "$VAULT_FILE"
+  say "Created ${VAULT_FILE}"
 else
-  chmod 600 "$VAULT_FILE"
   say "Vault password file already present at ${VAULT_FILE}"
 fi
+chmod 600 "$VAULT_FILE"
+
+# lab.yml is gitignored, so a fresh clone has only the tracked example. Seeding
+# it here means the pod number can be set before any playbook runs.
+[[ -f "$LAB_VARS" ]] || cp "${LAB_VARS}.example" "$LAB_VARS"
+
+current_pod="$(sed -n -E 's/^lab_pod_id:[[:space:]]*([^[:space:]#]+).*/\1/p' "$LAB_VARS" | head -1)"
+
+if [[ -z "$LAB_POD_ID" && "$current_pod" =~ ^[0-9]+$ ]]; then
+  LAB_POD_ID="$current_pod"
+  say "Pod number already set to ${LAB_POD_ID} in lab.yml"
+fi
+
+# Stages that read settings.json refuse to run while this is REPLACE_ME, and a
+# wrong value would push this student's SSID onto another pod's controller.
+while [[ ! "$LAB_POD_ID" =~ ^[0-9]+$ ]]; do
+  if [[ ! -t 0 ]]; then
+    die "lab_pod_id is unset and there is no terminal to prompt on.
+       Re-run with:  LAB_POD_ID=<n> ./stage-script-server.sh"
+  fi
+  printf '\n'
+  read -r -p 'dCloud POD number from your lab printout (integer): ' LAB_POD_ID
+  [[ "$LAB_POD_ID" =~ ^[0-9]+$ ]] || printf 'Not a number: %s\n' "$LAB_POD_ID" >&2
+done
+
+sed -i -E "s/^lab_pod_id:.*/lab_pod_id: ${LAB_POD_ID}/" "$LAB_VARS"
+say "Pod ${LAB_POD_ID} written to lab.yml (SSID will be PSEUDOCO-POD$(printf '%02d' "$LAB_POD_ID"))"
 
 cat <<EOF
 

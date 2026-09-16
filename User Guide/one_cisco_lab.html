@@ -1690,7 +1690,7 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 <li>Understand how a design change flows from a Git commit to live switch configuration</li>
 <li>Learn the Catalyst Center template model that scales past three switches</li>
 </ul>
-<p><strong>What you need:</strong> the dCloud VPN, a terminal, and the lab vault passphrase from your proctor.</p>
+<p><strong>What you need:</strong> the dCloud VPN, a terminal, and your POD number from the lab printout.</p>
 <p><strong>Start here:</strong> <a href="#page-9002">A1. Prepare Your Workstation &amp; Script Server</a></p>
 </div>
 </div>
@@ -2951,7 +2951,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <li>An active dCloud <strong>PseudoCo / Cisco One</strong> session, powered on</li>
 <li>Cisco Secure Client (AnyConnect) connected to the dCloud session</li>
 <li>An SSH client — nothing else is needed on your laptop</li>
-<li>The <strong>lab vault passphrase</strong> — ask your proctor for this</li>
+<li>Your <strong>dCloud POD number</strong>, from the lab printout — ask a proctor if you cannot find it</li>
 </ul>
 <p>Catalyst Center in this pod is version <strong>3.1.5</strong>, reachable at <code>cat-center.corp.pseudoco.com</code>.</p>
 <hr>
@@ -2968,10 +2968,14 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap</pre>
 <p>You can clone anywhere you like — every path in the automation is worked out from where the playbooks live, so the home directory is just a convention.</p>
 <hr>
-<h4>Step 3 — Stage the box, then create the vault password file</h4>
+<h4>Step 3 — Stage the box</h4>
 <p>There is a chicken-and-egg problem here: you cannot use Ansible to install Ansible. A small shell script does the minimum needed to break that cycle — base packages plus a Python environment at <code>~/venv</code> containing <code>ansible-core</code>.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">./stage-script-server.sh</pre>
 <p><code>sudo</code> will ask for the <code>cisco</code> account password. The script is safe to re-run, and it refuses to run on anything but Linux — so if you run it on your laptop out of habit, it stops and tells you the SSH command you actually wanted.</p>
+<p>It prompts once for your <strong>dCloud POD number</strong> — the integer from your lab printout — and writes it into <code>lab.yml</code>. That is the only lab-specific value you have to supply anywhere in this track. Pod 7 becomes SSID <code>PSEUDOCO-POD07</code>; the zero padding is not cosmetic, because the SSID has to match a pre-configured group policy on the shared controller.</p>
+<div class="admonition">
+<p>👀 <strong>Cannot find your POD number?</strong> Ask a proctor before guessing. Entering someone else's pod pushes your SSID onto their controller.</p>
+</div>
 <p>It installs a pinned, reproducible set of packages so every student runs the same versions:</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
@@ -2986,16 +2990,12 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 </tbody>
 </table>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a1-stage-script.png" alt="stage-script-server.sh completing successfully" width="865" height="380"></p>
-<p>Now create the vault password file. The repository stores lab credentials in an <strong>encrypted</strong> file that is safe to commit to Git. The passphrase that decrypts it is <em>not</em> in the repository — you create it here, in a file called <code>.vault</code> that Git ignores.</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;"># written without echoing the passphrase to your screen
-read -rs -p 'Lab vault password: ' VP &amp;&amp; printf '%s' "$VP" &gt; ../../.vault &amp;&amp; unset VP
-chmod 600 ../../.vault</pre>
-<p>Confirm the passphrase is correct by decrypting the credential file:</p>
+<p>The script also writes the <strong>vault password file</strong> for you, at <code>.vault</code> in the repository root. The lab stores its credentials in an encrypted file, <code>Lab Topology/lab_access.yml</code>, and <code>.vault</code> holds the passphrase that opens it. Confirm it works:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation
 ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
-<p>If you get a decryption error, the passphrase is wrong. Re-run the <code>read</code> command above.</p>
-<div class="admonition">
-<p>👀 <strong>Two files, two jobs.</strong> <code>.vault</code> is the <em>passphrase</em> — never committed, created by you on this host. <code>Lab Topology/lab_access.yml</code> is the <em>encrypted credential map</em> — committed, useless without the passphrase. The passphrase never travels between machines.</p>
+<p>If that prints YAML, every playbook in the repository can authenticate, and you will never be asked for a device password again.</p>
+<div class="admonition warning">
+<p>🛑 <strong>Do not copy this credential pattern into production.</strong> Here the encrypted file <em>and</em> the passphrase that opens it both live in the repository, so the encryption protects nothing — it is a convenience for a disposable lab whose passwords are already public demo values. The mechanism itself is worth stealing; the key handling is not. In real work the passphrase comes from a secret store and never touches the repo.</p>
 </div>
 <hr>
 <h4>Step 4 — Bootstrap the script server</h4>
@@ -3028,15 +3028,17 @@ ansible-playbook --version</pre>
 <p>🛑 <strong>The working-directory rule.</strong> Every pipeline command from here on must be run from that exact directory. Ansible only reads <code>ansible.cfg</code> from the current directory, and <em>that</em> file is what supplies the inventory, the roles path, the vault password file, and the credential plugin. Run a playbook from anywhere else and you will get <code>Lab access vault not found</code> — that error almost always means you are in the wrong folder, not that anything is broken.</p>
 </div>
 <hr>
-<h4>Step 6 — Set your pod number</h4>
-<p>There is exactly <strong>one</strong> file you need to edit in this entire pipeline:</p>
+<h4>Step 6 — Confirm your pod number</h4>
+<p>Every student runs the same repository against a different pod, so the values that differ live in exactly <strong>one</strong> file. The staging script already wrote your pod number into it, so this is a check rather than an edit:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">grep lab_pod_id inventory/group_vars/all/lab.yml</pre>
+<p>Edit it only if you entered the wrong pod, or later when you come back to add access point MACs:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">vi inventory/group_vars/all/lab.yml</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
-<tr><th style="width: 22%;">Variable</th><th style="width: 20%;">Default</th><th style="width: 58%;">What to do</th></tr>
+<tr><th style="width: 22%;">Variable</th><th style="width: 20%;">Value</th><th style="width: 58%;">Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>lab_pod_id</code></td><td><code>REPLACE_ME</code></td><td>Set this to your dCloud pod number as an integer. It becomes your SSID name — pod 7 produces <code>PSEUDOCO-POD07</code>. Stages that read the settings file will <strong>fail</strong> until you set it.</td></tr>
+<tr><td><code>lab_pod_id</code></td><td>Your pod number</td><td>Set for you in Step 3. It becomes your SSID — pod 7 produces <code>PSEUDOCO-POD07</code>. Stages that read the settings file <strong>fail</strong> if it is still <code>REPLACE_ME</code>, which is deliberate: it stops you pushing your SSID onto another student's controller.</td></tr>
 <tr><td><code>lab_ap_macs</code></td><td><code>[]</code></td><td>Leave it empty for now. You will fill this in much later, in <a href="#page-9007">the wireless card</a>, once an access point has registered.</td></tr>
 </tbody>
 </table>

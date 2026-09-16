@@ -27,11 +27,10 @@ flowchart LR
    git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
    cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
    ```
-3. **Stage and bootstrap the box from its own checkout.** `stage-script-server.sh` installs the base packages and a virtualenv with `ansible-core`; collection `00` does the rest — DNS, PATH, collections, SDKs, Genie/pyATS, and `lab.yml` seeding:
+3. **Stage and bootstrap the box from its own checkout.** `stage-script-server.sh` installs the base packages and a virtualenv with `ansible-core`, writes the repo-root `.vault`, and prompts once for your dCloud POD number; collection `00` does the rest — DNS, PATH, collections, SDKs, and Genie/pyATS:
 
    ```bash
    ./stage-script-server.sh
-   read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP && chmod 600 ../../.vault
    source ~/venv/bin/activate
    ansible-playbook playbooks/00_preflight.yml
    ansible-playbook playbooks/01_bootstrap_script_server.yml
@@ -73,7 +72,6 @@ ssh cisco@198.18.134.12
 git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 ./stage-script-server.sh
-read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP && chmod 600 ../../.vault
 source ~/venv/bin/activate
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml

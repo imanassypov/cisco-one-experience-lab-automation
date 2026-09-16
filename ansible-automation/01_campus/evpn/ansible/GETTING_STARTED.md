@@ -85,16 +85,14 @@ cd ansible-automation/00_scriptserver_bootstrap
 and it refuses to run anywhere other than Linux — if you run it on your laptop
 by mistake it tells you the SSH command you actually wanted.
 
-Now create `.vault`. It holds the **passphrase**, one bare line, no quotes, and
-it is gitignored so a fresh clone never has one:
+It also prompts once for your **dCloud POD number**, from your lab printout,
+and writes it into `lab.yml`. That is the only lab value you have to supply.
+Pod 7 becomes SSID `PSEUDOCO-POD07` — the zero padding matters, because the
+SSID must match a pre-configured group policy on the shared WLC. To skip the
+prompt on a re-run: `LAB_POD_ID=7 ./stage-script-server.sh`.
 
-```bash
-read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP
-chmod 600 ../../.vault
-```
-
-`read -rs` keeps the passphrase off your screen and out of your shell history,
-and `printf '%s'` writes it with no trailing newline.
+The script writes `.vault` for you as well. It holds the **passphrase**, one
+bare line, no quotes, and it is gitignored so a fresh clone never has one.
 
 Confirm it opens the credential map:
 
@@ -107,16 +105,22 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 #   "script_server":
 ```
 
-If that prints YAML, every playbook in the repo can authenticate. If it says
-`Decryption failed`, the passphrase in `.vault` is wrong. The
+If that prints YAML, every playbook in the repo can authenticate. The
 `--vault-password-file` flag is needed here only because the repository root has
 no `ansible.cfg`; inside a collection directory the config supplies it.
 
 > **Two files, two jobs.** `.vault` is the passphrase; `Lab Topology/lab_access.yml`
-> is the encrypted `lab_access` map of hosts, usernames, and passwords. The map
-> **is** committed (encrypted); the passphrase never is. A vars plugin at
-> `ansible-automation/plugins/vars/lab_access.py` decrypts the map and injects
-> `lab_access` into every play, which is why no playbook takes a password prompt.
+> is the encrypted `lab_access` map of hosts, usernames, and passwords. A vars
+> plugin at `ansible-automation/plugins/vars/lab_access.py` decrypts the map and
+> injects `lab_access` into every play, which is why no playbook takes a
+> password prompt.
+
+> **Be clear-eyed about what this vault protects: nothing.** The encrypted map
+> is committed *and* the passphrase is in `stage-script-server.sh`, so anyone
+> with the repository can read every lab credential. That is a deliberate trade
+> for a disposable pod whose credentials are already public demo values. In a
+> real environment the passphrase never lives in the repository — use a unique
+> one per environment from a secret store, via `VAULT_PASSPHRASE=...`.
 
 ---
 
@@ -178,22 +182,30 @@ If that fails, `source ~/venv/bin/activate` still works as a fallback.
 
 ---
 
-## Step 6 — Set your POD number and AP MACs
+## Step 6 — Confirm your POD number, and AP MACs later
 
 Every student runs the same repo against a different pod, so the values that
 differ live in one file: `inventory/group_vars/all/lab.yml`. `settings.json`
 carries `{POD}` and `{APn_MAC}` placeholders that are filled in from it at run
-time. The bootstrap creates the file from `lab.yml.example`; it is gitignored,
-so it is yours to edit and no `git pull` will touch it.
+time.
+
+`stage-script-server.sh` already created this file and wrote the pod number it
+prompted you for in Step 3, so there is normally nothing to do here. Confirm it:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+grep lab_pod_id inventory/group_vars/all/lab.yml
+```
+
+Edit it only if you entered the wrong pod, or when you come back to add AP MACs:
+
+```bash
 vi inventory/group_vars/all/lab.yml
 ```
 
 | Variable | Value |
 |----------|-------|
-| `lab_pod_id` | Your dCloud POD number from the lab printout (integer). The file ships as `REPLACE_ME`; stages 01–05 and 07–09 **fail** until you set it, so a skipped edit cannot push another student's SSID (`PSEUDOCO-PODnn`) onto the shared WLC. Zero-padded to two digits at run time, so pod 7 yields `PSEUDOCO-POD07`. The pod is **only** that SSID — not switch IPs or site paths. Which playbooks use it: [README — lab_pod_id](README.md#lab_pod_id--wlan-ssid-only). |
+| `lab_pod_id` | Your dCloud POD number from the lab printout (integer), set for you in Step 3. Stages 01–05 and 07–09 **fail** while it is `REPLACE_ME`, so a skipped value cannot push another student's SSID (`PSEUDOCO-PODnn`) onto the shared WLC. Zero-padded to two digits at run time, so pod 7 yields `PSEUDOCO-POD07`. The pod is **only** that SSID — not switch IPs or site paths. Which playbooks use it: [README — lab_pod_id](README.md#lab_pod_id--wlan-ssid-only). |
 | `lab_ap_macs` | Leave `[]` until **after** stage 09. The composite programs the AP trunk (`Gi1/0/2`, native VLAN 10); until then the AP cannot join the WLC and Catalyst Center has no Unified AP. After at least one AP is Registered, put that **Ethernet** MAC here (colon-separated, first entry is `{AP1_MAC}`), then re-run stage 08. One join is enough. `settings.json` always carries two AP rows; an `{APn_MAC}` with no list entry is skipped. Do not use the Base Radio MAC. |
 
 To try a different pod for one run without editing the file:
@@ -203,11 +215,11 @@ ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
 ```
 
 > `lab.yml` is **gitignored**, so your pod values survive every later `git pull`
-> and the bootstrap can keep updating the checkout. The bootstrap seeds it from
-> the tracked `lab.yml.example` on first run and never overwrites it after. It
-> holds no secrets — a pod number and AP MACs only.
+> and the bootstrap can keep updating the checkout. It is seeded from the
+> tracked `lab.yml.example` and never overwritten after. It holds no secrets —
+> a pod number and AP MACs only.
 >
-> If `lab.yml` is missing, copy it back:
+> If `lab.yml` is missing, re-run `./stage-script-server.sh`, or copy it back:
 >
 > ```bash
 > cp inventory/group_vars/all/lab.yml.example inventory/group_vars/all/lab.yml
