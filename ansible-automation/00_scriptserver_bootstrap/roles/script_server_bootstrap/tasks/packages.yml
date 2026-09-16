@@ -59,8 +59,12 @@
     update_cache: true
     cache_valid_time: 3600
   become: true
+  # A libc6 upgrade prompts about restarting services; needrestart prompts
+  # again. Either would hang the play with no visible prompt.
   environment:
     DEBIAN_FRONTEND: noninteractive
+    NEEDRESTART_MODE: a
+    NEEDRESTART_SUSPEND: "1"
   when: ansible_os_family == "Debian"
 
 - name: Install RedHat family packages

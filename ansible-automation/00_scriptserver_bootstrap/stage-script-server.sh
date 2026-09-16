@@ -24,6 +24,16 @@ die() { printf '\nERROR: %s\n' "$1" >&2; exit 1; }
 APT_LOG="$(mktemp)"
 trap 'rm -f "$APT_LOG"' EXIT
 
+# This package set pulls a libc6 upgrade, which raises a debconf prompt about
+# restarting services, and needrestart raises a second one. Either will block
+# the run forever. sudo resets the environment, so the variables have to ride
+# on the sudo command line rather than being exported.
+apt_get() {
+  sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+    apt-get -o Dpkg::Options::=--force-confdef \
+            -o Dpkg::Options::=--force-confold "$@"
+}
+
 # HashiCorp publishes no kali-rolling Release file, but the dCloud image ships
 # that source anyway, so every apt-get update exits non-zero. The bootstrap
 # role fixes this too, but this script runs before it.
@@ -73,15 +83,18 @@ say "Staging $(hostname) from ${REPO_ROOT}"
 say "Installing base packages (sudo may prompt for your password)"
 disable_hashicorp_sources
 
+# Answer the libc6 service-restart question up front instead of at the prompt.
+echo 'libraries/restart-without-asking boolean true' | sudo debconf-set-selections
+
 # A broken third-party source must not abort the run, so inspect the log rather
 # than trusting the exit code.
-sudo apt-get update >"$APT_LOG" 2>&1 || true
+apt_get update >"$APT_LOG" 2>&1 || true
 if grep -qiE 'Missing key|NO_PUBKEY|signature verification failed' "$APT_LOG"; then
   refresh_kali_keyring
-  sudo apt-get update >"$APT_LOG" 2>&1 || true
+  apt_get update >"$APT_LOG" 2>&1 || true
 fi
 
-if ! sudo apt-get install -y --no-install-recommends \
+if ! apt_get install -y --no-install-recommends \
      git python3 python3-pip python3-venv python3-dev gcc libffi-dev libssl-dev; then
   printf '\n--- last 20 lines of apt-get update ---\n' >&2
   tail -20 "$APT_LOG" >&2
