@@ -3,20 +3,20 @@
 First-time setup. Follow these steps **in order**, once per pod. At the end you
 will be able to run the pipeline stages (`01`–`10`) against Catalyst Center.
 
-Two machines are involved:
+Everything runs on **one machine**:
 
 | Machine | Role |
 |---------|------|
-| Your **student laptop** (Mac) | Authors the repo and runs collection `00` to fully prep the script server. Never runs the pipeline against Catalyst Center. |
-| The **Kali script server** at `198.18.134.12` | Runs the pipeline. It is the host with reachability to Catalyst Center (`cat-center.corp.pseudoco.com`) and to the Site 105 switches. |
+| Your **laptop** | Runs the dCloud VPN client and an SSH session. Nothing is installed on it. |
+| The **Kali script server** at `198.18.134.12` | You clone the repo here and run everything here. It is the host with reachability to Catalyst Center (`cat-center.corp.pseudoco.com`) and to the Site 105 switches. |
 
 | Step | What it does | Time |
 |------|--------------|------|
-| 1 | Connect the dCloud VPN | 2 min |
-| 2 | Clone the repo and create `.vault` on the laptop | 3 min |
-| 3 | Build the laptop venv | 3 min |
-| 4 | Bootstrap the Kali script server (includes staging `.vault`) | ~10 min |
-| 5 | SSH to Kali — confirm PATH and working directory | 1 min |
+| 1 | Connect the dCloud VPN and SSH to the script server | 2 min |
+| 2 | Clone the repo onto the script server | 2 min |
+| 3 | Stage the box and create `.vault` | 5 min |
+| 4 | Bootstrap the script server | ~10 min |
+| 5 | Confirm PATH and working directory | 1 min |
 | 6 | Set your POD number and AP MACs | 2 min |
 | 7 | Verify, then run stage 01 | 5 min |
 
@@ -26,7 +26,7 @@ Two machines are involved:
 
 - An active dCloud session for the **PseudoCo / Cisco One** lab, powered on.
 - **Cisco Secure Client / AnyConnect** credentials for that session.
-- Python 3 with the `venv` module on your laptop (Xcode CLT or `brew install python`).
+- An SSH client. Nothing else is needed on your laptop.
 - The **lab vault password** — a single passphrase that decrypts every credential
   in this repo. Ask a proctor if you do not have it.
 
@@ -37,10 +37,10 @@ Two machines are involved:
 
 ---
 
-## Step 1 — Connect the dCloud VPN
+## Step 1 — Connect the dCloud VPN and SSH in
 
-Nothing in this lab is reachable without it. Connect Cisco Secure Client to the
-session, then confirm the script server answers:
+Nothing in this lab is reachable without the VPN. Connect Cisco Secure Client to
+the session, then confirm the script server answers:
 
 ```bash
 nc -z -G 5 198.18.134.12 22 && echo reachable
@@ -49,24 +49,48 @@ nc -z -G 5 198.18.134.12 22 && echo reachable
 If that hangs or fails, the VPN is down or the pod is still booting. Lab VMs can
 take several minutes after a session starts before SSH comes up.
 
+Then connect. Everything from here happens in this SSH session:
+
+```bash
+ssh cisco@198.18.134.12
+```
+
 ---
 
-## Step 2 — Clone the repository and create `.vault` on the laptop
+## Step 2 — Clone the repository onto the script server
 
 ```bash
 git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation
 ```
 
-`.vault` holds the **passphrase**, one bare line, no quotes. It is gitignored, so
-a fresh clone never has one. Create it **on the student laptop** only. Collection
-`00` copies that same file onto Kali during bootstrap — do not recreate it by
-hand on the script server.
+The rest of this guide assumes the checkout is at
+`~/cisco-one-experience-lab-automation`, but that is only a convention — every
+path is derived from where the playbooks live, so any directory works.
+
+---
+
+## Step 3 — Stage the box and create `.vault`
+
+You cannot run `ansible-playbook` to install Ansible, so a small shell script
+does the minimum first: base packages and a virtualenv at `~/venv` holding the
+pinned `ansible-core`, `paramiko`, `netaddr`, and both Catalyst Center SDKs.
 
 ```bash
-cp .vault.example .vault
-read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > .vault && unset VP
-chmod 600 .vault
+cd ansible-automation/00_scriptserver_bootstrap
+./stage-script-server.sh
+```
+
+`sudo` will prompt for the `cisco` account password. The script is idempotent,
+and it refuses to run anywhere other than Linux — if you run it on your laptop
+by mistake it tells you the SSH command you actually wanted.
+
+Now create `.vault`. It holds the **passphrase**, one bare line, no quotes, and
+it is gitignored so a fresh clone never has one:
+
+```bash
+read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP
+chmod 600 ../../.vault
 ```
 
 `read -rs` keeps the passphrase off your screen and out of your shell history,
@@ -75,6 +99,7 @@ and `printf '%s'` writes it with no trailing newline.
 Confirm it opens the credential map:
 
 ```bash
+cd ~/cisco-one-experience-lab-automation
 ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
 # ---
 # # Vault-encrypted lab access lookup. Single credential source for all playbooks.
@@ -95,81 +120,48 @@ no `ansible.cfg`; inside a collection directory the config supplies it.
 
 ---
 
-## Step 3 — Build the laptop venv
+## Step 4 — Bootstrap the script server
 
-Ansible is installed **only** into the shared `ansible-automation/.venv`. Do not
-`brew install ansible` or `pip install` into the system Python.
-
-```bash
-cd ansible-automation
-./setup-local-venv.sh
-source .venv/bin/activate
-```
-
-That installs the pins from `ansible-automation/requirements.txt` — `ansible-core` 2.17.14,
-`paramiko`, `netaddr`, and the two Catalyst Center SDKs — the same versions the
-script server will get. Paramiko is what lets password auth work on macOS
-without `sshpass`.
-
----
-
-## Step 4 — Bootstrap the Kali script server
-
-Run all three from `00_scriptserver_bootstrap/` with the venv active. The
-inventory targets `198.18.134.12` and reads its login from
-`lab_access.script_server`, so you are not asked for credentials.
+Activate the staging venv, then run the two bootstrap playbooks from
+`00_scriptserver_bootstrap/`. Both target this host over a **local** connection —
+there is no SSH hop and no remote credentials.
 
 ```bash
-cd ansible-automation/00_scriptserver_bootstrap
+source ~/venv/bin/activate
+cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml
-ansible-playbook playbooks/02_sync_from_git.yml
 ```
 
 | Playbook | What it does |
 |----------|--------------|
-| `00_preflight.yml` | Fails fast with a clear message if the VPN path or TCP/22 is down |
-| `01_bootstrap_script_server.yml` | OS packages, a venv at `~/venv` with the same pins, venv binaries on `PATH`, pinned Cisco collections and SDKs, lab DNS, a clone of this repo at `~/cisco-one-experience-lab-automation`, and a copy of the laptop `.vault` onto that checkout |
-| `02_sync_from_git.yml` | Git pull only, and re-copies `.vault` — the fast path for later updates |
+| `00_preflight.yml` | Read-only. Confirms you are on Linux, the checkout is complete, `.vault` decrypts, and `sudo` works |
+| `01_bootstrap_script_server.yml` | Lab DNS, OS packages, the `~/venv` pins including Genie/pyATS, venv binaries on `PATH`, pinned Cisco collections and SDKs, and seeds `lab.yml` |
+| `02_sync_from_git.yml` | Fast-forwards this checkout later, to pick up lab fixes published after you cloned |
 
-Both bootstrap playbooks are safe to re-run. `01` and `02` copy the laptop
-`.vault` to `~/cisco-one-experience-lab-automation/.vault` (mode 0600) and print
-a reminder that this shared password is for the **dCloud demo only**. A
-production setup must use a unique vault password and must not copy it this way.
+All three are safe to re-run. Preflight is worth running first every time: it
+proves the passphrase before anything is changed, so a wrong `.vault` fails with
+a readable message instead of an opaque decrypt error part-way through.
 
 Lab DNS matters: `01` puts `198.18.5.102` first in `/etc/resolv.conf` (dCloud
 `198.18.128.1` as fallback) so `cat-center.corp.pseudoco.com` resolves. Without
 it, every Catalyst Center stage fails on name resolution.
 
-> `02_sync_from_git.yml` fails if the Kali tree has local modifications, which
-> happens easily after ad-hoc file copies. Commit or revert them on Kali, or
-> re-run `01`.
+> `02_sync_from_git.yml` fails if the tree has local modifications rather than
+> discarding them. Commit or revert your changes, then re-run it.
 
 ---
 
-## Step 5 — SSH to Kali
+## Step 5 — Confirm PATH and working directory
 
-From here on, every `ansible-playbook` for this pipeline runs **on Kali**, not
-on the laptop. Collection `00` already staged `.vault`; you do not create it
-again.
-
-```bash
-ssh cisco@198.18.134.12
-```
-
-Ansible is already on `PATH` from `~/venv` in an interactive shell — no
-`activate` needed.
-
-Optional check that the staged vault opens the credential map (run from the
-repo root):
+Open a fresh shell (or log out and back in). `01` put the venv binaries on
+`PATH` for both bash and zsh, so Ansible works without activating anything:
 
 ```bash
-cd ~/cisco-one-experience-lab-automation
-ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
+ansible-playbook --version
 ```
 
-If that file is missing, re-run `01` or `02` from the **laptop** — do not paste
-the passphrase onto Kali by hand.
+If that fails, `source ~/venv/bin/activate` still works as a fallback.
 
 > **Working directory rule — read this once, remember it forever.**
 > Ansible only reads `ansible.cfg` from the **current** directory, and that file
@@ -315,7 +307,7 @@ ansible-galaxy collection install -r collections/requirements.yml
 
 | File | Target |
 |------|--------|
-| `collections/requirements.yml` | The script server and the laptop — ansible-core 2.17 |
+| `collections/requirements.yml` | The script server — ansible-core 2.17 |
 | `collections/requirements-jumphost.yml` | A Python 3.9 host capped at ansible-core 2.15. Each pin is the newest release that still admits 2.15. |
 
 `cisco.catalystcenter` must stay at **2.4.0 or newer** on either file. Older
@@ -335,15 +327,16 @@ to print the full HTTP request and response for each API call.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Cannot reach 198.18.134.12:22` from `00_preflight.yml` | VPN down, or the pod is still booting | Reconnect Cisco Secure Client and wait a few minutes |
+| `Cannot reach 198.18.134.12:22` when connecting | VPN down, or the pod is still booting | Reconnect Cisco Secure Client and wait a few minutes |
 | Hang or `Connection timed out` on `cat-center.corp.pseudoco.com` or `198.18.128.22–24` | Same — the VPN dropped mid-run | Reconnect, then re-run the stage |
 | `Name or service not known` for `corp.pseudoco.com` names | Lab DNS not first in `/etc/resolv.conf` | Re-run `01_bootstrap_script_server.yml` |
 | `Lab access vault not found. Expected Lab Topology/lab_access.yml above …` | You ran from outside the repo tree | `cd` into `evpn/ansible` first |
-| `Decryption failed` on any playbook | `.vault` content ≠ the passphrase the file was encrypted with | Fix `.vault` on the laptop (Step 2), then re-run `01` or `02` from the laptop so Kali is updated |
-| `Attempting to decrypt but no vault secrets found` | `.vault` missing at the repository root | Laptop: Step 2. Kali: re-run collection `00` from the laptop — bootstrap stages `.vault`; do not recreate it by hand |
+| `Decryption failed` on any playbook | `.vault` content ≠ the passphrase the file was encrypted with | Rewrite `.vault` on the script server (Step 3) and re-run `00_preflight.yml` to confirm |
+| `Attempting to decrypt but no vault secrets found` | `.vault` missing at the repository root | Create it — Step 3. `00_preflight.yml` reports this before anything is changed |
+| `This collection now runs ON the script server` | You ran collection `00` on your laptop | SSH to `198.18.134.12` and run it from the checkout there |
 | `must decrypt to a mapping with a top-level lab_access key` | `lab_access.yml` was re-created without its `lab_access:` root key | Rebuild it from `lab_access.yml.example` and re-encrypt |
 | `ansible-playbook: not found` in a non-interactive SSH command | Non-login shells do not pick up `~/venv` from `.bashrc` | Use an interactive SSH session, or call `/home/cisco/venv/bin/ansible-playbook` |
-| `02_sync_from_git.yml` fails on local changes | The Kali tree is dirty from ad-hoc file copies | Commit or revert on Kali, or re-run `01` |
+| `02_sync_from_git.yml` fails on local changes | The tree is dirty from ad-hoc file edits | Commit or revert them, then re-run |
 | Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
 | `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | Step 6 was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
 | Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
@@ -353,22 +346,20 @@ to print the full HTTP request and response for each API call.
 
 ## Reference — where everything lives
 
-The same tree exists on the laptop and on Kali. The venvs differ (laptop
-`ansible-automation/.venv` vs Kali `~/venv`). `.vault` is created on the laptop
-and copied onto Kali by collection `00`.
+One tree, on the script server. You clone it and create `.vault` inside it; the
+virtualenv lives outside the tree at `~/venv`.
 
 ```
 ~/cisco-one-experience-lab-automation/
-├── .vault                                  # passphrase (gitignored). Laptop: you create it. Kali: staged by bootstrap.
+├── .vault                                  # passphrase (gitignored). You create it on this host.
 ├── Lab Topology/
 │   ├── lab_access.yml                      # encrypted credential map (committed)
 │   └── PseudoCo_Lab_Access_Lookup.md       # host and URL index, no passwords
 └── ansible-automation/
-    ├── .venv/                              # laptop Ansible venv (gitignored; collection 00 only)
-    ├── setup-local-venv.sh
-    ├── requirements.txt
+    ├── requirements.txt                     # pins used by stage-script-server.sh
     ├── plugins/vars/lab_access.py          # injects lab_access into every play
-    ├── 00_scriptserver_bootstrap/          # laptop only: preflight / bootstrap / git sync / copy .vault
+    ├── 00_scriptserver_bootstrap/          # runs locally: preflight / bootstrap / git sync
+    │   ├── stage-script-server.sh          # base packages + ~/venv (run this first)
     │   └── playbooks/                      # 00_preflight, 01_bootstrap, 02_sync
     └── 01_campus/evpn/
         ├── Catalyst Center Templates/      # DEFN / FUNC / FABRIC .j2

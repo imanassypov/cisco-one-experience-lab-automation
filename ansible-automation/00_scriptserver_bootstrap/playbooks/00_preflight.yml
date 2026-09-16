@@ -1,30 +1,77 @@
 ---
-- name: Preflight — dCloud VPN and script server SSH
-  hosts: localhost
-  connection: local
-  gather_facts: false
+# Confirms this box is a staged script server before anything is changed.
+# Runs locally: by this point the student is already on the Kali host.
+- name: Preflight — script server is ready to bootstrap itself
+  hosts: script_servers
+  gather_facts: true
+  become: false
   vars:
-    script_server_host: "{{ hostvars['script_server'].ansible_host | default('198.18.134.12') }}"
-    script_server_port: 22
+    repo_root: "{{ playbook_dir | dirname | dirname | dirname }}"
+    vault_file: "{{ repo_root }}/.vault"
   tasks:
-    - name: Check TCP 22 reachability to the script server
-      ansible.builtin.wait_for:
-        host: "{{ script_server_host }}"
-        port: "{{ script_server_port }}"
-        timeout: 8
-        state: started
-      register: script_server_ssh_check
-      ignore_errors: true
-      changed_when: false
-
-    - name: Fail if the dCloud VPN or script server is unreachable
+    # The most common mistake is running collection 00 on the student laptop
+    # out of habit. Fail early with the fix rather than part-way through apt.
+    - name: Fail when this is not the Linux script server
       ansible.builtin.fail:
         msg: >-
-          Cannot reach {{ script_server_host }}:{{ script_server_port }}.
-          Connect Cisco Secure Client / AnyConnect to the dCloud session first,
-          then re-run this playbook.
-      when: script_server_ssh_check is failed
+          This collection now runs ON the script server, not on your laptop.
+          Detected {{ ansible_system }}. Connect to the dCloud VPN, then
+          'ssh cisco@198.18.134.12', clone the repo there, and re-run this
+          playbook from the checkout on that host.
+      when: ansible_system != 'Linux'
 
-    - name: Script server SSH port is reachable
+    - name: Check the repository checkout looks complete
+      ansible.builtin.stat:
+        path: "{{ repo_root }}/ansible-automation/01_campus/evpn/ansible/ansible.cfg"
+      register: preflight_repo
+
+    - name: Fail when the checkout is incomplete
+      ansible.builtin.assert:
+        that:
+          - preflight_repo.stat.exists | default(false)
+        fail_msg: >-
+          {{ repo_root }} does not look like a full clone of the automation
+          repository. Re-clone it with:
+          git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+
+    - name: Check the vault password file exists
+      ansible.builtin.stat:
+        path: "{{ vault_file }}"
+      register: preflight_vault
+
+    - name: Fail when the vault password file is missing
+      ansible.builtin.assert:
+        that:
+          - preflight_vault.stat.exists | default(false)
+          - preflight_vault.stat.isreg | default(false)
+        fail_msg: >-
+          {{ vault_file }} is missing. Create it on this host with the lab
+          passphrase from your proctor, then chmod 600 it. It is gitignored,
+          so it never leaves this machine.
+
+    # Proves the passphrase is correct. Without this the first real task fails
+    # with an opaque decrypt error instead of a readable one.
+    - name: Fail when the vault passphrase does not decrypt lab_access.yml
+      ansible.builtin.assert:
+        that:
+          - lab_access is defined
+          - lab_access['script_server'] is defined
+        fail_msg: >-
+          The vault decrypted no lab_access data. The passphrase in
+          {{ vault_file }} is probably wrong — ask your proctor and rewrite
+          the file.
+
+    - name: Check sudo works
+      ansible.builtin.command: id -u
+      become: true
+      changed_when: false
+      register: preflight_sudo
+
+    - name: Preflight summary
       ansible.builtin.debug:
-        msg: "{{ script_server_host }}:{{ script_server_port }} is reachable. VPN path looks good."
+        msg:
+          - "Host: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})"
+          - "Checkout: {{ repo_root }}"
+          - "Vault: decrypts, {{ lab_access.keys() | list | length }} lab_access entries"
+          - "sudo: OK (uid {{ preflight_sudo.stdout }})"
+          - "Ready. Next: ansible-playbook playbooks/01_bootstrap_script_server.yml"

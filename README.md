@@ -6,33 +6,39 @@ Connect **Cisco Secure Client / AnyConnect** to the dCloud session before any SS
 
 ## Development workflow
 
-Playbooks are written on the student laptop. Collection `00` is also run there and fully prepares Kali. Campus and later collections execute on the bootstrapped script server.
+Playbooks are authored on a laptop and published to GitHub. **Everything runs on the Kali script server** — students clone this repository onto that host and bootstrap it from its own checkout. Nothing is installed on the student laptop.
 
 ```mermaid
 flowchart LR
-  Laptop["Student laptop: author + run 00"]
+  Laptop["Author laptop: write + push"]
   GitHub["GitHub main"]
-  Script["Kali: Python, Ansible, SDKs"]
+  Script["Kali script server"]
   Laptop -->|"commit and push"| GitHub
-  Laptop -->|"00: bootstrap and 02_sync_from_git"| Script
-  GitHub -->|"cloned onto Kali by 00"| Script
+  GitHub -->|"git clone by the student"| Script
+  Script -->|"00: stage + bootstrap itself"| Script
   Script -->|"01_campus and later ansible-playbook"| Lab["Lab devices"]
 ```
 
-1. **Develop on the student laptop** in this repo (`ansible-automation/`). Do not author new playbooks on the script server.
-2. **Push to GitHub** (`origin` / `main`): https://github.com/imanassypov/cisco-one-experience-lab-automation
-3. **Prep the script server from the laptop** (VPN up). Collection `00` is the complete prep — packages, `~/venv`, Ansible, collections, SDKs, DNS, the git checkout, and a copy of the laptop `.vault` (dCloud demo only; change this for production):
+1. **Author on a laptop** in this repo (`ansible-automation/`) and **push to GitHub** (`origin` / `main`): https://github.com/imanassypov/cisco-one-experience-lab-automation
+2. **SSH to the script server and clone** (dCloud VPN up):
 
    ```bash
-   cd ansible-automation
-   source .venv/bin/activate
-   cd 00_scriptserver_bootstrap
+   ssh cisco@198.18.134.12
+   git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+   cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+   ```
+3. **Stage and bootstrap the box from its own checkout.** `stage-script-server.sh` installs the base packages and a virtualenv with `ansible-core`; collection `00` does the rest — DNS, PATH, collections, SDKs, Genie/pyATS, and `lab.yml` seeding:
+
+   ```bash
+   ./stage-script-server.sh
+   read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP && chmod 600 ../../.vault
+   source ~/venv/bin/activate
    ansible-playbook playbooks/00_preflight.yml
    ansible-playbook playbooks/01_bootstrap_script_server.yml
    ```
 
-   Later laptop-side refreshes of the Kali tree: `playbooks/02_sync_from_git.yml` (git only). Never run collection `00` on Kali.
-4. **Run every later collection on Kali** (SSH as `cisco`). Python, Ansible, collections, and SDKs are already in `~/venv` and on PATH:
+   To pick up lab changes published later: `ansible-playbook playbooks/02_sync_from_git.yml` (git only).
+4. **Run every later collection from the same checkout.** Ansible, collections, and SDKs are already in `~/venv` and on PATH:
 
    ```bash
    cd ~/cisco-one-experience-lab-automation/ansible-automation/<collection>
@@ -60,13 +66,15 @@ Playbooks live under `ansible-automation/`. Numbered folders follow lab-build or
 
 ## First step — bootstrap the script server
 
-Use a **project-local virtualenv** on the Mac (do not install Ansible system-wide):
+Everything happens on the script server. Do not install Ansible on your laptop.
 
 ```bash
-cd ansible-automation
-./setup-local-venv.sh
-source .venv/bin/activate
-cd 00_scriptserver_bootstrap
+ssh cisco@198.18.134.12
+git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+./stage-script-server.sh
+read -rs -p 'Lab vault password: ' VP && printf '%s' "$VP" > ../../.vault && unset VP && chmod 600 ../../.vault
+source ~/venv/bin/activate
 ansible-playbook playbooks/00_preflight.yml
 ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```

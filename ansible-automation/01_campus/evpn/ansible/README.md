@@ -30,11 +30,13 @@ logs in to the switches.
 
 Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
 
-- Connect the student laptop to the dCloud VPN.
-- Run collection `00_scriptserver_bootstrap` from the laptop. It prepares Kali
-  with Python, Ansible, Cisco collections, SDKs, lab DNS, the Git checkout, and
-  a copy of the demo `.vault`.
-- SSH to Kali. All commands below run there, not on the student laptop.
+- Connect your laptop to the dCloud VPN, then `ssh cisco@198.18.134.12`.
+- Clone this repository onto the script server and run collection
+  `00_scriptserver_bootstrap` there. `stage-script-server.sh` installs the base
+  packages and `~/venv`; `01_bootstrap_script_server.yml` adds Cisco
+  collections, SDKs, Genie/pyATS, and lab DNS.
+- Create the repo-root `.vault` on the script server. Everything below runs on
+  that host, from that checkout.
 - Set `lab_pod_id` in `inventory/group_vars/all/lab.yml`. The bootstrap seeds
   that file from `lab.yml.example` with `REPLACE_ME`; stages that load
   `settings.json` stop until you replace it. The file is gitignored, so your
@@ -1686,10 +1688,11 @@ verified the student's pod and AP values.
   `failed=0`, not `changed=0`. A non-zero missing count means a description
   was absent and got created — check Design > Network Settings > Device
   Credentials for a duplicate name in that case.
-- **Vault file missing on Kali:** rerun collection 00 from the student laptop.
-  Do not recreate the demo passphrase manually on Kali.
-- **CatC name does not resolve:** reconnect the dCloud VPN and rerun the laptop
-  bootstrap so lab DNS is restored.
+- **Vault file missing:** recreate the repo-root `.vault` on the script server
+  with the proctor's passphrase, then run `00_preflight.yml` to confirm it
+  decrypts before re-running anything else.
+- **CatC name does not resolve:** reconnect the dCloud VPN and rerun
+  `01_bootstrap_script_server.yml` so lab DNS is restored.
 - **Stage 04 recap `changed=1` with two `changed` items:** one looped task,
   two jobs (`C9800-WLC`, `Site-105-Discovery`). That is success if `failed=0`.
   Site-11 and Site-106 do not create discovery jobs. Then open **Tools >

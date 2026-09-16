@@ -39,18 +39,18 @@
   changed_when: false
   register: script_server_dns_verify
 
-- name: Confirm the demo .vault landed on the checkout
+- name: Confirm the vault password file is in place
   ansible.builtin.stat:
-    path: "{{ script_server_remote_vault }}"
-  register: script_server_remote_vault_stat
+    path: "{{ script_server_vault }}"
+  register: script_server_vault_verify
 
-- name: Fail when Kali is missing .vault
+- name: Fail when the vault password file is missing
   ansible.builtin.assert:
     that:
-      - script_server_remote_vault_stat.stat.exists | default(false)
+      - script_server_vault_verify.stat.exists | default(false)
     fail_msg: >-
-      {{ script_server_remote_vault }} is missing. Re-run bootstrap from
-      the laptop so the dCloud demo .vault is copied (gitignored, not in git).
+      {{ script_server_vault }} is missing. Create it on this host with the lab
+      passphrase from your proctor, then chmod 600 it. It is gitignored.
 
 - name: Display bootstrap evidence
   ansible.builtin.debug:
@@ -59,5 +59,5 @@
       - "{{ script_server_ansible_version.stdout_lines }}"
       - "PATH binaries: {{ script_server_path_check.stdout_lines }}"
       - "DNS: {{ script_server_dns_verify.stdout }}"
-      - "Kali .vault: {{ script_server_remote_vault }} (dCloud demo copy; change this for production)"
+      - "Vault password file: {{ script_server_vault }}"
       - "{{ script_server_galaxy_list.stdout_lines }}"

@@ -1,27 +1,20 @@
 ---
-- name: Require vault credentials before connecting
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  tasks:
-    - name: Fail when vault SSH credentials are missing
-      ansible.builtin.assert:
-        that:
-          - hostvars['script_server'].ansible_user is defined
-          - hostvars['script_server'].ansible_user | length > 0
-          - hostvars['script_server'].ansible_password is defined
-          - hostvars['script_server'].ansible_password | length > 0
-        fail_msg: >-
-          Script server credentials come from Lab Topology/lab_access.yml
-          (key script_server). Create the repo-root .vault
-          (see .vault.example) so ansible.cfg can decrypt that vault.
-
-- name: Sync the GitHub repo onto the script server
+# Updates the checkout this playbook is running from. Use it to pull lab
+# changes published after you first cloned; it never re-clones.
+- name: Update the local checkout from GitHub
   hosts: script_servers
   gather_facts: true
   become: false
+  pre_tasks:
+    - name: Fail when the vault did not decrypt
+      ansible.builtin.assert:
+        that:
+          - lab_access is defined
+        fail_msg: >-
+          lab_access is empty, so the repo-root .vault is missing or holds the
+          wrong passphrase. Run playbooks/00_preflight.yml for the exact fix.
   tasks:
-    - name: Clone or pull the automation repository
+    - name: Pull the latest automation code
       ansible.builtin.include_role:
         name: script_server_bootstrap
         tasks_from: sync_repo.yml

@@ -1,5 +1,6 @@
-# Shared Mac controller — pin to match the script-server venv.
-# Install into ansible-automation/.venv via ./setup-local-venv.sh
+# Script server pins. Installed into ~/venv by
+# 00_scriptserver_bootstrap/stage-script-server.sh, then topped up by the
+# bootstrap role (which adds genie and pyats).
 ansible-core==2.17.14
 paramiko==3.5.1
 netaddr==1.3.0
