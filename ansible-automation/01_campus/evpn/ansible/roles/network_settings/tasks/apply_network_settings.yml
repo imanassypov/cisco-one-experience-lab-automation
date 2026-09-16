@@ -96,6 +96,11 @@
 # then assert SUCCESS so the play fails fast with a useful error instead of
 # silently reporting success while leaving settings unchanged.
 #
+# IN_PROGRESS is normal, not an error: "FAILED - RETRYING" here means the CatC
+# job is still running, and the retry ceiling is what decides how long that is
+# allowed to take. See catc_exec_poll_retries / catc_exec_poll_delay in
+# defaults/main.yml - the BAPI has been seen still running past 67s.
+#
 # Example
 #   In : _settings_result.json = {
 #          "executionId": "6cbb7d3a-0a1e-4c22-9b2b-1f0c2d5a7e11",
@@ -122,9 +127,11 @@
     validate_certs: "{{ catc_verify }}"
     status_code: 200
   register: _exec_poll
-  until: _exec_poll.json.status in ['SUCCESS', 'FAILURE']
-  retries: 12
-  delay: 5
+  # default('') keeps a transient response without a status field from turning
+  # into an undefined-variable error mid-loop.
+  until: (_exec_poll.json.status | default('')) in ['SUCCESS', 'FAILURE']
+  retries: "{{ catc_exec_poll_retries }}"
+  delay: "{{ catc_exec_poll_delay }}"
   when: _exec_status_url | length > 0
 
 - name: "DEBUG | Execution poll result  | {{ site_config.site_name }}"

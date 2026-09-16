@@ -1,0 +1,12 @@
+---
+# How long to wait for an async Catalyst Center execution to finish.
+#
+# The "Update Network" BAPI behind PUT /dna/intent/api/v1/network/{siteId} is
+# slow on a loaded appliance - observed still IN_PROGRESS at 67s on a lab pod,
+# which the previous 12 x 5s (60s) ceiling could not outlast. 60 x 5s gives five
+# minutes, which clears it comfortably without hanging a broken run forever.
+#
+# Raise for a slower pod without editing this file:
+#   ansible-playbook playbooks/02_network_settings.yml -e catc_exec_poll_retries=120
+catc_exec_poll_retries: 60
+catc_exec_poll_delay: 5
