@@ -1367,22 +1367,6 @@ membership from the site, not only the Inventory Site column.
    factory one. `show ap summary` also moves from `default location`
    to the `location` set in `settings.json` (here `Leaf1`).
 
-   > **Historical note.** Until 2026-09-15 this section claimed the Intent
-   > API could not push these tags and blamed Visibility and Control /
-   > Configuration Preview. That was wrong. Kali was running
-   > `cisco.catalystcenter` **2.10.2**, whose
-   > `wireless_access_points_provision` calls the SDK's
-   > `ap_provision_connectivity` — signature
-   > `(headers, payload, active_validation, **request_parameters)`. Every
-   > option went out as URL query string and the body was `payload or []`,
-   > so the stage posted an **empty JSON array** to the legacy
-   > `/dna/intent/api/v1/wireless/ap-provision` and the module still
-   > reported `ok`. CatC was never asked to provision the AP, which is why
-   > the UI wizard worked and the playbook did not. Every conclusion drawn
-   > from those runs — CFS preview, `vcr-precomputation`, "no public
-   > wireless Deploy call" — was drawn from a no-op. Stage 08 now posts the
-   > request directly with `ansible.builtin.uri` and polls the task.
-
    Verify on the 9800 with the commands from the
    [9800 Command Reference](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/command-reference/b_wireless_cr/show-commands.html)
    and
@@ -1665,11 +1649,10 @@ verified the student's pod and AP values.
 - **AP-pass 08 after 09, `changed=1`:** expected. The one change is
   name/locate. `SITE-105-AP-2` skipped is a one-AP pod. Summary
   `→ 10:b3:d6:6c:c8:60` is radio MAC, not a wrong `lab_ap_macs` entry.
-- **Inventory AP Success but WLC still on default tags:** this was caused by
-  a broken collection module that posted an empty body, fixed 2026-09-15.
-  If it recurs, check that `Poll access point provisioning tasks` actually
-  retried and that `Assert every access point provisioned successfully`
-  passed — a green play with neither means the request never reached CatC.
+- **Inventory AP Success but WLC still on default tags:** check the AP pass
+  output. `Poll access point provisioning tasks` must have retried and
+  `Assert every access point provisioned successfully` must have passed —
+  a green play with neither means the request never reached CatC.
   Expected good state on the 9800 is `Tag Source Static` with
   `ST_Durha_Site-105_d97a1_0` / `PT_Durha_Site-_MAIN_70ab7` / `TYPICAL`,
   alongside the dCloud pre-built `DCLOUD-XAR-FLEX-PT` and the factory
