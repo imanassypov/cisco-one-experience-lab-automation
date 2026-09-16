@@ -21,6 +21,44 @@ VAULT_FILE="${REPO_ROOT}/.vault"
 say() { printf '\n==> %s\n' "$1"; }
 die() { printf '\nERROR: %s\n' "$1" >&2; exit 1; }
 
+APT_LOG="$(mktemp)"
+trap 'rm -f "$APT_LOG"' EXIT
+
+# HashiCorp publishes no kali-rolling Release file, but the dCloud image ships
+# that source anyway, so every apt-get update exits non-zero. The bootstrap
+# role fixes this too, but this script runs before it.
+disable_hashicorp_sources() {
+  local found file
+  found="$(sudo grep -Rl --include='*.list' --include='*.sources' \
+             -E 'apt\.releases\.hashicorp\.com' \
+             /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)"
+  [[ -n "$found" ]] || return 0
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if [[ "$file" == /etc/apt/sources.list ]]; then
+      sudo sed -i -E 's|^([^#].*apt\.releases\.hashicorp\.com.*)$|# disabled-by-cisco-one \1|' "$file"
+    else
+      sudo mv -n "$file" "${file}.disabled-by-cisco-one"
+    fi
+    say "Disabled broken HashiCorp apt source: ${file}"
+  done <<< "$found"
+}
+
+# Kali rotated its archive signing key. Images built before the rotation cannot
+# verify the repository, so apt keeps the stale index and installs fail.
+refresh_kali_keyring() {
+  local url=https://archive.kali.org/archive-keyring.gpg
+  local dest=/usr/share/keyrings/kali-archive-keyring.gpg
+  say "Refreshing the Kali archive signing key"
+  if command -v curl >/dev/null 2>&1; then
+    sudo curl -fsSL "$url" -o "$dest"
+  elif command -v wget >/dev/null 2>&1; then
+    sudo wget -qO "$dest" "$url"
+  else
+    die "Neither curl nor wget is available to fetch ${url}"
+  fi
+}
+
 # Collection 00 used to run from the student laptop. Catch that habit here
 # rather than half-way through apt.
 [[ "$(uname -s)" == "Linux" ]] || die "This stages the Linux script server, but you are on $(uname -s).
@@ -33,9 +71,22 @@ say "Staging $(hostname) from ${REPO_ROOT}"
 # python3-venv and python3-dev are not installed on a stock Kali image, and pip
 # needs a compiler for the crypto wheels.
 say "Installing base packages (sudo may prompt for your password)"
-sudo apt-get update -qq
-sudo apt-get install -y --no-install-recommends \
-  git python3 python3-pip python3-venv python3-dev gcc libffi-dev libssl-dev
+disable_hashicorp_sources
+
+# A broken third-party source must not abort the run, so inspect the log rather
+# than trusting the exit code.
+sudo apt-get update >"$APT_LOG" 2>&1 || true
+if grep -qiE 'Missing key|NO_PUBKEY|signature verification failed' "$APT_LOG"; then
+  refresh_kali_keyring
+  sudo apt-get update >"$APT_LOG" 2>&1 || true
+fi
+
+if ! sudo apt-get install -y --no-install-recommends \
+     git python3 python3-pip python3-venv python3-dev gcc libffi-dev libssl-dev; then
+  printf '\n--- last 20 lines of apt-get update ---\n' >&2
+  tail -20 "$APT_LOG" >&2
+  die "Package installation failed. The apt output above usually names the repository at fault."
+fi
 
 say "Creating the virtualenv at ${VENV}"
 [[ -x "${VENV}/bin/python" ]] || "$PYTHON" -m venv "$VENV"
