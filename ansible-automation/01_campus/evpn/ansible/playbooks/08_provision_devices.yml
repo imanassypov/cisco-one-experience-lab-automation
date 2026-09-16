@@ -33,8 +33,8 @@
 #     access_points — optional; name, location, mode and site per AP, keyed by
 #                     the AP's Ethernet MAC from lab.yml via an {APn_MAC} token
 #   connection.yml:
-#     force_reprovision (false) — set true to re-provision already-provisioned
-#       devices; also drives force_provisioning on the wireless pass
+#     force_reprovision (false) — set true to PUT-reprovision fabric switches
+#     force_wireless_provisioning (true) — force the WLC pass every run
 #     wireless_provision_enabled (true) — set false to leave WLCs alone
 #     ap_provision_enabled (true) — set false to leave APs alone
 #     task_poll_retries (60), task_poll_delay (10) — async task polling
@@ -45,7 +45,7 @@
 #   _site_device_map       — { "<site path>": ["198.19.1.3", "198.19.1.4"] }
 #   _wlc_provision_config  — one provision_workflow_manager entry per controller
 #   _ap_config             — one accesspoint_workflow_manager entry per AP
-#   _ap_provision_config   — one wireless_access_points_provision call per site
+#   _ap_provision_config   — one POST /wirelessAccessPoints/provision per site
 #   In Catalyst Center: devices in PROVISIONED state with site settings and the
 #   switching profile applied — the precondition for stage 09 template deploy —
 #   controllers provisioned with the AP locations they serve, and APs named,
@@ -60,14 +60,13 @@
 # Modules: cisco.dnac.provision_workflow_manager (wireless pass)
 #          cisco.dnac.accesspoint_workflow_manager (AP pass, naming only)
 #          cisco.dnac.site_info + assign_device_to_site (AP site assignment)
-#          cisco.catalystcenter.wireless_access_points_provision (AP provision;
-#            needs collection 2.11.0+, and the cisco.dnac module of the same
-#            name will not work — see provision_accesspoints.yml Step G)
+#          ansible.builtin.uri for POST /wirelessAccessPoints/provision (AP
+#            provision; every shipped build of the
+#            wireless_access_points_provision module posts an empty body —
+#            see provision_accesspoints.yml Step F)
 #
 # Run: ansible-playbook playbooks/08_provision_devices.yml
 #      ansible-playbook playbooks/08_provision_devices.yml -e force_reprovision=true
-#      ansible-playbook playbooks/08_provision_devices.yml \
-#        -e force_ap_provision=true -e force_wireless_provisioning=false
 #      ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
 #      ansible-playbook playbooks/08_provision_devices.yml -e ap_provision_enabled=false
 # =============================================================================
@@ -113,19 +112,6 @@
       dnac_port: "{{ dnac_port }}"
       dnac_version: "{{ dnac_version }}"
       dnac_debug: "{{ dnac_debug }}"
-    # The AP provision step is the one task on the cisco.catalystcenter
-    # collection, so it takes catalystcenter_* parameter names. Values are the
-    # same connection; catalystcenter_debug is fed from dnac_debug rather than
-    # catc_debug because this play redefines catc_debug as its own verbose-output
-    # switch.
-    cisco.catalystcenter.wireless_access_points_provision:
-      catalystcenter_host: "{{ catc_host }}"
-      catalystcenter_username: "{{ catc_username }}"
-      catalystcenter_password: "{{ catc_password }}"
-      catalystcenter_verify: "{{ catc_verify }}"
-      catalystcenter_port: "{{ catc_port }}"
-      catalystcenter_version: "{{ catc_version }}"
-      catalystcenter_debug: "{{ dnac_debug }}"
   pre_tasks:
     - name: Obtain Catalyst Center auth token
       ansible.builtin.import_role:

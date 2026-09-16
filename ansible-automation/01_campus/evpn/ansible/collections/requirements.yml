@@ -3,14 +3,21 @@
 # collections use API version 3.1.3.0 (see connection.yml).
 # cisco.catalystcenter 2.4.0+ is required (roles read catalystcenter_response).
 #
-# 2.11.0+ is required for AP provisioning. Its
-# wireless_access_points_provision is the only build of that module wired to
-# the SDK's ap_provision (POST /wirelessAccessPoints/provision, which takes
-# siteId + networkDevices). 2.10.2 and every cisco.dnac release through 6.51.0
-# wire it to ap_provision_connectivity instead, which is the older
-# /wireless/ap-provision and expects an array body — so the options go out as
-# query parameters against an empty payload. Use the cisco.catalystcenter copy
-# of this module, never the cisco.dnac one.
+# AP provisioning does NOT depend on this pin. Every shipped build of
+# wireless_access_points_provision up to and including cisco.catalystcenter
+# 2.10.2, and cisco.dnac through 6.51.0, routes siteId/rfProfileName/
+# networkDevices into the URL query string and posts an empty body, so it
+# silently provisions nothing while reporting ok. Stage 08 therefore calls
+# POST /dna/intent/api/v1/wirelessAccessPoints/provision directly with
+# ansible.builtin.uri. 2.11.0 is the first build wired to the SDK's
+# ap_provision, so the module is no longer a trap there — but do not
+# reintroduce it; the raw call keeps this stage version-independent.
+#
+# Keep this pin, collections/requirements-jumphost.yml and
+# 00_scriptserver_bootstrap/roles/script_server_bootstrap/files/requirements.yml
+# identical. A 2.11.0 pin here that the bootstrap never installed is what hid
+# the empty-body bug: the bootstrap installed 2.10.2 and, without --force,
+# ansible-galaxy skipped the upgrade silently.
 collections:
   - name: cisco.catalystcenter
     version: "2.11.0"

@@ -158,22 +158,21 @@
 
 # ── Step 6: Configure access points ───────────────────────────────────────
 #
-# Names each AP and assigns it to its site. The site assignment is what makes
-# the controller serve it: Catalyst Center derives the policy and site tags
-# from the wireless profile bound to that site and pushes them, so an AP with
-# no site stays on default tags and broadcasts no SSID.
+# Names each AP, assigns it to its floor, then provisions it. The provision is
+# what creates the AP's policy and site tags — a site assignment alone leaves
+# it on default tags, serving no SSID.
 #
-# Runs after the controller pass because the AP is provisioned against the
-# controller's managed AP locations, which Step 5 sets.
+# Runs after the controller pass because the AP is provisioned against a floor
+# the controller lists in managed_ap_locations, which Step 5 sets.
 # Tasks: tasks/provision_accesspoints.yml
 #
-# Gated by ap_provision_enabled because assigning a site reboots the AP.
+# Gated by ap_provision_enabled because provisioning an AP can reboot it.
 - name: Report that access point provisioning is disabled
   when: not (ap_provision_enabled | default(true) | bool)
   ansible.builtin.debug:
     msg: >-
       ap_provision_enabled is false — leaving access points on their current
-      names and tags. Set it true to name and site-assign them.
+      names and tags. Set it true to name, site-assign and provision them.
 
 - name: Configure access points
   when: ap_provision_enabled | default(true) | bool

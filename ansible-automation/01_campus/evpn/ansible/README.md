@@ -977,7 +977,7 @@ Provisioning applies site settings and profiles. Three passes, in order:
 | --- | --- | --- |
 | Wired (`provision_site.yml`) | Site-105 loopbacks `172.30.255.1–3` | `POST /sda/provisionDevices`. Already-provisioned switches are skipped unless `-e force_reprovision=true`. |
 | Wireless (`provision_wireless.yml`) | WLC `198.18.5.103` at DC-Site-10/MAIN | `provision_workflow_manager`. Deferred from the wired pass (`NCWL10092`). Default `force_wireless_provisioning: true` so a changed managed AP location actually lands. |
-| Access points (`provision_accesspoints.yml`) | Rows in `access_points[]` whose `{APn_MAC}` resolved from `lab_ap_macs` | Name, assign site, then `wireless_access_points_provision`. Empty `lab_ap_macs` skips the whole pass. |
+| Access points (`provision_accesspoints.yml`) | Rows in `access_points[]` whose `{APn_MAC}` resolved from `lab_ap_macs` | Name, assign site, then `POST /wirelessAccessPoints/provision` (raw REST). Empty `lab_ap_macs` skips the whole pass. |
 
 The WLC is listed in DC-Site-10’s `device_list` but is **not** sent to the SDA
 provision API. APs are not in `device_list` and are **not** expected in
@@ -1019,9 +1019,15 @@ WLC and AP handling uses CatC workflow modules plus:
   /dna/intent/api/v1/wireless/accesspoint-configuration/summary?key=<MAC>`
 - `GET /dna/intent/api/v1/wireless/rf-profile`
 - `POST /dna/intent/api/v1/wirelessAccessPoints/provision`
+- `GET /dna/intent/api/v1/task/{taskId}`
 
-The AP provision call requires `cisco.catalystcenter` 2.11.0 or newer and an RF
-profile. This lab defaults to `TYPICAL`.
+The AP provision call is made directly with `ansible.builtin.uri`, not through
+`wireless_access_points_provision`: every shipped build of that module (in both
+`cisco.dnac` and `cisco.catalystcenter`) sends `siteId`, `rfProfileName` and
+`networkDevices` as URL query parameters with an empty JSON body, so it
+provisions nothing while still reporting `ok`. An RF profile is required; this
+lab defaults to `TYPICAL`. The returned task is polled and the stage fails if
+it errors.
 
 ### Run it
 
@@ -1097,8 +1103,9 @@ stage 09 has deployed.
 
 Changing managed AP locations, assigning an AP to a new site, or reprovisioning
 an AP can reboot it for several minutes. Wired devices are skipped when already
-provisioned unless forced. AP provisioning is skipped when
-`provisioningStatus` is already true unless forced.
+provisioned unless forced. The AP pass always re-asserts the provision, because
+that is the only way to repair an AP that drifted back onto default tags; it
+does not re-assign an AP that is already in its floor.
 
 ---
 
@@ -1306,20 +1313,23 @@ membership from the site, not only the Inventory Site column.
 
    `{AP2_MAC}` stays empty and that `access_points[]` row is dropped.
 
-3. Re-run stage 08 so the AP pass can name, site-assign, and provision.
-   Wired devices stay skipped if already provisioned. Disable the **wireless
-   pass** WLC force so that pass does not bounce the controller:
+3. Re-run stage 08. Wired devices stay skipped if already provisioned.
+   `force_wireless_provisioning` defaults **true**, so this run also
+   force-provisions the WLC. The AP pass has no force flag — it always
+   re-asserts the provision. Do not add `force_reprovision` (that
+   PUT-reprovisions the fabric switches):
 
    ```bash
-   ansible-playbook playbooks/08_provision_devices.yml \
-     -e force_wireless_provisioning=false
+   ansible-playbook playbooks/08_provision_devices.yml
    ```
 
-   If you omit that extra, the wireless pass force-provisions the WLC
-   again (`force_wireless_provisioning` defaults to true). The AP pass
-   still re-provisions the WLC **once** when it assigns a new AP (takeover
-   so tags land). That is separate from the extra above; see the recap
-   below.
+   `198.18.5.103` is shared across pods, and a controller re-provision
+   without Skip AP Provision reprovisions every AP it manages. To touch
+   only your AP, disable the controller pass:
+
+   ```bash
+   ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
+   ```
 
 4. Open **Provision > Inventory** again. Right after the play, verified
    2026-09-15 18:17:
@@ -1341,25 +1351,52 @@ membership from the site, not only the Inventory Site column.
    only during AP provision, not when the WLC is provisioned or the AP
    is named and site-assigned
    ([Wireless Network Configuration Use Cases](https://www.cisco.com/c/en/us/td/docs/cloud-systems-management/network-automation-and-management/catalyst-center/3-1-x/user_guide/b_cisco_catalyst_center_user_guide_3_1_x/m-wireless-network-configuration-use-cases.html)).
-   The play returning `ok` only submitted that job. Until it finishes,
-   **Monitoring > Wireless > AP Statistics** still shows
-   `default-policy-tag` / `default-site-tag`, and AP uptime can stay
-   days (no reset yet). Verified 2026-09-15 18:24 on
-   `SITE-105-AP-1` at `10.10.255.101` (Registered, Healthy, uptime
-   ~3d 18h).
+   Stage 08 now polls that job to completion and fails if it errors, so
+   a green play means the job finished, not merely that it was accepted.
 
-   After Inventory is **Success**, the WLC should show CatC-generated
-   tags (this lab historically `ST_Durha_Site-105_…` /
-   `PT_Durha_Site-_MAIN_…` / `TYPICAL`, policy mapping
-   `PSEUDOCO-FLEX-Profile`, Tag Source Static) and a short uptime.
-   Official check on the 9800, from the
+   After Inventory is **Success**, the WLC shows CatC-generated tags.
+   Verified on Kali 2026-09-15 with the simplified AP pass:
+
+   ```text
+   show ap tag summary
+   SITE-105-AP-1  084f.a950.f028  ST_Durha_Site-105_d97a1_0
+                  PT_Durha_Site-_MAIN_70ab7  TYPICAL  No  Static
+   ```
+
+   `Tag Source Static` is the CatC assignment; `Default` is the 9800
+   factory one. `show ap summary` also moves from `default location`
+   to the `location` set in `settings.json` (here `Leaf1`).
+
+   > **Historical note.** Until 2026-09-15 this section claimed the Intent
+   > API could not push these tags and blamed Visibility and Control /
+   > Configuration Preview. That was wrong. Kali was running
+   > `cisco.catalystcenter` **2.10.2**, whose
+   > `wireless_access_points_provision` calls the SDK's
+   > `ap_provision_connectivity` — signature
+   > `(headers, payload, active_validation, **request_parameters)`. Every
+   > option went out as URL query string and the body was `payload or []`,
+   > so the stage posted an **empty JSON array** to the legacy
+   > `/dna/intent/api/v1/wireless/ap-provision` and the module still
+   > reported `ok`. CatC was never asked to provision the AP, which is why
+   > the UI wizard worked and the playbook did not. Every conclusion drawn
+   > from those runs — CFS preview, `vcr-precomputation`, "no public
+   > wireless Deploy call" — was drawn from a no-op. Stage 08 now posts the
+   > request directly with `ansible.builtin.uri` and polls the task.
+
+   Verify on the 9800 with the commands from the
    [9800 Command Reference](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/command-reference/b_wireless_cr/show-commands.html)
    and
    [Configuration Model — Verifying](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/config-guide/newconfigmodel/b_catalyst-9800-configuration-model/m_validating_configuration.html):
 
    ```text
    show ap tag summary
+   show wireless tag policy summary
+   show wireless tag site summary
    ```
+
+   After a successful run the CatC-generated tags are present alongside
+   the dCloud pre-built `DCLOUD-XAR-FLEX-PT` and the factory defaults —
+   three policy tags and three site tags in this lab.
 
    While Inventory is still Configuring, this lab showed (2026-09-15):
 
@@ -1368,25 +1405,40 @@ membership from the site, not only the Inventory Site column.
                   default-rf-tag  No  Default
    ```
 
-   `Tag Source Default` is the 9800 factory assignment. The play’s
-   `Provision the access points` `ok` only means CatC accepted the job;
-   the role does not wait for tags to land. Do not assign tags by hand.
+   `Tag Source Default` is the 9800 factory assignment. Stage 08 polls the
+   provision task, so if the play finished green and tags are still
+   Default, the job completed but CatC did not apply them — open the
+   activity in **Activities > Audit Logs**. Do not assign tags by hand.
 
-   After Success, expect CatC names and `Tag Source Static`. Verified
-   2026-09-15: Inventory can already show `SITE-105-AP-1` Reachable /
-   Site-105/MAIN / **Success** while `show ap tag summary` is still
-   `default-*-tag` / **Default**. CatC recorded the workflow; the 9800
-   did not attach tags. A normal 08 re-run then skips Step G
-   (`provisioningStatus` true).
+   After Success, expect CatC names and `Tag Source Static`. Verified on
+   Kali 2026-09-15 with the simplified AP pass and
+   `-e wireless_provision_enabled=false` (so the shared WLC is left
+   alone): `failed=0`, `changed=1`.
 
-   Re-assert **only** the AP provision call (no switch PUT, no WLC
-   force):
+   ```text
+   ok: … Provision the access points
+         SITE-105-AP-1 → …/Site-105/MAIN (TYPICAL)
+   ok: … Assert every access point provisioning call returned a task ID
+   ok: … Poll access point provisioning tasks
+   ok: … Assert every access point provisioned successfully
+         1 access point provisioning task(s) completed.
 
-   ```bash
-   ansible-playbook playbooks/08_provision_devices.yml \
-     -e force_ap_provision=true \
-     -e force_wireless_provisioning=false
+   │ Access points : 1
+   │   SITE-105-AP-1 → 10:b3:d6:6c:c8:60
+   │ Floor         : Global/NORTH CAROLINA/Durham/Site-105/MAIN
+   │ Skipped       : SITE-105-AP-2
+   │ Named changed : True
+   │ Newly joined  : none — already members
+   │ Provisioned   : SITE-105-AP-1
+
+   PLAY RECAP
+   catalyst_center_api : ok=62  changed=1  failed=0  skipped=55
    ```
+
+   `changed=1` is **Name and locate**. `Provision the access points` is
+   `ok` because `uri` does not report change, but the proof it ran is the
+   task ID assertion and the poll — the poll retries while the job is in
+   flight, which a no-op call cannot do.
 
    Or, in CatC, provision only that AP: Inventory → select
    `SITE-105-AP-1` → Actions → Provision → Provision Device
@@ -1403,7 +1455,7 @@ membership from the site, not only the Inventory Site column.
 ### Important expected output (AP pass after stage 09)
 
 Verified on Kali (2026-09-15) with one Ethernet MAC in `lab_ap_macs` and
-`-e force_wireless_provisioning=false`: `failed=0`, `changed=2`.
+`-e wireless_provision_enabled=false`: `failed=0`, `changed=1`.
 
 ```text
 2 site(s) / 4 device(s) to provision.
@@ -1412,59 +1464,52 @@ Verified on Kali (2026-09-15) with one Ethernet MAC in `lab_ap_macs` and
 DC-Site-10/MAIN  : DEFERRED — WLC 198.18.5.103 (NCWL10092)
 Site-105/MAIN    : SKIPPED — 3 already-provisioned (172.30.255.1–3)
 
-# Wireless pass — the -e extra
-1 wireless controller(s) to provision.
-Force provis  : False
-Changed       : False
-Status        : Wireless device(s) '198.18.5.103' already provisioned.
+# Wireless pass — disabled by the -e extra
+wireless_provision_enabled is false — leaving wireless controllers
+site-assigned but unprovisioned.
 
 # AP pass
 Skipping SITE-105-AP-2 — no matching entry in lab_ap_macs …
 1 access point(s) to configure.
 changed: … Name and locate access points
-ok:      … Assign access points to their site
-1 controller(s) to re-provision.
-changed: … Re-provision controllers to take over the new access points
+skipping: … Assign access points to their floor   (already a member)
 ok:      … Provision the access points
            SITE-105-AP-1 → …/Site-105/MAIN (TYPICAL)
+ok:      … Assert every access point provisioning call returned a task ID
+ok:      … Poll access point provisioning tasks
+ok:      … Assert every access point provisioned successfully
 
 │ Access points : 1
 │   SITE-105-AP-1 → 10:b3:d6:6c:c8:60
-│ Site          : Global/NORTH CAROLINA/Durham/Site-105/MAIN
+│ Floor         : Global/NORTH CAROLINA/Durham/Site-105/MAIN
 │ Skipped       : SITE-105-AP-2
 │ Named changed : True
-│ Newly joined  : 10.10.255.101
-│ WLC takeover  : Wireless device(s) '198.18.5.103' provisioned successfully.
-│ AP provision  : SITE-105-AP-1
+│ Newly joined  : none — already members
+│ Provisioned   : SITE-105-AP-1
 
 PLAY RECAP
-catalyst_center_api : ok=73  changed=2  failed=0  skipped=64
+catalyst_center_api : ok=62  changed=1  failed=0  skipped=55
 ```
 
 What that means:
 
-- Wired skip + wireless **Force False / already provisioned** is the
-  extra working. Recap `changed` is **not** that wireless pass.
-- `changed=2` is **Name and locate** plus **WLC takeover**. The AP pass
-  always forces that takeover when `_ap_pending` is non-empty (the AP
-  was just assigned). `force_wireless_provisioning=false` does not gate
-  it; `force_reprovision` does. A later 08 with the same MAC skips
-  assign, skips takeover, and does not reboot the AP.
+- `changed=1` is **Name and locate**. The other two AP steps are `uri`
+  and `assign_device_to_site`, neither of which reports change.
 - `SITE-105-AP-2` skipped is success for a one-AP pod.
 - The summary MAC `10:b3:d6:6c:c8:60` is the **radio** MAC CatC uses to
   name the AP. `lab_ap_macs` stays the Ethernet MAC; the role translates.
-- `Newly joined : 10.10.255.101` is the AP management IP just assigned
-  to Site-105/MAIN.
-- `Provision the access points` reporting `ok` (not `changed`) is still
-  the provision call — `AP provision : SITE-105-AP-1` means it ran
-  because `provisioningStatus` was false. A second run prints
-  “already report provisioningStatus true”.
+- `Newly joined : none` means the AP was already in its floor, so it was
+  not re-assigned and not bounced. On a first run this shows the AP
+  management IP instead.
+- The real evidence the provision happened is the **task ID assertion**
+  and the **poll**, not the `ok`. The poll retries while the CatC job is
+  in flight; a no-op call has no task to poll.
 
-The AP reboots while tags apply. Inventory often shows **Configuring**
-for several minutes (verified 2026-09-15 immediately after this recap),
-then **Success**. Filter **Access Points** if the Site column still looks
-empty (`siteHierarchy` can stay null). Do not treat Configuring as a
-failed play, and do not re-run 08 to “finish” it.
+The AP can reboot while tags apply. Inventory often shows **Configuring**
+for several minutes, then **Success**. Filter **Access Points** if the Site
+column still looks empty (`siteHierarchy` can stay null for a Unified AP).
+Do not treat Configuring as a failed play, and do not re-run 08 to
+“finish” it.
 
 ### Disruption warning
 
@@ -1617,16 +1662,18 @@ verified the student's pod and AP values.
 - **Stage 08 skips SITE-105-AP-1/AP-2:** expected on the first 08.
   `lab_ap_macs` stays empty until after stage 09. CDP on the leaf is not a
   CatC discovery and does not mean the AP has joined.
-- **AP-pass 08 after 09, `changed=2`:** expected. Wireless pass stays
-  `Force False` / already provisioned. The two changes are name/locate
-  and the one-time WLC takeover for the newly assigned AP. `SITE-105-AP-2`
-  skipped is a one-AP pod. Summary `→ 10:b3:d6:6c:c8:60` is radio MAC,
-  not a wrong `lab_ap_macs` entry.
-- **Inventory AP shows Configuring; WLC still default-policy-tag /
-  default-site-tag:** expected. Tags attach only when AP provision
-  finishes (CatC 3.1.x use cases). Name `SITE-105-AP-1` plus site
-  Site-105/MAIN can land first. Wait for Inventory Success, then
-  `show ap tag summary`. Do not re-run 08 while Configuring.
+- **AP-pass 08 after 09, `changed=1`:** expected. The one change is
+  name/locate. `SITE-105-AP-2` skipped is a one-AP pod. Summary
+  `→ 10:b3:d6:6c:c8:60` is radio MAC, not a wrong `lab_ap_macs` entry.
+- **Inventory AP Success but WLC still on default tags:** this was caused by
+  a broken collection module that posted an empty body, fixed 2026-09-15.
+  If it recurs, check that `Poll access point provisioning tasks` actually
+  retried and that `Assert every access point provisioned successfully`
+  passed — a green play with neither means the request never reached CatC.
+  Expected good state on the 9800 is `Tag Source Static` with
+  `ST_Durha_Site-105_d97a1_0` / `PT_Durha_Site-_MAIN_70ab7` / `TYPICAL`,
+  alongside the dCloud pre-built `DCLOUD-XAR-FLEX-PT` and the factory
+  defaults.
 - **AP on CDP, missing on WLC/CatC before stage 09:** expected. Stage 08
   does not program `Gi1/0/2`. After the composite deploy, confirm trunk
   native 10, VLAN 10 + NVE up, AP DHCP, then CAPWAP to `198.18.5.103`.

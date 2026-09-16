@@ -36,12 +36,6 @@ wireless_family_markers:
 #   -e force_wireless_provisioning=false
 force_wireless_provisioning: true
 
-# Re-run only Step G (POST /wirelessAccessPoints/provision) when CatC already
-# reports provisioningStatus true but the 9800 still has Tag Source Default.
-# Does not PUT the fabric switches and does not re-provision the WLC.
-#   -e force_ap_provision=true -e force_wireless_provisioning=false
-force_ap_provision: false
-
 # RF profile the AP pass (tasks/provision_accesspoints.yml) provisions an access
 # point with when nothing more specific applies.
 #

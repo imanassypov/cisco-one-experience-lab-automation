@@ -5,11 +5,13 @@
     dest: "{{ script_server_venv_path }}/requirements.yml"
     mode: "0644"
 
+# --force is required: without it ansible-galaxy skips a collection that is
+# already present at any version, so a bumped pin is silently never applied.
 - name: Install pinned Ansible collections with the venv ansible-galaxy
   ansible.builtin.command:
     cmd: >-
       {{ script_server_venv_path }}/bin/ansible-galaxy collection install
-      -r {{ script_server_venv_path }}/requirements.yml
+      -r {{ script_server_venv_path }}/requirements.yml --force
   register: script_server_galaxy
   changed_when: >-
     'Nothing to do.' not in script_server_galaxy.stdout

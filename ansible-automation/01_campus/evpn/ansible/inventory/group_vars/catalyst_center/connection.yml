@@ -95,6 +95,11 @@ catc_template_summary_maxchar: 1024
 
 # Provision devices (stage 8)
 force_reprovision: false
+# The WLC pass forces by default so a plain 08 re-asserts controller intent.
+# force_reprovision stays false so the fabric switches are not PUT. The AP pass
+# has no force flag — it always re-asserts, which is the only way to repair an
+# AP that drifted back onto default tags.
+force_wireless_provisioning: true
 task_poll_retries: 60
 task_poll_delay: 10
 # Wireless controllers are provisioned in a second pass, after the wired one.
@@ -102,20 +107,17 @@ task_poll_delay: 10
 # APs whenever a controller's managed AP locations change, so a run that only
 # needs to touch switches can skip it.
 wireless_provision_enabled: true
-# Access points are named and site-assigned in a third pass, after the
-# controllers. Set false to leave them alone: assigning a site provisions the
-# AP and reboots it, and it takes 1-3 minutes to rejoin.
+# Access points are named, site-assigned and provisioned in a third pass, after
+# the controllers. Set false to leave them alone: provisioning an AP can reboot
+# it, and it takes 1-3 minutes to rejoin.
 #
-# This was briefly off because the pass drove the site assignment through
-# accesspoint_workflow_manager, which validates the AP's controller against
-# the SDA endpoint GET sda/get_device_info and answers 400 "does not have any
-# fabric role assigned" for the non-fabric WLC in this lab. The pass now uses
-# assign_device_to_site for that step and never reaches the fabric check.
+# The pass uses accesspoint_workflow_manager for naming only. Given a site key
+# that module validates the AP's controller against the SDA endpoint
+# GET sda/get_device_info, which answers 400 "does not have any fabric role
+# assigned" for the non-fabric WLC in this lab and aborts the play. Site
+# assignment therefore uses assign_device_to_site, and the provision itself is
+# a raw POST /dna/intent/api/v1/wirelessAccessPoints/provision.
 ap_provision_enabled: true
-# force_ap_provision is a role default (false). Use it as an extra when CatC
-# already shows the AP Success but the 9800 still has Tag Source Default:
-#   -e force_ap_provision=true -e force_wireless_provisioning=false
-# Do not set force_reprovision for that case.
 
 # Deploy composite (stage 9)
 force_push_template: true
