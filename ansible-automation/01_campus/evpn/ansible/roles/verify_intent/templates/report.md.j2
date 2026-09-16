@@ -1,0 +1,98 @@
+# Stage 10 — Intent verification
+
+Generated {{ '%Y-%m-%d %H:%M:%S' | strftime }} UTC by `10_verify_intent.yml`.
+
+Declared intent is compared against live device state collected through
+Catalyst Center Command Runner. Intent comes from `settings.json` and from the
+`DEFN-*.j2` templates **as stored in Catalyst Center**, so this report reflects
+what was actually deployed rather than what the repo currently says.
+
+## Result
+
+| Outcome | Count |
+| --- | --- |
+| Pass | {{ _verify_counts.pass }} |
+| Fail | {{ _verify_counts.fail }} |
+| Not verified | {{ _verify_counts.not_verified }} |
+| Not applicable | {{ _verify_counts.skipped }} |
+
+**{{ 'FAILED' if (_verify_counts.fail | int) > 0 else 'PASSED' }}** —
+{{ _verify_results | length }} check(s) across
+{{ _verify_devices | length }} device(s).
+
+## Devices
+
+| Management IP | Catalyst Center hostname | Family | Role |
+| --- | --- | --- | --- |
+{% for d in _verify_devices %}
+| `{{ d.ip }}` | `{{ d.hostname }}` | {{ d.family }} | {{ d.role }} |
+{% endfor %}
+
+## Intent sources
+
+Fabric definitions read from Catalyst Center Template Programmer:
+
+| Template | Project | Template ID | Last updated |
+| --- | --- | --- | --- |
+{% for t in _defn_templates %}
+| `{{ t.name }}` | {{ t.project }} | `{{ t.id }}` | {{ ('%Y-%m-%d %H:%M' | strftime((t.last_update | int) / 1000)) if (t.last_update | int) > 0 else 'n/a' }} |
+{% endfor %}
+
+From `settings.json`: SSID `{{ _intent_settings.ssid }}`,
+wireless VLANs {{ _intent_settings.wireless_vlans | join(', ') }},
+{{ _intent_settings.access_points | length }} access point(s).
+
+## Checks
+
+{% for dev in _verify_devices %}
+### {{ dev.hostname }} ({{ dev.ip }})
+
+| Check | Status | Expected | Command |
+| --- | --- | --- | --- |
+{% for r in _verify_results | selectattr('device', 'equalto', dev.hostname) %}
+| {{ r.title }} | {{ r.status }} | {{ r.expected_count }} pattern(s) | `{{ r.command }}` |
+{% endfor %}
+
+{% set failures = _verify_results | selectattr('device', 'equalto', dev.hostname) | selectattr('status', 'equalto', 'FAIL') | list %}
+{% if failures %}
+Unmatched expectations:
+
+{% for f in failures %}
+- **{{ f.title }}** (`{{ f.command }}`)
+{% for m in f.missing %}
+  - not found: `{{ m }}`
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% if _verify_blacklisted | length > 0 %}
+## Not verified
+
+Catalyst Center Command Runner refused these commands, so the checks that
+depend on them have no verdict. They are reported, not scored.
+
+| Device | Command | Reason |
+| --- | --- | --- |
+{% for b in _verify_blacklisted %}
+| `{{ b.device }}` | `{{ b.command }}` | {{ b.bucket }} |
+{% endfor %}
+{% endif %}
+
+## Raw command output
+
+{% for host, commands in _cli_output.items() %}
+<details>
+<summary>{{ host }}</summary>
+
+{% for cmd, text in commands.items() %}
+#### `{{ cmd }}`
+
+```text
+{{ text }}
+```
+
+{% endfor %}
+</details>
+
+{% endfor %}

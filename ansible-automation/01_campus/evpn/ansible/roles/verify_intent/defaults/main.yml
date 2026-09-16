@@ -1,0 +1,29 @@
+# =============================================================================
+# verify_intent / defaults/main.yml
+# =============================================================================
+# Knobs for stage 10. Overridable with -e.
+# =============================================================================
+---
+# Command Runner rejects more than five commands per request with
+# "Maximum of 5 commands allowed per request" (verified 2026-09-15), so the
+# collector chunks its command list.
+verify_command_batch_size: 5
+
+# Seconds Command Runner waits on the device. 0 lets Catalyst Center apply its
+# own default (300s per the API docs).
+verify_command_timeout: 0
+
+# Set false to render the report and still exit 0 — useful when demonstrating a
+# known-broken fabric to students.
+verify_fail_on_mismatch: true
+
+# Where the markdown report lands. Relative to the playbook, so it follows the
+# repo's existing evidence/ convention and stays gitignored. NOTE: this is the
+# filesystem of whatever host runs the play, which is normally the Kali script
+# server, not the laptop.
+verify_report_path: "{{ playbook_dir }}/../evidence/stage10-verification.md"
+
+# Templates whose {% set %} blocks carry the fabric intent. Read from Catalyst
+# Center, never from the repo checkout — stage 06 seeds CatC from git or a local
+# folder, and stage 10 must verify what was actually deployed.
+verify_defn_prefix: "DEFN-"

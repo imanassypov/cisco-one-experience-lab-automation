@@ -21,7 +21,7 @@
 #   → 06 templates → 07 profiles → 08 provision → 09 composite deploy
 #
 # Excluded by design:
-#   10_verify_collect_facts.yml — read-only SSH evidence collection; on demand
+#   10_verify_intent.yml — read-only intent verification via Command Runner; on demand
 #
 # Run: ansible-playbook playbooks/00_site_deploy.yml
 # =============================================================================

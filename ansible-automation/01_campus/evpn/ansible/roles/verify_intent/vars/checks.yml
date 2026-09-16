@@ -1,0 +1,242 @@
+# ============================================================================
+# verify_intent / vars/checks.yml
+# ============================================================================
+# The commands to collect, and the checks to run against them.
+#
+# Each check produces one row per in-scope device. Fields:
+#   id        — stable identifier, used in the report
+#   title     — human wording
+#   scope     — switch | wlc
+#   command   — which collected output to search
+#   expect    — Jinja expression returning a LIST of regexes, all of which must
+#               match the output for the device to pass. Evaluated per device
+#               with `host` (the CatC FQDN) in scope, alongside _intent_fabric
+#               and _intent_settings.
+#   skip_when — optional Jinja expression; true means the check does not apply
+#               to that device (for example L3OUT only exists on the border).
+#
+# Regexes are deliberately loose on whitespace: IOS pads columns differently
+# across platforms and software versions, and this stage verifies intent, not
+# formatting.
+# ============================================================================
+---
+
+# Six switch commands, three controller commands. Command Runner caps a request
+# at five, so run_commands.yml chunks these.
+verify_commands:
+  switch:
+    - show running-config
+    - show vrf
+    - show vlan brief
+    - show nve peers
+    - show bgp l2vpn evpn summary
+    - show ip interface brief
+  wlc:
+    - show wlan summary
+    - show ap tag summary
+    - show ap summary
+
+verify_checks:
+  # ── Fabric intent, from the DEFN templates ─────────────────────────────
+  - id: vrf_defined
+    title: VRFs defined
+    scope: switch
+    command: show vrf
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+        {%- set ns.r = ns.r + ['(?m)^\s*' ~ (_vrf_by_id[vid].name | regex_escape) ~ '\s'] -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: vrf_rd
+    title: VRF route distinguishers
+    scope: switch
+    command: show vrf
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- set lo = _intent_fabric.loop_underlay.get(host, '') -%}
+      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+        {%- set ns.r = ns.r + [(lo ~ ':' ~ vid) | regex_escape] -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: l3_vlans
+    title: L3VNI transit VLANs present
+    scope: switch
+    command: show vlan brief
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+        {%- set ns.r = ns.r + ['(?m)^' ~ (_vrf_by_id[vid].l3_vlan) ~ '\s'] -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: overlay_vlans
+    title: Tenant overlay VLANs present
+    scope: switch
+    command: show vlan brief
+    # FABRIC-OVERLAY.j2 skips the L2 sections on SPINE and BORDER, so only
+    # CLIENT nodes carry tenant VLANs and SVIs.
+    skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for o in _intent_fabric.overlay -%}
+        {%- for vid in o.vlan_ids -%}
+          {%- set ns.r = ns.r + ['(?m)^' ~ vid ~ '\s'] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: l3vni_configured
+    title: L3VNI to VLAN mapping in running-config
+    scope: switch
+    command: show running-config
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
+        {%- set ns.r = ns.r + ['member\s+vni\s+' ~ _vrf_by_id[vid].l3_vni] -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: loopback0
+    title: Underlay loopback address
+    scope: switch
+    command: show running-config
+    expect: >-
+      {{ ['ip\s+address\s+'
+          ~ (_intent_fabric.loop_underlay.get(host, '') | regex_escape)
+          ~ '\s+255\.255\.255\.255'] }}
+
+  - id: bgp_asn
+    title: BGP autonomous system
+    scope: switch
+    command: show running-config
+    expect: "{{ ['router\\s+bgp\\s+' ~ _intent_fabric.bgp_asn] }}"
+
+  - id: nve_peers
+    title: NVE peers established to the other fabric nodes
+    scope: switch
+    command: show nve peers
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for h, ip in _intent_fabric.loop_underlay.items() -%}
+        {%- if h != host -%}
+          {%- set ns.r = ns.r + [(ip | regex_escape) ~ '[\s\S]{0,200}?UP'] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: evpn_sessions
+    title: EVPN sessions up to the route reflector
+    scope: switch
+    command: show bgp l2vpn evpn summary
+    # The RR peers everyone else; on the RR itself the clients appear instead.
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- set rrs = _intent_fabric.node_roles.get('RR', []) -%}
+      {%- if host in rrs -%}
+        {%- for h, ip in _intent_fabric.loop_underlay.items() -%}
+          {%- if h != host -%}
+            {%- set ns.r = ns.r + ['(?m)^' ~ (ip | regex_escape) ~ '\s+\d+\s+\d+.*\s\d+$'] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- else -%}
+        {%- for rr in rrs -%}
+          {%- set ns.r = ns.r + ['(?m)^'
+                ~ (_intent_fabric.loop_underlay.get(rr, '') | regex_escape)
+                ~ '\s+\d+\s+\d+.*\s\d+$'] -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{ ns.r }}
+
+  - id: overlay_svis
+    title: Tenant SVIs present with the declared address
+    scope: switch
+    command: show running-config
+    skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for o in _intent_fabric.overlay -%}
+        {%- for vid, v in o.vlans.items() -%}
+          {%- set ns.r = ns.r + ['ip\s+address\s+'
+                ~ (v.ipaddr | regex_escape)] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: dhcp_helper
+    title: DHCP helper on tenant SVIs
+    scope: switch
+    command: show running-config
+    skip_when: "{{ host not in _intent_fabric.node_roles.get('CLIENT', []) }}"
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for o in _intent_fabric.overlay -%}
+        {%- for vid, v in o.vlans.items() -%}
+          {%- if v.dhcp_helper | default('') -%}
+            {%- set ns.r = ns.r + ['helper-address\s+.*'
+                  ~ (v.dhcp_helper | regex_escape)] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.r | unique }}
+
+  - id: client_ports
+    title: Client-facing ports configured
+    scope: switch
+    command: show running-config
+    skip_when: "{{ host not in _intent_fabric.client_ports }}"
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for p in _intent_fabric.client_ports.get(host, []) -%}
+        {%- set ns.r = ns.r + ['interface\s+' ~ (p.port | regex_escape)] -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  - id: l3out_neighbours
+    title: L3OUT BGP neighbours on the border
+    scope: switch
+    command: show running-config
+    skip_when: "{{ host not in _intent_fabric.l3out_nodes }}"
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for l in _intent_fabric.l3out -%}
+        {%- if l.node == host -%}
+          {%- for i in l.interfaces -%}
+            {%- set ns.r = ns.r + ['neighbor\s+' ~ (i.neighbour | regex_escape)
+                  ~ '\s+remote-as\s+' ~ l.neighbour_asn] -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.r }}
+
+  # ── Wireless intent, from settings.json ────────────────────────────────
+  - id: wlan_ssid
+    title: SSID provisioned on the controller
+    scope: wlc
+    command: show wlan summary
+    expect: "{{ [_intent_settings.ssid | regex_escape] }}"
+
+  - id: ap_joined
+    title: Access points joined
+    scope: wlc
+    command: show ap summary
+    expect: >-
+      {{ _intent_settings.access_points | map(attribute='name')
+         | select('ne', '') | map('regex_escape') | list }}
+
+  - id: ap_tag_source
+    title: Access point on Catalyst Center tags, not factory defaults
+    scope: wlc
+    command: show ap tag summary
+    # Tag Source Static is what proves stage 08 provisioned the AP: an AP left
+    # on default-policy-tag reads Default and serves no SSID.
+    expect: >-
+      {%- set ns = namespace(r=[]) -%}
+      {%- for ap in _intent_settings.access_points -%}
+        {%- if ap.name -%}
+          {%- set ns.r = ns.r + [(ap.name | regex_escape) ~ '[\s\S]{0,200}?Static'] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.r }}

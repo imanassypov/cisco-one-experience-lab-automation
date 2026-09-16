@@ -1,0 +1,114 @@
+# ============================================================================
+# verify_intent / tasks/intent_fabric.yml  —  Stage 10.2
+# ============================================================================
+# Turns the DEFN-*.j2 bodies fetched from Catalyst Center into a plain data
+# structure.
+#
+# The DEFN files are pure {% set %} blocks, so concatenating them into a single
+# template puts every variable in one Jinja scope. An epilogue appended last
+# emits the whole lot as JSON. That is why this uses assemble + template rather
+# than Jinja {% import %}: import would need a statically known module name per
+# file, and the file list comes from Catalyst Center at run time.
+#
+# Everything happens in a tempfile directory on whichever host runs the play —
+# normally the Kali script server. Nothing is written into the repo's template
+# folder, which stage 06 syncs wholesale to Catalyst Center.
+#
+# Consumes: _defn_templates (tasks/intent_templates.yml)
+# Produced: _intent_fabric — {vrfs, vrf_to_node, node_roles, loop_underlay,
+#                             client_ports, overlay, l3out, bgp_asn, ...}
+# ============================================================================
+---
+
+- name: Create a working directory for the intent extraction
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: verify-intent
+  register: _intent_tmp
+
+- name: Create the parts directory
+  ansible.builtin.file:
+    path: "{{ _intent_tmp.path }}/parts"
+    state: directory
+    mode: "0700"
+
+# assemble concatenates in filename order, so the index prefix fixes the order
+# and keeps the epilogue (zz-) last. The DEFN files are independent data blocks,
+# so their relative order does not matter — only that they precede the epilogue.
+- name: Write each DEFN body into the parts directory
+  ansible.builtin.copy:
+    content: "{{ item.content_b64 | b64decode }}"
+    dest: "{{ _intent_tmp.path }}/parts/{{ '%02d' | format(idx) }}-{{ item.name }}"
+    mode: "0600"
+  loop: "{{ _defn_templates }}"
+  loop_control:
+    label: "{{ item.name }}"
+    index_var: idx
+
+# copy with src: (not content:) never passes the file through the templar, so
+# the epilogue's own Jinja survives intact.
+- name: Add the JSON-emitting epilogue
+  ansible.builtin.copy:
+    src: zz-defn-extract-epilogue.j2
+    dest: "{{ _intent_tmp.path }}/parts/zz-defn-extract-epilogue.j2"
+    mode: "0600"
+
+- name: Assemble the extractor template
+  ansible.builtin.assemble:
+    src: "{{ _intent_tmp.path }}/parts"
+    dest: "{{ _intent_tmp.path }}/extract.j2"
+    mode: "0600"
+
+- name: Render the fabric intent to JSON
+  ansible.builtin.template:
+    src: "{{ _intent_tmp.path }}/extract.j2"
+    dest: "{{ _intent_tmp.path }}/intent.json"
+    mode: "0600"
+
+- name: Read the rendered intent
+  ansible.builtin.slurp:
+    src: "{{ _intent_tmp.path }}/intent.json"
+  register: _intent_raw
+
+- name: Build the fabric intent fact
+  ansible.builtin.set_fact:
+    _intent_fabric: "{{ _intent_raw.content | b64decode | from_json }}"
+
+- name: --DEBUG-- Assembled extractor and rendered intent
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg:
+      rendered: "{{ _intent_raw.content | b64decode }}"
+      parts: "{{ _defn_templates | map(attribute='name') | list }}"
+
+- name: --DEBUG-- Extracted fabric intent
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _intent_fabric
+
+- name: Assert the extraction produced usable intent
+  ansible.builtin.assert:
+    that:
+      - _intent_fabric.vrfs | length > 0
+      - _intent_fabric.loop_underlay | length > 0
+    fail_msg: >-
+      The DEFN templates rendered no VRFs or no underlay loopbacks. Either the
+      bodies in Catalyst Center are not the expected set-block definitions, or
+      they failed to render. Re-run with -e catc_debug=true to see the parsed
+      structure, and check
+      {{ _defn_templates | map(attribute='name') | join(', ') }}.
+    success_msg: >-
+      Fabric intent: {{ _intent_fabric.vrfs | length }} VRF(s),
+      {{ _intent_fabric.loop_underlay | length }} underlay loopback(s),
+      ASN {{ _intent_fabric.bgp_asn }}.
+
+- name: Remove the working directory
+  when: not (catc_debug | default(false) | bool)
+  ansible.builtin.file:
+    path: "{{ _intent_tmp.path }}"
+    state: absent
+
+- name: --DEBUG-- Working directory retained for inspection
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: "Extractor left at {{ _intent_tmp.path }}/extract.j2"

@@ -1,0 +1,162 @@
+# ============================================================================
+# verify_intent / tasks/intent_templates.yml  —  Stage 10.1
+# ============================================================================
+# Downloads the DEFN-*.j2 template bodies from Catalyst Center Template
+# Programmer.
+#
+# The repo checkout is deliberately NOT read. Stage 06 seeds Catalyst Center
+# from either git or a local folder depending on template_source; stage 10 must
+# verify what Catalyst Center actually holds, because that is what stage 09
+# deployed. A DEFN file edited locally and never synced therefore cannot
+# produce a false pass, and this stage works from a checkout that has no
+# templates in it at all.
+#
+# Variables read from parent play scope:
+#   settings_data — settings.json (catc_common.load_settings)
+#   _catc_token / dnac_host / dnac_port / dnac_verify
+#
+# Produced:
+#   _defn_templates — [{name, id, version, last_update, content_b64}]
+#                     content is carried base64-encoded so the raw Jinja never
+#                     passes back through Ansible's templar
+# ============================================================================
+---
+
+# ── Step A: Which Template Programmer projects hold this site's intent ────
+#
+# settings.json names the project on every Day-N template entry, so the same
+# field that tells stage 06 where to push tells stage 10 where to read.
+#
+# Example
+#   In : settings_data.project[].network_profile.DayNTemplateNames = [
+#          { "TemplateName": "BGP-EVPN-BUILD.j2", "Project": "Site-105", ... } ]
+#   Out: _verify_projects = ["Site-105"]
+- name: Collect the Template Programmer projects named in settings.json
+  ansible.builtin.set_fact:
+    _verify_projects: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- for t in (entry.network_profile | default({})).DayNTemplateNames | default([]) -%}
+          {%- if t.Project is defined and t.Project and t.Project not in ns.result -%}
+            {%- set ns.result = ns.result + [t.Project] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: Assert settings.json names at least one project
+  ansible.builtin.assert:
+    that: _verify_projects | length > 0
+    fail_msg: >-
+      No network_profile.DayNTemplateNames[].Project in settings.json, so there
+      is no Catalyst Center project to read the fabric intent from.
+
+- name: --DEBUG-- Template Programmer projects
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _verify_projects
+
+# ── Step B: List the templates in those projects ──────────────────────────
+#
+# The project listing carries its templates inline, which saves a call per
+# project and gives both the template id and its name in one response.
+- name: List Template Programmer projects
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/template-programmer/project"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _project_result
+
+# Example
+#   In : _project_result.json = [
+#          { "name": "Site-105", "id": "b0f...",
+#            "templates": [ {"name": "DEFN-VRF.j2", "id": "c26..."},
+#                           {"name": "FABRIC-VRF.j2", "id": "d31..."} ] } ]
+#        verify_defn_prefix = "DEFN-"
+#   Out: _defn_index = [ {"name": "DEFN-VRF.j2", "id": "c26...",
+#                         "project": "Site-105"} ]
+# FABRIC-*.j2 are skipped: they render configuration, they do not declare it.
+- name: Index the DEFN templates in those projects
+  ansible.builtin.set_fact:
+    _defn_index: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for p in (_project_result.json | default([])) -%}
+        {%- if p.name in _verify_projects -%}
+          {%- for t in p.templates | default([]) -%}
+            {%- if t.name is defined and t.name.startswith(verify_defn_prefix) -%}
+              {%- set ns.result = ns.result + [{'name': t.name, 'id': t.id,
+                                                'project': p.name}] -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- DEFN template index
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _defn_index
+
+# An empty index means stage 06 never ran, or ran against a different project.
+# Failing here beats extracting an empty intent and reporting every check as a
+# pass against nothing.
+- name: Assert the projects contain DEFN templates
+  ansible.builtin.assert:
+    that: _defn_index | length > 0
+    fail_msg: >-
+      No {{ verify_defn_prefix }}*.j2 templates in Catalyst Center project(s)
+      {{ _verify_projects | join(', ') }}. Run stage 06 (06_template_sync.yml)
+      first — stage 10 reads the fabric intent from what Catalyst Center holds,
+      not from the repo checkout.
+    success_msg: >-
+      {{ _defn_index | length }} DEFN template(s) to read from
+      {{ _verify_projects | join(', ') }}.
+
+# ── Step C: Download each body ────────────────────────────────────────────
+- name: Fetch the DEFN template bodies
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/template-programmer/template/{{ item.id }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ _defn_index }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _defn_fetch
+
+# content is base64-encoded on the way in. The bodies are raw Jinja; carrying
+# them as plain facts risks Ansible's templar evaluating them on use, which
+# would silently blank every {% set %} and leave the intent empty.
+#
+# version and last_update go into the report so the verdict can be traced to an
+# exact deployed template revision.
+- name: Build the DEFN template set
+  ansible.builtin.set_fact:
+    _defn_templates: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for r in _defn_fetch.results -%}
+        {%- set versions = r.json.versionsInfo | default([]) -%}
+        {%- set ns.result = ns.result + [{
+              'name':        r.item.name,
+              'id':          r.item.id,
+              'project':     r.item.project,
+              'version':     (versions | map(attribute='version') | list | last)
+                             | default(r.json.version | default(''), true) | string,
+              'last_update': (versions | map(attribute='versionTime') | list | last)
+                             | default(r.json.lastUpdateTime | default(0), true),
+              'content_b64': r.json.templateContent | default('') | b64encode
+            }] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- DEFN templates fetched
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: >-
+      {{ _defn_templates | map(attribute='name') | zip(_defn_templates
+         | map(attribute='version')) | map('join', ' v') | list }}

@@ -1,0 +1,90 @@
+# ============================================================================
+# verify_intent / tasks/intent_settings.yml  —  Stage 10.3
+# ============================================================================
+# The half of the intent that settings.json owns: wireless and device lists.
+#
+# settings_data has already been token-substituted by catc_common.load_settings,
+# so lab.wireless_ssid reads PSEUDOCO-POD12 rather than PSEUDOCO-POD{POD}, and
+# access_points[].mac_address holds a real MAC. An entry whose {APn_MAC} token
+# was never filled is dropped, exactly as stage 08 drops it.
+#
+# Produced:
+#   _intent_settings — {ssid, wireless_vlans[], access_points[], wlc_ips[],
+#                       switch_ips[]}
+# ============================================================================
+---
+
+# Example
+#   In : settings_data.lab.wireless_ssid = "PSEUDOCO-POD12"
+#        project[].wireless_design.interfaces = [ {"vlan_id": 10}, {"vlan_id": 101} ]
+#        project[].access_points = [ {"ap_name": "SITE-105-AP-1",
+#                                     "mac_address": "08:4f:a9:50:f0:28"} ]
+#        project[].network_profile.DayNTemplateNames[].TemplateTarget
+#          = ["172.30.255.1","172.30.255.2","172.30.255.3"]
+#        project[].wireless_controller present, device_list = "198.18.5.103"
+#   Out: _intent_settings = {
+#          "ssid": "PSEUDOCO-POD12",
+#          "wireless_vlans": ["10","101","102"],
+#          "access_points": [{"name": "SITE-105-AP-1",
+#                             "mac": "08:4f:a9:50:f0:28"}],
+#          "switch_ips": ["172.30.255.1","172.30.255.2","172.30.255.3"],
+#          "wlc_ips":    ["198.18.5.103"] }
+#
+# switch_ips comes from TemplateTarget rather than device_list: TemplateTarget is
+# what stage 09 actually deployed the fabric templates to, so it is the list
+# whose configuration this stage can hold to the DEFN intent. device_list also
+# carries the controller, which gets no fabric config at all.
+- name: Derive the intent declared in settings.json
+  ansible.builtin.set_fact:
+    _intent_settings: >-
+      {%- set ns = namespace(vlans=[], aps=[], switches=[], wlcs=[]) -%}
+      {%- for entry in settings_data.project -%}
+        {%- for i in (entry.wireless_design | default({})).interfaces | default([]) -%}
+          {%- if i.vlan_id is defined and (i.vlan_id | string) not in ns.vlans -%}
+            {%- set ns.vlans = ns.vlans + [i.vlan_id | string] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {%- for ap in entry.access_points | default([]) -%}
+          {%- if '{' not in (ap.mac_address | default('')) -%}
+            {%- set ns.aps = ns.aps + [{'name': ap.ap_name | default(''),
+                                        'mac':  ap.mac_address | lower}] -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {%- for t in (entry.network_profile | default({})).DayNTemplateNames | default([]) -%}
+          {%- for ip in t.TemplateTarget | default([]) -%}
+            {%- if ip not in ns.switches -%}
+              {%- set ns.switches = ns.switches + [ip] -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {%- if entry.wireless_controller is defined and entry.wireless_controller -%}
+          {%- for ip in (entry.device_list | default('')).split(',')
+                | map('trim') | reject('equalto', '') | list -%}
+            {%- if ip not in ns.wlcs -%}
+              {%- set ns.wlcs = ns.wlcs + [ip] -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ {'ssid':           (settings_data.lab | default({})).wireless_ssid | default(''),
+          'wireless_vlans': ns.vlans,
+          'access_points':  ns.aps,
+          'switch_ips':     ns.switches,
+          'wlc_ips':        ns.wlcs} }}
+
+- name: --DEBUG-- Intent declared in settings.json
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _intent_settings
+
+- name: Assert settings.json names devices to verify
+  ansible.builtin.assert:
+    that: _intent_settings.switch_ips | length > 0
+    fail_msg: >-
+      No network_profile.DayNTemplateNames[].TemplateTarget in settings.json, so
+      there are no fabric switches to verify.
+    success_msg: >-
+      {{ _intent_settings.switch_ips | length }} switch(es) and
+      {{ _intent_settings.wlc_ips | length }} controller(s) to verify;
+      SSID '{{ _intent_settings.ssid }}',
+      {{ _intent_settings.access_points | length }} access point(s).

@@ -1,0 +1,195 @@
+# ============================================================================
+# verify_intent / tasks/run_commands.yml  —  Stage 10.5
+# ============================================================================
+# Collects live CLI output through Catalyst Center Command Runner.
+#
+# One request per (role, command batch). Catalyst Center rejects more than five
+# commands per request — "Maximum of 5 commands allowed per request", verified
+# 2026-09-15 — so verify_command_batch_size chunks the list. Devices of the same
+# role go in one request, because deviceUuids is a list.
+#
+# Flow per batch:
+#   POST /dna/intent/api/v1/network-device-poller/cli/read-request → taskId
+#   GET  /dna/intent/api/v1/task/{taskId}  until endTime; progress holds fileId
+#   GET  /dna/intent/api/v1/file/{fileId}  → per-device commandResponses
+#
+# The file is a list of
+#   {deviceUuid, commandResponses: {SUCCESS: {cmd: text}, FAILURE: {}, BLACKLISTED: {}}}
+#
+# FAILURE and BLACKLISTED are treated as hard errors rather than empty output.
+# A check that silently sees no text would otherwise report a pass against
+# nothing, which is the failure mode this whole stage exists to catch.
+#
+# Consumes: _verify_devices, verify_commands (vars/checks.yml)
+# Produced: _cli_output — {hostname: {command: text}}
+#           _verify_blacklisted — [{device, command}] for the report
+# ============================================================================
+---
+
+# Example - two roles, six switch commands, three WLC commands, batch size 5
+#   Out: _verify_batches = [
+#          {"role": "switch", "device_ids": ["7fc...","8ad...","9be..."],
+#           "commands": ["show running-config", "show vrf", "show vlan brief",
+#                        "show nve peers", "show bgp l2vpn evpn summary"]},
+#          {"role": "switch", "device_ids": [...],
+#           "commands": ["show ip interface brief"]},
+#          {"role": "wlc", "device_ids": ["70d..."],
+#           "commands": ["show wlan summary", "show ap tag summary",
+#                        "show ap summary"]} ]
+- name: Build the Command Runner batches
+  ansible.builtin.set_fact:
+    _verify_batches: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for role, commands in verify_commands.items() -%}
+        {%- set ids = _verify_devices | selectattr('role', 'equalto', role)
+              | map(attribute='id') | list -%}
+        {%- if ids | length > 0 -%}
+          {%- for chunk in (commands | batch(verify_command_batch_size | int)) -%}
+            {%- set ns.result = ns.result + [{'role': role, 'device_ids': ids,
+                                              'commands': chunk | list}] -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Command Runner batches
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _verify_batches
+
+- name: Submit each Command Runner batch
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/network-device-poller/cli/read-request"
+    method: POST
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "stage10-verify-{{ item.role }}"
+      description: "Stage 10 intent verification"
+      timeout: "{{ verify_command_timeout | int }}"
+      commands: "{{ item.commands }}"
+      deviceUuids: "{{ item.device_ids }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: [200, 202]
+  loop: "{{ _verify_batches }}"
+  loop_control:
+    label: "{{ item.role }}: {{ item.commands | join(', ') | truncate(70) }}"
+  register: _batch_submit
+
+- name: Assert every batch was accepted
+  ansible.builtin.assert:
+    that: >-
+      {{ _batch_submit.results
+         | map(attribute='json.response.taskId') | select('defined') | list
+         | length == _verify_batches | length }}
+    fail_msg: >-
+      Command Runner did not return a taskId for every batch.
+      Responses: {{ _batch_submit.results | map(attribute='json') | list | to_json | truncate(500) }}
+
+- name: Poll each Command Runner task
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/task/{{ item.json.response.taskId }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ _batch_submit.results }}"
+  loop_control:
+    label: "{{ item.item.role }}: {{ item.item.commands | join(', ') | truncate(50) }}"
+  register: _batch_task
+  until: >-
+    (_batch_task.json.response | default({})).endTime is defined
+    or (_batch_task.json.response | default({})).isError | default(false) | bool
+  retries: "{{ task_poll_retries | int }}"
+  delay: "{{ task_poll_delay | int }}"
+
+- name: Assert no Command Runner task errored
+  ansible.builtin.assert:
+    that: >-
+      {{ _batch_task.results
+         | map(attribute='json.response.isError') | select('defined')
+         | select('equalto', true) | list | length == 0 }}
+    fail_msg: >-
+      A Command Runner task reported an error:
+      {{ _batch_task.results | map(attribute='json.response') | list | to_json | truncate(500) }}
+
+# progress is a JSON string, not an object — {"fileId":"ffd62f6d-..."}.
+- name: Download each result file
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/file/{{ (item.json.response.progress | from_json).fileId }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+    return_content: true
+  loop: "{{ _batch_task.results }}"
+  loop_control:
+    label: "{{ item.item.item.role }}"
+  register: _batch_file
+
+# Example
+#   In : one file = [{"deviceUuid": "7fc89b07-...",
+#                     "commandResponses": {"SUCCESS": {"show vrf": "show vrf\n..."},
+#                                          "FAILURE": {}, "BLACKLISTED": {}}}]
+#        _verify_devices maps that uuid to Site_105-Leaf1.corp.pseudoco.com
+#   Out: _cli_output["Site_105-Leaf1.corp.pseudoco.com"]["show vrf"] = "show vrf\n..."
+#
+# Keyed by hostname because that is what the DEFN intent is keyed by.
+- name: Normalise the collected output
+  ansible.builtin.set_fact:
+    _cli_output: >-
+      {%- set uuid_to_host = {} -%}
+      {%- for d in _verify_devices -%}
+        {%- set _ = uuid_to_host.update({d.id: d.hostname}) -%}
+      {%- endfor -%}
+      {%- set out = {} -%}
+      {%- for f in _batch_file.results -%}
+        {%- for entry in (f.content | from_json) -%}
+          {%- set host = uuid_to_host.get(entry.deviceUuid, entry.deviceUuid) -%}
+          {%- set existing = out.get(host, {}) -%}
+          {%- set _ = existing.update(entry.commandResponses.SUCCESS | default({})) -%}
+          {%- set _ = out.update({host: existing}) -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ out }}
+    _verify_blacklisted: >-
+      {%- set uuid_to_host = {} -%}
+      {%- for d in _verify_devices -%}
+        {%- set _ = uuid_to_host.update({d.id: d.hostname}) -%}
+      {%- endfor -%}
+      {%- set ns = namespace(result=[]) -%}
+      {%- for f in _batch_file.results -%}
+        {%- for entry in (f.content | from_json) -%}
+          {%- set host = uuid_to_host.get(entry.deviceUuid, entry.deviceUuid) -%}
+          {%- for bucket in ['BLACKLISTED', 'FAILURE'] -%}
+            {%- for cmd in (entry.commandResponses[bucket] | default({})).keys() -%}
+              {%- set ns.result = ns.result + [{'device': host, 'command': cmd,
+                                                'bucket': bucket}] -%}
+            {%- endfor -%}
+          {%- endfor -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Collected commands per device
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    msg: >-
+      {{ _cli_output | dict2items
+         | map(attribute='key') | zip(_cli_output | dict2items
+         | map(attribute='value') | map('list')) | list }}
+
+# A rejected command means the affected checks cannot be evaluated. Report it
+# loudly here and again in the markdown, so partial coverage is never mistaken
+# for a clean run.
+- name: Report commands Catalyst Center refused
+  when: _verify_blacklisted | length > 0
+  ansible.builtin.debug:
+    msg: >-
+      Command Runner refused {{ _verify_blacklisted | length }} command(s);
+      the checks that depend on them will be reported as NOT VERIFIED:
+      {{ _verify_blacklisted | map(attribute='command') | unique | join(', ') }}

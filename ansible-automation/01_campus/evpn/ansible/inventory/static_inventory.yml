@@ -1,6 +1,9 @@
 ---
-# Static Ansible inventory — the only inventory source for this project:
-# the Catalyst Center API endpoint and the Site 105 EVPN fabric switches.
+# Static Ansible inventory — the only inventory source for this project.
+# Every stage talks to Catalyst Center over its API, so localhost is the only
+# host. Stage 10 used to SSH to the Site 105 switches; it now collects their
+# CLI through Catalyst Center Command Runner, so no device credentials or
+# reachability to 198.18.128.x are needed from the control node.
 # MCP bastion/Splunk: utils/mcp-ssh-server/inventory/static_hosts.yml (not Ansible).
 all:
   children:
@@ -12,22 +15,3 @@ all:
           ansible_host: localhost
           ansible_connection: local
           ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-    campus_evpn:
-      vars:
-        ansible_connection: ansible.netcommon.network_cli
-        ansible_network_os: cisco.ios.ios
-        ansible_become: false
-        ansible_user: "{{ lab_access[inventory_hostname].username }}"
-        ansible_password: "{{ lab_access[inventory_hostname].password }}"
-      children:
-        evpn_leaves:
-          hosts:
-            Site_105-Leaf1:
-              ansible_host: 198.18.128.22
-            Site_105-Leaf2:
-              ansible_host: 198.18.128.23
-        evpn_border_spine:
-          hosts:
-            Site_105-Border-Spine:
-              ansible_host: 198.18.128.24

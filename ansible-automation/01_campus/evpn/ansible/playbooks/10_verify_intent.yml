@@ -1,0 +1,65 @@
+---
+# =============================================================================
+# 10_verify_intent.yml  —  Pipeline stage 10
+# =============================================================================
+# Verifies that what the fabric is actually running matches what the pipeline
+# declared, and writes a markdown report.
+#
+# Intent comes from two places:
+#   settings.json                — site, wireless SSID/VLANs, access points
+#   DEFN-*.j2 in Catalyst Center — VRFs, VNIs, loopbacks, roles, client ports
+#
+# The DEFN bodies are read from Catalyst Center Template Programmer, not from
+# the repo. Stage 06 seeds Catalyst Center from git or a local folder depending
+# on template_source; this stage verifies what was actually deployed, so a
+# locally edited template that was never synced cannot produce a false pass,
+# and the stage works from a checkout with no templates in it at all.
+#
+# Live state is collected through Catalyst Center Command Runner
+# (POST /dna/intent/api/v1/network-device-poller/cli/read-request), so stage 10
+# needs no SSH to the switches. It runs from the Kali script server like every
+# other stage, and works even when the path to the fabric management addresses
+# is down.
+#
+# Role: verify_intent
+#   10.1 intent_templates — DEFN bodies from Catalyst Center
+#   10.2 intent_fabric    — render them to data
+#   10.3 intent_settings  — intent declared in settings.json
+#   10.4 resolve_devices  — management IP to device UUID
+#   10.5 run_commands     — Command Runner, batched 5 commands per request
+#   10.6 evaluate         — check declared against observed
+#   10.7 report           — markdown + console summary, then fail on mismatch
+#
+# Sourced (pre_tasks, order matters):
+#   catc_common tasks_from: auth_token    → _catc_token
+#   catc_common tasks_from: load_settings → settings_data
+#
+# Produced:
+#   evidence/stage10-verification.md on the host that ran the play — Kali when
+#   driven from the script server, not the laptop. Gitignored.
+#
+# Read-only: issues nothing but GETs and Command Runner read requests.
+#
+# Depends on: stages 01-09
+#
+# Run: ansible-playbook playbooks/10_verify_intent.yml
+#      ansible-playbook playbooks/10_verify_intent.yml -e catc_debug=true
+#      ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
+# =============================================================================
+- name: Verify deployed fabric against declared intent
+  hosts: catalyst_center
+  gather_facts: false
+  vars:
+    catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
+  pre_tasks:
+    - name: Obtain Catalyst Center auth token
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: auth_token
+
+    - name: Load settings.json
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: load_settings
+  roles:
+    - role: verify_intent

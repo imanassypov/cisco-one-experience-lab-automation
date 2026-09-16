@@ -246,17 +246,12 @@ You should see:
   |--@ungrouped:
   |--@catalyst_center:
   |  |--catalyst_center_api
-  |--@campus_evpn:
-  |  |--@evpn_leaves:
-  |  |  |--Site_105-Leaf1
-  |  |  |--Site_105-Leaf2
-  |  |--@evpn_border_spine:
-  |  |  |--Site_105-Border-Spine
 ```
 
-`catalyst_center` is `localhost` driving the Catalyst Center REST API and is the
-target of stages `01`–`09`. `campus_evpn` is the three Site 105 switches over
-SSH, used only by stage `10`.
+`catalyst_center` is `localhost` driving the Catalyst Center REST API, and it is
+the target of every stage. There are no device hosts: stage `10` collects switch
+and controller CLI through Catalyst Center Command Runner rather than over SSH,
+so the control node never needs to reach `198.18.128.22–24`.
 
 Then run the first stage:
 

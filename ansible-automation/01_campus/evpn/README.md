@@ -75,7 +75,7 @@ ansible-playbook playbooks/06_template_sync.yml
 
 ## Post-deploy verify
 
-This playbook does **not** build the fabric. After CatC has provisioned Site 105, use it for `ios_command` evidence.
+This playbook does **not** build the fabric. After CatC has provisioned Site 105, use it to check the running fabric against the declared intent.
 
 | Inventory name | Role | SSH mgmt | CatC / Loopback0 |
 | --- | --- | --- | --- |
@@ -83,13 +83,16 @@ This playbook does **not** build the fabric. After CatC has provisioned Site 105
 | Site_105-Leaf2 | Leaf | 198.18.128.23 | 172.30.255.2 |
 | Site_105-Border-Spine | Border + spine | 198.18.128.24 | 172.30.255.3 |
 
+The SSH column is for manual troubleshooting only — stage 10 reaches these
+devices by their CatC loopbacks through Command Runner, not over SSH.
+
 | Playbook | Purpose |
 | --- | --- |
-| `playbooks/10_verify_collect_facts.yml` | Version, interfaces, OSPF, BGP EVPN, NVE, VRF, VLAN → `ansible/evidence/` |
+| `playbooks/10_verify_intent.yml` | Compares VRFs, VNIs, loopbacks, EVPN/NVE state, SVIs, client ports, SSID and AP tags against `settings.json` + the DEFN templates in CatC → `ansible/evidence/stage10-verification.md` |
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook playbooks/10_verify_collect_facts.yml
+ansible-playbook playbooks/10_verify_intent.yml
 ```
 
 `ansible/evidence/` is local output and is gitignored.

@@ -1,0 +1,142 @@
+# ============================================================================
+# verify_intent / tasks/evaluate.yml  —  Stage 10.6
+# ============================================================================
+# Runs every check in vars/checks.yml against the collected CLI output.
+#
+# A check is a list of regexes that must all appear in one command's output on
+# one device. The regexes are built per device from the intent, so the same
+# check definition covers a leaf and the border without branching.
+#
+# Nothing here fails the play; that is report.yml's job, so the operator sees
+# the whole matrix rather than the first problem.
+#
+# Consumes: verify_checks, _cli_output, _intent_fabric, _intent_settings
+# Produced: _verify_results — [{id, title, device, status, missing[], command}]
+#           status is PASS | FAIL | NOT_VERIFIED | SKIPPED
+# ============================================================================
+---
+
+# VRF definitions are a list; the checks need them by id, because
+# DEFN_VRF_TO_NODE maps a device to VRF ids rather than to whole objects.
+#
+# Example
+#   In : _intent_fabric.vrfs = [{"id": "10", "name": "Main", "l3_vlan": "1010",
+#                                "l3_vni": "110010"}, ...]
+#   Out: _vrf_by_id = {"10": {"id": "10", "name": "Main", ...}, ...}
+- name: Index the VRF definitions by id
+  ansible.builtin.set_fact:
+    _vrf_by_id: >-
+      {%- set out = {} -%}
+      {%- for v in _intent_fabric.vrfs -%}
+        {%- set _ = out.update({v.id | string: v}) -%}
+      {%- endfor -%}
+      {{ out }}
+
+# Every (check, device) pair in scope. Only the pairing happens here; the
+# expectations are rendered in the next task, which supplies the per-device
+# `host` they are written against.
+#
+# host is defined empty because merely referencing verify_checks templates every
+# expect expression in it, and they all read `host`. With an empty value they
+# evaluate to empty lists, which this task discards anyway.
+- name: Pair each check with the devices in its scope
+  vars:
+    host: ""
+  ansible.builtin.set_fact:
+    _verify_pairs: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for chk in verify_checks -%}
+        {%- for dev in _verify_devices -%}
+          {%- if dev.role == chk.scope -%}
+            {%- set ns.result = ns.result + [{
+                  'id':      chk.id,
+                  'title':   chk.title,
+                  'device':  dev.hostname,
+                  'command': chk.command}] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+# Rendering one row at a time is what makes `host` available to the expressions
+# in checks.yml. Referencing _chk.expect templates that stored Jinja against the
+# current task vars, so a single check definition yields device-specific regexes.
+- name: Render each check's expectation for its device
+  ansible.builtin.set_fact:
+    _verify_matrix: >-
+      {{ (_verify_matrix | default([]))
+         + [item | combine({'skipped': _skip | bool,
+                            'expect':  [] if (_skip | bool) else _expect})] }}
+  loop: "{{ _verify_pairs }}"
+  loop_control:
+    label: "{{ item.id }} / {{ item.device | regex_replace('\\..*$', '') }}"
+  vars:
+    host: "{{ item.device }}"
+    _chk: "{{ verify_checks | selectattr('id', 'equalto', item.id) | first }}"
+    _skip: "{{ _chk.skip_when | default(false) }}"
+    _expect: "{{ _chk.expect | default([]) }}"
+
+- name: --DEBUG-- Expanded check matrix
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _verify_matrix
+
+# Example - one row
+#   In : row = {"id": "vrf_defined", "device": "Site_105-Leaf1...",
+#               "command": "show vrf",
+#               "expect": ["(?m)^\\s*Main\\s", "(?m)^\\s*PROD\\s"]}
+#        _cli_output[device]["show vrf"] contains both
+#   Out: {"status": "PASS", "missing": []}
+#
+# NOT_VERIFIED is distinct from FAIL on purpose: it means Catalyst Center never
+# gave us the output, so the check has no verdict. Counting that as a pass would
+# hide missing coverage; counting it as a failure would blame the fabric for a
+# Command Runner restriction.
+- name: Evaluate every check
+  ansible.builtin.set_fact:
+    _verify_results: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for row in _verify_matrix -%}
+        {%- set out = (_cli_output.get(row.device, {})).get(row.command, none) -%}
+        {%- if row.skipped -%}
+          {%- set status = 'SKIPPED' -%}
+          {%- set missing = [] -%}
+        {%- elif out is none -%}
+          {%- set status = 'NOT_VERIFIED' -%}
+          {%- set missing = [] -%}
+        {%- elif row.expect | length == 0 -%}
+          {%- set status = 'SKIPPED' -%}
+          {%- set missing = [] -%}
+        {%- else -%}
+          {%- set miss = [] -%}
+          {%- for rx in row.expect -%}
+            {%- if out is not search(rx) -%}
+              {%- set _ = miss.append(rx) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- set status = 'FAIL' if miss | length > 0 else 'PASS' -%}
+          {%- set missing = miss -%}
+        {%- endif -%}
+        {%- set ns.result = ns.result + [{
+              'id':      row.id,
+              'title':   row.title,
+              'device':  row.device,
+              'command': row.command,
+              'status':  status,
+              'expected_count': row.expect | length,
+              'missing': missing}] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Evaluation results
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _verify_results
+
+- name: Summarise the counts
+  ansible.builtin.set_fact:
+    _verify_counts:
+      pass: "{{ _verify_results | selectattr('status', 'equalto', 'PASS') | list | length }}"
+      fail: "{{ _verify_results | selectattr('status', 'equalto', 'FAIL') | list | length }}"
+      not_verified: "{{ _verify_results | selectattr('status', 'equalto', 'NOT_VERIFIED') | list | length }}"
+      skipped: "{{ _verify_results | selectattr('status', 'equalto', 'SKIPPED') | list | length }}"

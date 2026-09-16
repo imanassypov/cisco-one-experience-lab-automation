@@ -1,0 +1,29 @@
+{#- Appended after every DEFN-*.j2 body by tasks/intent_fabric.yml. -#}
+{#- Those files are pure {% set %} blocks, so concatenating them into one     -#}
+{#- template puts every variable in this file's scope. Emitting JSON here is  -#}
+{#- what hands the fabric intent back to Ansible.                             -#}
+{#- Every lookup is defaulted: a DEFN file that does not exist in this project -#}
+{#- must yield an empty value, not an undefined-variable error.               -#}
+{{
+  {
+    "vrfs":                 DEFN_VRF                          | default([]),
+    "vrf_to_node":          DEFN_VRF_TO_NODE                  | default({}),
+    "vrf_border_import_rts": DEFN_VRF_BORDER_IMPORT_RTS       | default([]),
+    "node_roles":           DEFN_NODE_ROLES                   | default({}),
+    "loop_underlay":        DEFN_LOOP_UNDERLAY                | default({}),
+    "loop_name":            DEFN_LOOP_NAME                    | default({}),
+    "loop_overlay":         DEFN_LOOP_OVERLAY                 | default({}),
+    "client_ports":         DEFN_CLIENT_PORTS                 | default({}),
+    "client_port_devices":  DEFN_CLIENT_PORT_DEVICES          | default([]),
+    "l3out":                DEFN_L3OUT                        | default([]),
+    "l3out_nodes":          DEFN_L3OUT_NODES                  | default([]),
+    "overlay":              DEFN_OVERLAY                      | default([]),
+    "bgp_asn":              FABRIC_BGP_ASN                    | default(''),
+    "underlay":             FABRIC_UNDERLAY                   | default(''),
+    "l2vni_offset":         L2VNIOFFSET                       | default(''),
+    "l3vni_offset":         L3VNIOFFSET                       | default(''),
+    "mcast_enable":         DEFN_MCAST_ENABLE                 | default(false),
+    "tunnels":              DEFN_TUNNELS                      | default([]),
+    "telemetry_receiver":   DEFN_TELEMETRY_SPLUNK_RECEIVER_IP | default('')
+  } | to_json
+}}

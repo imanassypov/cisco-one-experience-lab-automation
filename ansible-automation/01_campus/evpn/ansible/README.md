@@ -1503,77 +1503,99 @@ on a live lab.
 
 ---
 
-## Stage 10 — Verify the fabric
+## Stage 10 — Verify intent against the fabric
 
-**Playbook:** `playbooks/10_verify_collect_facts.yml`
+**Playbook:** `playbooks/10_verify_intent.yml`
 **Safety:** Read-only.
 
 ### What it accomplishes
 
-Stage 10 bypasses CatC and SSHs to the three switches at management addresses
-`198.18.128.22–24`. It runs show commands and saves a snapshot under
-`evidence/`, which is gitignored.
+Stage 10 closes the loop: it compares what the pipeline *declared* against what
+the devices are *actually running*, and writes a pass/fail report.
+
+Live state is collected through Catalyst Center **Command Runner**, so the play
+needs no SSH to the switches. It runs from the Kali script server like every
+other stage and keeps working when the path to `198.18.128.22–24` is down.
 
 ### Data read
 
-Stage 10 does not read `settings.json` and does not use the pod number. It reads:
+Intent comes from two places:
 
-- switch names and management IPs from `inventory/static_inventory.yml`
-- SSH usernames/passwords from
-  `lab_access[inventory_hostname]` in the encrypted lab vault
+| Source | What it declares |
+| --- | --- |
+| `settings.json` | Wireless SSID, VLANs, access points, `TemplateTarget[]` device list |
+| `DEFN-*.j2` **in Catalyst Center** | VRFs, L3VNIs, loopbacks, node roles, overlay SVIs, client ports, L3OUT |
+
+The DEFN templates are read from Catalyst Center Template Programmer, **not**
+from the repo checkout. Stage 06 seeds Catalyst Center from git or a local
+folder depending on `template_source`; stage 10 verifies what was actually
+deployed. A DEFN file edited locally and never synced therefore cannot produce
+a false pass, and the stage works from a checkout with no templates in it.
 
 ### APIs and commands
 
-There are no Catalyst Center API calls. The play uses
-`cisco.ios.ios_command` to run:
-
 ```text
-show version
-show ip interface brief
-show ip ospf neighbor
-show ip bgp summary
-show bgp l2vpn evpn summary
-show nve peers
-show vrf brief
-show vlan brief
+GET  /dna/intent/api/v1/template-programmer/project
+GET  /dna/intent/api/v1/template-programmer/template/{id}
+GET  /dna/intent/api/v1/network-device?managementIpAddress=<ip>
+POST /dna/intent/api/v1/network-device-poller/cli/read-request
+GET  /dna/intent/api/v1/task/{taskId}
+GET  /dna/intent/api/v1/file/{fileId}
 ```
+
+Collected per switch: `show running-config`, `show vrf`, `show vlan brief`,
+`show nve peers`, `show bgp l2vpn evpn summary`, `show ip interface brief`.
+Per controller: `show wlan summary`, `show ap tag summary`, `show ap summary`.
+
+> Command Runner rejects more than **five commands per request**, so the role
+> chunks them. Any command Catalyst Center refuses is reported as
+> `NOT VERIFIED` rather than silently passing.
 
 ### Run it
 
 ```bash
-ansible-playbook playbooks/10_verify_collect_facts.yml
+ansible-playbook playbooks/10_verify_intent.yml
 ```
 
-To check only the leaves:
+Report without failing the play, for a known-broken demo fabric:
 
 ```bash
-ansible-playbook playbooks/10_verify_collect_facts.yml --limit evpn_leaves
+ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
 ```
 
 ### Important expected output
 
 ```text
-TASK [Run show commands for underlay and overlay discovery]
-ok: [Site_105-Leaf1]
-ok: [Site_105-Leaf2]
-ok: [Site_105-Border-Spine]
+│ Devices       : 4  (Site_105-Leaf1, Site_105-Leaf2, Site_105-Border-Spine, C9800)
+│ Checks        : 42
+│ Pass          : 36
+│ Fail          : 0
+│ Not verified  : 0
+│ Not applicable: 6
+│ Report        : …/evidence/stage10-verification.md
 ```
 
-Open:
+`Not applicable` is expected: `FABRIC-OVERLAY.j2` skips the L2 sections on
+SPINE and BORDER, so tenant VLAN, SVI and DHCP-helper checks do not apply to
+`Site_105-Border-Spine`, and client-port checks do not apply to a device with
+no `DEFN_CLIENT_PORTS` entry.
+
+The report is written on **the host that ran the play** — Kali when driven from
+the script server, not your laptop:
 
 ```text
-evidence/Site_105-Leaf1.txt
-evidence/Site_105-Leaf2.txt
-evidence/Site_105-Border-Spine.txt
+evidence/stage10-verification.md
 ```
 
-Look for:
+Read it there, or pull it back:
 
-- OSPF neighbors up.
-- EVPN BGP session to the route reflector established.
-- NVE peers up.
-- VRFs Main, PROD, and IOT.
-- Expected L2 and L3 VLANs.
+```bash
+scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage10-verification.md .
+```
+
+It contains the result counts, the device list, which Catalyst Center template
+IDs the intent came from, a per-device check matrix, the exact patterns that
+failed to match, and the raw command output in a collapsible appendix.
 
 ### Where to verify in Catalyst Center
 

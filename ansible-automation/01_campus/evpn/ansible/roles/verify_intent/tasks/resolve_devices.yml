@@ -1,0 +1,92 @@
+# ============================================================================
+# verify_intent / tasks/resolve_devices.yml  —  Stage 10.4
+# ============================================================================
+# Management IP to Catalyst Center device UUID and hostname.
+#
+# The hostname matters as much as the UUID: Catalyst Center reports the FQDN
+# (Site_105-Leaf1.corp.pseudoco.com), which is exactly the key DEFN-VRF.j2 and
+# DEFN-ROLES.j2 use in DEFN_VRF_TO_NODE / DEFN_NODE_ROLES. That is the join
+# between declared intent and observed state.
+#
+# Consumes: _intent_settings.switch_ips / .wlc_ips
+# Produced: _verify_devices — [{ip, id, hostname, family, role}]
+#           role is 'switch' or 'wlc', which selects the command set
+# ============================================================================
+---
+
+- name: Build the lookup target list
+  ansible.builtin.set_fact:
+    _verify_targets: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for ip in _intent_settings.switch_ips -%}
+        {%- set ns.result = ns.result + [{'ip': ip, 'role': 'switch'}] -%}
+      {%- endfor -%}
+      {%- for ip in _intent_settings.wlc_ips -%}
+        {%- set ns.result = ns.result + [{'ip': ip, 'role': 'wlc'}] -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: Look up each device in Catalyst Center inventory
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/network-device?managementIpAddress={{ item.ip }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  loop: "{{ _verify_targets }}"
+  loop_control:
+    label: "{{ item.ip }} ({{ item.role }})"
+  register: _device_lookup
+
+# Example
+#   In : _device_lookup.results[0].json.response[0] = {
+#          "id": "7fc89b07-360b-43b2-80ab-1ef127e28c7b",
+#          "hostname": "Site_105-Leaf1.corp.pseudoco.com",
+#          "family": "Switches and Hubs" }
+#   Out: _verify_devices[0] = { "ip": "172.30.255.1", "role": "switch",
+#          "id": "7fc89b07-...", "hostname": "Site_105-Leaf1.corp.pseudoco.com",
+#          "family": "Switches and Hubs" }
+#
+# A device absent from inventory yields an empty response rather than an error,
+# so it is collected separately and asserted on below.
+- name: Build the device list
+  ansible.builtin.set_fact:
+    _verify_devices: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for r in _device_lookup.results -%}
+        {%- set dev = (r.json.response | default([])) | first | default({}) -%}
+        {%- if dev.id is defined -%}
+          {%- set ns.result = ns.result + [{
+                'ip':       r.item.ip,
+                'role':     r.item.role,
+                'id':       dev.id,
+                'hostname': dev.hostname | default(''),
+                'family':   dev.family   | default('')}] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+    _verify_devices_missing: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for r in _device_lookup.results -%}
+        {%- if (r.json.response | default([])) | length == 0 -%}
+          {%- set ns.result = ns.result + [r.item.ip] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Resolved devices
+  when: catc_debug | default(false) | bool
+  ansible.builtin.debug:
+    var: _verify_devices
+
+- name: Assert every declared device is in Catalyst Center inventory
+  ansible.builtin.assert:
+    that: _verify_devices_missing | length == 0
+    fail_msg: >-
+      Not found in Catalyst Center inventory: {{ _verify_devices_missing | join(', ') }}.
+      Stage 10 verifies what Catalyst Center manages, so an unmanaged device
+      cannot be checked. Confirm stages 04 and 05 completed.
+    success_msg: >-
+      {{ _verify_devices | length }} device(s) resolved:
+      {{ _verify_devices | map(attribute='hostname') | join(', ') }}.

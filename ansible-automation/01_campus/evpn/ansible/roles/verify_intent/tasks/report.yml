@@ -1,0 +1,74 @@
+# ============================================================================
+# verify_intent / tasks/report.yml  —  Stage 10.7
+# ============================================================================
+# Writes the markdown report, prints the console summary, and only then fails.
+#
+# Failing last is deliberate: the operator gets the whole matrix, not the first
+# mismatch. NOT_VERIFIED rows never fail the play — Command Runner refusing a
+# command is not the fabric's fault — but they are counted and listed so partial
+# coverage is never mistaken for a clean run.
+#
+# The report lands on whichever host ran the play. Driven from the Kali script
+# server, that is Kali, not the laptop.
+#
+# Consumes: _verify_results, _verify_counts, _verify_devices, _cli_output,
+#           _defn_templates, _intent_settings, _verify_blacklisted
+# ============================================================================
+---
+
+- name: Ensure the evidence directory exists
+  ansible.builtin.file:
+    path: "{{ verify_report_path | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Write the verification report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ verify_report_path }}"
+    mode: "0644"
+
+- name: Verification summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ ['┌─────────────────────────────────────────────────────────────────┐']
+         + ['│ Devices       : ' + (_verify_devices | length) | string
+            + '  (' + (_verify_devices | map(attribute='hostname')
+            | map('regex_replace', '\..*$', '') | join(', ')) + ')']
+         + ['│ Checks        : ' + (_verify_results | length) | string]
+         + ['│ Pass          : ' + _verify_counts.pass | string]
+         + ['│ Fail          : ' + _verify_counts.fail | string]
+         + ['│ Not verified  : ' + _verify_counts.not_verified | string]
+         + ['│ Not applicable: ' + _verify_counts.skipped | string]
+         + (_verify_results | selectattr('status', 'equalto', 'FAIL')
+            | map(attribute='title')
+            | zip(_verify_results | selectattr('status', 'equalto', 'FAIL')
+                  | map(attribute='device')
+                  | map('regex_replace', '\..*$', ''))
+            | map('join', ' on ') | map('regex_replace', '^', '│   FAIL: ')
+            | list)
+         + ['│ Report        : ' + verify_report_path]
+         + ['└─────────────────────────────────────────────────────────────────┘'] }}
+
+- name: Report that some checks had no verdict
+  when: (_verify_counts.not_verified | int) > 0
+  ansible.builtin.debug:
+    msg: >-
+      {{ _verify_counts.not_verified }} check(s) could not be evaluated because
+      Catalyst Center returned no output for their command. They are listed
+      under "Not verified" in {{ verify_report_path }} and do not fail this run.
+
+- name: Assert the fabric matches the declared intent
+  when: verify_fail_on_mismatch | bool
+  ansible.builtin.assert:
+    that: (_verify_counts.fail | int) == 0
+    fail_msg: >-
+      {{ _verify_counts.fail }} check(s) do not match the declared intent:
+      {{ _verify_results | selectattr('status', 'equalto', 'FAIL')
+         | map(attribute='id') | unique | join(', ') }}.
+      See {{ verify_report_path }} for the expected patterns and the raw
+      command output. Re-run with -e verify_fail_on_mismatch=false to report
+      without failing.
+    success_msg: >-
+      All {{ _verify_counts.pass }} evaluated check(s) match the declared
+      intent. Report: {{ verify_report_path }}

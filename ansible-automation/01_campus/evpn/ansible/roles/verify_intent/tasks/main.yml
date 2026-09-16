@@ -1,0 +1,34 @@
+# ============================================================================
+# verify_intent / tasks/main.yml  —  Pipeline stage 10
+# ============================================================================
+# Orchestration only. Each step is its own task file; see the playbook header
+# for the stage map and the rationale behind reading intent from Catalyst
+# Center rather than from the repo.
+# ============================================================================
+---
+
+# Only vars/main.yml is auto-loaded, and the check catalogue is deliberately in
+# its own file so it can be read without wading through the role's plumbing.
+- name: Load the check definitions
+  ansible.builtin.include_vars: checks.yml
+
+- name: Read the DEFN template bodies from Catalyst Center
+  ansible.builtin.include_tasks: intent_templates.yml
+
+- name: Render the fabric intent
+  ansible.builtin.include_tasks: intent_fabric.yml
+
+- name: Derive the intent declared in settings.json
+  ansible.builtin.include_tasks: intent_settings.yml
+
+- name: Resolve the devices to verify
+  ansible.builtin.include_tasks: resolve_devices.yml
+
+- name: Collect live state through Command Runner
+  ansible.builtin.include_tasks: run_commands.yml
+
+- name: Evaluate the checks
+  ansible.builtin.include_tasks: evaluate.yml
+
+- name: Write the report and fail on mismatch
+  ansible.builtin.include_tasks: report.yml
