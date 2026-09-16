@@ -87,11 +87,17 @@ say "Staging $(hostname) from ${REPO_ROOT}"
 
 PY_VER="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 
-# Cheapest reliable test for a usable venv module: build a throwaway one.
+# Build a throwaway venv and confirm it has pip. Debian splits ensurepip into
+# the pythonX.Y-venv package, so the module can import while still producing a
+# venv with no pip in it - testing only "python -m venv" would miss that.
 venv_works() {
   local probe rc=0
   probe="$(mktemp -d)"
-  "$PYTHON" -m venv "${probe}/v" >/dev/null 2>&1 || rc=1
+  if "$PYTHON" -m venv "${probe}/v" >/dev/null 2>&1; then
+    "${probe}/v/bin/python" -m pip --version >/dev/null 2>&1 || rc=1
+  else
+    rc=1
+  fi
   rm -rf "$probe"
   return "$rc"
 }
@@ -145,9 +151,23 @@ install_missing_packages
 say "Creating the virtualenv at ${VENV}"
 [[ -x "${VENV}/bin/python" ]] || "$PYTHON" -m venv "$VENV"
 
+# A venv left behind by an interrupted run can have bin/python but no pip, and
+# the check above would happily keep it. Repair rather than fail.
+if ! "${VENV}/bin/python" -m pip --version >/dev/null 2>&1; then
+  say "Virtualenv has no pip - repairing"
+  "$PYTHON" -m venv --upgrade-deps "$VENV" >/dev/null 2>&1 \
+    || "${VENV}/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 \
+    || true
+fi
+
+"${VENV}/bin/python" -m pip --version >/dev/null 2>&1 || die "${VENV} has no working pip.
+       Delete it and re-run this script:  rm -rf ${VENV} && ./stage-script-server.sh
+       If it still fails, ensurepip is missing from the system python:
+         sudo apt-get install -y --no-install-recommends python${PY_VER}-venv"
+
 say "Installing pinned Python packages"
-"${VENV}/bin/pip" install --quiet --upgrade pip
-if ! "${VENV}/bin/pip" install --quiet -r "$REQUIREMENTS"; then
+"${VENV}/bin/python" -m pip install --quiet --upgrade pip
+if ! "${VENV}/bin/python" -m pip install --quiet -r "$REQUIREMENTS"; then
   die "pip could not install the pinned packages.
        If it failed building a wheel, this python (${PY_VER}) has no prebuilt
        one and needs a compiler:
