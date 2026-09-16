@@ -44,23 +44,37 @@ wireless VLANs {{ _intent_settings.wireless_vlans | join(', ') }},
 
 ## Checks
 
+Intended values are the expectations derived from `settings.json` and the DEFN
+templates; observed values are the matching text from the device output. The
+regex metacharacters used to match are stripped for readability — the exact
+patterns appear under any failure below.
+
+{% macro readable(rx) -%}
+{{ rx | regex_replace('\\(\\?m\\)', '') | regex_replace('\\(\\?[!=][^)]*\\)', '') | regex_replace('\\[\\\\s\\\\S\\]\\{[^}]*\\}\\??', ' … ') | regex_replace('\\\\s\\+', ' ') | regex_replace('\\\\s\\*', ' ') | regex_replace('\\\\s', ' ') | regex_replace('\\\\d\\+', 'N') | regex_replace('\\.\\*', '…') | regex_replace('\\\\', '') | regex_replace('[\\^\\$]', '') | regex_replace('  +', ' ') | trim }}
+{%- endmacro %}
 {% for dev in _verify_devices %}
 ### {{ dev.hostname }} ({{ dev.ip }})
 
-| Check | Status | Expected | Command |
+| Check | Result | Intended | Observed |
 | --- | --- | --- | --- |
 {% for r in _verify_results | selectattr('device', 'equalto', dev.hostname) %}
-| {{ r.title }} | {{ r.status }} | {{ r.expected_count }} pattern(s) | `{{ r.command }}` |
+{% if r.details %}
+{% for d in r.details %}
+| {{ r.title if loop.first else '' }} | {{ ('PASS' if d.found else '**FAIL**') }} | `{{ readable(d.pattern) }}` | {% if d.found %}`{{ d.observed }}`{% else %}_not found in `{{ r.command }}`_{% endif %} |
+{% endfor %}
+{% else %}
+| {{ r.title }} | {{ r.status }} | {{ 'not applicable to this device' if r.status == 'SKIPPED' else 'no output collected' }} | — |
+{% endif %}
 {% endfor %}
 
 {% set failures = _verify_results | selectattr('device', 'equalto', dev.hostname) | selectattr('status', 'equalto', 'FAIL') | list %}
 {% if failures %}
-Unmatched expectations:
+Exact patterns that did not match:
 
 {% for f in failures %}
 - **{{ f.title }}** (`{{ f.command }}`)
 {% for m in f.missing %}
-  - not found: `{{ m }}`
+  - `{{ m }}`
 {% endfor %}
 {% endfor %}
 {% endif %}

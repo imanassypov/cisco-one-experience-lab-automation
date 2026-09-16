@@ -86,7 +86,14 @@
 #               "command": "show vrf",
 #               "expect": ["(?m)^\\s*Main\\s", "(?m)^\\s*PROD\\s"]}
 #        _cli_output[device]["show vrf"] contains both
-#   Out: {"status": "PASS", "missing": []}
+#   Out: {"status": "PASS", "missing": [],
+#         "details": [{"pattern": "(?m)^\\s*Main\\s", "found": true,
+#                      "observed": "Main 172.30.255.1:10 ipv4 Vl1010"}, ...]}
+#
+# details carries the observed line behind every expectation so the report can
+# put intended and actual side by side. The line-wise lookup is tried first
+# because it reads best; patterns that deliberately span lines (NVE peer state,
+# AP tag source) fall back to the matched fragment with whitespace collapsed.
 #
 # NOT_VERIFIED is distinct from FAIL on purpose: it means Catalyst Center never
 # gave us the output, so the check has no verdict. Counting that as a pass would
@@ -98,19 +105,25 @@
       {%- set ns = namespace(result=[]) -%}
       {%- for row in _verify_matrix -%}
         {%- set out = (_cli_output.get(row.device, {})).get(row.command, none) -%}
-        {%- if row.skipped -%}
+        {%- set details = [] -%}
+        {%- if row.skipped or row.expect | length == 0 -%}
           {%- set status = 'SKIPPED' -%}
           {%- set missing = [] -%}
         {%- elif out is none -%}
           {%- set status = 'NOT_VERIFIED' -%}
           {%- set missing = [] -%}
-        {%- elif row.expect | length == 0 -%}
-          {%- set status = 'SKIPPED' -%}
-          {%- set missing = [] -%}
         {%- else -%}
           {%- set miss = [] -%}
           {%- for rx in row.expect -%}
-            {%- if out is not search(rx) -%}
+            {%- set hit = out is search(rx) -%}
+            {%- set line = (out.split('\n') | select('search', rx) | list
+                            | first) | default('', true) -%}
+            {%- set frag = (out | regex_search(rx)) | default('', true) -%}
+            {%- set seen = (line if line | trim else frag)
+                           | regex_replace('\s+', ' ') | trim -%}
+            {%- set _ = details.append({'pattern': rx, 'found': hit,
+                                        'observed': seen[:180]}) -%}
+            {%- if not hit -%}
               {%- set _ = miss.append(rx) -%}
             {%- endif -%}
           {%- endfor -%}
@@ -124,6 +137,7 @@
               'command': row.command,
               'status':  status,
               'expected_count': row.expect | length,
+              'details': details,
               'missing': missing}] -%}
       {%- endfor -%}
       {{ ns.result }}

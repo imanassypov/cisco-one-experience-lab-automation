@@ -53,11 +53,12 @@ verify_checks:
     title: VRF route distinguishers
     scope: switch
     command: show vrf
+    # (?!\d) stops RD :10 matching inside :102.
     expect: >-
       {%- set ns = namespace(r=[]) -%}
       {%- set lo = _intent_fabric.loop_underlay.get(host, '') -%}
       {%- for vid in _intent_fabric.vrf_to_node.get(host, []) -%}
-        {%- set ns.r = ns.r + [(lo ~ ':' ~ vid) | regex_escape] -%}
+        {%- set ns.r = ns.r + [((lo ~ ':' ~ vid) | regex_escape) ~ '(?!\d)'] -%}
       {%- endfor -%}
       {{ ns.r }}
 
