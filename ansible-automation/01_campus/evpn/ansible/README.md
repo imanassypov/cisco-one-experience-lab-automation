@@ -975,7 +975,7 @@ Provisioning applies site settings and profiles. Three passes, in order:
 
 | Pass | Devices | How |
 | --- | --- | --- |
-| Wired (`provision_site.yml`) | Site-105 loopbacks `172.30.255.1–3` | `POST /sda/provisionDevices`. Already-provisioned switches are skipped unless `-e force_reprovision=true`. |
+| Wired (`provision_switches.yml`) | Site-105 loopbacks `172.30.255.1–3` | `POST /sda/provisionDevices`. Already-provisioned switches are skipped unless `-e force_reprovision=true`. |
 | Wireless (`provision_wireless.yml`) | WLC `198.18.5.103` at DC-Site-10/MAIN | `provision_workflow_manager`. Deferred from the wired pass (`NCWL10092`). Default `force_wireless_provisioning: true` so a changed managed AP location actually lands. |
 | Access points (`provision_accesspoints.yml`) | Rows in `access_points[]` whose `{APn_MAC}` resolved from `lab_ap_macs` | Name, assign site, then `POST /wirelessAccessPoints/provision` (raw REST). Empty `lab_ap_macs` skips the whole pass. |
 

@@ -1,15 +1,15 @@
 # ============================================================================
 # tasks/provision_wireless.yml  —  Pipeline stage 8.1
 # ============================================================================
-# Provisions wireless controllers, which the wired pass in provision_site.yml
-# deliberately leaves alone.
+# Provisions wireless controllers, which the wired pass in
+# provision_switches.yml deliberately leaves alone.
 #
 # POST /dna/intent/api/v1/sda/provisionDevices cannot set the wireless
 # DeviceInfo role and answers NCWL10092 (Endpoint Proxy / Guest Anchor
-# required) for a C9800, so provision_site.yml drops any device whose family
-# contains 'Wireless' into _skipped_wireless_ips. Those controllers are picked
-# up here instead, through provision_workflow_manager, which is the only path
-# that carries managed AP locations.
+# required) for a C9800, so provision_switches.yml drops any device whose
+# family contains 'Wireless' into _skipped_wireless_ips. Those controllers are
+# picked up here instead, through provision_workflow_manager, which is the only
+# path that carries managed AP locations.
 #
 # This runs once after the wired loop rather than inside it: one module call
 # covers every controller in settings.json, and the live wired path is left

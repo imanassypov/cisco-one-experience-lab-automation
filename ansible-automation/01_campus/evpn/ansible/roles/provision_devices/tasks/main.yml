@@ -13,7 +13,7 @@
 #   catc_common.auth_token    → _catc_token
 #   catc_common.load_settings → settings_data
 #
-# Per-site logic: tasks/provision_site.yml
+# Per-site switch logic: tasks/provision_switches.yml
 # =============================================================================
 
 # ── Step 3: Build per-site device map ─────────────────────────────────────
@@ -126,7 +126,7 @@
 #   e. Poll the returned async task until completion and report status.
 #
 - name: Process device provisioning for each site
-  ansible.builtin.include_tasks: provision_site.yml
+  ansible.builtin.include_tasks: provision_switches.yml
   loop: "{{ _site_device_map | dict2items }}"
   loop_control:
     loop_var: site_entry

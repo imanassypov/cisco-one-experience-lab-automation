@@ -3,7 +3,7 @@
 # provision_devices / defaults/main.yml
 # =============================================================================
 # Device families that POST/PUT /dna/intent/api/v1/sda/provisionDevices cannot
-# handle, and which the wired pass in tasks/provision_site.yml therefore keeps
+# handle, and which the wired pass in tasks/provision_switches.yml therefore keeps
 # out of its payloads.
 #
 # Matched as substrings against the family Catalyst Center reports for the

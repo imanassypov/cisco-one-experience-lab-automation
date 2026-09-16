@@ -1,7 +1,7 @@
 # ============================================================================
-# tasks/provision_site.yml
+# tasks/provision_switches.yml
 # ============================================================================
-# Processes one site provisioning entry from settings.json.
+# Provisions the wired switches of one site entry from settings.json.
 #
 # Input variable (set by loop in provision_devices.yml):
 #   site_entry.key    — full site hierarchy path

@@ -14,7 +14,7 @@
 # for them; there is no way to set either tag directly.
 #
 # Role: provision_devices
-#   wired    — roles/provision_devices/tasks/provision_site.yml (per site)
+#   wired    — roles/provision_devices/tasks/provision_switches.yml (per site)
 #   wireless — roles/provision_devices/tasks/provision_wireless.yml (once)
 #   APs      — roles/provision_devices/tasks/provision_accesspoints.yml (once)
 #
