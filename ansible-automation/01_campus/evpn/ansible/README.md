@@ -1618,11 +1618,14 @@ driven from the script server, not your laptop:
 | `evidence/stage10-verification.md` | Reading in a terminal or editor, diffing between runs |
 | `evidence/stage10-verification.html` | A formal verification report for sharing or printing |
 
-Read the markdown on the script server with any pager:
+Read the markdown on the script server. `rich` is installed in the venv and
+renders the headings and tables in colour:
 
 ```bash
-less evidence/stage10-verification.md
+python -m rich.markdown evidence/stage10-verification.md | less -R
 ```
+
+Or plainly, with no renderer: `less evidence/stage10-verification.md`.
 
 Or pull either file back:
 

@@ -45,6 +45,10 @@ script_server_dnacentersdk_version: "2.10.6"
 # drift as an unpinned collection.
 script_server_genie_version: "26.8"
 script_server_pyats_version: "26.8"
+# Terminal renderer for the stage 10 markdown report. Pure Python, so it comes
+# from pip rather than apt, which on this image cannot install glow without
+# upgrading libc6.
+script_server_rich_version: "15.0.0"
 
 script_server_python_packages:
   - "ansible-core=={{ script_server_ansible_core_version }}"
@@ -58,6 +62,7 @@ script_server_python_packages:
   # 700 MB to the venv.
   - "genie=={{ script_server_genie_version }}"
   - "pyats=={{ script_server_pyats_version }}"
+  - "rich=={{ script_server_rich_version }}"
 
 script_server_cli_binaries:
   - ansible

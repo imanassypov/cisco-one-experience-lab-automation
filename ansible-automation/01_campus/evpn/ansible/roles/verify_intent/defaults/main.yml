@@ -25,8 +25,8 @@ verify_report_path: "{{ playbook_dir }}/../evidence/stage10-verification.md"
 
 # Self-contained HTML version: indexed, colour-coded, filterable to failures.
 # No external CSS or JS, so it opens from the script server or after an scp with
-# no network. Read the markdown with a pager, or open this in a browser after
-# copying it back.
+# no network. Render the markdown with 'python -m rich.markdown <file> | less -R',
+# or open this in a browser after copying it back.
 verify_report_html_path: "{{ playbook_dir }}/../evidence/stage10-verification.html"
 
 # Templates whose {% set %} blocks carry the fabric intent. Read from Catalyst

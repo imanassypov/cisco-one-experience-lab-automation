@@ -50,7 +50,7 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 - Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
 - OS packages, kept deliberately minimal: `git`, `pip`, and the versioned `pythonX.Y-venv`. No compiler and no `-dev` headers — every pinned wheel is prebuilt for this interpreter, and on the dCloud image `libffi-dev` / `libssl-dev` cannot install without dragging `libc6` forward
 - The user virtualenv at `~/venv` (Ansible is **not** installed with apt/yum)
-- Pinned `ansible-core`, `paramiko`, `netaddr`, plus `genie` and `pyats` — stage 10 parses every CLI response with Genie, which adds roughly 700 MB
+- Pinned `ansible-core`, `paramiko`, `netaddr`, plus `genie` and `pyats` — stage 10 parses every CLI response with Genie, which adds roughly 700 MB — and `rich`, which renders the stage 10 markdown report in the terminal
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali's default shell is zsh) and symlinked into `~/bin`
 - Pinned Cisco Galaxy collections — see [`files/requirements.yml`](roles/script_server_bootstrap/files/requirements.yml) for the authoritative versions

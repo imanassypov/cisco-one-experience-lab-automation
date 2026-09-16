@@ -3223,8 +3223,9 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
 <tr><td><code>evidence/stage10-verification.html</code></td><td>A self-contained formal report — no external fonts or scripts, opens offline, prints cleanly</td></tr>
 </tbody>
 </table>
-<p>Read the Markdown version in the terminal, and open the HTML one in a browser:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">less evidence/stage10-verification.md</pre>
+<p>Read the Markdown version in the terminal, and open the HTML one in a browser. <code>rich</code> is installed in your virtual environment and renders the headings and tables in colour:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">python -m rich.markdown evidence/stage10-verification.md | less -R</pre>
+<p>Press <code>q</code> to quit the pager. For the raw file with no rendering, <code>less evidence/stage10-verification.md</code> works too.</p>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a3-md-report.png" alt="Stage 10 Markdown report in the terminal" width="865" height="480"></p>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a3-evidence-html-report.png" alt="Stage 10 HTML evidence report open in a browser" width="865" height="500"></p>
 <hr>
@@ -3741,7 +3742,7 @@ vi inventory/group_vars/all/lab.yml</pre>
 <h4>Step 6 — Verify wireless as part of the fabric</h4>
 <p>Re-run the verification stage. It now includes wireless checks:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_verify_intent.yml
-less evidence/stage10-verification.md</pre>
+python -m rich.markdown evidence/stage10-verification.md | less -R</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
 <tr><th style="width: 34%;">Check</th><th style="width: 66%;">What it proves</th></tr>
