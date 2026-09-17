@@ -109,7 +109,8 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 <li><a href="#page-9005">4. Understanding the Template Model</a></li>
 <li><a href="#page-9006">5. Extending the Fabric via Git</a></li>
 <li><a href="#page-9007">6. Verify Wireless &amp; Provision the AP</a></li>
-<li><a href="#page-9008">7. Appendix — Wireless Troubleshooting</a></li>
+<li><a href="#page-9009">7. Intent Verification as Code</a></li>
+<li><a href="#page-9008">8. Appendix — Wireless Troubleshooting</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title"><span class="arrow">▾</span>Macro / Micro Segmentation</div>
@@ -2902,7 +2903,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <!-- Body (Add your content here) -->
 <div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">
 <p>🎉 This concludes the wireless network configuration, provisioning, and testing section.</p>
-<p>🛑 <strong>Client did not connect, or connected but got no IP address?</strong> Work through <a href="#page-9008"><strong>7. Appendix — Wireless Troubleshooting Checklist</strong></a>. It was written for the Infrastructure as Code track, but every check applies here too — the 9800, ISE, and FlexConnect behave the same way whether the controller was configured by hand or by the pipeline.</p>
+<p>🛑 <strong>Client did not connect, or connected but got no IP address?</strong> Work through <a href="#page-9008"><strong>8. Appendix — Wireless Troubleshooting Checklist</strong></a>. It was written for the Infrastructure as Code track, but every check applies here too — the 9800, ISE, and FlexConnect behave the same way whether the controller was configured by hand or by the pipeline.</p>
 <div class="admonition pied-piper">
 <p>Wow, you've accomplished an incredible amount of configuration in such a short time! You truly are an amazing engineer! </p>
 </div>
@@ -2915,7 +2916,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
   <div class="page-card-header"><span>🤖</span>
     <h3 id="page-9002" class="page-anchor">1. Prepare Your Workstation &amp; Script Server</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 7</h3>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 8</h3>
 <p>This card gets you from a freshly connected VPN session to a script server that is ready to run the EVPN pipeline. You will SSH in, clone the repository onto that host, and let it bootstrap itself. Nothing here touches the fabric yet — every command in this card is safe to re-run.</p>
 <div class="admonition warning">
 <p>🛑 <strong>This is the Infrastructure as Code track.</strong> It provisions the EVPN fabric <em>and</em> the wireless service from one pipeline. If you already built the fabric by hand in <a href="#page-7583">1. EVPN Fabric Provisioning</a>, skip this entire track. Running both against the same pod will produce confusing results.</p>
@@ -3084,7 +3085,7 @@ ansible-playbook --version</pre>
   <div class="page-card-header"><span>🤖</span>
     <h3 id="page-9003" class="page-anchor">2. Run the EVPN + Catalyst Center Pipeline</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 2 of 7</h3>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 2 of 8</h3>
 <p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the working directory you set up in the previous card.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
@@ -3212,7 +3213,7 @@ ansible-playbook playbooks/11_verify_intent.yml</pre>
   <div class="page-card-header"><span>🔍</span>
     <h3 id="page-9004" class="page-anchor">3. Verify Intent &amp; Evidence Report</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 3 of 7</h3>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 3 of 8</h3>
 <p>Deploying configuration and <em>knowing it is correct</em> are two different things. Stage 11 closes that gap: it reads the design out of Catalyst Center, collects live output from the switches and controller, and produces a pass/fail report you could hand to an auditor.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_verify_intent.yml</pre>
 <p>This stage is <span class="safety ro">read-only</span>. It changes nothing, and you can run it as often as you like.</p>
@@ -3263,11 +3264,11 @@ ansible-playbook playbooks/11_verify_intent.yml</pre>
 <tr><th style="width: 30%;">Result</th><th style="width: 15%;">Count</th><th style="width: 55%;">Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Pass</strong></td><td>44</td><td>Observed state matches the design</td></tr>
+<tr><td><strong>Pass</strong></td><td>45</td><td>Observed state matches the design</td></tr>
 <tr><td><strong>Fail</strong></td><td>0</td><td>A real mismatch — investigate</td></tr>
 <tr><td><strong>Not verified</strong></td><td>0</td><td>Catalyst Center refused the command, so nothing was concluded</td></tr>
 <tr><td><strong>Not applicable</strong></td><td>7</td><td>The check does not apply to that device's role</td></tr>
-<tr><td colspan="2"><strong>Total checks</strong></td><td>51, across 4 devices</td></tr>
+<tr><td colspan="2"><strong>Total checks</strong></td><td>52, across 4 devices</td></tr>
 </tbody>
 </table>
 <p><strong>Not applicable is expected and healthy.</strong> The Border-Spine does not carry tenant VLANs or client access ports, so tenant SVI and client-port checks simply do not apply to it. The report says so explicitly rather than quietly passing them.</p>
@@ -3281,6 +3282,9 @@ ansible-playbook playbooks/11_verify_intent.yml</pre>
 <li><strong>Per-device checks</strong> — intended value beside observed value, for every check</li>
 </ol>
 <p>The intent-source list is the part worth lingering on. It is the link between a Git commit and a live switch: the report names the exact template version that produced the configuration it just validated.</p>
+<div class="admonition">
+<p>👀 <strong>This card is the practical tour.</strong> <a href="#page-9009"><strong>7. Intent Verification as Code</strong></a> takes the same stage apart properly — how a check is written, why an unevaluable check must never read as a pass, and what the report proves to an auditor. Read it once the wireless side is in place, so the report you study has everything in it.</p>
+</div>
 <hr>
 <h4>When something fails</h4>
 <table style="border-collapse: collapse; width: 100%;" border="1">
@@ -3305,7 +3309,7 @@ ansible-playbook playbooks/11_verify_intent.yml</pre>
   <div class="page-card-header"><span>🧩</span>
     <h3 id="page-9005" class="page-anchor">4. Understanding the EVPN Template Model</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 4 of 7</h3>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 4 of 8</h3>
 <p>You have deployed a fabric you did not type. This card explains what you actually deployed.</p>
 <p>If you only read one card in the automated track, make it this one. The template model is the genuinely transferable idea here — it is how you would run fifty campus sites, not three switches.</p>
 <hr>
@@ -3528,7 +3532,7 @@ exit-address-family
   <div class="page-card-header"><span>🌱</span>
     <h3 id="page-9006" class="page-anchor">5. Extending the Fabric: Add a Tenant or VLAN via Git</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 5 of 7</h3>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 5 of 8</h3>
 <p>Two worked examples, then the workflow that carries them from an edit on your screen to configuration on a switch. This is where Infrastructure as Code stops being an idea and becomes a habit.</p>
 <div class="admonition">
 <p>👀 <strong>Optional but recommended.</strong> The lab works without this card. Do it anyway — making a change and watching it flow through is the most useful twenty minutes in the automated track.</p>
@@ -3708,7 +3712,7 @@ ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
   <div class="page-card-header"><span>🤖</span>
     <h3 id="page-9007" class="page-anchor">6. Verify Wireless &amp; Provision the Access Point</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 6 of 7</h3>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 6 of 8</h3>
 <h3>Wireless, when the pipeline built it for you</h3>
 <div class="admonition warning">
 <p>🛑 <strong>This card belongs to the Infrastructure as Code track.</strong> If you configured the wireless controller by hand in <a href="#page-7585">4. Configure &amp; Test WLC</a>, you are finished with that section — skip to Macro / Micro Segmentation.</p>
@@ -3772,9 +3776,16 @@ ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
 <h4>Step 2 — Watch the access point appear, in two places</h4>
 <p>With <code>Gi1/0/2</code> now trunked, the access point can find the controller. It then has to show up <strong>twice</strong>, a few minutes apart — and it is the second one that stage 10 actually waits for. You do not have to sit and watch this happen; stage 10 polls for you. It is worth understanding, though, because it explains where the time goes.</p>
 <p><strong>First, on the controller.</strong> Go to <strong>Configuration &gt; Wireless &gt; Access Points</strong> and wait for it to appear as <strong>Registered</strong>. This usually takes a few minutes after stage 09 completes.</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show ap summary</pre>
-<p>Note the access point's <strong>Ethernet MAC address</strong> — the wired MAC, not the radio MAC. You will not have to type it anywhere, but seeing it here makes the next step easier to follow.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a6-ap-registered.png" alt="9800 Access Points page showing the AP registered" width="865" height="400"></p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">C9800#show ap summary
+Number of APs: 1
+
+CC = Country Code
+RD = Regulatory Domain
+
+AP Name                          Slots AP Model             Ethernet MAC   Radio MAC      CC   RD   IP Address                                State        Location
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SITE-105-AP-1                    3     AIR-AP4800-B-K9      084f.a950.f028 10b3.d66c.c860 US   -B   10.10.255.100                             Registered   Leaf1</pre>
+<p>Note the access point's <strong>Ethernet MAC address</strong> — the wired MAC, not the radio MAC. Above, that is <code>084f.a950.f028</code> and not <code>10b3.d66c.c860</code>. You will not have to type it anywhere, but seeing it here makes the next step easier to follow.</p>
 <p><strong>Then, in Catalyst Center.</strong> The controller syncs its access point list up to Catalyst Center, which lags the controller by a few more minutes. Check <strong>Provision &gt; Inventory</strong>, or filter for Unified APs, until the access point is listed there too.</p>
 <div class="admonition">
 <p>👀 <strong>This is the wait people used to get caught by.</strong> Provisioning looks the access point up in <em>Catalyst Center</em> by its Ethernet MAC — not on the controller. Doing it by hand while the access point is Registered on the 9800 but not yet in Catalyst Center inventory fails, even though the controller plainly shows it. Stage 10 waits for the Catalyst Center side specifically, which is why you can start it early.</p>
@@ -3800,40 +3811,263 @@ ansible-playbook playbooks/10_await_access_points.yml</pre>
 <p>The access point reboots when it is provisioned and takes 1–3 minutes to rejoin, so do not be alarmed if <code>show ap summary</code> is briefly empty afterwards.</p>
 <hr>
 <h4>Step 4 — Confirm the tags came from Catalyst Center</h4>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show ap tag summary</pre>
-<p>Look at the <strong>tag source</strong> column. It should read <code>Static</code>, and the site and policy tag names should be Catalyst Center-generated rather than the factory defaults. That is the proof that the access point is being governed by the design in Catalyst Center, not by whatever it happened to boot with.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a6-ap-tag-summary.png" alt="show ap tag summary confirming Catalyst Center-generated tags" width="865" height="360"></p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">C9800#show ap tag summary
+Number of APs: 1
+
+AP Name                           AP Mac           Site Tag Name                     Policy Tag Name                   RF Tag Name                       Misconfigured    Tag Source
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SITE-105-AP-1                     084f.a950.f028   ST_Durha_Site-105_d97a1_0         PT_Durha_Site-_MAIN_70ab7         TYPICAL                           No               Static</pre>
+<p>Look at the <strong>Tag Source</strong> column. It should read <code>Static</code>, and the site and policy tag names should be Catalyst Center-generated — <code>ST_Durha_Site-105_d97a1_0</code> and <code>PT_Durha_Site-_MAIN_70ab7</code> above — rather than the factory <code>default-site-tag</code> and <code>default-policy-tag</code>. That is the proof that the access point is being governed by the design in Catalyst Center, not by whatever it happened to boot with.</p>
 <hr>
 <h4>Step 5 — Test a client</h4>
 <p>From here the client test is identical to the manual path. Follow <strong>Step 2: Verify wireless client connectivity</strong> in <a href="#page-7585">4. Configure &amp; Test WLC</a>: connect the Linksys adapter on Workstation-1 through SX Virtual Link, join your SSID, and confirm the client lands in the <strong>PROD</strong> subnet <code>10.101.255.0/24</code>.</p>
 <p>The user <strong>Pat</strong> authenticates with TEAP, and ISE returns the VLAN. Check ISE <strong>Live Logs</strong> to see the EAP chaining result.</p>
 <hr>
 <h4>Step 6 — Verify wireless as part of the fabric</h4>
-<p>Re-run the verification stage. It now includes wireless checks:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_verify_intent.yml
-python -m rich.markdown evidence/stage11-verification.md | less -R</pre>
+<p>There is no separate wireless verification tool, and no wireless-specific report. The stage that verified the fabric in <a href="#page-9004">3. Verify Intent &amp; Evidence Report</a> also verifies the controller, and it now has an access point to check:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_verify_intent.yml</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
 <tr><th style="width: 34%;">Check</th><th style="width: 66%;">What it proves</th></tr>
 </thead>
 <tbody>
 <tr><td><code>show wlan summary</code></td><td>The SSID exists and is administratively up</td></tr>
-<tr><td><code>show ap summary</code></td><td>The access point is registered and its Ethernet MAC matches <code>lab_ap_macs</code></td></tr>
-<tr><td><code>show ap tag summary</code></td><td>The tag source is static and the tags are Catalyst Center-generated</td></tr>
+<tr><td><code>show ap summary</code></td><td>The expected number of access points joined, each is registered, and its Ethernet MAC matches <code>lab_ap_macs</code></td></tr>
+<tr><td><code>show ap tag summary</code></td><td>The tag source is <code>Static</code> and the tags are Catalyst Center-generated</td></tr>
 </tbody>
 </table>
-<p>Wireless is now verified the same way the fabric is — against the design, automatically, with evidence.</p>
+<p>Those three commands add ten checks to the same run that produces the fabric's. Switching, routing, overlay and wireless all land in one report, held to one design.</p>
+<div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
+<div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
+<!-- Body -->
+<div style="padding: 18px 20px; color: #2e2e2e;">
+<p>🎉 Fabric, templates, provisioning, and wireless — all built from source. One thing is left: understanding <em>how</em> the pipeline proves any of that is true.</p>
+<p>Continue to <a href="#page-9009"><strong>7. Intent Verification as Code</strong></a>. If your client did not connect, detour through <a href="#page-9008"><strong>8. Appendix — Wireless Troubleshooting Checklist</strong></a> first.</p>
+</div>
+</div></div>
+</div><div class="page-card">
+  <div class="page-card-header"><span>🔬</span>
+    <h3 id="page-9009" class="page-anchor">7. Intent Verification as Code</h3>
+  </div>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 7 of 8</h3>
+<p>Every card up to this point has been about <em>building</em> a fabric from source. This one is about the harder half of the problem: proving that what is running matches what you described. A pipeline that deploys confidently and verifies vaguely is worse than no pipeline, because it manufactures false confidence at scale.</p>
+<p>Stage 11 is the answer this lab gives. It is worth understanding properly, because the method transfers to any network you automate.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+ansible-playbook playbooks/11_verify_intent.yml</pre>
+<p>The stage is <span class="safety ro">read-only</span>. It issues GETs and Command Runner read requests and nothing else, so run it as often as you like.</p>
+<hr>
+<h4>The three rules</h4>
+<p>Everything in the design follows from three decisions.</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 30%;">Rule</th><th style="width: 70%;">Why</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Intent is read back from Catalyst Center, never from your checkout</strong></td><td>If the playbook read the DEFN templates from your laptop, it would verify what you <em>meant</em> to deploy. Reading them from Template Programmer verifies what was <em>actually</em> deployed. A template you edited but forgot to sync cannot produce a false pass.</td></tr>
+<tr><td><strong>Compare parsed fields, never text</strong></td><td>A regular expression against <code>show</code> output breaks the day IOS-XE moves a column, and — worse — a sloppy pattern matches things it should not. The old route-distinguisher check matched <code>:10</code> inside <code>:102</code>. Genie turns the output into structured data, so the comparison is value against value.</td></tr>
+<tr><td><strong>Check operational state, not configuration</strong></td><td><code>show running-config</code> is deliberately never collected. A <code>member vni</code> line proves someone typed it; it says nothing about whether the VNI came up. <code>show nve vni</code> reports <code>vni_state</code> directly. Configuration is intent restated — only operational state is evidence.</td></tr>
+</tbody>
+</table>
+<hr>
+<h4>Where intent comes from</h4>
+<p>Three sources, each owning a different part of the design:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 34%;">Source</th><th style="width: 66%;">Owns</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DEFN-*.j2</code> in Catalyst Center</td><td>VRFs, L3VNIs, loopbacks, node roles, client ports, L3OUT, overlay VLANs and SVIs</td></tr>
+<tr><td><code>Settings/settings.json</code></td><td>Which devices to check, the SSID, wireless VLANs, declared access points</td></tr>
+<tr><td><code>group_vars/all/lab.yml</code></td><td>Your pod number and <code>lab_ap_macs</code>, which resolve the <code>{POD}</code> and <code>{APn_MAC}</code> tokens in settings.json</td></tr>
+</tbody>
+</table>
+<p>The DEFN files are pure <code>{% set %}</code> blocks, so the role concatenates the bodies it fetched, appends an epilogue that emits the lot as JSON, and renders it once. That is how a design written for humans becomes data a check can compare against.</p>
+<hr>
+<h4>The anatomy of a check</h4>
+<p>Every check lives in <code>roles/verify_intent/vars/checks.yml</code> and produces a list of <strong>intended / observed pairs</strong>, one set per device in scope. This is the whole of the underlay loopback check:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">- id: loopback0
+  title: Underlay loopback address and state
+  scope: switch
+  command: show ip interface brief
+  pairs: &gt;-
+    {%- set out = (_cli_output | default({})).get(host, {}).get('show ip interface brief', '') -%}
+    {%- if not out -%}{{ [] }}{%- else -%}
+      {%- set p = out | genie_parse('show ip interface brief') -%}
+      {%- set lo = (p.interface | default({})).get('Loopback0', {}) -%}
+      {{ [{'label': 'Loopback0 address',
+           'intended': _intent_fabric.loop_underlay.get(host, ''),
+           'observed': lo.get('ip_address', 'Loopback0 absent')},
+          {'label': 'Loopback0 protocol',
+           'intended': 'up',
+           'observed': lo.get('protocol', 'Loopback0 absent')}] }}
+    {%- endif -%}</pre>
+<p>Note what is <em>not</em> there: no regular expression, no device-specific branching, and no hard-coded IP address. The same fifteen-line definition covers a leaf and a border-spine, because <code>host</code> is supplied per device and the intended value is looked up out of the design. Adding a fourth switch adds no check code at all.</p>
+<p>A check can also declare <code>skip_when</code>, which is how the Border-Spine correctly reports "not applicable" for tenant SVIs rather than failing them.</p>
+<hr>
+<h4>The four verdicts</h4>
+<p>This is the part most homegrown verification scripts get wrong, and it is the most important idea on this page.</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 22%;">Verdict</th><th style="width: 78%;">Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>PASS</strong></td><td>Intended and observed are exactly equal.</td></tr>
+<tr><td><strong>FAIL</strong></td><td>Both values are known and they differ. This is the only verdict that fails the play.</td></tr>
+<tr><td><strong>NOT VERIFIED</strong></td><td>Catalyst Center returned no output for the command, so the check has <em>no verdict at all</em>. Counting it as a pass would hide missing coverage; counting it as a failure would blame your fabric for a Command Runner restriction.</td></tr>
+<tr><td><strong>NOT APPLICABLE</strong></td><td>The check does not apply to that device's role — client ports on a spine, L3OUT on a leaf.</td></tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p>🛑 <strong>A check that cannot be evaluated must never read as a pass.</strong> This is not theoretical. An earlier version of this role swallowed template errors and quietly reported the affected checks as "not applicable" — 45 of them — and the run finished green with a summary that said <strong>PASSED</strong>. Nothing was wrong with the fabric; nothing had been checked either. Whenever you build verification of your own, spend your effort here rather than on adding more checks. <em>Silence is the failure mode, not mismatch.</em></p>
+</div>
+<hr>
+<h4>What the run actually does</h4>
+<p>Seven phases, in order:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 8%;">#</th><th style="width: 30%;">Phase</th><th style="width: 62%;">What happens</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td><code>intent_templates</code></td><td>Lists Template Programmer projects named in settings.json and fetches every <code>DEFN-*</code> body, recording each template's ID and last-modified time</td></tr>
+<tr><td>2</td><td><code>intent_fabric</code></td><td>Assembles those bodies plus a JSON epilogue into one template, renders it, and reads back the design as data</td></tr>
+<tr><td>3</td><td><code>intent_settings</code></td><td>Derives the SSID, wireless VLANs, access points and device lists from settings.json</td></tr>
+<tr><td>4</td><td><code>resolve_devices</code></td><td>Turns each management IP into a Catalyst Center device UUID and hostname — the hostname is the join key between design and device</td></tr>
+<tr><td>5</td><td><code>run_commands</code></td><td>Submits the <code>show</code> commands through Command Runner, five per request, polls each task, downloads the result files</td></tr>
+<tr><td>6</td><td><code>evaluate</code></td><td>Renders every check for every in-scope device, parses with Genie, compares, assigns a verdict</td></tr>
+<tr><td>7</td><td><code>report</code></td><td>Writes Markdown and HTML, prints the summary, and only then fails</td></tr>
+</tbody>
+</table>
+<p>Phase 7 failing <em>last</em> is deliberate. You get the whole matrix, not the first mismatch.</p>
+<div class="admonition">
+<p>👀 <strong>Why no SSH to the switches?</strong> Command Runner means the script server never needs device credentials or a route to <code>172.30.255.x</code>. Verification works from anywhere Catalyst Center is reachable, and the credentials stay in one place. The cost is a five-command ceiling per request, which is why the role batches.</p>
+</div>
+<hr>
+<h4>A real run</h4>
+<p>The console is quiet until the end. The last thing it prints is the summary:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">TASK [verify_intent : Verification summary] ************************************
+ok: [catalyst_center_api] =&gt; {
+    "msg": [
+        "┌─────────────────────────────────────────────────────────────────┐",
+        "│ Devices       : 4  (Site_105-Leaf1, Site_105-Leaf2, Site_105-Border-Spine, C9800)",
+        "│ Checks        : 52",
+        "│ Pass          : 45",
+        "│ Fail          : 0",
+        "│ Not verified  : 0",
+        "│ Not applicable: 7",
+        "│ Report        : .../evidence/stage11-verification.md",
+        "│ HTML          : .../evidence/stage11-verification.html",
+        "├─────────────────────────────────────────────────────────────────┤",
+        "│ Read it here  : less -R .../evidence/stage11-verification.md",
+        "│ Or in Firefox : xdg-open .../evidence/stage11-verification.html",
+        "│ Or on your laptop:",
+        "│   scp cisco@&lt;script-server&gt;:.../stage11-verification.html . &amp;&amp; open stage11-verification.html",
+        "└─────────────────────────────────────────────────────────────────┘"
+    ]
+}
+
+TASK [verify_intent : Assert the fabric matches the declared intent] ***********
+ok: [catalyst_center_api] =&gt; {
+    "msg": "All 45 evaluated check(s) match the declared intent."
+}
+
+PLAY RECAP *********************************************************************
+catalyst_center_api        : ok=59   changed=9   unreachable=0   failed=0</pre>
+<p>Read the Markdown report in the terminal. <code>rich</code> is pinned in <code>requirements.txt</code> and renders the headings and tables in colour:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">python -m rich.markdown evidence/stage11-verification.md | less -R</pre>
+<p>Press <code>q</code> to quit the pager. Plain <code>less -R evidence/stage11-verification.md</code> works too and needs nothing installed, and the HTML report is complete on its own.</p>
+<hr>
+<h4>The report, section by section</h4>
+<p><strong>1 — Result.</strong> The headline counts, and a single PASSED or FAILED verdict.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">| Outcome        | Count |
+| -------------- | ----- |
+| Pass           | 45    |
+| Fail           | 0     |
+| Not verified   | 0     |
+| Not applicable | 7     |
+
+**PASSED** — 52 check(s) across 4 device(s).</pre>
+<p><strong>2 — Devices.</strong> What was checked, and the role that selected its command set.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">| Management IP | Catalyst Center hostname                  | Family              | Role   |
+| ------------- | ---------------------------------------- | ------------------- | ------ |
+| 172.30.255.1  | Site_105-Leaf1.corp.pseudoco.com         | Switches and Hubs   | switch |
+| 172.30.255.2  | Site_105-Leaf2.corp.pseudoco.com         | Switches and Hubs   | switch |
+| 172.30.255.3  | Site_105-Border-Spine.corp.pseudoco.com  | Switches and Hubs   | switch |
+| 198.18.5.103  | C9800.corp.pseudoco.com                  | Wireless Controller | wlc    |</pre>
+<p><strong>3 — Intent sources.</strong> The section to linger on. Every DEFN template that contributed, with its Catalyst Center template ID and last-modified timestamp.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">| Template          | Project  | Template ID                          | Last updated     |
+| ----------------- | -------- | ------------------------------------ | ---------------- |
+| DEFN-CLIENT-PORTS.j2 | Site-105 | 3d290b65-95d3-4920-8ffb-65218d672f4b | 2026-09-16 19:12 |
+| DEFN-LOOPBACKS.j2    | Site-105 | 613fe72a-fa25-4934-8fae-a9261e6c3112 | 2026-09-16 19:12 |
+| DEFN-OVERLAY.j2      | Site-105 | a02e46bd-ae64-4510-91f8-193f90cb729f | 2026-09-16 19:12 |
+| DEFN-ROLES.j2        | Site-105 | c9755fe0-ef1f-4a24-8d61-cfe7a9aa5b80 | 2026-09-16 19:12 |
+| DEFN-VRF.j2          | Site-105 | 15b72b9a-4a62-4b11-b3e7-645952bf0f27 | 2026-09-17 11:20 |
+
+From settings.json: SSID PSEUDOCO-POD05, wireless VLANs 10, 101, 102, 1 access point(s).</pre>
+<p>This is the link between a Git commit and a live switch. The report does not merely say "the fabric is correct" — it names the exact version of the design it was held to. Notice that <code>DEFN-VRF.j2</code> above has a later timestamp than the rest: someone edited it after the original sync, and the report says so.</p>
+<p><strong>4 — Per-device checks.</strong> Intended beside observed, for every pair.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">### Site_105-Leaf1.corp.pseudoco.com (172.30.255.1)
+
+| Check                               | Result  | Intended                        | Observed        |
+| ----------------------------------- | ------- | ------------------------------- | --------------- |
+| VRFs defined                        | PASS    | VRF Main = Main                 | Main            |
+| VRF route distinguishers            | PASS    | Main RD = 172.30.255.1:10       | 172.30.255.1:10 |
+| L3VNI bound to its transit VLAN     | PASS    | VNI 110010 VLAN = 1010          | 1010            |
+| L3VNI operationally up              | PASS    | VNI 110010 (Main) state = Up    | Up              |
+| Tenant SVI addresses                | PASS    | Vlan101 address = 10.101.255.1  | 10.101.255.1    |
+| DHCP helper on tenant SVIs          | PASS    | Vlan101 helper = 198.18.5.102   | 198.18.5.102    |
+| Underlay loopback address and state | PASS    | Loopback0 address = 172.30.255.1| 172.30.255.1    |
+| EVPN sessions established           | PASS    | peer 172.30.255.3 = established | established     |
+| NVE peers up                        | PASS    | peer 172.30.255.2 = UP          | UP              |
+| L3OUT BGP neighbours on the border  | SKIPPED | not applicable to this device   | —               |</pre>
+<p>A failing row shows both sides, so the diagnosis is usually immediate:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">| VRF route distinguishers | **FAIL** | Main RD = 172.30.255.1:10555 | 172.30.255.1:10 |
+
+  - Main RD: expected 172.30.255.1:10555, got 172.30.255.1:10</pre>
+<p>That one is a real example from this lab: the VRF id had been changed in Catalyst Center but the fabric was still running the value it was deployed with. Design and reality had diverged, and the report said exactly where.</p>
+<hr>
+<h4>Reading "not applicable" correctly</h4>
+<p>Seven of the 52 checks do not apply, and that is healthy:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 50%;">Check</th><th style="width: 50%;">Skipped on</th></tr>
+</thead>
+<tbody>
+<tr><td>Tenant VLANs, SVI addresses, SVIs up, DHCP helper</td><td>Border-Spine — the overlay template omits the L2 sections on spine and border roles</td></tr>
+<tr><td>Client-facing ports</td><td>Border-Spine — it has no client ports declared</td></tr>
+<tr><td>L3OUT BGP neighbours</td><td>Leaf1 and Leaf2 — only the border peers externally</td></tr>
+</tbody>
+</table>
+<p>Each of those is a deliberate <code>skip_when</code>, evaluated per device against the node roles in the design. The report states them rather than quietly passing them, so "not applicable" is a claim you can audit — not a gap.</p>
+<hr>
+<h4>When something fails</h4>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 40%;">Symptom</th><th style="width: 60%;">What to do</th></tr>
+</thead>
+<tbody>
+<tr><td>A handful of checks fail on one device</td><td>Re-run stage 09 — a deployment task may have timed out</td></tr>
+<tr><td>A check fails on <em>every</em> device with the same value</td><td>The design changed, not the fabric. Compare the DEFN template in Catalyst Center against your checkout.</td></tr>
+<tr><td>Everything is <code>NOT VERIFIED</code></td><td>Command Runner is unhappy. Confirm the devices are reachable and managed in Inventory.</td></tr>
+<tr><td>The run aborts naming a VRF id</td><td><code>DEFN_VRF_TO_NODE</code> references an id that <code>DEFN_VRF</code> does not define. Fix the template in Template Programmer.</td></tr>
+<tr><td>You want to see the raw CLI and the parsed intent</td><td>Re-run with <code>-e catc_debug=true</code></td></tr>
+<tr><td>You want the report without the play failing</td><td>Run with <code>-e verify_fail_on_mismatch=false</code></td></tr>
+</tbody>
+</table>
+<hr>
+<h4>Why this matters beyond the lab</h4>
+<p>Three switches and a controller do not need automated verification; you could log in and look. Fifty sites do, and at that scale the qualities that matter are exactly the ones on this page: intent read from the system of record rather than from someone's laptop, comparison against parsed operational state, and a verdict model that refuses to turn "I could not check" into "everything is fine".</p>
+<p>The report is the deliverable. It is timestamped, it names the template versions it validated, it shows both sides of every comparison, and it is self-contained enough to attach to a change record. That is what separates automation from a script.</p>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Complete</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>🎉 Fabric, templates, provisioning, and wireless — all built from source and verified against the design. You have completed the automated path.</p>
-<p>If your client did not connect, work through <a href="#page-9008"><strong>7. Appendix — Wireless Troubleshooting Checklist</strong></a>. Otherwise continue to <strong>Macro / Micro Segmentation</strong>.</p>
+<p>🎉 Built from source, deployed through a pipeline, and proven against the design with evidence you could hand to an auditor. You have completed the automated path.</p>
+<p>If your client did not connect, work through <a href="#page-9008"><strong>8. Appendix — Wireless Troubleshooting Checklist</strong></a>. Otherwise continue to <strong>Macro / Micro Segmentation</strong>.</p>
 </div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🛠️</span>
-    <h3 id="page-9008" class="page-anchor">7. Appendix — Wireless Troubleshooting Checklist</h3>
+    <h3 id="page-9008" class="page-anchor">8. Appendix — Wireless Troubleshooting Checklist</h3>
   </div>
   <div class="page-card-body"><h3>When the SSID is visible but the client never connects</h3>
 <p>This is the classic wireless failure, and it is worth knowing how to work through it methodically rather than by guessing. The checklist below is distilled from a real troubleshooting session on this lab.</p>

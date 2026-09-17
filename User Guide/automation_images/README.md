@@ -95,8 +95,8 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 | Filename | What to capture |
 |---|---|
 | `a6-wlc-wlan-summary.png` | 9800 GUI **Configuration > Tags & Profiles > WLANs** with the pipeline-created SSID |
-| `a6-ap-registered.png` | 9800 **Configuration > Wireless > Access Points** with the AP registered |
-| `a6-ap-tag-summary.png` | `show ap tag summary` showing Catalyst Center-generated site/policy tags |
+
+`a6-ap-registered.png` and `a6-ap-tag-summary.png` are no longer wanted — the guide carries the real `show ap summary` and `show ap tag summary` output inline instead.
 
 ## Conventions
 
