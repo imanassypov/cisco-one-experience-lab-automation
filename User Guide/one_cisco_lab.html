@@ -3571,8 +3571,14 @@ exit-address-family
 <hr>
 <h4>Example 2 — Add a new tenant</h4>
 <p>Goal: a fourth tenant, <code>DEV</code>, with id <strong>103</strong>.</p>
-<p><strong>Step 1</strong> — in <code>DEFN-VRF.j2</code>, add a row to the tenant list:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{'id':'103', 'name':'DEV', 'l3_vlan':'1103', 'l3_vni':'110103', 'mdt_default':'', 'mdt_data':''}</pre>
+<p><strong>Step 1</strong> — in <code>DEFN-VRF.j2</code>, add a row to the tenant list. Green is new:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{% set DEFN_VRF = [
+  {'id':'10',  'name':'Main', 'l3_vlan':'1010', 'l3_vni':'110010', 'mdt_default':'', 'mdt_data':''},
+  {'id':'101', 'name':'PROD', 'l3_vlan':'1101', 'l3_vni':'110101', 'mdt_default':'', 'mdt_data':''},
+  {'id':'102', 'name':'IOT',  'l3_vlan':'1102', 'l3_vni':'110102', 'mdt_default':'', 'mdt_data':''}<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">  {'id':'103', 'name':'DEV',  'l3_vlan':'1103', 'l3_vni':'110103', 'mdt_default':'', 'mdt_data':''}</span>
+  ]
+%}</pre>
 <p>Following the conventions from the previous card: <code>l3_vlan</code> is 1000 + 103, and <code>l3_vni</code> is 110000 + 103. Both must be unique across the fabric.</p>
 <p><strong>Step 2</strong> — in the same file, add the tenant to each device that should carry it:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{% set DEFN_VRF_TO_NODE = {
@@ -3580,15 +3586,24 @@ exit-address-family
   'Site_105-Leaf2.corp.pseudoco.com':        ['10','101','102'<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,'103'</span>],
   'Site_105-Border-Spine.corp.pseudoco.com': ['10','101','102'<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,'103'</span>]
 } %}</pre>
-<p><strong>Step 3</strong> — in <code>DEFN-OVERLAY.j2</code>, add a matching group with at least one VLAN:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{
-  'vrf': 'DEV',
-  'vlan_ids': ['103'],
-  'vlans': {
-    '103': {'name':'DEV', 'ipaddr':'10.103.255.1 255.255.255.0', 'mac':'0001.0001.0103',
-            'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.103.255.0 255.255.255.0'}
-  }
-}</pre>
+<p><strong>Step 3</strong> — in <code>DEFN-OVERLAY.j2</code>, add a matching group with at least one VLAN. It goes at the end of the <code>DEFN_OVERLAY</code> list, after the existing <code>IOT</code> group:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">  {
+    'vrf': 'IOT',
+    'vlan_ids': ['102'],
+    'vlans': {
+      '102': {'name':'IOT', 'ipaddr':'10.102.255.1 255.255.255.0', 'mac':'0001.0001.0102',
+              'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.102.255.0 255.255.255.0'}
+    }
+  }<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">  {</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">    'vrf': 'DEV',</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">    'vlan_ids': ['103'],</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">    'vlans': {</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">      '103': {'name':'DEV', 'ipaddr':'10.103.255.1 255.255.255.0', 'mac':'0001.0001.0103',</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">              'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.103.255.0 255.255.255.0'}</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">    }</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">  }</span>
+] %}</pre>
 <div class="admonition warning">
 <p>🛑 <strong>Step 3 is not optional.</strong> Skip it and you get a tenant that exists but does nothing: no SVI, no VLAN, and — less obviously — no <code>address-family ipv4 vrf DEV</code> under <code>router bgp</code>, because the overlay renderer only emits that when it finds a matching overlay group. The fabric will look fine and the tenant will not route.</p>
 </div>
