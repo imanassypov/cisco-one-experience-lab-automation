@@ -9,9 +9,13 @@
 #
 # That is fine, because device.parse(command, output=text) never touches the
 # network: handing it output= tells Genie to parse the string it was given. The
-# Device here is not a connection, it is how Genie picks the parser — it
-# resolves 'show vrf' to a parser class through the device's os ('iosxe'). So
-# the object is metadata for parser lookup, and is never connected.
+# Device here is not a connection, it is how Genie finds the parser.
+#
+# Genie does not detect the os — it is declared. os_name below is the only
+# source, every call site takes its 'iosxe' default, and that is correct for
+# all of them: the fabric switches and the 9800 controller all run IOS-XE.
+# Genie resolves the parser for 'show vrf' out of the library for that os, so
+# the Device is metadata for that lookup and is never connected.
 #
 # Usage in a check:
 #   {{ output | genie_parse('show vrf') }}
