@@ -26,7 +26,10 @@ verify_report_path: "{{ (playbook_dir ~ '/../evidence/stage11-verification.md') 
 
 # Self-contained HTML version: indexed, colour-coded, filterable to failures.
 # No external CSS or JS, so it opens from the script server or after an scp with
-# no network.
+# no network. The summary prints 'less -R' for the markdown because that needs
+# nothing; 'python -m rich.markdown <file> | less -R' renders it far better and
+# rich is pinned in requirements.txt, but a venv built before that pin was added
+# will not have it.
 verify_report_html_path: "{{ (playbook_dir ~ '/../evidence/stage11-verification.html') | realpath }}"
 
 # Templates whose {% set %} blocks carry the fabric intent. Read from Catalyst
