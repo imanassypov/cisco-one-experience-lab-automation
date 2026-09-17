@@ -3132,7 +3132,12 @@ ansible-playbook playbooks/05_assign_to_site.yml
 ansible-playbook playbooks/06_template_sync.yml
 ansible-playbook playbooks/07_network_profile.yml
 ansible-playbook playbooks/08_provision_devices.yml
-ansible-playbook playbooks/09_deploy_composite.yml</pre>
+ansible-playbook playbooks/09_deploy_composite.yml
+ansible-playbook playbooks/10_await_access_points.yml
+ansible-playbook playbooks/11_verify_intent.yml</pre>
+<p>The last two behave differently from the rest, so do not be surprised by them.</p>
+<p><strong>Stage 10 sits there and waits.</strong> It polls Catalyst Center for up to ten minutes while the access point boots on the trunk stage 09 just built, then records its MAC and provisions it. A long quiet pause is the playbook working, not hanging. You can start it the moment stage 09 finishes — there is no advantage to watching the controller first. Card <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a> covers what it does in full.</p>
+<p><strong>Stage 11 is the only read-only stage.</strong> It changes nothing and produces the evidence report, so run it as often as you like.</p>
 <p>After each stage, open Catalyst Center and look at what changed.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
@@ -3146,6 +3151,8 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
 <tr><td>07</td><td><strong>Design &gt; Network Profiles</strong> and <strong>Workflows &gt; Wireless</strong> — your SSID</td></tr>
 <tr><td>08</td><td><strong>Provision &gt; Inventory</strong> — provisioning status turns green</td></tr>
 <tr><td>09</td><td><strong>Activities &gt; Tasks</strong> — one deployment task per switch</td></tr>
+<tr><td>10</td><td><strong>Provision &gt; Inventory</strong> — the access point appears, gains a name and a site, then turns green</td></tr>
+<tr><td>11</td><td>Nothing changes in the GUI — read <code>evidence/stage11-verification.html</code> instead</td></tr>
 </tbody>
 </table>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a2-stage01-sites.png" alt="Catalyst Center network hierarchy after stage 01" width="865" height="430"></p>
