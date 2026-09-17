@@ -3536,17 +3536,18 @@ exit-address-family
 <hr>
 <h4>Example 1 — Add a VLAN to an existing tenant</h4>
 <p>Goal: a voice VLAN, <strong>111</strong>, inside the existing <code>PROD</code> tenant.</p>
-<p>One file changes: <code>DEFN-OVERLAY.j2</code>. Find the <code>PROD</code> group and add the VLAN to both the id list and the VLAN dictionary:</p>
+<p>One file changes: <code>DEFN-OVERLAY.j2</code>. Find the <code>PROD</code> group and add the VLAN to both the id list and the VLAN dictionary. Everything <span style="color: #1a7f37; background: rgba(46,160,67,0.18); border-radius: 3px; padding: 1px 4px;">highlighted in green</span> is new — the rest is already there:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{
   'vrf': 'PROD',
-  'vlan_ids': ['101','111'],
+  'vlan_ids': ['101'<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,'111'</span>],
   'vlans': {
     '101': {'name':'PROD', 'ipaddr':'10.101.255.1 255.255.255.0', 'mac':'0001.0001.0101',
-            'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.101.255.0 255.255.255.0'},
-    '111': {'name':'PROD-Voice', 'ipaddr':'10.111.255.1 255.255.255.0', 'mac':'0001.0001.0111',
-            'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.111.255.0 255.255.255.0'}
+            'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.101.255.0 255.255.255.0'}<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">    '111': {'name':'PROD-Voice', 'ipaddr':'10.111.255.1 255.255.255.0', 'mac':'0001.0001.0111',</span>
+<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">            'dhcp_helper':'198.18.5.102', 'bum_addr':'232.1.1.1', 'network':'10.111.255.0 255.255.255.0'}</span>
   }
 }</pre>
+<p>Note the comma that has to be added to the end of the <code>'101'</code> entry. It is the single easiest thing to miss here, and Catalyst Center reports it as a Jinja2 syntax error at sync time rather than as a missing VLAN.</p>
 <p>That is the entire change. Nothing else is required for the VLAN to forward.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
@@ -3575,9 +3576,9 @@ exit-address-family
 <p>Following the conventions from the previous card: <code>l3_vlan</code> is 1000 + 103, and <code>l3_vni</code> is 110000 + 103. Both must be unique across the fabric.</p>
 <p><strong>Step 2</strong> — in the same file, add the tenant to each device that should carry it:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{% set DEFN_VRF_TO_NODE = {
-  'Site_105-Leaf1.corp.pseudoco.com':        ['10','101','102','103'],
-  'Site_105-Leaf2.corp.pseudoco.com':        ['10','101','102','103'],
-  'Site_105-Border-Spine.corp.pseudoco.com': ['10','101','102','103']
+  'Site_105-Leaf1.corp.pseudoco.com':        ['10','101','102'<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,'103'</span>],
+  'Site_105-Leaf2.corp.pseudoco.com':        ['10','101','102'<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,'103'</span>],
+  'Site_105-Border-Spine.corp.pseudoco.com': ['10','101','102'<span style="color: #7ee787; background: rgba(46,160,67,0.25); border-radius: 3px;">,'103'</span>]
 } %}</pre>
 <p><strong>Step 3</strong> — in <code>DEFN-OVERLAY.j2</code>, add a matching group with at least one VLAN:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{
