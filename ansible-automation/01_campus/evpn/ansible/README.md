@@ -640,7 +640,7 @@ to the wrong site; correct that in CatC before proceeding.
 ### What it accomplishes
 
 This stage copies DEFN, FUNC, and FABRIC Jinja plus the composite YAML into
-Catalyst Center **Tools > Template Hub**. It does **not** push CLI onto
+Catalyst Center **Design > CLI Templates**. It does **not** push CLI onto
 switches; stage 09 later deploys the composite `BGP-EVPN-BUILD.j2`.
 
 A **CLI project** is created if it does not already exist. This lab’s project
@@ -808,9 +808,9 @@ Success is recap `failed=0` and `Projects synced: 1` with project `Site-105`.
 
 ### Where to verify in Catalyst Center
 
-Open **Tools > Template Hub** (Template Editor on some releases). A **CLI**
-project named **Site-105** must exist (created on first sync if missing).
-Inside it confirm:
+Open **Design > CLI Templates** (Template Hub or Template Editor on older
+releases; 3.1.5 moved it under Design). A **CLI** project named **Site-105**
+must exist (created on first sync if missing). Inside it confirm:
 
 - DEFN and FUNC helpers.
 - FABRIC templates (24 regular files in this lab).
@@ -1233,7 +1233,7 @@ a miss. VLAN names on the box are `Main` / `PROD` / `IOT`.
 
 ### Where to verify in Catalyst Center
 
-Open **Tools > Template Hub > Site-105 > BGP-EVPN-BUILD.j2** and inspect
+Open **Design > CLI Templates > Site-105 > BGP-EVPN-BUILD.j2** and inspect
 deployment history / Activities. Confirm SUCCESS to `172.30.255.1–3`.
 
 Then open **Provision > Inventory** (all families, or the Wireless
