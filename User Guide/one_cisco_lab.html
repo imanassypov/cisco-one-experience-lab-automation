@@ -103,13 +103,13 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title"><span class="arrow">▾</span>EVPN Fabric and WLC — Infrastructure as Code</div>
-  <ul class="nav-pages"><li><a href="#page-9002">A1. Prepare Workstation &amp; Script Server</a></li>
-<li><a href="#page-9003">A2. Run the Pipeline</a></li>
-<li><a href="#page-9004">A3. Verify Intent &amp; Evidence Report</a></li>
-<li><a href="#page-9005">A4. Understanding the Template Model</a></li>
-<li><a href="#page-9006">A5. Extending the Fabric via Git</a></li>
-<li><a href="#page-9007">A6. Verify Wireless &amp; Provision the AP</a></li>
-<li><a href="#page-9008">A7. Appendix — Wireless Troubleshooting</a></li>
+  <ul class="nav-pages"><li><a href="#page-9002">1. Prepare Workstation &amp; Script Server</a></li>
+<li><a href="#page-9003">2. Run the Pipeline</a></li>
+<li><a href="#page-9004">3. Verify Intent &amp; Evidence Report</a></li>
+<li><a href="#page-9005">4. Understanding the Template Model</a></li>
+<li><a href="#page-9006">5. Extending the Fabric via Git</a></li>
+<li><a href="#page-9007">6. Verify Wireless &amp; Provision the AP</a></li>
+<li><a href="#page-9008">7. Appendix — Wireless Troubleshooting</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title"><span class="arrow">▾</span>Macro / Micro Segmentation</div>
@@ -1691,7 +1691,7 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 <li>Learn the Catalyst Center template model that scales past three switches</li>
 </ul>
 <p><strong>What you need:</strong> the dCloud VPN, a terminal, and your POD number from the lab printout.</p>
-<p><strong>Start here:</strong> <a href="#page-9002">A1. Prepare Your Workstation &amp; Script Server</a></p>
+<p><strong>Start here:</strong> <a href="#page-9002">1. Prepare Your Workstation &amp; Script Server</a></p>
 </div>
 </div>
 <hr>
@@ -1742,7 +1742,7 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 <tr>
 <td>Configure and test the wireless SSID</td>
 <td><a href="#page-7585">4. Configure &amp; Test WLC</a> — 9800 GUI</td>
-<td>Stage <strong>07</strong> builds it; <a href="#page-9007">A6. Verify Wireless &amp; Provision the Access Point</a> confirms it</td>
+<td>Stage <strong>07</strong> builds it; <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a> confirms it</td>
 </tr>
 <tr>
 <td>Prove the fabric matches the design</td>
@@ -1752,7 +1752,7 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 </tbody>
 </table>
 <div class="admonition">
-<p>👀 <strong>Tip:</strong> even if you choose the traditional path, read <a href="#page-9005">A4. Understanding the EVPN Template Model</a>. It explains how the same fabric design is expressed as data, and it is the part of the automated path most useful in a real network.</p>
+<p>👀 <strong>Tip:</strong> even if you choose the traditional path, read <a href="#page-9005">4. Understanding the EVPN Template Model</a>. It explains how the same fabric design is expressed as data, and it is the part of the automated path most useful in a real network.</p>
 </div>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Make your choice</div>
@@ -2902,7 +2902,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <!-- Body (Add your content here) -->
 <div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">
 <p>🎉 This concludes the wireless network configuration, provisioning, and testing section.</p>
-<p>🛑 <strong>Client did not connect, or connected but got no IP address?</strong> Work through <a href="#page-9008"><strong>A7. Appendix — Wireless Troubleshooting Checklist</strong></a>. It was written for the Infrastructure as Code track, but every check applies here too — the 9800, ISE, and FlexConnect behave the same way whether the controller was configured by hand or by the pipeline.</p>
+<p>🛑 <strong>Client did not connect, or connected but got no IP address?</strong> Work through <a href="#page-9008"><strong>7. Appendix — Wireless Troubleshooting Checklist</strong></a>. It was written for the Infrastructure as Code track, but every check applies here too — the 9800, ISE, and FlexConnect behave the same way whether the controller was configured by hand or by the pipeline.</p>
 <div class="admonition pied-piper">
 <p>Wow, you've accomplished an incredible amount of configuration in such a short time! You truly are an amazing engineer! </p>
 </div>
@@ -2913,7 +2913,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
   <div class="section-header"><h2>EVPN Fabric and WLC — Infrastructure as Code</h2></div>
   <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-9002" class="page-anchor">A1. Prepare Your Workstation &amp; Script Server</h3>
+    <h3 id="page-9002" class="page-anchor">1. Prepare Your Workstation &amp; Script Server</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 7</h3>
 <p>This card gets you from a freshly connected VPN session to a script server that is ready to run the EVPN pipeline. You will SSH in, clone the repository onto that host, and let it bootstrap itself. Nothing here touches the fabric yet — every command in this card is safe to re-run.</p>
@@ -3067,12 +3067,12 @@ ansible-playbook --version</pre>
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>Your script server is ready and your pod number is set. Time to build the fabric: <a href="#page-9003"><strong>A2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
+<p>Your script server is ready and your pod number is set. Time to build the fabric: <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
 </div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-9003" class="page-anchor">A2. Run the EVPN + Catalyst Center Pipeline</h3>
+    <h3 id="page-9003" class="page-anchor">2. Run the EVPN + Catalyst Center Pipeline</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 2 of 7</h3>
 <p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the working directory you set up in the previous card.</p>
@@ -3150,7 +3150,7 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
 <li><strong>FUNC</strong> files hold reusable macros.</li>
 <li><strong>FABRIC</strong> files are the renderers. They read the DEFN data, work out which device they are running on, and emit the IOS-XE commands for it.</li>
 </ul>
-<p>The next card but one, <a href="#page-9005">A4. Understanding the EVPN Template Model</a>, takes this apart properly. For now it is enough to know that the design lives in data files, and the fabric is generated from them.</p>
+<p>The next card but one, <a href="#page-9005">4. Understanding the EVPN Template Model</a>, takes this apart properly. For now it is enough to know that the design lives in data files, and the fabric is generated from them.</p>
 <hr>
 <h4>Useful overrides</h4>
 <p>This project has <strong>no Ansible tags</strong>. Everything is controlled with <code>-e</code> extra variables instead:</p>
@@ -3187,12 +3187,12 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>The fabric is built. Now prove it: <a href="#page-9004"><strong>A3. Verify Intent &amp; Evidence Report</strong></a>.</p>
+<p>The fabric is built. Now prove it: <a href="#page-9004"><strong>3. Verify Intent &amp; Evidence Report</strong></a>.</p>
 </div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🔍</span>
-    <h3 id="page-9004" class="page-anchor">A3. Verify Intent &amp; Evidence Report</h3>
+    <h3 id="page-9004" class="page-anchor">3. Verify Intent &amp; Evidence Report</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 3 of 7</h3>
 <p>Deploying configuration and <em>knowing it is correct</em> are two different things. Stage 11 closes that gap: it reads the design out of Catalyst Center, collects live output from the switches and controller, and produces a pass/fail report you could hand to an auditor.</p>
@@ -3274,12 +3274,12 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>You have a working, verified fabric. Now find out how it was described: <a href="#page-9005"><strong>A4. Understanding the EVPN Template Model</strong></a>.</p>
+<p>You have a working, verified fabric. Now find out how it was described: <a href="#page-9005"><strong>4. Understanding the EVPN Template Model</strong></a>.</p>
 </div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🧩</span>
-    <h3 id="page-9005" class="page-anchor">A4. Understanding the EVPN Template Model</h3>
+    <h3 id="page-9005" class="page-anchor">4. Understanding the EVPN Template Model</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 4 of 7</h3>
 <p>You have deployed a fabric you did not type. This card explains what you actually deployed.</p>
@@ -3497,12 +3497,12 @@ exit-address-family
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>You understand the model. Now use it — add a tenant and a VLAN, and push them through the pipeline: <a href="#page-9006"><strong>A5. Extending the Fabric</strong></a>.</p>
+<p>You understand the model. Now use it — add a tenant and a VLAN, and push them through the pipeline: <a href="#page-9006"><strong>5. Extending the Fabric</strong></a>.</p>
 </div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🌱</span>
-    <h3 id="page-9006" class="page-anchor">A5. Extending the Fabric: Add a Tenant or VLAN via Git</h3>
+    <h3 id="page-9006" class="page-anchor">5. Extending the Fabric: Add a Tenant or VLAN via Git</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 5 of 7</h3>
 <p>Two worked examples, then the workflow that carries them from an edit on your screen to configuration on a switch. This is where Infrastructure as Code stops being an idea and becomes a habit.</p>
@@ -3650,7 +3650,7 @@ ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
 <tbody>
 <tr><td>Stage 06 succeeds but nothing changed on the switches</td><td>You skipped stage 09</td><td>Stage 06 only uploads. Stage 09 deploys.</td></tr>
 <tr><td>New tenant appears in <code>show vrf</code> but does not route</td><td>No overlay group for it</td><td>Add the group to <code>DEFN-OVERLAY.j2</code> (step 3 above)</td></tr>
-<tr><td>Catalyst Center prompts for variable values at deploy time</td><td>A new variable was introduced without a dummy <code>{% set %}</code></td><td>See the quirks table in <a href="#page-9005">A4</a></td></tr>
+<tr><td>Catalyst Center prompts for variable values at deploy time</td><td>A new variable was introduced without a dummy <code>{% set %}</code></td><td>See the quirks table in <a href="#page-9005">4. Understanding the EVPN Template Model</a></td></tr>
 <tr><td>Stage 09 deploys but the old configuration is still there</td><td>An older template version was selected</td><td>Re-run stage 06, then stage 09</td></tr>
 <tr><td>Stage 11 fails on the new VLAN only</td><td>Stage 09 partially timed out</td><td>Re-run stage 09, then stage 11</td></tr>
 </tbody>
@@ -3660,13 +3660,13 @@ ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
 <p>🎉 You have built an EVPN fabric from source, proved it matches its design, and changed it through a commit. That is the whole Infrastructure as Code loop — describe, deploy, verify, evolve.</p>
-<p>Next, confirm the wireless service the same pipeline built for you: <a href="#page-9007"><strong>A6. Verify Wireless &amp; Provision the Access Point</strong></a>.</p>
+<p>Next, confirm the wireless service the same pipeline built for you: <a href="#page-9007"><strong>6. Verify Wireless &amp; Provision the Access Point</strong></a>.</p>
 </div>
 </div></div>
 </div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-9007" class="page-anchor">A6. Verify Wireless &amp; Provision the Access Point</h3>
+    <h3 id="page-9007" class="page-anchor">6. Verify Wireless &amp; Provision the Access Point</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 6 of 7</h3>
 <h3>Wireless, when the pipeline built it for you</h3>
@@ -3788,17 +3788,17 @@ python -m rich.markdown evidence/stage11-verification.md | less -R</pre>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
 <p>🎉 Fabric, templates, provisioning, and wireless — all built from source and verified against the design. You have completed the automated path.</p>
-<p>If your client did not connect, work through <a href="#page-9008"><strong>A7. Appendix — Wireless Troubleshooting Checklist</strong></a>. Otherwise continue to <strong>Macro / Micro Segmentation</strong>.</p>
+<p>If your client did not connect, work through <a href="#page-9008"><strong>7. Appendix — Wireless Troubleshooting Checklist</strong></a>. Otherwise continue to <strong>Macro / Micro Segmentation</strong>.</p>
 </div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🛠️</span>
-    <h3 id="page-9008" class="page-anchor">A7. Appendix — Wireless Troubleshooting Checklist</h3>
+    <h3 id="page-9008" class="page-anchor">7. Appendix — Wireless Troubleshooting Checklist</h3>
   </div>
   <div class="page-card-body"><h3>When the SSID is visible but the client never connects</h3>
 <p>This is the classic wireless failure, and it is worth knowing how to work through it methodically rather than by guessing. The checklist below is distilled from a real troubleshooting session on this lab.</p>
 <div class="admonition">
-<p>👀 <strong>Optional reference, and it applies to both tracks.</strong> Use this only if something is not working. Nothing here is required to complete the lab. The checks are the same whether you configured the controller by hand in <a href="#page-7585">4. Configure &amp; Test WLC</a> or the pipeline built it in <a href="#page-9007">A6</a> — only the <em>fix</em> differs, and that is called out where it matters.</p>
+<p>👀 <strong>Optional reference, and it applies to both tracks.</strong> Use this only if something is not working. Nothing here is required to complete the lab. The checks are the same whether you configured the controller by hand in <a href="#page-7585">4. Configure &amp; Test WLC</a> or the pipeline built it in <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a> — only the <em>fix</em> differs, and that is called out where it matters.</p>
 </div>
 <hr>
 <h4>The symptom</h4>
