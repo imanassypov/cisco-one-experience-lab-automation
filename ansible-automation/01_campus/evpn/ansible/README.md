@@ -20,10 +20,9 @@ Run the playbooks in numerical order:
 9. Deploy the EVPN composite. That programs the AP-facing leaf ports so an
    AP can join the WLC and appear as a Unified AP in Inventory.
 10. SSH to the switches and collect read-only verification evidence.
-11. Wait for the AP to reach Catalyst Center and record its Ethernet MAC in
-    `lab_ap_macs` automatically (`10_await_access_points.yml`), then re-run
-    stage 08. That pass names the AP, assigns it to Site-105, then provisions
-    it.
+11. Wait for the AP to reach Catalyst Center, record its Ethernet MAC in
+    `lab_ap_macs`, then name it, assign it to Site-105 and provision it — all
+    in `10_await_access_points.yml`.
 
 Stages 01–09 use the Catalyst Center API. Stage 11 is the only playbook that
 logs in to the switches.
@@ -47,8 +46,8 @@ Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
   native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
   CAPWAP-join, so Catalyst Center has no Unified AP to provision. You do not
   fill `lab_ap_macs` by hand: run `10_await_access_points.yml` after stage 09
-  and it waits for the AP to reach Catalyst Center, then writes the Ethernet
-  MAC into `lab.yml` for you. Then re-run stage 08.
+  and it waits for the AP to reach Catalyst Center, writes the Ethernet MAC
+  into `lab.yml`, then names, site-assigns and provisions the AP.
 - Run every command from this directory so Ansible finds `ansible.cfg`:
 
 ```bash
@@ -1336,6 +1335,11 @@ membership from the site, not only the Inventory Site column.
    ```bash
    ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
    ```
+
+   > Normally you do not run this by hand at all. `10_await_access_points.yml`
+   > calls the AP pass directly, so the controller pass cannot run by accident.
+   > The command above is for re-asserting an AP that has drifted back onto
+   > default tags after the pipeline has already been through.
 
 4. Open **Provision > Inventory** again. Right after the play, verified
    2026-09-15 18:17:

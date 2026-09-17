@@ -3706,8 +3706,8 @@ ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
 <tr><td>1</td><td>Stage <strong>09</strong> deploys the composite, building the EVPN fabric</td><td>This is what turns <code>Gi1/0/2</code> into the access-point trunk</td></tr>
 <tr><td>2</td><td>The access point boots and registers to the 9800</td><td>It needs the trunk from step 1. Takes a few minutes</td></tr>
 <tr><td>3</td><td>Catalyst Center learns the access point from the controller</td><td>A further sync delay — the controller knows first</td></tr>
-<tr><td>4</td><td>Stage <strong>10</strong> waits for it and records its MAC</td><td>Nothing to wait for until steps 2 and 3 finish</td></tr>
-<tr><td>5</td><td>Stage <strong>08</strong> re-runs: assigns the access point to <strong>Site-105</strong>, then provisions it</td><td>Writes the real site and policy tags, so the access point serves your SSID</td></tr>
+<tr><td>4</td><td>Stage <strong>10</strong> waits for it, records its MAC, assigns it to <strong>Site-105</strong> and provisions it</td><td>Nothing to wait for until steps 2 and 3 finish</td></tr>
+<tr><td>5</td><td>Stage <strong>11</strong> verifies wireless alongside the fabric</td><td>Needs the access point actually serving the SSID</td></tr>
 </tbody>
 </table>
 <p>The waiting is all in steps 2 and 3, and stage 10 does that waiting for you.</p>
@@ -3737,24 +3737,24 @@ ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
 <p>🛑 <strong>This is the wait people get wrong.</strong> Stage 08 looks the access point up in <em>Catalyst Center</em> by its Ethernet MAC — not on the controller. Run it while the access point is Registered on the 9800 but not yet in Catalyst Center inventory and it fails the assertion that the access point has joined, even though the controller plainly shows it. If that happens, wait a few minutes and re-run; nothing is broken.</p>
 </div>
 <hr>
-<h4>Step 3 — Let the pipeline pick up the access point</h4>
-<p>You do <strong>not</strong> copy the MAC address by hand. Back on the script server, run the waiting stage:</p>
+<h4>Step 3 — Let the pipeline pick up and provision the access point</h4>
+<p>You do <strong>not</strong> copy the MAC address by hand, and you do not re-run stage 08. One command does the rest:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 ansible-playbook playbooks/10_await_access_points.yml</pre>
-<p>It polls Catalyst Center until an access point appears — up to ten minutes by default — then writes the Ethernet MAC into <code>lab.yml</code> for you, in the right format, with your pod number and every comment in that file left untouched. It is safe to re-run, and safe to start before the access point has registered; it simply waits.</p>
+<p>It polls Catalyst Center until an access point appears — up to ten minutes by default — writes the Ethernet MAC into <code>lab.yml</code> in the right format, and then <strong>names</strong> the access point, <strong>assigns it to the Site-105 floor</strong>, and <strong>provisions</strong> it. Your pod number and every comment in <code>lab.yml</code> are left untouched. It is safe to re-run, and safe to start before the access point has registered; it simply waits.</p>
 <p>You can start it as soon as stage 09 finishes rather than watching the controller.</p>
 <p>If you have two access points, tell it so it does not stop at the first:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_await_access_points.yml -e ap_expected_count=2</pre>
+<p>To stop after writing the MAC, without provisioning:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_await_access_points.yml -e ap_provision_after_discovery=false</pre>
 <div class="admonition">
-<p>👀 <strong>Why this stage exists.</strong> Doing it by hand means reading a MAC off the controller, converting <code>084f.a950.f028</code> to <code>08:4f:a9:50:f0:28</code>, and picking the <em>Ethernet</em> MAC rather than the Base Radio MAC that Catalyst Center shows in its inventory column. Get any of those wrong and stage 08 fails with an unhelpful “not found among the Unified AP devices”. The playbook removes all three traps.</p>
+<p>👀 <strong>Why this stage exists.</strong> Doing it by hand means reading a MAC off the controller, converting <code>084f.a950.f028</code> to <code>08:4f:a9:50:f0:28</code>, and picking the <em>Ethernet</em> MAC rather than the Base Radio MAC that Catalyst Center shows in its inventory column. Get any of those wrong and the provision fails with an unhelpful “not found among the Unified AP devices”. The playbook removes all three traps.</p>
 </div>
-<p>Now provision the access point:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false</pre>
 <div class="admonition warning">
-<p>🛑 <strong>Do not omit <code>-e wireless_provision_enabled=false</code>.</strong> The 9800 controller is shared between pods. Re-provisioning it reboots every access point it manages — including other students'. The flag skips the controller and provisions only your access point.</p>
+<p>🛑 <strong>It provisions the access point only — never the controller.</strong> The 9800 is shared between pods, and re-provisioning it reboots every access point it manages, including other students'. That is why this stage calls the access-point pass directly instead of re-running stage 08, where forgetting <code>-e wireless_provision_enabled=false</code> would do exactly that.</p>
 </div>
-<p>Stage 08 now does three things in order: it <strong>names</strong> the access point, <strong>assigns it to the Site-105 floor</strong>, and then <strong>provisions</strong> it with the typical RF profile.</p>
-<p>The middle step is the one that matters most, and it is easy to underrate. An access point that is merely known to Catalyst Center still sits on <code>default-site-tag</code> and <code>default-policy-tag</code>, which map to no WLAN at all — so it broadcasts nothing. Assigning it to Site-105 is what lets the provision step write real tags onto the controller and bind the access point to your SSID. Re-pushing the controller instead would not fix it, and would reboot every other pod's access points.</p>
+<p>Assigning the access point to Site-105 is the step that matters most, and it is easy to underrate. An access point that is merely known to Catalyst Center still sits on <code>default-site-tag</code> and <code>default-policy-tag</code>, which map to no WLAN at all — so it broadcasts nothing. The assignment is what lets the provision step write real tags onto the controller and bind the access point to your SSID.</p>
+<p>The access point reboots when it is provisioned and takes 1–3 minutes to rejoin, so do not be alarmed if <code>show ap summary</code> is briefly empty afterwards.</p>
 <hr>
 <h4>Step 4 — Confirm the tags came from Catalyst Center</h4>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show ap tag summary</pre>

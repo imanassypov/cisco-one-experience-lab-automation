@@ -2,8 +2,8 @@
 # =============================================================================
 # 10_await_access_points.yml  —  Pipeline stage 10
 # =============================================================================
-# Waits for an access point to reach Catalyst Center, then writes its Ethernet
-# MAC into inventory/group_vars/all/lab.yml so stage 08 can provision it.
+# Waits for an access point to reach Catalyst Center, records its Ethernet MAC
+# in inventory/group_vars/all/lab.yml, then provisions it.
 #
 # Why this stage exists
 # --------------------------------------------------------------------------
@@ -19,22 +19,35 @@
 # and the resulting failure is an opaque "not found among the Unified AP
 # devices". This playbook does all of it.
 #
+# Two plays:
+#   1. Poll Catalyst Center until an AP appears, write the MACs into lab.yml.
+#   2. Name, site-assign and provision those APs.
+#
+# Play 2 runs the AP pass of the provision_devices role directly rather than
+# importing stage 08. Stage 08 would also run the wired pass, which has nothing
+# to do here, and the controller pass, which reboots every AP on the shared
+# 9800 unless -e wireless_provision_enabled=false is remembered. Calling the AP
+# tasks directly removes that footgun.
+#
 # Runs after: 09_deploy_composite.yml
-# Run before: re-running 08_provision_devices.yml
+# Runs before: 11_verify_intent.yml
 #
 # Deliberately NOT part of 00_site_deploy.yml. It blocks on hardware booting,
 # which can take minutes, and the orchestrator should not stall on something no
 # amount of API work can hurry along.
 #
 # Sourced:
-#   catc_common tasks_from: auth_token → _catc_token
-#   connection.yml: dnac_host/port/verify
+#   catc_common tasks_from: auth_token    → _catc_token
+#   catc_common tasks_from: load_settings → settings_data
+#   connection.yml: dnac_host/port/verify, ap_assign_confirm_*
 #
 # Produced:
 #   inventory/group_vars/all/lab.yml — lab_ap_macs populated, comments intact
+#   On Catalyst Center: APs named, assigned to their floor, and provisioned
 #
 # Run: ansible-playbook playbooks/10_await_access_points.yml
 #      ansible-playbook playbooks/10_await_access_points.yml -e ap_expected_count=2
+#      ansible-playbook playbooks/10_await_access_points.yml -e ap_provision_after_discovery=false
 # =============================================================================
 - name: Wait for access points and record their MACs in lab.yml
   hosts: catalyst_center
@@ -165,11 +178,88 @@
       vars:
         _lab_vars_parsed: "{{ _lab_vars_reread.content | b64decode | from_yaml }}"
 
+    # group_vars are read once when the playbook is parsed, so rewriting lab.yml
+    # above does not change lab_ap_macs for this run. The provisioning play
+    # below needs the discovered MACs now, and a set_fact outranks group_vars.
+    # The file write is what makes them survive into later runs.
+    - name: Carry the discovered MACs into this run
+      ansible.builtin.set_fact:
+        lab_ap_macs: "{{ _ap_macs }}"
+
     - name: Next step
       ansible.builtin.debug:
         msg:
           - "{{ _ap_macs | length }} access point MAC(s) written to lab.yml: {{ _ap_macs | join(', ') }}"
           - "{{ 'lab.yml was already correct — nothing changed.' if not _lab_vars_write.changed else 'lab.yml updated.' }}"
-          - "Now provision the access point:"
-          - "  ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false"
-          - "The flag matters: the 9800 is shared between pods, and re-provisioning it reboots every AP it manages."
+          - >-
+            {{ 'Provisioning them now.'
+               if (ap_provision_after_discovery | default(true) | bool)
+               else 'ap_provision_after_discovery is false — run 08_provision_devices.yml yourself.' }}
+
+# Runs the AP pass only, never the whole of stage 08. The wired pass has
+# nothing to do here, and the controller pass would reboot every AP on the
+# shared 9800 - which is exactly what the -e wireless_provision_enabled=false
+# in the manual instructions exists to prevent. Calling the role's AP tasks
+# directly makes that impossible to get wrong.
+- name: Provision the discovered access points
+  hosts: catalyst_center
+  gather_facts: false
+  vars:
+    catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
+  module_defaults:
+    cisco.dnac.accesspoint_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+    cisco.dnac.site_info:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+    cisco.dnac.assign_device_to_site:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+  pre_tasks:
+    # Plays take no when:, so the opt-out is an early end_play rather than a
+    # condition repeated on every task below.
+    - name: Stop here when automatic provisioning is disabled
+      ansible.builtin.meta: end_play
+      when: not (ap_provision_after_discovery | default(true) | bool)
+
+    - name: Obtain Catalyst Center auth token
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: auth_token
+
+    # Loaded after the set_fact above, so {APn_MAC} resolves to what was just
+    # discovered rather than to the empty list this run started with.
+    - name: Load settings.json
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: load_settings
+  tasks:
+    - name: Name, site-assign and provision the access points
+      ansible.builtin.include_role:
+        name: provision_devices
+        tasks_from: provision_accesspoints.yml
+
+    - name: Done
+      ansible.builtin.debug:
+        msg:
+          - "Access points provisioned. They reboot on provision and take 1-3 minutes to rejoin."
+          - "Confirm on the controller:  show ap tag summary   (tag source should be Static)"
+          - "Then verify the fabric:     ansible-playbook playbooks/11_verify_intent.yml"
