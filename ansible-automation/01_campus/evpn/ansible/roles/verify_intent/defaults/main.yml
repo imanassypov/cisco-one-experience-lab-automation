@@ -33,4 +33,3 @@ verify_report_html_path: "{{ playbook_dir }}/../evidence/stage11-verification.ht
 # Center, never from the repo checkout — stage 06 seeds CatC from git or a local
 # folder, and stage 11 must verify what was actually deployed.
 verify_defn_prefix: "DEFN-"
-verify_use_genie: false
