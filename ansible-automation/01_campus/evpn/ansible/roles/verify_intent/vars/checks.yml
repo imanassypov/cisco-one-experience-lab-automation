@@ -419,6 +419,23 @@ verify_checks:
              'observed': (match | first).status | default('UP') if match else 'SSID absent'}] }}
       {%- endif -%}
 
+  # Every other AP check iterates the declared list, so an empty list leaves them
+  # all with nothing to compare and the report reads "not applicable". This one
+  # yields a pair whatever settings.json says, so an unpopulated lab_ap_macs is a
+  # failure rather than a silence.
+  - id: ap_count
+    title: Access point count matches settings.json
+    scope: wlc
+    command: show ap summary
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show ap summary', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show ap summary') -%}
+        {{ [{'label': 'access points joined',
+             'intended': _intent_settings.access_points | length | string,
+             'observed': (p.ap_name | default({})) | length | string}] }}
+      {%- endif -%}
+
   - id: ap_joined
     title: Access points registered
     scope: wlc

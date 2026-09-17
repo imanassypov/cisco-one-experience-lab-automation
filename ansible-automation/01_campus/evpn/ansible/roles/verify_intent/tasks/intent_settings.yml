@@ -77,6 +77,20 @@
   ansible.builtin.debug:
     var: _intent_settings
 
+# A dropped row is not an error — stage 08 drops it too — but it silently
+# shrinks what the AP checks have to compare, so say so.
+- name: Report access points whose MAC token never resolved
+  vars:
+    _ap_rows: "{{ settings_data.project | map(attribute='access_points', default=[]) | flatten | length }}"
+  when: (_ap_rows | int) > (_intent_settings.access_points | length)
+  ansible.builtin.debug:
+    msg: >-
+      settings.json declares {{ _ap_rows }} access point(s) but only
+      {{ _intent_settings.access_points | length }} carry a real MAC; the rest
+      still hold an unresolved APn_MAC token. Populate lab_ap_macs in
+      inventory/group_vars/all/lab.yml, which stage 10 does for you, or those
+      access points cannot be verified.
+
 - name: Assert settings.json names devices to verify
   ansible.builtin.assert:
     that: _intent_settings.switch_ips | length > 0
