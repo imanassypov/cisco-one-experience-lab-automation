@@ -3075,10 +3075,10 @@ ansible-playbook --version</pre>
     <h3 id="page-9003" class="page-anchor">A2. Run the EVPN + Catalyst Center Pipeline</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 2 of 7</h3>
-<p>This is the main event. Ten numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the working directory you set up in the previous card.</p>
+<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the working directory you set up in the previous card.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
-<h4>The ten stages</h4>
+<h4>The eleven stages</h4>
 <p>Each stage is a standalone playbook. They are numbered because order matters — stage 05 cannot assign a device to a site that stage 01 has not created yet.</p>
 <p>The <strong>Impact</strong> column tells you what a stage can disturb if something goes wrong. Read it before you run a stage, not after.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
@@ -3847,10 +3847,16 @@ python -m rich.markdown evidence/stage11-verification.md | less -R</pre>
 </tr>
 <tr>
 <td>9</td><td>Fix it in the right place</td>
-<td><em>Manual track:</em> correct the VLAN mapping directly in the 9800 under <strong>Configuration &gt; Tags &amp; Profiles &gt; Flex</strong>, then re-join the client.<br><em>IaC track:</em> correct it in the network profile, re-run stage 07, then stage 08 with <code>-e wireless_provision_enabled=false</code>. Fixing it by hand on the controller works until the next provision overwrites it.</td>
+<td><em>Manual track:</em> correct the VLAN mapping directly in the 9800 under <strong>Configuration &gt; Tags &amp; Profiles &gt; Flex</strong>, then re-join the client.<br><em>IaC track:</em> correct it in the network profile, re-run stage 07, then re-provision the controller so the change reaches it \u2014 see the note below. Fixing it by hand on the controller works until the next provision overwrites it.</td>
 </tr>
 </tbody>
 </table>
+<div class="admonition warning">
+<p>🛑 <strong>Re-provisioning the controller, without rebooting everybody's access points.</strong> A FlexConnect VLAN mapping lives on the 9800, so a corrected network profile only reaches it when the controller itself is provisioned — <code>-e wireless_provision_enabled=false</code> would skip the very thing you are trying to fix. But the 9800 is shared across pods, and by default a controller provision re-provisions every access point it manages. Set <code>skip_ap_provision</code> to <code>true</code> in the <code>wireless_controller</code> block of <code>Settings/settings.json</code> first — that is Catalyst Center's <strong>Skip AP Provision</strong> option, and it pushes the controller configuration while leaving the access points alone. Then run:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/07_network_profile.yml
+ansible-playbook playbooks/08_provision_devices.yml -e ap_provision_enabled=false</pre>
+<p>In a production network you would schedule this in a change window rather than reach for the skip flag.</p>
+</div>
 <hr>
 <h4>Commands that waste your time here</h4>
 <table style="border-collapse: collapse; width: 100%;" border="1">
