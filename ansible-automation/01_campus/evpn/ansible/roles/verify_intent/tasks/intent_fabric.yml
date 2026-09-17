@@ -102,6 +102,23 @@
       {{ _intent_fabric.loop_underlay | length }} underlay loopback(s),
       ASN {{ _intent_fabric.bgp_asn }}.
 
+# DEFN_VRF_TO_NODE joins to DEFN_VRF by id, and the checks index that join. An
+# id on neither side of the join makes every switch check unevaluable.
+- name: Assert every VRF id assigned to a node is defined
+  vars:
+    _assigned: "{{ _intent_fabric.vrf_to_node.values() | list | flatten | map('string') | unique | list }}"
+    _defined: "{{ _intent_fabric.vrfs | map(attribute='id') | map('string') | list }}"
+  ansible.builtin.assert:
+    that: _assigned | difference(_defined) | length == 0
+    fail_msg: >-
+      DEFN_VRF_TO_NODE assigns VRF id(s)
+      {{ _assigned | difference(_defined) | join(', ') }}
+      that DEFN_VRF does not define; it defines {{ _defined | join(', ') }}.
+      Fix DEFN-VRF.j2 in Catalyst Center Template Programmer — stage 11 reads
+      the intent from Catalyst Center, not from the repo checkout.
+    success_msg: >-
+      All {{ _assigned | length }} assigned VRF id(s) are defined in DEFN_VRF.
+
 - name: Remove the working directory
   when: not (catc_debug | default(false) | bool)
   ansible.builtin.file:

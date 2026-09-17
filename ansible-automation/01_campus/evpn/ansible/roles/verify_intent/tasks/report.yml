@@ -54,7 +54,16 @@
                   | map('regex_replace', '\..*$', ''))
             | map('join', ' on ') | map('regex_replace', '^', '│   FAIL: ')
             | list)
-         + ['│ Report        : ' + verify_report_path]         + ['│ HTML          : ' + verify_report_html_path]         + ['└─────────────────────────────────────────────────────────────────┘'] }}
+         + ['│ Report        : ' + verify_report_path]
+         + ['│ HTML          : ' + verify_report_html_path]
+         + ['├─────────────────────────────────────────────────────────────────┤']
+         + ['│ Read it here  : less -R ' + verify_report_path]
+         + ['│ Or in Firefox : xdg-open ' + verify_report_html_path]
+         + ['│ Or on your laptop:']
+         + ['│   scp ' + (lookup('env', 'USER') | default('cisco', true))
+            + '@<script-server>:' + verify_report_html_path + ' . && open '
+            + (verify_report_html_path | basename)]
+         + ['└─────────────────────────────────────────────────────────────────┘'] }}
 
 - name: Report that some checks had no verdict
   when: (_verify_counts.not_verified | int) > 0
@@ -72,9 +81,11 @@
       {{ _verify_counts.fail }} check(s) do not match the declared intent:
       {{ _verify_results | selectattr('status', 'equalto', 'FAIL')
          | map(attribute='id') | unique | join(', ') }}.
-      See {{ verify_report_path }} for the expected patterns and the raw
-      command output. Re-run with -e verify_fail_on_mismatch=false to report
-      without failing.
+      Read the intended and observed values with
+      'less -R {{ verify_report_path }}', or open
+      {{ verify_report_html_path }} in a browser and use its failures-only
+      filter. Re-run with -e verify_fail_on_mismatch=false to report without
+      failing.
     success_msg: >-
       All {{ _verify_counts.pass }} evaluated check(s) match the declared
       intent. Report: {{ verify_report_path }}

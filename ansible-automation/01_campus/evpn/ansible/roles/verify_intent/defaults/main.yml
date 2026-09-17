@@ -18,16 +18,16 @@ verify_command_timeout: 0
 verify_fail_on_mismatch: true
 
 # Where the reports land. Relative to the playbook, so they follow the repo's
-# existing evidence/ convention and stay gitignored. NOTE: this is the
-# filesystem of whatever host runs the play, which is normally the Kali script
-# server, not the laptop.
-verify_report_path: "{{ playbook_dir }}/../evidence/stage11-verification.md"
+# existing evidence/ convention and stay gitignored. realpath collapses the
+# playbooks/../evidence hop so the summary prints a path worth copying. NOTE:
+# this is the filesystem of whatever host runs the play, which is normally the
+# Kali script server, not the laptop.
+verify_report_path: "{{ (playbook_dir ~ '/../evidence/stage11-verification.md') | realpath }}"
 
 # Self-contained HTML version: indexed, colour-coded, filterable to failures.
 # No external CSS or JS, so it opens from the script server or after an scp with
-# no network. Render the markdown with 'python -m rich.markdown <file> | less -R',
-# or open this in a browser after copying it back.
-verify_report_html_path: "{{ playbook_dir }}/../evidence/stage11-verification.html"
+# no network.
+verify_report_html_path: "{{ (playbook_dir ~ '/../evidence/stage11-verification.html') | realpath }}"
 
 # Templates whose {% set %} blocks carry the fabric intent. Read from Catalyst
 # Center, never from the repo checkout — stage 06 seeds CatC from git or a local

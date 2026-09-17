@@ -61,6 +61,12 @@
 # Rendering one row at a time is what makes `host` available to the expressions
 # in checks.yml. Referencing _chk.expect templates that stored Jinja against the
 # current task vars, so a single check definition yields device-specific regexes.
+#
+# _pairs carries no `| default([])`. A default here swallows any undefined
+# variable raised inside a pairs expression and turns the row into a silent
+# SKIPPED, which reads as "not applicable" and lets a broken intent report a
+# clean pass. Referencing _chk renders every expression in checks.yml, so one
+# bad expression would take out every check on that device.
 - name: Render each check's expectation for its device
   ansible.builtin.set_fact:
     _verify_matrix: >-
@@ -74,7 +80,7 @@
     host: "{{ item.device }}"
     _chk: "{{ verify_checks | selectattr('id', 'equalto', item.id) | first }}"
     _skip: "{{ _chk.skip_when | default(false) }}"
-    _pairs: "{{ _chk.pairs | default([]) }}"
+    _pairs: "{{ _chk.pairs }}"
 
 - name: --DEBUG-- Expanded check matrix
   when: catc_debug | default(false) | bool
@@ -95,7 +101,8 @@
 # NOT_VERIFIED is distinct from FAIL on purpose: it means Catalyst Center never
 # gave us the output, so the check has no verdict. Counting that as a pass would
 # hide missing coverage; counting it as a failure would blame the fabric for a
-# Command Runner restriction.
+# Command Runner restriction. Blank output counts as no output — Command Runner
+# returns the command key with an empty body when a device answers nothing.
 - name: Evaluate every check
   ansible.builtin.set_fact:
     _verify_results: >-
@@ -106,7 +113,7 @@
         {%- if row.skipped -%}
           {%- set status = 'SKIPPED' -%}
           {%- set missing = [] -%}
-        {%- elif out is none -%}
+        {%- elif out is none or not (out | string | trim) -%}
           {%- set status = 'NOT_VERIFIED' -%}
           {%- set missing = [] -%}
         {%- elif row.pairs | length == 0 -%}
