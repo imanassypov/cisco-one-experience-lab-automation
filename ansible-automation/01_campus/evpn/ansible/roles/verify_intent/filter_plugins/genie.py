@@ -5,8 +5,13 @@
 # connection.
 #
 # Stage 11 collects output through Catalyst Center Command Runner, so there is
-# no pyATS connection to a device — only text. Genie parses text directly when
-# handed a Device object that was never connected, which is what this does.
+# no pyATS connection to a device — only text.
+#
+# That is fine, because device.parse(command, output=text) never touches the
+# network: handing it output= tells Genie to parse the string it was given. The
+# Device here is not a connection, it is how Genie picks the parser — it
+# resolves 'show vrf' to a parser class through the device's os ('iosxe'). So
+# the object is metadata for parser lookup, and is never connected.
 #
 # Usage in a check:
 #   {{ output | genie_parse('show vrf') }}
@@ -33,6 +38,8 @@ def genie_parse(output, command, os_name="iosxe"):
         )
 
     device = Device(name="verify_intent", os=os_name)
+    # Resolve the parser from os alone. Anything richer (platform, model) is
+    # only known from a live connection, which this device will never have.
     device.custom.setdefault("abstraction", {})["order"] = ["os"]
 
     # Genie signals "the command ran but there was nothing to parse" by raising
