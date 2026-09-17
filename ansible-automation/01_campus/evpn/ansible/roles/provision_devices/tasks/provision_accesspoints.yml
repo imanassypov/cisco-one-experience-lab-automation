@@ -374,6 +374,43 @@
     label: "{{ item.item.key }}"
   register: _ap_assignment_results
 
+# assign_device_to_site returns as soon as Catalyst Center accepts the request,
+# but the AP-to-floor association is applied asynchronously. Provisioning
+# straight after it fails the payload validation with
+#   NCWS14015 "Site <id> is not associated with APs : [<id>].
+#              Associate all APs to the same floor before provisioning."
+# even though the assignment itself succeeded. Poll the same membership API the
+# pending check used, so Step F only runs once the association is really there.
+- name: Wait for the site assignment to take effect
+  when:
+    - _ap_declared | length > 0
+    - item.item.key in _ap_pending
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/site-member/{{ item.dnac_response.response[0].id }}/member?memberType=networkdevice"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify }}"
+    status_code: 200
+  register: _ap_member_confirm
+  until: >-
+    (_ap_pending[item.item.key] | difference(
+       _ap_member_confirm.json.response | default([])
+       | map(attribute='managementIpAddress') | list
+     )) | length == 0
+  retries: "{{ ap_assign_confirm_retries }}"
+  delay: "{{ ap_assign_confirm_delay }}"
+  loop: "{{ _ap_site_info_results.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+
+- name: --DEBUG-- Site membership after assignment
+  when:
+    - catc_debug | default(false) | bool
+    - _ap_declared | length > 0
+  ansible.builtin.debug:
+    var: _ap_member_confirm
+
 # ── Step F: Provision the access points ───────────────────────────────────
 #
 # This is the step that creates the AP's tags, and it runs every time: the API

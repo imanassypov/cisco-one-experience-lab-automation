@@ -118,6 +118,12 @@ wireless_provision_enabled: true
 # assignment therefore uses assign_device_to_site, and the provision itself is
 # a raw POST /dna/intent/api/v1/wirelessAccessPoints/provision.
 ap_provision_enabled: true
+# assign_device_to_site returns on acceptance, not on completion, so the AP pass
+# waits for the floor membership to actually appear before provisioning.
+# Without it the provision call fails validation with NCWS14015 "Site is not
+# associated with APs". 30 x 5s = 2.5 minutes.
+ap_assign_confirm_retries: 30
+ap_assign_confirm_delay: 5
 
 # Deploy composite (stage 9)
 force_push_template: true
