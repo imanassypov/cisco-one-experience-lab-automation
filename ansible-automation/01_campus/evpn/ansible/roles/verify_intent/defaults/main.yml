@@ -1,7 +1,7 @@
 # =============================================================================
 # verify_intent / defaults/main.yml
 # =============================================================================
-# Knobs for stage 10. Overridable with -e.
+# Knobs for stage 11. Overridable with -e.
 # =============================================================================
 ---
 # Command Runner rejects more than five commands per request with
@@ -21,16 +21,16 @@ verify_fail_on_mismatch: true
 # existing evidence/ convention and stay gitignored. NOTE: this is the
 # filesystem of whatever host runs the play, which is normally the Kali script
 # server, not the laptop.
-verify_report_path: "{{ playbook_dir }}/../evidence/stage10-verification.md"
+verify_report_path: "{{ playbook_dir }}/../evidence/stage11-verification.md"
 
 # Self-contained HTML version: indexed, colour-coded, filterable to failures.
 # No external CSS or JS, so it opens from the script server or after an scp with
 # no network. Render the markdown with 'python -m rich.markdown <file> | less -R',
 # or open this in a browser after copying it back.
-verify_report_html_path: "{{ playbook_dir }}/../evidence/stage10-verification.html"
+verify_report_html_path: "{{ playbook_dir }}/../evidence/stage11-verification.html"
 
 # Templates whose {% set %} blocks carry the fabric intent. Read from Catalyst
 # Center, never from the repo checkout — stage 06 seeds CatC from git or a local
-# folder, and stage 10 must verify what was actually deployed.
+# folder, and stage 11 must verify what was actually deployed.
 verify_defn_prefix: "DEFN-"
 verify_use_genie: false

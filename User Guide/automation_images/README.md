@@ -53,8 +53,8 @@ change its tag from `src="" data-missing="NAME.png"` to `src="automation_images/
 
 | Filename | What to capture |
 |---|---|
-| `a3-evidence-html-report.png` | `evidence/stage10-verification.html` open in a browser |
-| `a3-md-report.png` | `python -m rich.markdown evidence/stage10-verification.md \| less -R` in the terminal |
+| `a3-evidence-html-report.png` | `evidence/stage11-verification.html` open in a browser |
+| `a3-md-report.png` | `python -m rich.markdown evidence/stage11-verification.md \| less -R` in the terminal |
 
 ### A4 — Template Model
 
@@ -69,7 +69,7 @@ change its tag from `src="" data-missing="NAME.png"` to `src="automation_images/
 |---|---|
 | `a5-git-diff.png` | `git diff` of a DEFN edit |
 | `a5-catc-version-history.png` | Catalyst Center template version history showing the git commit message as the version comment |
-| `a5-new-vlan-verified.png` | Stage 10 report row proving the new VLAN/VRF landed |
+| `a5-new-vlan-verified.png` | Stage 11 report row proving the new VLAN/VRF landed |
 
 ### WLC (automated path)
 

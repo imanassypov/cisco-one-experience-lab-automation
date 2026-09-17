@@ -1,0 +1,175 @@
+---
+# =============================================================================
+# 10_await_access_points.yml  —  Pipeline stage 10
+# =============================================================================
+# Waits for an access point to reach Catalyst Center, then writes its Ethernet
+# MAC into inventory/group_vars/all/lab.yml so stage 08 can provision it.
+#
+# Why this stage exists
+# --------------------------------------------------------------------------
+# Wireless is the one part of this lab that cannot complete in a single pass: a
+# physical AP has to boot and find its controller in the middle of it. The AP
+# cannot join until stage 09 makes Gi1/0/2 an AP trunk, so at first-run time
+# there is no AP for stage 08 to provision.
+#
+# Bridging that gap by hand is where students lose time. They have to notice
+# the AP registered, read a MAC off the controller, convert it from IOS dotted
+# notation to colons, pick the Ethernet MAC rather than the Base Radio MAC, and
+# paste it into the right file. Every one of those is a chance to get it wrong,
+# and the resulting failure is an opaque "not found among the Unified AP
+# devices". This playbook does all of it.
+#
+# Runs after: 09_deploy_composite.yml
+# Run before: re-running 08_provision_devices.yml
+#
+# Deliberately NOT part of 00_site_deploy.yml. It blocks on hardware booting,
+# which can take minutes, and the orchestrator should not stall on something no
+# amount of API work can hurry along.
+#
+# Sourced:
+#   catc_common tasks_from: auth_token → _catc_token
+#   connection.yml: dnac_host/port/verify
+#
+# Produced:
+#   inventory/group_vars/all/lab.yml — lab_ap_macs populated, comments intact
+#
+# Run: ansible-playbook playbooks/10_await_access_points.yml
+#      ansible-playbook playbooks/10_await_access_points.yml -e ap_expected_count=2
+# =============================================================================
+- name: Wait for access points and record their MACs in lab.yml
+  hosts: catalyst_center
+  gather_facts: false
+  vars:
+    catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
+    # 60 x 10s = 10 minutes. An AP needs a few minutes to boot and register,
+    # then Catalyst Center learns it from the controller on a further sync, so
+    # the wait is materially longer than the AP's own boot time.
+    ap_wait_retries: 60
+    ap_wait_delay: 10
+    ap_expected_count: 1
+    lab_vars_path: "{{ playbook_dir }}/../inventory/group_vars/all/lab.yml"
+  pre_tasks:
+    - name: Obtain Catalyst Center auth token
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: auth_token
+
+  tasks:
+    - name: Confirm lab.yml exists before waiting on hardware
+      ansible.builtin.stat:
+        path: "{{ lab_vars_path }}"
+      register: _lab_vars_stat
+
+    # Failing now beats waiting ten minutes for an AP and then finding there is
+    # nowhere to record it.
+    - name: Fail when lab.yml is missing
+      ansible.builtin.assert:
+        that: _lab_vars_stat.stat.exists
+        fail_msg: >-
+          {{ lab_vars_path }} does not exist. Re-run
+          00_scriptserver_bootstrap/stage-script-server.sh, or copy it from
+          lab.yml.example in the same directory.
+
+    - name: Wait for access points to appear in Catalyst Center
+      ansible.builtin.uri:
+        url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/network-device?family=Unified%20AP"
+        method: GET
+        headers:
+          X-Auth-Token: "{{ _catc_token }}"
+        validate_certs: "{{ dnac_verify }}"
+        status_code: 200
+      register: _ap_poll
+      until: >-
+        (_ap_poll.json.response | default([])
+         | selectattr('apEthernetMacAddress', 'defined')
+         | selectattr('apEthernetMacAddress', 'truthy')
+         | list | length) >= (ap_expected_count | int)
+      retries: "{{ ap_wait_retries }}"
+      delay: "{{ ap_wait_delay }}"
+
+    # Sorted so a two-AP pod produces the same file on every run rather than
+    # reshuffling with whatever order the API happened to answer in.
+    - name: Collect the Ethernet MACs
+      ansible.builtin.set_fact:
+        _ap_found: >-
+          {{ _ap_poll.json.response | default([])
+             | selectattr('apEthernetMacAddress', 'defined')
+             | selectattr('apEthernetMacAddress', 'truthy')
+             | list }}
+        _ap_macs: >-
+          {{ _ap_poll.json.response | default([])
+             | selectattr('apEthernetMacAddress', 'defined')
+             | selectattr('apEthernetMacAddress', 'truthy')
+             | map(attribute='apEthernetMacAddress')
+             | map('lower') | list | sort }}
+
+    - name: --DEBUG-- Access points discovered
+      when: catc_debug | default(false) | bool
+      ansible.builtin.debug:
+        var: _ap_found
+
+    - name: Show what was discovered
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.hostname | default('unnamed') }} —
+          Ethernet {{ item.apEthernetMacAddress | lower }},
+          radio {{ item.macAddress | default('?') | lower }},
+          {{ item.managementIpAddress | default('no IP') }},
+          {{ item.reachabilityStatus | default('?') }}
+      loop: "{{ _ap_found }}"
+      loop_control:
+        label: "{{ item.apEthernetMacAddress | lower }}"
+
+    # The list is rewritten wholesale rather than appended to, so a pod whose
+    # AP was replaced does not keep a stale MAC that would fail stage 08.
+    # The regex also swallows any existing "  - ..." lines under the key, which
+    # is what makes a re-run idempotent instead of nesting a second list.
+    #
+    # The block is joined rather than built with a Jinja for-loop because a
+    # loop leaves a trailing newline, and the regex match ends before the
+    # newline it replaces - so every run would insert one more blank line.
+    - name: Write the Ethernet MACs into lab.yml
+      ansible.builtin.replace:
+        path: "{{ lab_vars_path }}"
+        regexp: '(?m)^lab_ap_macs:.*(?:\n[ \t]*-[ \t].*)*$'
+        replace: "{{ _ap_macs_block }}"
+      vars:
+        # to_json quotes each MAC the way the file already writes them.
+        _ap_macs_block: "{{ (['lab_ap_macs:'] + (_ap_macs | map('to_json') | map('regex_replace', '^', '  - ') | list)) | join('\n') }}"
+      register: _lab_vars_write
+
+    # Re-read rather than trust the write: a regex that silently mangled the
+    # file would otherwise only surface as a confusing failure in stage 08.
+    # Done with slurp instead of a python one-liner so a checkout path
+    # containing spaces cannot break the interpreter invocation.
+    - name: Re-read lab.yml
+      ansible.builtin.slurp:
+        src: "{{ lab_vars_path }}"
+      register: _lab_vars_reread
+
+    - name: Confirm lab.yml still parses and lab_ap_macs is a list
+      ansible.builtin.assert:
+        that:
+          - _lab_vars_parsed.lab_ap_macs is defined
+          - _lab_vars_parsed.lab_ap_macs | type_debug == 'list'
+          - _lab_vars_parsed.lab_ap_macs | length == _ap_macs | length
+          - _lab_vars_parsed.lab_pod_id is defined
+        fail_msg: >-
+          {{ lab_vars_path }} no longer parses as expected after the update.
+          Restore it from lab.yml.example in the same directory, set
+          lab_pod_id, and re-run.
+        success_msg: >-
+          lab.yml parses; lab_ap_macs holds
+          {{ _lab_vars_parsed.lab_ap_macs | length }} entry(s),
+          lab_pod_id is {{ _lab_vars_parsed.lab_pod_id }}.
+      vars:
+        _lab_vars_parsed: "{{ _lab_vars_reread.content | b64decode | from_yaml }}"
+
+    - name: Next step
+      ansible.builtin.debug:
+        msg:
+          - "{{ _ap_macs | length }} access point MAC(s) written to lab.yml: {{ _ap_macs | join(', ') }}"
+          - "{{ 'lab.yml was already correct — nothing changed.' if not _lab_vars_write.changed else 'lab.yml updated.' }}"
+          - "Now provision the access point:"
+          - "  ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false"
+          - "The flag matters: the 9800 is shared between pods, and re-provisioning it reboots every AP it manages."

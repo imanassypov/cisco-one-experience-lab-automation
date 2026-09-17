@@ -1,6 +1,6 @@
-# Stage 10 — Intent verification
+# Stage 11 — Intent verification
 
-Generated 2026-09-16 10:13:18 UTC by `10_verify_intent.yml`.
+Generated 2026-09-16 10:13:18 UTC by `11_verify_intent.yml`.
 
 Declared intent is compared against live device state collected through
 Catalyst Center Command Runner. Intent comes from `settings.json` and from the

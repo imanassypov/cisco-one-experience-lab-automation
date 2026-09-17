@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/main.yml  —  Pipeline stage 10
+# verify_intent / tasks/main.yml  —  Pipeline stage 11
 # ============================================================================
 # Orchestration only. Each step is its own task file; see the playbook header
 # for the stage map and the rationale behind reading intent from Catalyst

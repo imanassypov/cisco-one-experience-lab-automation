@@ -4,14 +4,14 @@
 # Parses raw CLI text into a structured dict with Genie, without a device
 # connection.
 #
-# Stage 10 collects output through Catalyst Center Command Runner, so there is
+# Stage 11 collects output through Catalyst Center Command Runner, so there is
 # no pyATS connection to a device — only text. Genie parses text directly when
 # handed a Device object that was never connected, which is what this does.
 #
 # Usage in a check:
 #   {{ output | genie_parse('show vrf') }}
 #
-# pyATS is a hard dependency of stage 10 since every check is structured;
+# pyATS is a hard dependency of stage 11 since every check is structured;
 # 00_scriptserver_bootstrap installs it. See vars/checks.yml.
 # ============================================================================
 import json
@@ -26,7 +26,7 @@ def genie_parse(output, command, os_name="iosxe"):
     except ImportError as exc:
         raise AnsibleFilterError(
             "genie_parse needs pyATS/Genie, which is not installed in the "
-            "Ansible interpreter. Stage 10 parses every command, so this is a "
+            "Ansible interpreter. Stage 11 parses every command, so this is a "
             "hard dependency: run 00_scriptserver_bootstrap, or "
             "'pip install genie pyats' into the venv running Ansible. "
             "Import error: {0}".format(exc)

@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/intent_fabric.yml  —  Stage 10.2
+# verify_intent / tasks/intent_fabric.yml  —  Stage 11.2
 # ============================================================================
 # Turns the DEFN-*.j2 bodies fetched from Catalyst Center into a plain data
 # structure.

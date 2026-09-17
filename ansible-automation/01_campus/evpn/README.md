@@ -83,16 +83,16 @@ This playbook does **not** build the fabric. After CatC has provisioned Site 105
 | Site_105-Leaf2 | Leaf | 198.18.128.23 | 172.30.255.2 |
 | Site_105-Border-Spine | Border + spine | 198.18.128.24 | 172.30.255.3 |
 
-The SSH column is for manual troubleshooting only — stage 10 reaches these
+The SSH column is for manual troubleshooting only — stage 11 reaches these
 devices by their CatC loopbacks through Command Runner, not over SSH.
 
 | Playbook | Purpose |
 | --- | --- |
-| `playbooks/10_verify_intent.yml` | Compares VRFs, VNIs, loopbacks, EVPN/NVE state, SVIs, client ports, SSID and AP tags against `settings.json` + the DEFN templates in CatC → `ansible/evidence/stage10-verification.md` |
+| `playbooks/11_verify_intent.yml` | Compares VRFs, VNIs, loopbacks, EVPN/NVE state, SVIs, client ports, SSID and AP tags against `settings.json` + the DEFN templates in CatC → `ansible/evidence/stage11-verification.md` |
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook playbooks/10_verify_intent.yml
+ansible-playbook playbooks/11_verify_intent.yml
 ```
 
 `ansible/evidence/` is local output and is gitignored.

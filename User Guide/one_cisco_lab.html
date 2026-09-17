@@ -2999,7 +2999,7 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 </div>
 <hr>
 <h4>Step 4 — Bootstrap the script server</h4>
-<p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 10 needs to parse device output.</p>
+<p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 11 needs to parse device output.</p>
 <p>Call them by their full path. <code>~/venv/bin</code> is not on your <code>PATH</code> yet — putting it there is one of the jobs of the second playbook.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 
@@ -3100,7 +3100,7 @@ ansible-playbook --version</pre>
 <tr><td>07</td><td><code>07_network_profile.yml</code></td><td>Builds four switching profiles, the wireless design including your <code>PSEUDOCO-POD<em>nn</em></code> SSID, the FlexConnect settings, and the <code>HQ-Wireless</code> profile.</td><td><span class="safety design">Design change</span></td></tr>
 <tr><td>08</td><td><code>08_provision_devices.yml</code></td><td>Provisions the switches, then the wireless controller, then any access points.</td><td><span class="safety maybe">Can reboot APs</span></td></tr>
 <tr><td>09</td><td><code>09_deploy_composite.yml</code></td><td>Renders the templates per device and pushes the resulting EVPN configuration to the three switches.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
-<tr><td>10</td><td><code>10_verify_intent.yml</code></td><td>Collects <code>show</code> output and compares it against the design. Changes nothing.</td><td><span class="safety ro">Read-only</span></td></tr>
+<tr><td>10</td><td><code>11_verify_intent.yml</code></td><td>Collects <code>show</code> output and compares it against the design. Changes nothing.</td><td><span class="safety ro">Read-only</span></td></tr>
 </tbody>
 </table>
 <div class="admonition warning">
@@ -3110,7 +3110,7 @@ ansible-playbook --version</pre>
 <h4>Option A — Run the whole thing</h4>
 <p>One playbook imports stages 01 through 09 in order:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/00_site_deploy.yml</pre>
-<p>Note that it deliberately stops at 09. Verification is a separate, conscious act — you run stage 10 yourself, after the build, to prove the result.</p>
+<p>Note that it deliberately stops at 09. Verification is a separate, conscious act — you run stage 11 yourself, after the build, to prove the result.</p>
 <h4>Option B — Run stage by stage (recommended the first time)</h4>
 <p>Going one at a time lets you watch each change land in the Catalyst Center GUI, which is by far the best way to understand what the automation is doing:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/01_site_hierarchy.yml
@@ -3192,8 +3192,8 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
     <h3 id="page-9004" class="page-anchor">A3. Verify Intent &amp; Evidence Report</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 3 of 7</h3>
-<p>Deploying configuration and <em>knowing it is correct</em> are two different things. Stage 10 closes that gap: it reads the design out of Catalyst Center, collects live output from the switches and controller, and produces a pass/fail report you could hand to an auditor.</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_verify_intent.yml</pre>
+<p>Deploying configuration and <em>knowing it is correct</em> are two different things. Stage 11 closes that gap: it reads the design out of Catalyst Center, collects live output from the switches and controller, and produces a pass/fail report you could hand to an auditor.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_verify_intent.yml</pre>
 <p>This stage is <span class="safety ro">read-only</span>. It changes nothing, and you can run it as often as you like.</p>
 <hr>
 <h4>How it decides what "correct" means</h4>
@@ -3219,15 +3219,15 @@ ansible-playbook playbooks/09_deploy_composite.yml</pre>
 <tr><th style="width: 34%;">File</th><th style="width: 66%;">Use it for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>evidence/stage10-verification.md</code></td><td>Reading in the terminal, and diffing between runs</td></tr>
-<tr><td><code>evidence/stage10-verification.html</code></td><td>A self-contained formal report — no external fonts or scripts, opens offline, prints cleanly</td></tr>
+<tr><td><code>evidence/stage11-verification.md</code></td><td>Reading in the terminal, and diffing between runs</td></tr>
+<tr><td><code>evidence/stage11-verification.html</code></td><td>A self-contained formal report — no external fonts or scripts, opens offline, prints cleanly</td></tr>
 </tbody>
 </table>
 <p>Read the Markdown version in the terminal, and open the HTML one in a browser. <code>rich</code> is installed in your virtual environment and renders the headings and tables in colour:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">python -m rich.markdown evidence/stage10-verification.md | less -R</pre>
-<p>Press <code>q</code> to quit the pager. For the raw file with no rendering, <code>less evidence/stage10-verification.md</code> works too.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a3-md-report.png" alt="Stage 10 Markdown report in the terminal" width="865" height="480"></p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a3-evidence-html-report.png" alt="Stage 10 HTML evidence report open in a browser" width="865" height="500"></p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">python -m rich.markdown evidence/stage11-verification.md | less -R</pre>
+<p>Press <code>q</code> to quit the pager. For the raw file with no rendering, <code>less evidence/stage11-verification.md</code> works too.</p>
+<p><img class="img-fluid" role="presentation" src="" data-missing="a3-md-report.png" alt="Stage 11 Markdown report in the terminal" width="865" height="480"></p>
+<p><img class="img-fluid" role="presentation" src="" data-missing="a3-evidence-html-report.png" alt="Stage 11 HTML evidence report open in a browser" width="865" height="500"></p>
 <hr>
 <h4>What a good run looks like</h4>
 <p>A healthy Site-105 produces something close to this:</p>
@@ -3330,7 +3330,7 @@ Site_105-Border-Spine.corp.pseudoco.com</pre>
   ... emit leaf-only configuration ...
 {% endif %}</pre>
 <p>In Site-105 there are five role buckets — <code>SPINE</code>, <code>RR</code>, <code>CLIENT</code>, <code>BORDER</code>, and <code>MCLUSTER</code>. The Border-Spine appears in three of them at once (spine, route reflector, and border) and is deliberately <strong>absent</strong> from <code>CLIENT</code>. That single omission is what stops the leaf-only configuration — tenant VLANs, anycast gateways, client ports — from being pushed to it.</p>
-<p>This is also why the stage 10 report shows checks as <em>Not applicable</em> for that device: it was never supposed to have them.</p>
+<p>This is also why the stage 11 report shows checks as <em>Not applicable</em> for that device: it was never supposed to have them.</p>
 <hr>
 <h4>The eleven DEFN files</h4>
 <table style="border-collapse: collapse; width: 100%;" border="1">
@@ -3584,7 +3584,7 @@ git commit -m "Site-105: add DEV tenant (id 103, L3VNI 110103) and PROD voice VL
 
 ansible-playbook playbooks/06_template_sync.yml     # upload the new design
 ansible-playbook playbooks/09_deploy_composite.yml  # render it and push to the switches
-ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
+ansible-playbook playbooks/11_verify_intent.yml     # prove it landed</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
 <tr><th style="width: 14%;">Stage</th><th style="width: 68%;">What happens</th><th style="width: 18%;">Impact</th></tr>
@@ -3608,7 +3608,7 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 </tbody>
 </table>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a5-catc-version-history.png" alt="Catalyst Center template version history showing the git commit message as the version comment" width="865" height="420"></p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a5-new-vlan-verified.png" alt="Stage 10 report showing the new VLAN passing verification" width="865" height="380"></p>
+<p><img class="img-fluid" role="presentation" src="" data-missing="a5-new-vlan-verified.png" alt="Stage 11 report showing the new VLAN passing verification" width="865" height="380"></p>
 <hr>
 <h4>Editing locally versus pulling from Git</h4>
 <p>Stage 06 can take its templates from either place. The behaviour afterwards is identical.</p>
@@ -3635,7 +3635,7 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 <li><strong>The change is reviewable.</strong> A <code>git diff</code> of a DEFN file shows the design change in a form a colleague can reason about — a new tenant row, not four hundred lines of CLI across three devices.</li>
 <li><strong>The change is consistent.</strong> One edit renders correctly for every device and for every role. There is no leaf that got missed.</li>
 <li><strong>The change is attributable.</strong> Catalyst Center records which commit produced the running configuration.</li>
-<li><strong>The change is provable.</strong> Stage 10 compares the devices against the design read back out of Catalyst Center — never against your local files — so an edit you forgot to sync cannot pass verification.</li>
+<li><strong>The change is provable.</strong> Stage 11 compares the devices against the design read back out of Catalyst Center — never against your local files — so an edit you forgot to sync cannot pass verification.</li>
 <li><strong>The change is reversible.</strong> Revert the commit, re-run stages 06 and 09.</li>
 </ul>
 <hr>
@@ -3649,7 +3649,7 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 <tr><td>New tenant appears in <code>show vrf</code> but does not route</td><td>No overlay group for it</td><td>Add the group to <code>DEFN-OVERLAY.j2</code> (step 3 above)</td></tr>
 <tr><td>Catalyst Center prompts for variable values at deploy time</td><td>A new variable was introduced without a dummy <code>{% set %}</code></td><td>See the quirks table in <a href="#page-9005">A4</a></td></tr>
 <tr><td>Stage 09 deploys but the old configuration is still there</td><td>An older template version was selected</td><td>Re-run stage 06, then stage 09</td></tr>
-<tr><td>Stage 10 fails on the new VLAN only</td><td>Stage 09 partially timed out</td><td>Re-run stage 09, then stage 10</td></tr>
+<tr><td>Stage 11 fails on the new VLAN only</td><td>Stage 09 partially timed out</td><td>Re-run stage 09, then stage 11</td></tr>
 </tbody>
 </table>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
@@ -3706,11 +3706,11 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 <tr><td>1</td><td>Stage <strong>09</strong> deploys the composite, building the EVPN fabric</td><td>This is what turns <code>Gi1/0/2</code> into the access-point trunk</td></tr>
 <tr><td>2</td><td>The access point boots and registers to the 9800</td><td>It needs the trunk from step 1. Takes a few minutes</td></tr>
 <tr><td>3</td><td>Catalyst Center learns the access point from the controller</td><td>A further sync delay — the controller knows first</td></tr>
-<tr><td>4</td><td>The access point is assigned to <strong>Site-105</strong></td><td>Stage 08 does this, but only once you give it the MAC</td></tr>
-<tr><td>5</td><td>Stage <strong>08</strong> re-runs and provisions the access point</td><td>Writes the real site and policy tags, so the access point serves your SSID</td></tr>
+<tr><td>4</td><td>Stage <strong>10</strong> waits for it and records its MAC</td><td>Nothing to wait for until steps 2 and 3 finish</td></tr>
+<tr><td>5</td><td>Stage <strong>08</strong> re-runs: assigns the access point to <strong>Site-105</strong>, then provisions it</td><td>Writes the real site and policy tags, so the access point serves your SSID</td></tr>
 </tbody>
 </table>
-<p>Steps 4 and 5 are both stage 08 — you run it once, and it assigns then provisions. The waiting is in steps 2 and 3.</p>
+<p>The waiting is all in steps 2 and 3, and stage 10 does that waiting for you.</p>
 <hr>
 <h4>Step 1 — Verify the SSID</h4>
 <p>Log into the controller using the Chrome bookmark (<strong>C9800-WLC</strong>) or browse to <strong>https://wlc.corp.pseudoco.com</strong> with <strong>admin/C1sco12345</strong>.</p>
@@ -3737,13 +3737,18 @@ ansible-playbook playbooks/10_verify_intent.yml     # prove it landed</pre>
 <p>🛑 <strong>This is the wait people get wrong.</strong> Stage 08 looks the access point up in <em>Catalyst Center</em> by its Ethernet MAC — not on the controller. Run it while the access point is Registered on the 9800 but not yet in Catalyst Center inventory and it fails the assertion that the access point has joined, even though the controller plainly shows it. If that happens, wait a few minutes and re-run; nothing is broken.</p>
 </div>
 <hr>
-<h4>Step 3 — Let Catalyst Center provision the access point</h4>
-<p>Back on the script server, add the MAC address to the one file you own:</p>
+<h4>Step 3 — Let the pipeline pick up the access point</h4>
+<p>You do <strong>not</strong> copy the MAC address by hand. Back on the script server, run the waiting stage:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-vi inventory/group_vars/all/lab.yml</pre>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">lab_ap_macs:
-  - "a4:53:0e:11:22:33"</pre>
-<p>Use colon-separated lowercase hex. Then re-run stage 08:</p>
+ansible-playbook playbooks/10_await_access_points.yml</pre>
+<p>It polls Catalyst Center until an access point appears — up to ten minutes by default — then writes the Ethernet MAC into <code>lab.yml</code> for you, in the right format, with your pod number and every comment in that file left untouched. It is safe to re-run, and safe to start before the access point has registered; it simply waits.</p>
+<p>You can start it as soon as stage 09 finishes rather than watching the controller.</p>
+<p>If you have two access points, tell it so it does not stop at the first:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_await_access_points.yml -e ap_expected_count=2</pre>
+<div class="admonition">
+<p>👀 <strong>Why this stage exists.</strong> Doing it by hand means reading a MAC off the controller, converting <code>084f.a950.f028</code> to <code>08:4f:a9:50:f0:28</code>, and picking the <em>Ethernet</em> MAC rather than the Base Radio MAC that Catalyst Center shows in its inventory column. Get any of those wrong and stage 08 fails with an unhelpful “not found among the Unified AP devices”. The playbook removes all three traps.</p>
+</div>
+<p>Now provision the access point:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false</pre>
 <div class="admonition warning">
 <p>🛑 <strong>Do not omit <code>-e wireless_provision_enabled=false</code>.</strong> The 9800 controller is shared between pods. Re-provisioning it reboots every access point it manages — including other students'. The flag skips the controller and provisions only your access point.</p>
@@ -3762,8 +3767,8 @@ vi inventory/group_vars/all/lab.yml</pre>
 <hr>
 <h4>Step 6 — Verify wireless as part of the fabric</h4>
 <p>Re-run the verification stage. It now includes wireless checks:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_verify_intent.yml
-python -m rich.markdown evidence/stage10-verification.md | less -R</pre>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_verify_intent.yml
+python -m rich.markdown evidence/stage11-verification.md | less -R</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
 <tr><th style="width: 34%;">Check</th><th style="width: 66%;">What it proves</th></tr>

@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/resolve_devices.yml  —  Stage 10.4
+# verify_intent / tasks/resolve_devices.yml  —  Stage 11.4
 # ============================================================================
 # Management IP to Catalyst Center device UUID and hostname.
 #
@@ -85,7 +85,7 @@
     that: _verify_devices_missing | length == 0
     fail_msg: >-
       Not found in Catalyst Center inventory: {{ _verify_devices_missing | join(', ') }}.
-      Stage 10 verifies what Catalyst Center manages, so an unmanaged device
+      Stage 11 verifies what Catalyst Center manages, so an unmanaged device
       cannot be checked. Confirm stages 04 and 05 completed.
     success_msg: >-
       {{ _verify_devices | length }} device(s) resolved:

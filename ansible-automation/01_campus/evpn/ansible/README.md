@@ -20,11 +20,12 @@ Run the playbooks in numerical order:
 9. Deploy the EVPN composite. That programs the AP-facing leaf ports so an
    AP can join the WLC and appear as a Unified AP in Inventory.
 10. SSH to the switches and collect read-only verification evidence.
-11. Once the AP is Registered on the WLC **and** visible in Catalyst Center
-    Inventory, put its Ethernet MAC in `lab_ap_macs` and re-run stage 08. That
-    pass names the AP, assigns it to Site-105, then provisions it.
+11. Wait for the AP to reach Catalyst Center and record its Ethernet MAC in
+    `lab_ap_macs` automatically (`10_await_access_points.yml`), then re-run
+    stage 08. That pass names the AP, assigns it to Site-105, then provisions
+    it.
 
-Stages 01–09 use the Catalyst Center API. Stage 10 is the only playbook that
+Stages 01–09 use the Catalyst Center API. Stage 11 is the only playbook that
 logs in to the switches.
 
 ## Before you begin
@@ -44,13 +45,10 @@ Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
   values survive later pulls. Leave `lab_ap_macs: []` until **after** stage 09. Stage 08
   provision does not program AP ports. The composite does (`Gi1/0/2` trunk,
   native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
-  CAPWAP-join, so Catalyst Center has no Unified AP to provision. After
-  stage 09, **one** AP is enough — but wait until it is Registered on the WLC
-  **and** has synced through to Catalyst Center Inventory, which lags the
-  controller by a few minutes. Stage 08 resolves the AP from Catalyst Center by
-  Ethernet MAC, so running it while only the WLC knows the AP fails the
-  "has joined the controller" assertion. Then put that Ethernet MAC in
-  `lab_ap_macs` (first entry is `{AP1_MAC}`) and re-run stage 08.
+  CAPWAP-join, so Catalyst Center has no Unified AP to provision. You do not
+  fill `lab_ap_macs` by hand: run `10_await_access_points.yml` after stage 09
+  and it waits for the AP to reach Catalyst Center, then writes the Ethernet
+  MAC into `lab.yml` for you. Then re-run stage 08.
 - Run every command from this directory so Ansible finds `ansible.cfg`:
 
 ```bash
@@ -1214,7 +1212,7 @@ shared across three IPs is CatC grouping one Template Hub job, not a bug.
 
 The role continues across per-device failures so one red row does not hide
 the others. CatC `SUCCESS` means the workflow finished; it does **not** prove
-EVPN or the AP trunk is in running-config. Run stage 10, and on each leaf:
+EVPN or the AP trunk is in running-config. Run stage 11, and on each leaf:
 
 ```text
 show running-config interface GigabitEthernet1/0/2
@@ -1255,7 +1253,7 @@ and at least one AP joins, expect **five** reachable rows. Verified
 
 The four wired/WLC rows were already Success after stage 08. The fifth
 row is new here: CatC learned the AP **from the WLC after the join**,
-not from stage 04 RANGE jobs and not from stage 08 provision. Stage 10
+not from stage 04 RANGE jobs and not from stage 08 provision. Stage 11
 is still the authoritative switch running-config.
 
 ### Inventory: at least one AP discovered
@@ -1511,14 +1509,14 @@ on a live lab.
 
 ---
 
-## Stage 10 — Verify intent against the fabric
+## Stage 11 — Verify intent against the fabric
 
-**Playbook:** `playbooks/10_verify_intent.yml`
+**Playbook:** `playbooks/11_verify_intent.yml`
 **Safety:** Read-only.
 
 ### What it accomplishes
 
-Stage 10 closes the loop: it compares what the pipeline *declared* against what
+Stage 11 closes the loop: it compares what the pipeline *declared* against what
 the devices are *actually running*, and writes a pass/fail report.
 
 Live state is collected through Catalyst Center **Command Runner**, so the play
@@ -1536,7 +1534,7 @@ Intent comes from two places:
 
 The DEFN templates are read from Catalyst Center Template Programmer, **not**
 from the repo checkout. Stage 06 seeds Catalyst Center from git or a local
-folder depending on `template_source`; stage 10 verifies what was actually
+folder depending on `template_source`; stage 11 verifies what was actually
 deployed. A DEFN file edited locally and never synced therefore cannot produce
 a false pass, and the stage works from a checkout with no templates in it.
 
@@ -1590,19 +1588,19 @@ brief` reports `protocol up`; a config line proves none of that.
 > fabric with no NVE peers, or a controller with no access points joined. The
 > `genie_parse` filter turns that into an empty dict, so the check reports the
 > value as absent and fails on its own terms. Only a genuine parsing problem,
-> such as a missing parser, aborts the run. Run stage 10 before stage 09 and you
+> such as a missing parser, aborts the run. Run stage 11 before stage 09 and you
 > will see those checks fail, which is the correct answer.
 
 ### Run it
 
 ```bash
-ansible-playbook playbooks/10_verify_intent.yml
+ansible-playbook playbooks/11_verify_intent.yml
 ```
 
 Report without failing the play, for a known-broken demo fabric:
 
 ```bash
-ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
+ansible-playbook playbooks/11_verify_intent.yml -e verify_fail_on_mismatch=false
 ```
 
 ### Important expected output
@@ -1614,8 +1612,8 @@ ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
 │ Fail          : 0
 │ Not verified  : 0
 │ Not applicable: 7
-│ Report        : …/evidence/stage10-verification.md
-│ HTML          : …/evidence/stage10-verification.html
+│ Report        : …/evidence/stage11-verification.md
+│ HTML          : …/evidence/stage11-verification.html
 ```
 
 `Not applicable` is expected: `FABRIC-OVERLAY.j2` skips the L2 sections on
@@ -1628,22 +1626,22 @@ driven from the script server, not your laptop:
 
 | File | Use |
 | --- | --- |
-| `evidence/stage10-verification.md` | Reading in a terminal or editor, diffing between runs |
-| `evidence/stage10-verification.html` | A formal verification report for sharing or printing |
+| `evidence/stage11-verification.md` | Reading in a terminal or editor, diffing between runs |
+| `evidence/stage11-verification.html` | A formal verification report for sharing or printing |
 
 Read the markdown on the script server. `rich` is installed in the venv and
 renders the headings and tables in colour:
 
 ```bash
-python -m rich.markdown evidence/stage10-verification.md | less -R
+python -m rich.markdown evidence/stage11-verification.md | less -R
 ```
 
-Or plainly, with no renderer: `less evidence/stage10-verification.md`.
+Or plainly, with no renderer: `less evidence/stage11-verification.md`.
 
 Or pull either file back:
 
 ```bash
-scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage10-verification.html .
+scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage11-verification.html .
 ```
 
 Both contain the result counts, the devices in scope, which Catalyst Center
@@ -1660,15 +1658,15 @@ separately:
 
 | Sample | View it |
 | --- | --- |
-| [`docs/sample-reports/stage10-verification.md`](docs/sample-reports/stage10-verification.md) | Renders directly on GitHub |
-| [`docs/sample-reports/stage10-verification.html`](docs/sample-reports/stage10-verification.html) | Download and open in a browser — GitHub shows HTML as source |
+| [`docs/sample-reports/stage11-verification.md`](docs/sample-reports/stage11-verification.md) | Renders directly on GitHub |
+| [`docs/sample-reports/stage11-verification.html`](docs/sample-reports/stage11-verification.html) | Download and open in a browser — GitHub shows HTML as source |
 
 These are a point-in-time snapshot of Site-105, not output from your pod. Use
 them to see the report shape before you run the stage.
 
 ### Where to verify in Catalyst Center
 
-Stage 10 changes nothing in CatC, so there is no required UI check. You can
+Stage 11 changes nothing in CatC, so there is no required UI check. You can
 compare device reachability under **Provision > Inventory**, but the saved
 switch CLI is the actual verification evidence.
 
@@ -1755,9 +1753,9 @@ verified the student's pod and AP values.
   See stage 09 “Inventory: at least one AP discovered”.
 - **Stage 09 recap `changed=0` with `FAILED - RETRYING` then three SUCCESS
   rows:** expected. Poll, not failure. Shared `deploymentId` is one CatC job.
-  Still verify CLI (stage 10 / `Gi1/0/2`); do not re-run 09 on a live lab
+  Still verify CLI (stage 11 / `Gi1/0/2`); do not re-run 09 on a live lab
   unless asked.
-- **Stage 10 times out on `198.18.128.22–24`:** the dCloud VPN is usually down.
+- **Stage 11 times out on `198.18.128.22–24`:** the dCloud VPN is usually down.
 
 Use `-e catc_debug=true` or `-e dnac_debug=true` only when troubleshooting.
 Debug output can include API payloads and live tokens; redact it before sharing

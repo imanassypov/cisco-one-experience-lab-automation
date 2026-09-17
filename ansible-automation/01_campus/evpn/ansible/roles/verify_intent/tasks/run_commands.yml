@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/run_commands.yml  —  Stage 10.5
+# verify_intent / tasks/run_commands.yml  —  Stage 11.5
 # ============================================================================
 # Collects live CLI output through Catalyst Center Command Runner.
 #
@@ -67,7 +67,7 @@
     body_format: json
     body:
       name: "stage10-verify-{{ item.role }}"
-      description: "Stage 10 intent verification"
+      description: "Stage 11 intent verification"
       timeout: "{{ verify_command_timeout | int }}"
       commands: "{{ item.commands }}"
       deviceUuids: "{{ item.device_ids }}"

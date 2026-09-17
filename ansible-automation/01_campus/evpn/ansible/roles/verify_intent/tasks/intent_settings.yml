@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/intent_settings.yml  —  Stage 10.3
+# verify_intent / tasks/intent_settings.yml  —  Stage 11.3
 # ============================================================================
 # The half of the intent that settings.json owns: wireless and device lists.
 #

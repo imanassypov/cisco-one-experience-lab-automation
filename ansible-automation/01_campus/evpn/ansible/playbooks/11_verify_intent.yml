@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 10_verify_intent.yml  —  Pipeline stage 10
+# 11_verify_intent.yml  —  Pipeline stage 11
 # =============================================================================
 # Verifies that what the fabric is actually running matches what the pipeline
 # declared, and writes a markdown report.
@@ -16,7 +16,7 @@
 # and the stage works from a checkout with no templates in it at all.
 #
 # Live state is collected through Catalyst Center Command Runner
-# (POST /dna/intent/api/v1/network-device-poller/cli/read-request), so stage 10
+# (POST /dna/intent/api/v1/network-device-poller/cli/read-request), so stage 11
 # needs no SSH to the switches. It runs from the Kali script server like every
 # other stage, and works even when the path to the fabric management addresses
 # is down.
@@ -35,16 +35,16 @@
 #   catc_common tasks_from: load_settings → settings_data
 #
 # Produced:
-#   evidence/stage10-verification.md on the host that ran the play — Kali when
+#   evidence/stage11-verification.md on the host that ran the play — Kali when
 #   driven from the script server, not the laptop. Gitignored.
 #
 # Read-only: issues nothing but GETs and Command Runner read requests.
 #
 # Depends on: stages 01-09
 #
-# Run: ansible-playbook playbooks/10_verify_intent.yml
-#      ansible-playbook playbooks/10_verify_intent.yml -e catc_debug=true
-#      ansible-playbook playbooks/10_verify_intent.yml -e verify_fail_on_mismatch=false
+# Run: ansible-playbook playbooks/11_verify_intent.yml
+#      ansible-playbook playbooks/11_verify_intent.yml -e catc_debug=true
+#      ansible-playbook playbooks/11_verify_intent.yml -e verify_fail_on_mismatch=false
 # =============================================================================
 - name: Verify deployed fabric against declared intent
   hosts: catalyst_center
