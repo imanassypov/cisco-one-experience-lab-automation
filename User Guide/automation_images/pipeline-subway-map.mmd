@@ -1,0 +1,71 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#f0f6fa"
+    primaryTextColor: "#1b262c"
+    primaryBorderColor: "#049fd9"
+    lineColor: "#5a7181"
+    fontSize: "15px"
+  flowchart:
+    htmlLabels: true
+    nodeSpacing: 30
+    rankSpacing: 50
+---
+%% Rows are linked subgraph-to-subgraph on purpose: linking node-to-node across
+%% subgraphs makes Mermaid discard each subgraph's `direction LR` and stack every
+%% station into one vertical ladder.
+flowchart TB
+
+  subgraph LINE1["&nbsp;🛠️&nbsp;&nbsp;<b>PREPARATION LINE</b>&nbsp;&nbsp;·&nbsp;&nbsp;this card&nbsp;&nbsp;·&nbsp;&nbsp;nothing reaches the network yet&nbsp;"]
+    direction LR
+    P1(["<b>SSH in</b><br/>198.18.134.12"])
+    P2(["<b>Clone</b><br/>the repository"])
+    P3(["<b>Stage the box</b><br/>stage-script-server.sh"])
+    P4(["<b>Bootstrap</b><br/>01_bootstrap_script_server"])
+    P5(["<b>Set pod number</b><br/>lab.yml"])
+    P1 --> P2 --> P3 --> P4 --> P5
+  end
+
+  subgraph LINE2["&nbsp;🏗️&nbsp;&nbsp;<b>DESIGN LINE</b>&nbsp;&nbsp;·&nbsp;&nbsp;stages 01 – 07&nbsp;&nbsp;·&nbsp;&nbsp;builds intent inside Catalyst Center only&nbsp;"]
+    direction LR
+    S1(["<b>01</b><br/>Site hierarchy"])
+    S2(["<b>02</b><br/>Network settings"])
+    S3(["<b>03</b><br/>Credentials"])
+    S4(["<b>04</b><br/>Device discovery"])
+    S5(["<b>05</b><br/>Assign to site"])
+    S6(["<b>06</b><br/>Template sync"])
+    S7(["<b>07</b><br/>Network profile"])
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+  end
+
+  subgraph LINE3["&nbsp;⚡&nbsp;&nbsp;<b>DEPLOY LINE</b>&nbsp;&nbsp;·&nbsp;&nbsp;stages 08 – 09&nbsp;&nbsp;·&nbsp;&nbsp;live configuration lands here&nbsp;"]
+    direction LR
+    D1(["<b>08</b><br/>Provision switches + WLC<br/><i>can reboot APs</i>"])
+    D2(["<b>09</b><br/>Deploy composite<br/><i>the EVPN fabric goes live</i>"])
+    D1 --> D2
+  end
+
+  subgraph LINE4["&nbsp;📡&nbsp;&nbsp;<b>WIRELESS + PROOF LINE</b>&nbsp;&nbsp;·&nbsp;&nbsp;stages 10 – 11&nbsp;&nbsp;·&nbsp;&nbsp;you run these yourself, after the build&nbsp;"]
+    direction LR
+    W0{{"<b>⏳ THE ONE WAIT</b><br/>the AP boots, joins the 9800,<br/>then syncs to Catalyst Center<br/><i>minutes, not seconds</i>"}}
+    W1(["<b>10</b><br/>Await access points<br/>record MAC → name →<br/>assign → provision"])
+    W2(["<b>11</b><br/>Verify intent<br/><i>pass/fail evidence report</i>"])
+    W0 --> W1 --> W2
+  end
+
+  LINE1 -- "cd 01_campus/evpn/ansible" --> LINE2
+  LINE2 -- "<b>00_site_deploy.yml</b> runs stages 01 → 09 in one go" --> LINE3
+  LINE3 -- "Gi1/0/2 becomes the AP trunk, so the AP can finally join" --> LINE4
+
+  classDef prep fill:#f4f6f8,stroke:#5a7181,stroke-width:2px,color:#1b262c
+  classDef design fill:#eaf4fb,stroke:#049fd9,stroke-width:2px,color:#1b262c
+  classDef deploy fill:#fdf6ec,stroke:#e6a23c,stroke-width:3px,color:#1b262c
+  classDef wait fill:#f3ecfa,stroke:#7d3cb5,stroke-width:2px,color:#1b262c
+  classDef proof fill:#eafaf1,stroke:#2ecc71,stroke-width:2px,color:#1b262c
+
+  class P1,P2,P3,P4,P5 prep
+  class S1,S2,S3,S4,S5,S6,S7 design
+  class D1,D2 deploy
+  class W0 wait
+  class W1,W2 proof

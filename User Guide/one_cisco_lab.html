@@ -2921,6 +2921,16 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p>🛑 <strong>This is the Infrastructure as Code track.</strong> It provisions the EVPN fabric <em>and</em> the wireless service from one pipeline. If you already built the fabric by hand in <a href="#page-7583">1. EVPN Fabric Provisioning</a>, skip this entire track. Running both against the same pod will produce confusing results.</p>
 </div>
 <hr>
+<h4>The whole journey, at a glance</h4>
+<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. This card is the grey line at the top — the other three come later.</p>
+<p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
+<p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
+<ul>
+<li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
+<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 09 turns its switch port into a trunk. That is why wireless finishes last.</li>
+<li><strong>The orchestrator stops at stage 09.</strong> Stages 10 and 11 are deliberately yours to run — one blocks on that hardware wait, and the other is the proof you keep.</li>
+</ul>
+<hr>
 <h4>One machine does the work</h4>
 <p>Everything in this track runs on the <strong>script server</strong> — a Kali Linux host inside the pod. Your laptop only runs the VPN client and an SSH session. Nothing is installed on it.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
@@ -2940,7 +2950,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <tr>
 <td><strong>Script server</strong><br>(Kali Linux)</td>
 <td><code>198.18.134.12</code>, user <code>cisco</code></td>
-<td>You clone the repository here and run everything here, including stages 01 – 10. It is the only host with network reachability to Catalyst Center.</td>
+<td>You clone the repository here and run everything here, including stages 01 – 11. It is the only host with network reachability to Catalyst Center.</td>
 </tr>
 </tbody>
 </table>
