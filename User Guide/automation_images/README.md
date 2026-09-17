@@ -36,6 +36,12 @@ Commit the `.mmd` and its `.png` together.
 > vertical ladder — the render silently becomes 956×4000 instead of 4000×2255.
 > If you add a row, keep the subgraph-level links.
 
+## Screenshots already captured
+
+| File | Shows | Used in |
+|---|---|---|
+| `a4-template-hub-project.png` | **Design > CLI Templates** filtered to project `Site-105`, 25 templates, composite first | Card **4** |
+
 ## Screenshots still to capture
 
 Placeholders are already wired into the HTML with `data-missing`, so the guide renders a
@@ -74,7 +80,6 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 
 | Filename | What to capture |
 |---|---|
-| `a4-template-hub-project.png` | Template Hub, project `Site-105`, showing DEFN / FUNC / FABRIC templates side by side |
 | `a4-composite-members.png` | Composite `BGP-EVPN-BUILD.j2` with its ordered member list |
 
 ### Card 5 — Extending the Fabric

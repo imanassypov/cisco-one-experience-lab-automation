@@ -3471,7 +3471,7 @@ exit-address-family
 <p>Two sites cannot both have a file called <code>DEFN-VRF.j2</code> in the same project. The second upload overwrites the first, and from that moment one site is silently configured with the other site's tenant design. Nothing errors. The verification report is the only thing that would catch it.</p>
 </div>
 <p>Because the placeholder is substituted per project, the FABRIC and FUNC files contain <strong>no site-specific strings whatsoever</strong>. They are byte-for-byte reusable. Everything that makes Site-105 different from any other site lives in the eleven DEFN files.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a4-template-hub-project.png" alt="Catalyst Center Template Hub showing the Site-105 CLI project with DEFN, FUNC and FABRIC templates" width="865" height="470"></p>
+<p><img class="img-fluid" src="automation_images/a4-template-hub-project.png" alt="Catalyst Center Design &gt; CLI Templates, filtered to the Site-105 project, listing 25 templates: the BGP-EVPN-BUILD.j2 composite followed by the DEFN data files" width="865" height="454"></p>
 <h4>What a second site would look like</h4>
 <ol>
 <li>Copy the template folder to a new one, for example <code>Site 106 BGP EVPN Templates</code>.</li>
