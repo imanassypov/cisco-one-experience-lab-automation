@@ -22,13 +22,13 @@
 # is down.
 #
 # Role: verify_intent
-#   10.1 intent_templates — DEFN bodies from Catalyst Center
-#   10.2 intent_fabric    — render them to data
-#   10.3 intent_settings  — intent declared in settings.json
-#   10.4 resolve_devices  — management IP to device UUID
-#   10.5 run_commands     — Command Runner, batched 5 commands per request
-#   10.6 evaluate         — check declared against observed
-#   10.7 report           — markdown + console summary, then fail on mismatch
+#   11.1 intent_templates — DEFN bodies from Catalyst Center
+#   11.2 intent_fabric    — render them to data
+#   11.3 intent_settings  — intent declared in settings.json
+#   11.4 resolve_devices  — management IP to device UUID
+#   11.5 run_commands     — Command Runner, batched 5 commands per request
+#   11.6 evaluate         — check declared against observed
+#   11.7 report           — markdown + console summary, then fail on mismatch
 #
 # Sourced (pre_tasks, order matters):
 #   catc_common tasks_from: auth_token    → _catc_token
