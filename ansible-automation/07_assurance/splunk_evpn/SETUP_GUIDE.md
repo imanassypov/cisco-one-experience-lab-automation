@@ -71,7 +71,9 @@ ocb --config builder.yaml
 ```
 
 `builder.yaml` pins collector core v0.150.0 and replaces the upstream receiver module with
-`./src/receiver/yanggrpcreceiver`, which is why the tarball must land under `src/`.
+`../src/receiver/yanggrpcreceiver`. That path ends up in `_build/go.mod` verbatim, so Go
+resolves it relative to `_build/` rather than to your working directory — keep
+`builder.yaml` and `src/` as siblings or the build cannot find the patched source.
 
 Install it on the Splunk host:
 

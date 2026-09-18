@@ -357,6 +357,12 @@ tar -xzf <repo>/.../otel-collector/receiver_yang_26_05_27.tar.gz -C ./src
 ocb --config builder.yaml          # → ./_build/otelcol-yangfix
 ```
 
+> **The layout matters.** `builder.yaml` replaces the upstream receiver module with
+> `../src/receiver/yanggrpcreceiver`. That path is copied verbatim into `_build/go.mod`,
+> so Go resolves it relative to `_build/` — not to the directory you ran `ocb` from. Keep
+> `builder.yaml` and `src/` as siblings, with `_build/` generated beside them, or the build
+> fails with `reading src/receiver/yanggrpcreceiver/go.mod: no such file or directory`.
+
 Then:
 
 ```bash
