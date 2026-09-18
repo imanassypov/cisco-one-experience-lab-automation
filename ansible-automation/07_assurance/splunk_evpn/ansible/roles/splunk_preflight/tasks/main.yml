@@ -20,6 +20,32 @@
 # ============================================================================
 ---
 
+# Runs before any connection is attempted, so a missing vault entry reports
+# itself rather than surfacing as an SSH auth failure.
+- name: Require the Splunk host SSH credentials in the vault
+  delegate_to: localhost
+  become: false
+  ansible.builtin.assert:
+    that:
+      - splunk_ssh_credentials.username | default('') | length > 0
+      - splunk_ssh_credentials.password | default('') | length > 0
+    fail_msg: >-
+      No '{{ inventory_hostname }}' entry in Lab Topology/lab_access.yml. That is
+      the Linux account on {{ ansible_host }} used to manage the collector, and it
+      is separate from 'Splunk Enterprise', which is the Splunk web/REST admin.
+      Add it with: ansible-vault edit "Lab Topology/lab_access.yml"
+
+- name: Require the Splunk admin credentials in the vault
+  delegate_to: localhost
+  become: false
+  ansible.builtin.assert:
+    that:
+      - lab_access['Splunk Enterprise'] is defined
+      - lab_access['Splunk Enterprise'].username | default('') | length > 0
+    fail_msg: >-
+      No 'Splunk Enterprise' entry in Lab Topology/lab_access.yml. That account
+      creates the metrics index, mints the HEC token and installs the app.
+
 - name: Confirm privilege escalation works
   become: true
   ansible.builtin.command: id -u

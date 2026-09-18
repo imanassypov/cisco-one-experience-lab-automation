@@ -2,10 +2,17 @@
 # SSH + sudo to the Splunk host. Credentials come from the vault via the
 # lab_access vars plugin, keyed on the inventory hostname, exactly like
 # collection 00 does for the script server.
+#
+# This is a different account from lab_access['Splunk Enterprise'], which is the
+# Splunk web/REST admin. Defaulted to an empty dict so a missing vault entry
+# surfaces as the preflight assertion rather than an undefined-variable error
+# during inventory parsing.
+splunk_ssh_credentials: "{{ lab_access[inventory_hostname] | default({}, true) }}"
+
 ansible_connection: ssh
-ansible_user: "{{ lab_access[inventory_hostname].username }}"
-ansible_password: "{{ lab_access[inventory_hostname].password }}"
-ansible_become_password: "{{ lab_access[inventory_hostname].password }}"
+ansible_user: "{{ splunk_ssh_credentials.username | default('') }}"
+ansible_password: "{{ splunk_ssh_credentials.password | default('') }}"
+ansible_become_password: "{{ splunk_ssh_credentials.password | default('') }}"
 ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 # System python: the package and service modules need the distro interpreter,
 # not whatever venv happens to be active on the control node.

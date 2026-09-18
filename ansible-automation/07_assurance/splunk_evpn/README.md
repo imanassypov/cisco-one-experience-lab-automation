@@ -48,8 +48,8 @@ See [Relationship to the campus collection](#relationship-to-the-campus-collecti
 | Fabric | Site 105 EVPN built by [`01_campus/evpn`](../../01_campus/evpn/) |
 | IOS-XE | 17.18.02 or later on Catalyst 9000 |
 | Splunk | Enterprise 8.0+ (Dashboard Studio v2), reachable at `198.18.5.109` |
-| Splunk access | Admin account able to create indexes and HEC tokens |
-| SSH access | A Linux account on the Splunk host with `sudo` |
+| Splunk access | Admin account able to create indexes and HEC tokens (`Splunk Enterprise` in the vault) |
+| SSH access | A **separate** Linux account on the Splunk host with `sudo` (`splunk_server` in the vault) |
 | Collector binary | `otelcol-yangfix` — built elsewhere and staged, or built in place with Go 1.25+ and `ocb` |
 | Control node | The Kali script server, bootstrapped by [`00_scriptserver_bootstrap`](../../00_scriptserver_bootstrap/) |
 
@@ -125,8 +125,8 @@ Run from the script server, with the dCloud VPN up.
 
    | Key | Purpose |
    | --- | --- |
-   | `Splunk` | Admin account for REST `:8089` — creates the index, HEC token, installs the app |
-   | `splunk_server` | Linux account on `198.18.5.109` with `sudo` — manages the collector |
+   | `Splunk Enterprise` | Admin account for Splunk Web `:8000` and REST `:8089` — creates the index, HEC token, installs the app. Usually already present in the lab vault. |
+   | `splunk_server` | **Separate** Linux account on `198.18.5.109` with `sudo` — manages the collector. Normally has to be added. |
 
    ```bash
    cd ~/cisco-one-experience-lab-automation
@@ -428,6 +428,7 @@ Credentials are wrapped in `no_log: true` throughout, so debug output stays safe
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
 | Preflight: "No Splunk binary at /opt/splunk/bin/splunk" | Splunk installed elsewhere | `-e splunk_home=/path/to/splunk` |
+| Preflight: "No 'splunk_server' entry" | The Linux SSH account is missing from the vault | `ansible-vault edit "Lab Topology/lab_access.yml"` and add it; it is not the same account as `Splunk Enterprise` |
 | Preflight: "no Go/ocb toolchain and otel_staged_binary is unset" | Nothing to install | Build elsewhere and pass `-e otel_staged_binary=...`, or `-e otel_use_custom_binary=false` |
 | Preflight: port 57444 already in use | A stale collector, or another listener | `sudo ss -lntp \| grep 57444`, stop the owner |
 | Stage 02 fails on datatype | `evpn_assurance` already exists as an **event** index | Delete and recreate it as `metric`; event indexes silently discard metric points |

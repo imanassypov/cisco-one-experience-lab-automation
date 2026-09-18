@@ -2,8 +2,10 @@
 # Assurance settings shared by every stage. Override any of these with -e.
 
 # ── Splunk ──────────────────────────────────────────────────────────────────
-splunk_admin_username: "{{ lab_access['Splunk'].username }}"
-splunk_admin_password: "{{ lab_access['Splunk'].password }}"
+# Vault key is 'Splunk Enterprise' to match the existing lab access lookup; this
+# is the web/REST admin, not the Linux account used for SSH.
+splunk_admin_username: "{{ lab_access['Splunk Enterprise'].username }}"
+splunk_admin_password: "{{ lab_access['Splunk Enterprise'].password }}"
 splunk_home: /opt/splunk
 splunk_bin: "{{ splunk_home }}/bin/splunk"
 splunk_mgmt_port: 8089
