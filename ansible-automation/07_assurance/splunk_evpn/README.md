@@ -427,6 +427,8 @@ Credentials are wrapped in `no_log: true` throughout, so debug output stays safe
 
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
+| `you must install the sshpass program` | Script server bootstrapped before this collection existed | `sudo apt-get install -y sshpass`, or re-run `00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml` |
+| `'dict object' has no attribute 'splunk_server'` | Stale checkout, or the vault entry is missing | `git pull`, then check `ansible-vault view "Lab Topology/lab_access.yml"` contains `splunk_server` |
 | Preflight: "No Splunk binary at /opt/splunk/bin/splunk" | Splunk installed elsewhere | `-e splunk_home=/path/to/splunk` |
 | Preflight: "No 'splunk_server' entry" | The Linux SSH account is missing from the vault | `ansible-vault edit "Lab Topology/lab_access.yml"` and add it; it is not the same account as `Splunk Enterprise` |
 | Preflight: "no Go/ocb toolchain and otel_staged_binary is unset" | Nothing to install | Build elsewhere and pass `-e otel_staged_binary=...`, or `-e otel_use_custom_binary=false` |

@@ -5,11 +5,14 @@
 # Read-only. Probes the Splunk host and fails with a specific message if any
 # assumption a later stage depends on does not hold.
 #
+# gather_facts is false so the control-node check below runs before ansible
+# attempts an SSH connection. Nothing in this stage needs remote facts.
+#
 # Sourced:
 #   inventory/hosts.yml           — splunk_server (198.18.5.109)
 #   group_vars/splunk_servers/    — SSH user/password/become from the vault
 #   group_vars/all/assurance.yml  — splunk_home, ports, collector paths
-#   Lab Topology/lab_access.yml   — Splunk admin and splunk_server credentials
+#   Lab Topology/lab_access.yml   — Splunk Enterprise and splunk_server entries
 #
 # Produced:
 #   _splunk_version, _otel_unit_present, _otel_binary_present,
@@ -19,6 +22,29 @@
 # =============================================================================
 - name: Probe the Splunk host before changing anything
   hosts: splunk_servers
-  gather_facts: true
+  gather_facts: false
+  pre_tasks:
+    # This collection is the first in the repo to SSH anywhere with a password,
+    # so a script server bootstrapped before it existed has no sshpass and the
+    # play would otherwise die at the connection with no explanation.
+    - name: Look for sshpass on the control node
+      delegate_to: localhost
+      become: false
+      ansible.builtin.command: command -v sshpass
+      changed_when: false
+      failed_when: false
+      register: _sshpass
+
+    - name: Explain a missing sshpass
+      delegate_to: localhost
+      become: false
+      ansible.builtin.assert:
+        that: _sshpass.rc == 0
+        fail_msg: >-
+          sshpass is not installed on this control node. The Splunk host
+          authenticates with a vault password rather than an SSH key, and
+          ansible refuses password-based ssh without it. Install it with
+          'sudo apt-get install -y sshpass', or re-run collection 00
+          (playbooks/01_bootstrap_script_server.yml), which now installs it.
   roles:
     - role: splunk_preflight

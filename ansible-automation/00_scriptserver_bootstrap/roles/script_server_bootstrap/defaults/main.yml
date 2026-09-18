@@ -83,10 +83,15 @@ script_server_cli_binaries:
 # interpreter, and on this image libffi-dev / libssl-dev cannot install without
 # dragging libc6 forward. If pip ever does need to build, the staging script
 # says which packages to add by hand.
+# sshpass is what lets collection 07 reach the Splunk host: its credentials live
+# in the vault rather than in an SSH key, and ansible refuses a password-based
+# ssh connection outright without it. Collections 00-01 never needed it because
+# they only talk to localhost and to Catalyst Center's API.
 script_server_debian_packages:
   - git
   - python3-pip
   - "python{{ ansible_python.version.major }}.{{ ansible_python.version.minor }}-venv"
+  - sshpass
 
 script_server_redhat_packages:
   - git
@@ -96,3 +101,4 @@ script_server_redhat_packages:
   - gcc
   - libffi-devel
   - openssl-devel
+  - sshpass
