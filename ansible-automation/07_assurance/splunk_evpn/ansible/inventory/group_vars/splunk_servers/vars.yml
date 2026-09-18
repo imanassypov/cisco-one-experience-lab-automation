@@ -9,11 +9,21 @@
 # during inventory parsing.
 splunk_ssh_credentials: "{{ lab_access[inventory_hostname] | default({}, true) }}"
 
-ansible_connection: ssh
+# paramiko, not the default ssh transport. The OpenSSH transport shells out and
+# needs sshpass to feed it a password, and sshpass cannot be installed on the
+# Kali image - it pulls libc6 forward and apt refuses against the pinned
+# libc6-dev. paramiko does password auth in-process and is already a pinned
+# dependency in ansible-automation/requirements.txt, so nothing extra is needed.
+ansible_connection: ansible.builtin.paramiko_ssh
 ansible_user: "{{ splunk_ssh_credentials.username | default('') }}"
 ansible_password: "{{ splunk_ssh_credentials.password | default('') }}"
 ansible_become_password: "{{ splunk_ssh_credentials.password | default('') }}"
-ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# The lab host's key is not in known_hosts and ansible.cfg already disables host
+# key checking; this is the paramiko-side equivalent.
+ansible_paramiko_host_key_auto_add: true
+# Password auth only - without this paramiko offers every key in ~/.ssh first and
+# a host with MaxAuthTries 3 disconnects before it reaches the password.
+ansible_paramiko_look_for_keys: false
 # System python: the package and service modules need the distro interpreter,
 # not whatever venv happens to be active on the control node.
 ansible_python_interpreter: /usr/bin/python3

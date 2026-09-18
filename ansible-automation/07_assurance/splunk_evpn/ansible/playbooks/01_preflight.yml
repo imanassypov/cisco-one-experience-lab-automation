@@ -24,27 +24,27 @@
   hosts: splunk_servers
   gather_facts: false
   pre_tasks:
-    # This collection is the first in the repo to SSH anywhere with a password,
-    # so a script server bootstrapped before it existed has no sshpass and the
-    # play would otherwise die at the connection with no explanation.
-    - name: Look for sshpass on the control node
+    # The Splunk host authenticates with a vault password. The default ssh
+    # transport would need sshpass, which cannot be installed on the Kali image,
+    # so this collection uses paramiko instead - see group_vars/splunk_servers.
+    - name: Require paramiko on the control node
       delegate_to: localhost
       become: false
-      ansible.builtin.command: command -v sshpass
+      ansible.builtin.command: "{{ ansible_playbook_python }} -c 'import paramiko'"
       changed_when: false
       failed_when: false
-      register: _sshpass
+      register: _paramiko
 
-    - name: Explain a missing sshpass
+    - name: Explain a missing paramiko
       delegate_to: localhost
       become: false
       ansible.builtin.assert:
-        that: _sshpass.rc == 0
+        that: _paramiko.rc == 0
         fail_msg: >-
-          sshpass is not installed on this control node. The Splunk host
-          authenticates with a vault password rather than an SSH key, and
-          ansible refuses password-based ssh without it. Install it with
-          'sudo apt-get install -y sshpass', or re-run collection 00
-          (playbooks/01_bootstrap_script_server.yml), which now installs it.
+          paramiko is not importable by {{ ansible_playbook_python }}. It is the
+          transport this collection uses to reach the Splunk host with a vault
+          password, and it is pinned in ansible-automation/requirements.txt.
+          Install it into the venv running this playbook with
+          'python -m pip install -r ansible-automation/requirements.txt'.
   roles:
     - role: splunk_preflight

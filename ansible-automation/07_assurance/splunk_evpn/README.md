@@ -55,6 +55,13 @@ See [Relationship to the campus collection](#relationship-to-the-campus-collecti
 
 No extra Galaxy collections are needed — every task is `ansible.builtin`.
 
+> **Transport note.** The Splunk host is reached with `ansible.builtin.paramiko_ssh`, not the
+> default OpenSSH transport. Credentials live in the vault as a password, and the ssh
+> transport would need `sshpass` — which cannot be installed on the Kali script server,
+> because it pulls `libc6` forward and apt refuses against the pinned `libc6-dev`. paramiko
+> does password auth in-process and is already pinned in
+> [`ansible-automation/requirements.txt`](../../requirements.txt).
+
 > **Why a patched collector?** The stock `yanggrpcreceiver` silently drops numeric YANG
 > list keys (`vni`, `evni`, `vlan-id`), so every per-VNI panel comes back empty. The patch
 > and its analysis are in
@@ -427,8 +434,9 @@ Credentials are wrapped in `no_log: true` throughout, so debug output stays safe
 
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
-| `you must install the sshpass program` | Script server bootstrapped before this collection existed | `sudo apt-get install -y sshpass`, or re-run `00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml` |
+| `you must install the sshpass program` | Stale checkout still using the `ssh` transport | `git pull` — this collection uses `paramiko`, which needs no apt package. Do **not** try to apt-install sshpass on the Kali image; it drags `libc6` forward and apt refuses |
 | `'dict object' has no attribute 'splunk_server'` | Stale checkout, or the vault entry is missing | `git pull`, then check `ansible-vault view "Lab Topology/lab_access.yml"` contains `splunk_server` |
+| Preflight: "paramiko is not importable" | Playbook running outside the bootstrapped venv | `~/venv/bin/ansible-playbook`, or reinstall `ansible-automation/requirements.txt` |
 | Preflight: "No Splunk binary at /opt/splunk/bin/splunk" | Splunk installed elsewhere | `-e splunk_home=/path/to/splunk` |
 | Preflight: "No 'splunk_server' entry" | The Linux SSH account is missing from the vault | `ansible-vault edit "Lab Topology/lab_access.yml"` and add it; it is not the same account as `Splunk Enterprise` |
 | Preflight: "no Go/ocb toolchain and otel_staged_binary is unset" | Nothing to install | Build elsewhere and pass `-e otel_staged_binary=...`, or `-e otel_use_custom_binary=false` |
