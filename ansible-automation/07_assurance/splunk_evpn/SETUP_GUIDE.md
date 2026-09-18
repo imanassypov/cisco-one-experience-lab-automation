@@ -79,7 +79,9 @@ Install it on the Splunk host:
 
 ```bash
 sudo install -o root -g root -m 0755 ./_build/otelcol-yangfix /usr/local/bin/otelcol-yangfix
-/usr/local/bin/otelcol-yangfix --version
+# An ocb-built distribution has no --version flag. Listing components proves the
+# patched receiver is actually in the binary, which matters more anyway.
+/usr/local/bin/otelcol-yangfix components | grep yang_grpc
 ```
 
 ## 4. Configure and start the collector

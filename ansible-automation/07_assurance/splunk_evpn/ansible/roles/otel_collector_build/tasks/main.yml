@@ -115,12 +115,43 @@
             group: root
             mode: "0755"
 
-- name: Confirm the collector binary runs
+# 'components' rather than '--version': an ocb-built distribution does not
+# register a version flag, and listing the compiled-in components proves the
+# thing that actually matters - that the patched yang_grpc receiver is in there.
+- name: List the components compiled into the collector
   become: true
-  ansible.builtin.command: "{{ otel_custom_binary }} --version"
+  ansible.builtin.command: "{{ otel_custom_binary }} components"
   changed_when: false
-  register: _otel_version
+  failed_when: false
+  register: _otel_components
+
+- name: Fall back to --help when the build has no components subcommand
+  become: true
+  when: _otel_components.rc != 0
+  ansible.builtin.command: "{{ otel_custom_binary }} --help"
+  changed_when: false
+  failed_when: false
+  register: _otel_help
+
+- name: Confirm the collector binary runs
+  ansible.builtin.assert:
+    that: _otel_components.rc == 0 or (_otel_help.rc | default(1)) == 0
+    fail_msg: >-
+      {{ otel_custom_binary }} did not execute. Wrong architecture, or a
+      truncated copy. stderr: {{ _otel_components.stderr | default('') }}
+
+- name: Confirm the patched yang_grpc receiver is compiled in
+  when: _otel_components.rc == 0
+  ansible.builtin.assert:
+    that: "'yang_grpc' in _otel_components.stdout"
+    fail_msg: >-
+      {{ otel_custom_binary }} runs but has no yang_grpc receiver, so the fabric
+      has nothing to dial out to. The builder.yaml replaces entry probably did
+      not point at the extracted receiver source. Rebuild and check that
+      src/receiver/yanggrpcreceiver sits beside builder.yaml.
 
 - name: Collector binary summary
   ansible.builtin.debug:
-    msg: "{{ otel_custom_binary }}: {{ _otel_version.stdout | trim }}"
+    msg:
+      - "binary   : {{ otel_custom_binary }}"
+      - "yang_grpc: {{ 'compiled in' if (_otel_components.rc == 0 and 'yang_grpc' in _otel_components.stdout) else 'could not confirm - no components subcommand' }}"
