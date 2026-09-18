@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Splunk EVPN Assurance — Verification Report</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+         margin: 2rem auto; max-width: 60rem; color: #1b1b1b; }
+  h1 { color: #049fd9; border-bottom: 2px solid #049fd9; padding-bottom: .3rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #d6d6d6; padding: .5rem .7rem; text-align: left; }
+  th { background: #f2f7fa; }
+  code { background: #f4f4f4; padding: .1rem .3rem; border-radius: 3px; }
+  pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+  .pass { color: #0b7a3e; font-weight: 600; }
+  .fail { color: #c3262e; font-weight: 600; }
+  .score { font-size: 1.2rem; }
+</style>
+</head>
+<body>
+<h1>Splunk EVPN Assurance — Verification Report</h1>
+
+<p>
+  <strong>Site:</strong> {{ assurance_site }}<br>
+  <strong>Splunk host:</strong> {{ ansible_host }}<br>
+  <strong>Index:</strong> <code>{{ splunk_assurance_index }}</code><br>
+  <strong>Generated:</strong> {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}
+</p>
+
+<p class="score">
+  <span class="{{ 'pass' if (_assurance_rows | rejectattr('ok') | list | length == 0) else 'fail' }}">
+    {{ _assurance_rows | selectattr('ok') | list | length }} / {{ _assurance_rows | length }} checks passed
+  </span>
+</p>
+
+<table>
+  <tr><th>Check</th><th>Expected</th><th>Observed</th><th>Result</th></tr>
+{% for row in _assurance_rows %}
+  <tr>
+    <td>{{ row.label }}</td>
+    <td><code>{{ row.expected }}</code></td>
+    <td><code>{{ row.observed }}</code></td>
+    <td class="{{ 'pass' if row.ok else 'fail' }}">{{ 'PASS' if row.ok else 'FAIL' }}</td>
+  </tr>
+{% endfor %}
+</table>
+
+<h2>Pipeline under test</h2>
+<pre>
+{{ assurance_site }} fabric  --MDT gRPC--&gt;  {{ ansible_host }}:{{ otel_receiver_port }}
+                                              |
+                                      splunk_hec exporter
+                                              v
+                                   {{ splunk_hec_url }}
+                                              |
+                                              v
+                                index={{ splunk_assurance_index }} (metric)
+                                              |
+                                              v
+                                   app: {{ splunk_app_name }}
+</pre>
+
+<h2>Reading a failure</h2>
+<table>
+  <tr><th>Failing check</th><th>What it means</th></tr>
+  <tr><td>Collector service running</td>
+      <td><code>{{ otel_service_name }}</code> is down. <code>journalctl -u {{ otel_service_name }} -n 50</code>.</td></tr>
+  <tr><td>Fabric devices streaming</td>
+      <td>Subscriptions are not dialling out. Check <code>show telemetry ietf subscription all receivers</code> on a switch, and that <code>telemetry.splunk.receiver_ip</code> in <code>settings.json</code> matches {{ ansible_host }}.</td></tr>
+  <tr><td>HEC export failures</td>
+      <td>The collector reaches the fabric but cannot write to Splunk. Check the HEC token and that <code>{{ splunk_assurance_index }}</code> is a <strong>metric</strong> index.</td></tr>
+  <tr><td>Nodes resolving through the lookup</td>
+      <td>Metrics are arriving but <code>cisco.node_id</code> does not match the <code>hostname</code> column of <code>evpn_device_inventory.csv</code>. Re-run stage 05, then compare a raw <code>| mstats ... BY "cisco.node_id"</code> against the CSV.</td></tr>
+  <tr><td>Dashboard Studio validation</td>
+      <td>A panel query or view definition is broken. Run <code>tools/validate_studio.py</code> directly for the per-panel detail.</td></tr>
+</table>
+
+</body>
+</html>

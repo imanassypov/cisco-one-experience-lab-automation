@@ -1,0 +1,61 @@
+---
+# Assurance settings shared by every stage. Override any of these with -e.
+
+# ── Splunk ──────────────────────────────────────────────────────────────────
+splunk_admin_username: "{{ lab_access['Splunk'].username }}"
+splunk_admin_password: "{{ lab_access['Splunk'].password }}"
+splunk_home: /opt/splunk
+splunk_bin: "{{ splunk_home }}/bin/splunk"
+splunk_mgmt_port: 8089
+splunk_mgmt_url: "https://127.0.0.1:{{ splunk_mgmt_port }}"
+
+# Must be a METRICS index - the OTel HEC exporter writes metric points, and a
+# regular event index silently drops them.
+splunk_assurance_index: evpn_assurance
+
+# ── HTTP Event Collector ────────────────────────────────────────────────────
+splunk_hec_port: 8088
+splunk_hec_token_name: evpn-collector
+# Loopback on purpose: the collector and Splunk share this host.
+splunk_hec_url: "https://localhost:{{ splunk_hec_port }}/services/collector"
+splunk_hec_tls_insecure: true
+
+# ── Splunk app ──────────────────────────────────────────────────────────────
+splunk_app_name: campus_evpn_assurance
+splunk_app_src: "{{ playbook_dir }}/../../splunk-app/{{ splunk_app_name }}"
+splunk_app_build_script: "{{ playbook_dir }}/../../packaging/build-app.sh"
+splunk_app_dist_dir: "{{ playbook_dir }}/../../packaging/dist"
+# Splunk must restart to pick up a reinstalled app; this is the only disruptive
+# step in the collection.
+splunk_restart_timeout: 180
+
+# ── OpenTelemetry collector ─────────────────────────────────────────────────
+otel_receiver_port: 57444
+otel_config_dir: /etc/otel/collector
+otel_config_path: "{{ otel_config_dir }}/agent_config.yaml"
+otel_service_name: splunk-otel-collector
+otel_custom_binary: /usr/local/bin/otelcol-yangfix
+otel_src_dir: "{{ playbook_dir }}/../../otel-collector"
+otel_receiver_bundle: receiver_yang_26_05_27.tar.gz
+otel_build_dir: /tmp/otelbuild
+# The stock rpm receiver drops numeric YANG list keys (vni, evni, vlan-id), which
+# breaks every per-VNI panel. Set false only to fall back to /usr/bin/otelcol.
+otel_use_custom_binary: true
+# Where to compile otelcol-yangfix. The Splunk appliance has no Go toolchain and
+# no egress, so the default builds nothing and expects the binary to be staged.
+# Set to 'local' to build on the Splunk host when Go 1.25+ and ocb are present.
+otel_build_mode: staged
+otel_staged_binary: ""
+
+# ── Fabric under assurance ──────────────────────────────────────────────────
+assurance_site: Site-105
+# Reuses the campus collection's single source of truth so the Splunk lookups
+# cannot drift from the fabric intent.
+evpn_settings_json: "{{ playbook_dir }}/../../../../01_campus/evpn/Settings/settings.json"
+evpn_templates_dir: "{{ playbook_dir }}/../../../../01_campus/evpn/Catalyst Center Templates/Site BGP EVPN Templates"
+# Shared with stage 11 of the campus collection so both read fabric intent the
+# same way; changing the extracted fields in one place updates both.
+evpn_epilogue: "{{ playbook_dir }}/../../../../01_campus/evpn/ansible/roles/verify_intent/files/zz-defn-extract-epilogue.j2"
+
+assurance_evidence_dir: "{{ playbook_dir }}/../evidence"
+assurance_debug: false

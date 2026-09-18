@@ -1,0 +1,64 @@
+---
+# =============================================================================
+# 07_enable_fabric_telemetry.yml  —  Assurance stage 07
+# =============================================================================
+# Read-only. The switch config that makes the fabric dial out lives in the
+# campus collection, not here: FABRIC-TELEMETRY-SPLUNK.j2 renders the
+# `telemetry ietf subscription` blocks, and stages 06 and 09 of 01_campus push
+# them. Duplicating that pipeline here would give two places that can disagree
+# about what the fabric is running.
+#
+# So this stage only verifies that the campus side is configured to point at
+# this collector, and tells the operator exactly what to run if it is not.
+#
+# Run: ansible-playbook playbooks/07_enable_fabric_telemetry.yml
+# =============================================================================
+- name: Confirm the campus templates target this collector
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _evpn_settings: "{{ lookup('file', evpn_settings_json) | from_json }}"
+    _site: >-
+      {{ (_evpn_settings.project
+          | selectattr('HierarchyBldg', 'defined')
+          | selectattr('HierarchyBldg', 'equalto', assurance_site)
+          | list | first | default({})) }}
+    _telemetry: "{{ _site.get('telemetry', {}).get('splunk', {}) }}"
+    _collector_ip: "{{ hostvars['splunk_server'].ansible_host }}"
+  tasks:
+    - name: Report the configured telemetry intent
+      ansible.builtin.debug:
+        msg:
+          - "site          : {{ assurance_site }}"
+          - "enabled       : {{ _telemetry.enabled | default(false) }}"
+          - "receiver_ip   : {{ _telemetry.receiver_ip | default('(unset)') }}"
+          - "receiver_port : {{ _telemetry.receiver_port | default('(unset)') }}"
+          - "roles         : {{ _telemetry.roles | default([]) | join(', ') or '(none)' }}"
+          - "collector     : {{ _collector_ip }}:{{ otel_receiver_port }}"
+
+    - name: Verify settings.json points the fabric at this collector
+      ansible.builtin.assert:
+        that:
+          - _telemetry.enabled | default(false) | bool
+          - _telemetry.receiver_ip | default('') == _collector_ip
+          - (_telemetry.receiver_port | default('')) | string == (otel_receiver_port | string)
+          - _telemetry.roles | default([]) | length > 0
+        fail_msg: >-
+          telemetry.splunk for {{ assurance_site }} in
+          01_campus/evpn/Settings/settings.json does not match this collector
+          ({{ _collector_ip }}:{{ otel_receiver_port }}). Fix it there, then
+          re-run the campus template pipeline.
+        success_msg: >-
+          settings.json targets {{ _collector_ip }}:{{ otel_receiver_port }} for
+          roles {{ _telemetry.roles | join(', ') }}.
+
+    - name: Next steps
+      ansible.builtin.debug:
+        msg:
+          - "Push the subscriptions to the fabric from the campus collection:"
+          - "  cd ../../../01_campus/evpn/ansible"
+          - "  ansible-playbook playbooks/06_template_sync.yml"
+          - "  ansible-playbook playbooks/09_deploy_composite.yml"
+          - "Then confirm on the switches:"
+          - "  ansible-playbook playbooks/11_verify_intent.yml"

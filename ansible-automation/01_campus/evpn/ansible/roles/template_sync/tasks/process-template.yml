@@ -58,11 +58,21 @@
 #   Out: diff_content_raw = "{## @@ -1,2 +1,5 @@ ##}\n{## +vrf definition red ##}\n"
 # The literal {{ TEMPLATE_PROJECT_NAME }} placeholder is substituted here rather
 # than at render time, so a template can include a sibling without hardcoding
-# the Catalyst Center project name.
+# the Catalyst Center project name. TELEMETRY_* is substituted the same way, so
+# Settings/settings.json stays the single source of truth for the collector.
+# Every placeholder in sync_placeholders is replaced unconditionally — an
+# unsubstituted {{ ... }} would reach Catalyst Center as a live Jinja expression
+# and fail at device render time.
 - name: Extract template metadata for {{ template_file.name }}
   set_fact:
     template_name: "{{ template_file.name }}"
-    template_content_raw: "{{ template_file.content | replace('{{ TEMPLATE_PROJECT_NAME }}', project_name) }}"
+    template_content_raw: >-
+      {{ template_file.content
+         | replace('{{ TEMPLATE_PROJECT_NAME }}', project_name)
+         | replace('{{ TELEMETRY_RECEIVER_IP }}', telemetry_receiver_ip | string)
+         | replace('{{ TELEMETRY_RECEIVER_PORT }}', telemetry_receiver_port | string)
+         | replace('{{ TELEMETRY_ROLES }}', telemetry_roles_literal | string)
+         | replace('{{ TELEMETRY_ROLE_GUARD }}', telemetry_role_guard | string) }}
     commit_message: "{{ template_file.commit_message }}"
     diff_content_raw: "{{ template_file.diff_content | regex_replace('([^\\n]+)', '{## \\1 ##}') + '\\n' if (include_diff_header and template_file.diff_content) else '' }}"
 

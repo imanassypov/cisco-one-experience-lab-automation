@@ -1,0 +1,53 @@
+---
+# =============================================================================
+# 00_assurance_deploy.yml  —  Assurance orchestrator
+# =============================================================================
+# Runs stages 01-08 in dependency order. Mirrors 00_site_deploy.yml in the
+# campus collection.
+#
+# Order and why:
+#   01 preflight          read-only    prove the host before changing it
+#   02 index + HEC        additive     the collector needs the token
+#   03 build collector    additive     no-op if the binary is already there
+#   04 deploy collector   DISRUPTIVE   ~90 s telemetry gap on restart
+#   05 render lookups     local only   CSVs must exist before the app is packaged
+#   06 deploy app         DISRUPTIVE   splunkd restart
+#   07 fabric telemetry   read-only    confirms the campus side targets us
+#   08 verify             read-only    evidence report
+#
+# Stage 07 does not configure the switches. That belongs to the campus
+# collection (stages 06 and 09 of 01_campus/evpn); this stage only asserts that
+# settings.json points the fabric here, and prints what to run if it does not.
+#
+# Prerequisites:
+#   - Lab Topology/lab_access.yml holds 'Splunk' and 'splunk_server' entries
+#   - The fabric is already built by 01_campus/evpn
+#   - otelcol-yangfix is staged, or the Splunk host has Go 1.25+ and ocb
+#
+# Run: ansible-playbook playbooks/00_assurance_deploy.yml
+#      ansible-playbook playbooks/00_assurance_deploy.yml \
+#        -e otel_staged_binary=/opt/build/otelcol-yangfix
+# =============================================================================
+- name: Assurance stage 01 - preflight
+  ansible.builtin.import_playbook: 01_preflight.yml
+
+- name: Assurance stage 02 - index and HEC token
+  ansible.builtin.import_playbook: 02_splunk_index_hec.yml
+
+- name: Assurance stage 03 - build the collector
+  ansible.builtin.import_playbook: 03_build_collector.yml
+
+- name: Assurance stage 04 - deploy the collector
+  ansible.builtin.import_playbook: 04_deploy_collector.yml
+
+- name: Assurance stage 05 - render the lookups
+  ansible.builtin.import_playbook: 05_render_lookups.yml
+
+- name: Assurance stage 06 - deploy the dashboard app
+  ansible.builtin.import_playbook: 06_deploy_splunk_app.yml
+
+- name: Assurance stage 07 - confirm the fabric targets this collector
+  ansible.builtin.import_playbook: 07_enable_fabric_telemetry.yml
+
+- name: Assurance stage 08 - verify end to end
+  ansible.builtin.import_playbook: 08_verify_assurance.yml

@@ -33,8 +33,7 @@
 ---
 
 # Command Runner caps a request at five commands, so run_commands.yml chunks
-# these. Eight switch commands is two requests, same as before dropping
-# running-config — but a far smaller payload.
+# these. Ten switch commands is two requests.
 verify_commands:
   switch:
     - show vrf
@@ -45,6 +44,8 @@ verify_commands:
     - show ip interface
     - show interfaces status
     - show ip bgp all summary
+    - show telemetry ietf subscription all
+    - show telemetry ietf subscription all receivers
   wlc:
     - show wlan summary
     - show ap summary
@@ -382,6 +383,63 @@ verify_checks:
                     'observed': (asns | first) if asns else 'no session'}] -%}
             {%- endfor -%}
           {%- endif -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # ── Streaming telemetry ────────────────────────────────────────────────
+  # Proves the subscriptions FABRIC-TELEMETRY-SPLUNK.j2 rendered are actually
+  # installed and valid. Both checks no-op when telemetry.splunk is disabled in
+  # settings.json, because the DEFN then carries an empty receiver.
+  - id: telemetry_subscriptions
+    title: Telemetry subscriptions installed and valid
+    scope: switch
+    command: show telemetry ietf subscription all
+    skip_when: >-
+      {{ not _intent_fabric.telemetry_receiver
+         or host not in (_intent_fabric.node_roles.get('SPINE', [])
+                         + _intent_fabric.node_roles.get('BORDER', [])
+                         + _intent_fabric.node_roles.get('CLIENT', [])) }}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show telemetry ietf subscription all', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show telemetry ietf subscription all') -%}
+        {%- set subs = p.id | default({}) -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for section in _intent_fabric.telemetry_subs | default([]) -%}
+          {%- for s in section.subscriptions -%}
+            {%- set ns.r = ns.r + [{'label': 'Sub ' ~ s.id ~ ' (' ~ section.section ~ ')',
+                  'intended': 'Valid',
+                  'observed': subs.get(s.id | int, {}).get('state', 'absent')}] -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {{ ns.r }}
+      {%- endif -%}
+
+  # The subscription being Valid only means IOS-XE accepted it. This proves the
+  # dial-out session to the collector actually came up.
+  - id: telemetry_receivers
+    title: Telemetry receiver connected to the collector
+    scope: switch
+    command: show telemetry ietf subscription all receivers
+    skip_when: >-
+      {{ not _intent_fabric.telemetry_receiver
+         or host not in (_intent_fabric.node_roles.get('SPINE', [])
+                         + _intent_fabric.node_roles.get('BORDER', [])
+                         + _intent_fabric.node_roles.get('CLIENT', [])) }}
+    pairs: >-
+      {%- set out = (_cli_output | default({})).get(host, {}).get('show telemetry ietf subscription all receivers', '') -%}
+      {%- if not out -%}{{ [] }}{%- else -%}
+        {%- set p = out | genie_parse('show telemetry ietf subscription all receivers') -%}
+        {%- set ns = namespace(r=[]) -%}
+        {%- for section in _intent_fabric.telemetry_subs | default([]) -%}
+          {%- for s in section.subscriptions -%}
+            {%- set states = (p.get(s.id | int, {}).values()
+                              | map(attribute='state') | select('defined') | list) -%}
+            {%- set ns.r = ns.r + [{'label': 'Sub ' ~ s.id ~ ' receiver',
+                  'intended': 'Connected',
+                  'observed': (states | first) if states else 'no receiver'}] -%}
+          {%- endfor -%}
         {%- endfor -%}
         {{ ns.r }}
       {%- endif -%}

@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# 01_preflight.yml  —  Assurance stage 01
+# =============================================================================
+# Read-only. Probes the Splunk host and fails with a specific message if any
+# assumption a later stage depends on does not hold.
+#
+# Sourced:
+#   inventory/hosts.yml           — splunk_server (198.18.5.109)
+#   group_vars/splunk_servers/    — SSH user/password/become from the vault
+#   group_vars/all/assurance.yml  — splunk_home, ports, collector paths
+#   Lab Topology/lab_access.yml   — Splunk admin and splunk_server credentials
+#
+# Produced:
+#   _splunk_version, _otel_unit_present, _otel_binary_present,
+#   _go_present, _ocb_present, _receiver_port_free
+#
+# Run: ansible-playbook playbooks/01_preflight.yml
+# =============================================================================
+- name: Probe the Splunk host before changing anything
+  hosts: splunk_servers
+  gather_facts: true
+  roles:
+    - role: splunk_preflight

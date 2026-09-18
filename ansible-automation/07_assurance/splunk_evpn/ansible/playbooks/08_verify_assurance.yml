@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# 08_verify_assurance.yml  —  Assurance stage 08
+# =============================================================================
+# Read-only end-to-end proof, written as evidence in the same shape stage 11 of
+# the campus collection produces.
+#
+# One check per hop, so a failure localises the break: service up, fabric
+# sessions established on the receiver port, HEC exports not failing, metrics
+# actually resolving through the device inventory lookup, and all three
+# Dashboard Studio views validating.
+#
+# The lookup check is the one worth understanding. A collector can be perfectly
+# healthy while every panel returns nothing, because cisco.node_id does not
+# match the hostname column of evpn_device_inventory.csv. That failure is
+# invisible in the UI, so it is asserted here.
+#
+# Produced: evidence/assurance-verification.{md,html} (gitignored)
+#
+# Run: ansible-playbook playbooks/08_verify_assurance.yml
+# =============================================================================
+- name: Verify the assurance pipeline end to end
+  hosts: splunk_servers
+  gather_facts: true
+  roles:
+    - role: assurance_verify

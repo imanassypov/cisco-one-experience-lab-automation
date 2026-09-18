@@ -1,0 +1,128 @@
+# ============================================================================
+# splunk_preflight / tasks/main.yml  —  Assurance stage 01
+# ============================================================================
+# Read-only probe of the Splunk host. Every later stage assumes something about
+# this box; this stage finds out which of those assumptions hold before anything
+# is changed, and fails with a specific message rather than halfway through a
+# deploy.
+#
+# Checks:
+#   1. sudo works
+#   2. Splunk is installed at splunk_home and splunkd is running
+#   3. The Splunk admin credentials in the vault actually authenticate
+#   4. Whether the splunk-otel-collector systemd unit already exists
+#   5. Whether a Go toolchain + ocb are available (decides otel_build_mode)
+#   6. Nothing else is already listening on the MDT receiver port
+#
+# Produced facts (consumed by later stages):
+#   _splunk_present, _splunk_version, _otel_unit_present, _otel_binary_present,
+#   _go_present, _ocb_present, _receiver_port_free
+# ============================================================================
+---
+
+- name: Confirm privilege escalation works
+  become: true
+  ansible.builtin.command: id -u
+  changed_when: false
+  register: _sudo_probe
+  failed_when: _sudo_probe.stdout | trim != "0"
+
+- name: Look for the Splunk binary
+  ansible.builtin.stat:
+    path: "{{ splunk_bin }}"
+  register: _splunk_bin_stat
+
+- name: Fail early when Splunk is not where we expect it
+  ansible.builtin.assert:
+    that: _splunk_bin_stat.stat.exists
+    fail_msg: >-
+      No Splunk binary at {{ splunk_bin }} on {{ inventory_hostname }}
+      ({{ ansible_host }}). Override splunk_home if Splunk lives elsewhere.
+
+- name: Read the Splunk version
+  become: true
+  ansible.builtin.command: "{{ splunk_bin }} version --accept-license --answer-yes --no-prompt"
+  changed_when: false
+  register: _splunk_version_raw
+
+- name: Confirm splunkd is running
+  become: true
+  ansible.builtin.command: "{{ splunk_bin }} status splunkd"
+  changed_when: false
+  register: _splunkd_status
+  failed_when: "'is running' not in _splunkd_status.stdout"
+
+# Proves the vault credentials work before stage 02 tries to create an index
+# with them. no_log because the password is on the argument list.
+- name: Confirm the Splunk admin credentials authenticate
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} list index -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  changed_when: false
+  register: _splunk_auth
+  failed_when: _splunk_auth.rc != 0
+
+- name: Look for the OpenTelemetry collector unit
+  become: true
+  ansible.builtin.command: "systemctl cat {{ otel_service_name }}.service"
+  changed_when: false
+  failed_when: false
+  register: _otel_unit
+
+- name: Look for an already-built custom collector binary
+  ansible.builtin.stat:
+    path: "{{ otel_custom_binary }}"
+  register: _otel_binary_stat
+
+- name: Look for a Go toolchain and the collector builder
+  ansible.builtin.command: "command -v {{ item }}"
+  changed_when: false
+  failed_when: false
+  register: _toolchain
+  loop:
+    - go
+    - ocb
+
+- name: Check whether the MDT receiver port is already in use
+  become: true
+  ansible.builtin.shell:
+    cmd: "ss -lntp | grep -w ':{{ otel_receiver_port }}' || true"
+  changed_when: false
+  register: _port_probe
+
+- name: Record the preflight facts
+  ansible.builtin.set_fact:
+    _splunk_present: true
+    _splunk_version: "{{ _splunk_version_raw.stdout | trim }}"
+    _otel_unit_present: "{{ _otel_unit.rc == 0 }}"
+    _otel_binary_present: "{{ _otel_binary_stat.stat.exists }}"
+    _go_present: "{{ (_toolchain.results | selectattr('item', 'equalto', 'go') | first).rc == 0 }}"
+    _ocb_present: "{{ (_toolchain.results | selectattr('item', 'equalto', 'ocb') | first).rc == 0 }}"
+    _receiver_port_free: "{{ _port_probe.stdout | trim | length == 0 }}"
+
+- name: Preflight summary
+  ansible.builtin.debug:
+    msg:
+      - "Splunk           : {{ _splunk_version }}"
+      - "splunkd          : running"
+      - "admin auth       : ok"
+      - "otel unit        : {{ 'present' if _otel_unit_present else 'MISSING - stage 04 will install one' }}"
+      - "otelcol-yangfix  : {{ 'already built' if _otel_binary_present else 'not built yet' }}"
+      - "go / ocb         : {{ 'both present' if (_go_present and _ocb_present) else 'not available - stage 03 needs otel_build_mode=staged' }}"
+      - "port {{ otel_receiver_port }}      : {{ 'free' if _receiver_port_free else 'ALREADY IN USE' }}"
+
+# A build cannot happen without the toolchain, and a staged build cannot happen
+# without someone supplying the binary. Say so now rather than in stage 03.
+- name: Fail when neither a built binary nor a way to build one is available
+  ansible.builtin.assert:
+    that:
+      - _otel_binary_present or (_go_present and _ocb_present) or (otel_staged_binary | length > 0)
+    fail_msg: >-
+      otel_use_custom_binary is true but {{ otel_custom_binary }} does not exist,
+      this host has no Go/ocb toolchain, and otel_staged_binary is unset.
+      Build otelcol-yangfix elsewhere (see otel-collector/README.md) and pass
+      -e otel_staged_binary=/path/to/otelcol-yangfix, or set
+      -e otel_use_custom_binary=false to run the stock collector without
+      numeric YANG list keys.
+  when: otel_use_custom_binary | bool

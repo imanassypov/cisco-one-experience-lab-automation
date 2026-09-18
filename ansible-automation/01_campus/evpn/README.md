@@ -10,7 +10,12 @@ Author on the Mac in this repo. Run on the Kali script server after `git pull` (
 
 Copied (not a submodule) from `CatalystCenter-BGP-EVPN-VXLAN` `main` at
 `6d2afa3a2becfe71f8f036ee79a0a1c164ba0433`
-(“Install dmz2 Type-5 on campus…”). Splunk assurance, CML node configs, and `CICD Pipeline/utils` were not copied.
+(“Install dmz2 Type-5 on campus…”). CML node configs and `CICD Pipeline/utils` were not copied.
+Splunk assurance now lives in [`07_assurance/splunk_evpn`](../../07_assurance/splunk_evpn/) —
+this track renders the `telemetry ietf subscription` config through
+`FABRIC-TELEMETRY-SPLUNK.j2`, driven by `telemetry.splunk` in
+[`Settings/settings.json`](Settings/settings.json); that collection owns the collector,
+index and dashboards.
 
 ```
 evpn/

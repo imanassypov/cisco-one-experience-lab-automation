@@ -3,18 +3,18 @@
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-TELEMETRY-SPLUNK.j2" %}
 {% set DEVICE_HOSTNAME = __device.hostname | default('', true) %}
-{# Telemetry target = union of SPINE, BORDER, and CLIENT roles.                     #}
-{# Membership is tested with LITERAL-key lookups (DEFN_NODE_ROLES['ROLE']) - the    #}
-{# only reliable pattern in Catalyst Center's included-scope Jinja engine.          #}
-{# A previous variable-key iteration (for role in DEFN_TELEMETRY_SPLUNK_ROLES ->    #}
-{# DEFN_NODE_ROLES[role]) silently returned empty, so this section never rendered   #}
-{# on CLIENT-only nodes (leaves). DEFN_TELEMETRY_SPLUNK_ROLES stays in the DEFN for #}
-{# documentation; the roles are enumerated explicitly below to avoid variable keys. #}
-{% if DEFN_TELEMETRY_SPLUNK_RECEIVER_IP and (DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT']) %}
+{# Telemetry target roles come from Settings/settings.json telemetry.splunk.roles.  #}
+{# template_sync expands TELEMETRY_ROLE_GUARD into LITERAL-key lookups              #}
+{# (DEFN_NODE_ROLES['ROLE'] or ...) - the only reliable pattern in Catalyst Center's #}
+{# included-scope Jinja engine. A variable-key iteration (for role in               #}
+{# DEFN_TELEMETRY_SPLUNK_ROLES -> DEFN_NODE_ROLES[role]) silently returned empty, so #}
+{# this section never rendered on CLIENT-only nodes (leaves). Hence the expansion    #}
+{# happens at sync time, not render time.                                            #}
+{% if DEFN_TELEMETRY_SPLUNK_RECEIVER_IP and ({{ TELEMETRY_ROLE_GUARD }}) %}
 ! =============================================================================
 ! IOS-XE MDT Telemetry Subscriptions - Campus BGP EVPN VXLAN Fabric
 ! =============================================================================
-! Collector : {{ DEFN_TELEMETRY_SPLUNK_RECEIVER_IP }} (cloud EC2 OTel collector), port {{ DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT }} (yang_grpc)
+! Collector : {{ DEFN_TELEMETRY_SPLUNK_RECEIVER_IP }} (OTel collector), port {{ DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT }} (yang_grpc)
 ! Protocol  : gRPC dial-out (receiver ip address format)
 ! Encoding  : encode-kvgpb
 ! Source VRF: Mgmt-vrf (all devices)

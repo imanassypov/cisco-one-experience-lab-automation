@@ -1,0 +1,110 @@
+# ============================================================================
+# splunk_app_deploy / tasks/main.yml  —  Assurance stage 06
+# ============================================================================
+# Packages the dashboard app from source and installs it on the Splunk host.
+#
+# The app is kept as source in splunk-app/ rather than as a committed .spl so
+# dashboard changes are reviewable diffs. packaging/build-app.sh tars it into
+# a .spl named after the version in default/app.conf, and this stage ships it.
+#
+# `splunk install app -update 1` overwrites an existing install but does not
+# reload the dashboards, so splunkd has to restart afterwards. That is the one
+# genuinely disruptive step in this collection: searches in flight are lost.
+#
+# The build number in default/app.conf is asserted after the restart. Splunk
+# will happily keep serving a cached older app if an install half-fails, and
+# comparing the build is the only reliable way to notice.
+# ============================================================================
+---
+
+- name: Build the app package
+  delegate_to: localhost
+  become: false
+  ansible.builtin.command:
+    cmd: "{{ splunk_app_build_script }}"
+  register: _build
+  changed_when: true
+
+- name: Read the app version from app.conf
+  delegate_to: localhost
+  become: false
+  ansible.builtin.set_fact:
+    _app_conf: "{{ lookup('file', splunk_app_src ~ '/default/app.conf') }}"
+
+- name: Extract the version and build number
+  ansible.builtin.set_fact:
+    _app_version: "{{ _app_conf | regex_search('(?m)^version\\s*=\\s*(\\S+)', '\\1') | first }}"
+    _app_build: "{{ _app_conf | regex_search('(?m)^build\\s*=\\s*(\\S+)', '\\1') | first }}"
+
+- name: Locate the built package
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ splunk_app_dist_dir }}/{{ splunk_app_name }}-{{ _app_version }}.spl"
+  register: _spl
+
+- name: Fail when the package was not produced
+  ansible.builtin.assert:
+    that: _spl.stat.exists
+    fail_msg: "build-app.sh did not produce {{ splunk_app_name }}-{{ _app_version }}.spl"
+
+- name: Upload the package
+  ansible.builtin.copy:
+    src: "{{ splunk_app_dist_dir }}/{{ splunk_app_name }}-{{ _app_version }}.spl"
+    dest: "/tmp/{{ splunk_app_name }}-{{ _app_version }}.spl"
+    mode: "0644"
+
+- name: Install the app
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} install app /tmp/{{ splunk_app_name }}-{{ _app_version }}.spl
+    -update 1
+    -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  register: _install
+  changed_when: _install.rc == 0
+
+- name: Remove the uploaded package
+  ansible.builtin.file:
+    path: "/tmp/{{ splunk_app_name }}-{{ _app_version }}.spl"
+    state: absent
+
+- name: Restart splunkd so the new dashboards load
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} restart -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  changed_when: true
+
+- name: Wait for splunkd to come back
+  become: true
+  ansible.builtin.command: "{{ splunk_bin }} status splunkd"
+  register: _splunkd
+  until: "'is running' in _splunkd.stdout"
+  retries: "{{ (splunk_restart_timeout | int / 10) | round | int }}"
+  delay: 10
+  changed_when: false
+
+# A half-failed install leaves the previous app in place and Splunk keeps
+# serving it, so compare the build number rather than trusting the install rc.
+- name: Read the installed app.conf
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ splunk_home }}/etc/apps/{{ splunk_app_name }}/default/app.conf"
+  register: _remote_app_conf
+
+- name: Verify the installed build matches the source
+  ansible.builtin.assert:
+    that:
+      - (_remote_app_conf.content | b64decode | regex_search('(?m)^build\\s*=\\s*(\\S+)', '\\1') | first) == _app_build
+    fail_msg: >-
+      Installed build is
+      {{ _remote_app_conf.content | b64decode | regex_search('(?m)^build\\s*=\\s*(\\S+)', '\\1') | first }}
+      but the source says {{ _app_build }}. The install did not take effect.
+
+- name: App deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "app     : {{ splunk_app_name }} {{ _app_version }} (build {{ _app_build }})"
+      - "path    : {{ splunk_home }}/etc/apps/{{ splunk_app_name }}"
+      - "operator: hard-refresh Splunk Web (Cmd+Shift+R / Ctrl+Shift+R)"

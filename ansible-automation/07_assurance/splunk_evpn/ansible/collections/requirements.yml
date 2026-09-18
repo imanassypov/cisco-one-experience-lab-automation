@@ -1,0 +1,11 @@
+---
+# Deliberately empty of vendor collections. This collection only talks to a Linux
+# host over SSH and to Splunk over REST, so every task is ansible.builtin — there
+# is nothing to install beyond ansible-core itself.
+#
+# Kept as a file rather than omitted so the collection matches the layout of
+# 00_scriptserver_bootstrap and 01_campus/evpn, and so there is an obvious place
+# to add a pin if a later stage needs one. Anything added here must also go into
+# 00_scriptserver_bootstrap/roles/script_server_bootstrap/files/requirements.yml,
+# which is what actually gets installed on the script server.
+collections: []

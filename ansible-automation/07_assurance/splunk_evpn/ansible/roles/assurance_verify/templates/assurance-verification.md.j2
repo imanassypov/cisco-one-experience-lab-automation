@@ -1,0 +1,42 @@
+# Splunk EVPN Assurance — Verification Report
+
+**Site:** {{ assurance_site }}
+**Splunk host:** {{ ansible_host }}
+**Index:** `{{ splunk_assurance_index }}`
+**Generated:** {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}
+
+## Result
+
+**{{ _assurance_rows | selectattr('ok') | list | length }} / {{ _assurance_rows | length }} checks passed**
+
+| Check | Expected | Observed | Result |
+| --- | --- | --- | --- |
+{% for row in _assurance_rows %}
+| {{ row.label }} | `{{ row.expected }}` | `{{ row.observed }}` | {{ 'PASS' if row.ok else 'FAIL' }} |
+{% endfor %}
+
+## Pipeline under test
+
+```
+{{ assurance_site }} fabric  --MDT gRPC-->  {{ ansible_host }}:{{ otel_receiver_port }}
+                                              |
+                                      splunk_hec exporter
+                                              v
+                                   {{ splunk_hec_url }}
+                                              |
+                                              v
+                                index={{ splunk_assurance_index }} (metric)
+                                              |
+                                              v
+                                   app: {{ splunk_app_name }}
+```
+
+## Reading a failure
+
+| Failing check | What it means |
+| --- | --- |
+| Collector service running | `{{ otel_service_name }}` is down. `journalctl -u {{ otel_service_name }} -n 50`. |
+| Fabric devices streaming | Subscriptions are not dialling out. Check `show telemetry ietf subscription all receivers` on a switch, and that `telemetry.splunk.receiver_ip` in `settings.json` matches `{{ ansible_host }}`. |
+| HEC export failures | The collector reaches the fabric but cannot write to Splunk. Check the HEC token and that `{{ splunk_assurance_index }}` is a **metric** index. |
+| Nodes resolving through the lookup | Metrics are arriving but `cisco.node_id` does not match the `hostname` column of `evpn_device_inventory.csv`. Re-run stage 05, then compare a raw `\| mstats ... BY "cisco.node_id"` against the CSV. |
+| Dashboard Studio validation | A panel query or view definition is broken. Run `tools/validate_studio.py` directly for the per-panel detail. |

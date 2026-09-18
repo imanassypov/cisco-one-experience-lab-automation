@@ -20,6 +20,20 @@ Upload this folder alongside the revised HTML so the references resolve.
 | `template-model.png` | Rendered diagram used in card **4** |
 | `evpn-dhcp-walkthrough.mmd` | Mermaid source for the DHCP relay round-trip sequence diagram |
 | `evpn-dhcp-walkthrough.png` | Rendered diagram used in the optional **EVPN Fabric — DHCP Walkthrough** section (`#page-9010`) |
+| `assurance-pipeline.mmd` | Mermaid source for the build → assure telemetry pipeline |
+| `assurance-pipeline.png` | Rendered diagram used in the **Splunk EVPN Assurance** section (`#page-9020`) |
+
+## Screenshots — Splunk EVPN Assurance
+
+Captured from the source project's reference fabric, so the device names are the CML
+six-node fabric rather than Site 105. They illustrate panel layout, not lab data.
+Downscaled to 2400 px on the long edge to stay inside the GitHub limits.
+
+| File | Shows |
+|---|---|
+| `assurance-dashboard-executive.png` | Summary view — fabric-wide scorecards, BGP trends, VRF Sankey |
+| `assurance-dashboard-leafs.png` | Details view filtered to leaf nodes |
+| `assurance-dashboard-alerts.png` | Alerts view |
 
 Regenerate after editing a `.mmd` — substitute the diagram name:
 

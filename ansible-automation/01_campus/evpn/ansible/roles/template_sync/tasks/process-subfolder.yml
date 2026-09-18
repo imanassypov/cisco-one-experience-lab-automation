@@ -191,6 +191,72 @@
       debug:
         msg: "Subfolder '{{ subfolder_item.path | default('(repo root)') }}' -> project '{{ project_name }}'"
 
+    # Telemetry placeholders for DEFN/FABRIC-TELEMETRY-SPLUNK.j2. The settings.json
+    # project whose HierarchyBldg equals project_name supplies the values; a subfolder
+    # with no matching project (or with telemetry disabled) gets a blank receiver IP,
+    # which makes FABRIC-TELEMETRY-SPLUNK.j2 render nothing.
+    #
+    # Example
+    #   In : project_name = "Site-105"
+    #        settings_data.project[] entry with HierarchyBldg "Site-105" carrying
+    #          telemetry.splunk = { enabled: true, receiver_ip: "198.18.5.109",
+    #                               receiver_port: "57444",
+    #                               roles: ["SPINE", "BORDER", "CLIENT"] }
+    #   Out: telemetry_receiver_ip    = "198.18.5.109"
+    #        telemetry_receiver_port  = "57444"
+    #        telemetry_roles_literal  = "['SPINE', 'BORDER', 'CLIENT']"
+    #        telemetry_role_guard     = "DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] or
+    #                                    DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or
+    #                                    DEVICE_HOSTNAME in DEFN_NODE_ROLES['CLIENT']"
+    #
+    # Example - no telemetry block, or enabled false
+    #   Out: telemetry_receiver_ip   = ""
+    #        telemetry_role_guard    = "DEVICE_HOSTNAME in []"
+    - name: Resolve telemetry settings for project {{ project_name }}
+      set_fact:
+        _telemetry_splunk: >-
+          {{
+            (settings_data.project | default([])
+             | selectattr('HierarchyBldg', 'defined')
+             | selectattr('HierarchyBldg', 'equalto', project_name)
+             | map(attribute='telemetry', default={})
+             | map('default', {}, true)
+             | list
+             | first
+             | default({})).get('splunk', {})
+          }}
+
+    - name: Build telemetry placeholder substitutions for project {{ project_name }}
+      set_fact:
+        telemetry_receiver_ip: "{{ _telemetry_splunk.receiver_ip | default('') if (_telemetry_splunk.enabled | default(false) | bool) else '' }}"
+        telemetry_receiver_port: "{{ _telemetry_splunk.receiver_port | default('57444') }}"
+        telemetry_roles: "{{ _telemetry_splunk.roles | default([]) }}"
+
+    # DEFN_NODE_ROLES must be indexed with literal keys - Catalyst Center's
+    # included-scope Jinja engine silently returns empty for variable keys - so the
+    # guard is expanded into literal lookups here instead of looped at render time.
+    # Built with join rather than regex_replace: YAML folded scalars do not process
+    # escapes, so a \1 backreference would reach re.sub as a literal backslash-1.
+    - name: Expand the telemetry role guard for project {{ project_name }}
+      set_fact:
+        telemetry_roles_literal: "{{ telemetry_roles | to_json | replace('\"', \"'\") }}"
+        telemetry_role_guard: >-
+          {{
+            ("DEVICE_HOSTNAME in DEFN_NODE_ROLES['"
+             ~ telemetry_roles | join("'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['")
+             ~ "']")
+            if telemetry_roles | length > 0 else 'DEVICE_HOSTNAME in []'
+          }}
+
+    - name: --DEBUG-- Telemetry substitutions
+      when: catc_debug | default(false) | bool
+      debug:
+        msg:
+          - "telemetry_receiver_ip   : '{{ telemetry_receiver_ip }}'"
+          - "telemetry_receiver_port : '{{ telemetry_receiver_port }}'"
+          - "telemetry_roles_literal : {{ telemetry_roles_literal }}"
+          - "telemetry_role_guard    : {{ telemetry_role_guard }}"
+
     - name: Fetch template file contents from GitHub
       when: (template_source | default('git')) == 'git'
       uri:

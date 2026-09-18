@@ -1,0 +1,9 @@
+[]
+access = read : [ * ], write : [ admin, power ]
+export = system
+
+[lookups/evpn_device_inventory]
+access = read : [ * ], write : [ admin, power ]
+
+[lookups/evpn_segment_inventory]
+access = read : [ * ], write : [ admin, power ]

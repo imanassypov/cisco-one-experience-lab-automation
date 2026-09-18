@@ -1,0 +1,30 @@
+---
+# =============================================================================
+# 05_render_lookups.yml  —  Assurance stage 05
+# =============================================================================
+# Regenerates the two Splunk lookup CSVs from the campus fabric intent, so the
+# dashboards cannot drift from what was actually built.
+#
+# Runs entirely on the control node: it reads the DEFN-*.j2 templates and
+# Settings/settings.json out of 01_campus/evpn and writes into
+# splunk-app/campus_evpn_assurance/lookups/. Nothing touches the Splunk host —
+# stage 06 packages the result.
+#
+# The join that matters: evpn_device_inventory.hostname must equal the
+# collector's cisco.node_id dimension, which is the Catalyst Center inventory
+# hostname (IOS hostname + ip domain name). Get it wrong and every panel renders
+# but returns nothing.
+#
+# Sourced: 01_campus/evpn/Catalyst Center Templates/Site BGP EVPN Templates/DEFN-*.j2
+#          01_campus/evpn/Settings/settings.json
+#          01_campus/evpn/ansible/roles/verify_intent/files/zz-defn-extract-epilogue.j2
+#
+# Run: ansible-playbook playbooks/05_render_lookups.yml
+#      ansible-playbook playbooks/05_render_lookups.yml -e assurance_debug=true
+# =============================================================================
+- name: Generate the Splunk lookups from fabric intent
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: assurance_lookups

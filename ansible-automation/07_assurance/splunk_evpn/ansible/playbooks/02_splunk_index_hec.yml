@@ -1,0 +1,21 @@
+---
+# =============================================================================
+# 02_splunk_index_hec.yml  —  Assurance stage 02
+# =============================================================================
+# Creates the evpn_assurance METRICS index and the HEC token the collector
+# writes through. Idempotent: existing objects are reused, so re-running does
+# not invalidate a collector that is already streaming.
+#
+# The index datatype matters. The OTel splunk_hec exporter emits metric points;
+# an event index accepts the POST and discards them, which is indistinguishable
+# from a broken collector until you check the datatype.
+#
+# Produced: splunk_hec_token — consumed by stage 04
+#
+# Run: ansible-playbook playbooks/02_splunk_index_hec.yml
+# =============================================================================
+- name: Create the assurance index and HEC token
+  hosts: splunk_servers
+  gather_facts: false
+  roles:
+    - role: splunk_index_hec

@@ -1,0 +1,4 @@
+source,hostname,ip_address,loopback,site,role,description
+Site_105-Border-Spine.corp.pseudoco.com,Site_105-Border-Spine.corp.pseudoco.com,172.30.255.3,172.30.255.3,Site-105,border-spine,Combined spine / route-reflector / border
+Site_105-Leaf1.corp.pseudoco.com,Site_105-Leaf1.corp.pseudoco.com,172.30.255.1,172.30.255.1,Site-105,leaf,Campus EVPN leaf (CLIENT role)
+Site_105-Leaf2.corp.pseudoco.com,Site_105-Leaf2.corp.pseudoco.com,172.30.255.2,172.30.255.2,Site-105,leaf,Campus EVPN leaf (CLIENT role)

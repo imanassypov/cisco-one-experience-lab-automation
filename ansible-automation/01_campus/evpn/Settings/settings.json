@@ -489,7 +489,15 @@
                         }
                     }
                 }
-            ]
+            ],
+            "telemetry": {
+                "splunk": {
+                    "enabled": true,
+                    "receiver_ip": "198.18.5.109",
+                    "receiver_port": "57444",
+                    "roles": ["SPINE", "BORDER", "CLIENT"]
+                }
+            }
         },
         {
             "HierarchyParent": "Global/TEXAS",

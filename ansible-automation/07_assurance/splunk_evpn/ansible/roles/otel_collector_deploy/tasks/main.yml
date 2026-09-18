@@ -1,0 +1,135 @@
+# ============================================================================
+# otel_collector_deploy / tasks/main.yml  —  Assurance stage 04
+# ============================================================================
+# Renders the collector config, points systemd at the custom binary, and
+# restarts the service.
+#
+# Two things here are load-bearing and easy to get wrong:
+#
+#   * The HEC endpoint is loopback. Splunk and the collector share this host and
+#     the exporter must not go out and back through the lab network.
+#   * A restart costs roughly 90 seconds. The old process does not drain its
+#     gRPC streams on SIGTERM, so systemd waits out TimeoutStopSec and then
+#     force-kills it. Expect a telemetry gap; that is not a failure.
+#
+# The systemd drop-in is reversible: delete the override.conf this stage writes
+# and the service falls back to the stock /usr/bin/otelcol.
+# ============================================================================
+---
+
+- name: Require an HEC token
+  ansible.builtin.assert:
+    that: splunk_hec_token | default('') | length > 0
+    fail_msg: >-
+      splunk_hec_token is not set. Run stage 02 (02_splunk_index_hec.yml) first,
+      or pass -e splunk_hec_token=<token>.
+
+- name: Create the collector config directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ otel_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# 0640 root:root - the file carries the HEC token. The collector reads it as
+# root before dropping to its service user.
+- name: Render the collector config
+  become: true
+  ansible.builtin.template:
+    src: "{{ otel_src_dir }}/agent_config.yaml.j2"
+    dest: "{{ otel_config_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  register: _otel_config
+  no_log: true
+
+- name: Install the systemd drop-in for the custom binary
+  become: true
+  when: otel_use_custom_binary | bool
+  block:
+    - name: Create the drop-in directory
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ otel_service_name }}.service.d"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Blank ExecStart first: systemd appends rather than replaces otherwise.
+    # SPLUNK_CONFIG comes from the unit's EnvironmentFile; the vanilla collector
+    # does not read it on its own, so it is passed explicitly.
+    - name: Write the drop-in
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart={{ otel_custom_binary }} --config=${SPLUNK_CONFIG}
+        dest: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
+        owner: root
+        group: root
+        mode: "0644"
+      register: _otel_override
+
+- name: Remove the drop-in when running the stock collector
+  become: true
+  when: not (otel_use_custom_binary | bool)
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
+    state: absent
+  register: _otel_override_removed
+
+- name: Point the collector at the rendered config
+  become: true
+  ansible.builtin.lineinfile:
+    path: "{{ otel_config_dir }}/{{ otel_service_name }}.conf"
+    regexp: '^SPLUNK_CONFIG='
+    line: "SPLUNK_CONFIG={{ otel_config_path }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  register: _otel_envfile
+
+- name: Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# Roughly 90 s: the collector does not drain gRPC streams on SIGTERM, so systemd
+# waits out TimeoutStopSec before the new process starts listening.
+- name: Restart the collector
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ otel_service_name }}"
+    state: restarted
+    enabled: true
+
+- name: Wait for the MDT receiver port to open
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ otel_receiver_port }}"
+    timeout: 180
+
+- name: Confirm the service is running the intended binary
+  become: true
+  ansible.builtin.command: "systemctl show -p ExecStart {{ otel_service_name }}.service"
+  changed_when: false
+  register: _exec_start
+
+- name: Verify the ExecStart matches the requested binary
+  ansible.builtin.assert:
+    that: >-
+      (otel_custom_binary in _exec_start.stdout) if (otel_use_custom_binary | bool)
+      else (otel_custom_binary not in _exec_start.stdout)
+    fail_msg: "Unexpected ExecStart after restart: {{ _exec_start.stdout }}"
+
+- name: Collector deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "config    : {{ otel_config_path }}"
+      - "binary    : {{ otel_custom_binary if (otel_use_custom_binary | bool) else 'stock /usr/bin/otelcol' }}"
+      - "listening : {{ ansible_host }}:{{ otel_receiver_port }}"
+      - "exporting : {{ splunk_hec_url }} -> index={{ splunk_assurance_index }}"

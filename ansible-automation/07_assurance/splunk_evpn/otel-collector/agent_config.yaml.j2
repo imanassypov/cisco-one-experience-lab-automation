@@ -1,0 +1,41 @@
+{{ ansible_managed | comment }}
+# Rendered by the otel_collector_deploy role to {{ otel_config_path }}.
+# The HEC token is injected at deploy time and is never stored in git.
+receivers:
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      network:
+
+  # Numeric YANG list keys (vni, evni, vlan-id) are only emitted as dimensions by the
+  # patched yanggrpcreceiver build 26_05_27; the stock receiver silently drops them.
+  yang_grpc:
+    endpoint: "0.0.0.0:{{ otel_receiver_port }}"
+    transport: tcp
+    keepalive:
+      server_parameters:
+        time: 30s
+        timeout: 10s
+    max_concurrent_streams: 100
+    max_recv_msg_size_mib: 4
+
+processors:
+  batch:
+
+exporters:
+  splunk_hec:
+    endpoint: "{{ splunk_hec_url }}"
+    token: "{{ splunk_hec_token }}"
+    index: "{{ splunk_assurance_index }}"
+    tls:
+      insecure_skip_verify: {{ splunk_hec_tls_insecure | bool | lower }}
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, yang_grpc]
+      processors: [batch]
+      exporters: [splunk_hec]

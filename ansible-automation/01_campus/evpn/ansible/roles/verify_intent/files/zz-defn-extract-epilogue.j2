@@ -24,6 +24,9 @@
     "l3vni_offset":         L3VNIOFFSET                       | default(''),
     "mcast_enable":         DEFN_MCAST_ENABLE                 | default(false),
     "tunnels":              DEFN_TUNNELS                      | default([]),
-    "telemetry_receiver":   DEFN_TELEMETRY_SPLUNK_RECEIVER_IP | default('')
+    "telemetry_receiver":   DEFN_TELEMETRY_SPLUNK_RECEIVER_IP | default(''),
+    "telemetry_port":       DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT | default(''),
+    "telemetry_roles":      DEFN_TELEMETRY_SPLUNK_ROLES       | default([]),
+    "telemetry_subs":       DEFN_TELEMETRY_SPLUNK             | default([])
   } | to_json
 }}

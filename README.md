@@ -61,6 +61,7 @@ Playbooks live under `ansible-automation/`. Numbered folders follow lab-build or
 | [04_remote_dc](ansible-automation/04_remote_dc/) | Remote DC / Nexus fabric | Stub |
 | [05_sdwan](ansible-automation/05_sdwan/) | SD-WAN fabric and controllers | Stub |
 | [06_secure_access](ansible-automation/06_secure_access/) | Cloud SSE / ZTNA / Secure Access | Stub |
+| [07_assurance](ansible-automation/07_assurance/) | Assurance — [splunk_evpn](ansible-automation/07_assurance/splunk_evpn/): EVPN streaming telemetry into Splunk (`198.18.5.109`) | Implemented |
 
 ## First step — bootstrap the script server
 

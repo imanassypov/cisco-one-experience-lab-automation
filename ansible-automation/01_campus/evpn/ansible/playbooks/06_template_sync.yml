@@ -12,7 +12,7 @@
 #       → process-template.yml (.j2 files) or process-composite.yml (composite YAML)
 #
 # Sourced:
-#   connection.yml (inventory vars — note: NOT settings.json):
+#   connection.yml (inventory vars):
 #     template_source       — git | local
 #     template_local_root   — directory scanned when template_source is local
 #                             (defaults to the repository root)
@@ -28,6 +28,11 @@
 #     catc_template_summary_maxchar
 #     dnac_host/port/version/verify/debug/log
 #   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
+#   settings.json → settings_data.project[] (via catc_common.load_settings):
+#     telemetry.splunk.{enabled,receiver_ip,receiver_port,roles}
+#                           — substituted into DEFN/FABRIC-TELEMETRY-SPLUNK.j2
+#                             at sync time; matched to a subfolder by
+#                             HierarchyBldg == project_name
 #   git_token (optional — needed only
 #              for private repos or to lift the 60 req/hr anonymous rate limit;
 #              unused when template_source is local)
@@ -66,5 +71,12 @@
       dnac_debug: "{{ dnac_debug }}"
       dnac_log_level: "{{ dnac_log_level }}"
       dnac_log: "{{ dnac_log }}"
+  pre_tasks:
+    # Only telemetry.splunk is read here; everything else stage 06 needs comes
+    # from connection.yml.
+    - name: Load settings.json
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: load_settings
   roles:
     - role: template_sync

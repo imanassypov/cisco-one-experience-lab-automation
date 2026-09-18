@@ -1,0 +1,108 @@
+# ============================================================================
+# splunk_index_hec / tasks/main.yml  —  Assurance stage 02
+# ============================================================================
+# Creates the two Splunk objects the pipeline writes into:
+#
+#   1. evpn_assurance   — a METRICS index. The OTel splunk_hec exporter emits
+#                         metric points; an event index accepts the HTTP POST
+#                         and then silently discards them, which looks exactly
+#                         like a broken collector.
+#   2. an HEC token     — scoped to that index, used by the collector config.
+#
+# Both are idempotent: an existing index or token is reused, never recreated,
+# so re-running the stage does not invalidate a collector that is already
+# streaming.
+#
+# Produced: splunk_hec_token — consumed by otel_collector_deploy
+# ============================================================================
+---
+
+- name: List existing indexes
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} list index -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  changed_when: false
+  register: _indexes
+
+- name: Create the metrics index
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} add index {{ splunk_assurance_index }}
+    -datatype metric
+    -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  when: splunk_assurance_index not in _indexes.stdout
+  register: _index_created
+
+- name: Confirm the index is a metrics index
+  become: true
+  no_log: true
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/services/data/indexes/{{ splunk_assurance_index }}?output_mode=json"
+    user: "{{ splunk_admin_username }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: _index_info
+  failed_when: _index_info.json.entry[0].content.datatype != 'metric'
+
+- name: Enable the HTTP Event Collector
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} http-event-collector enable -uri {{ splunk_mgmt_url }}
+    -enable-ssl 1 -port {{ splunk_hec_port }}
+    -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  register: _hec_enable
+  changed_when: "'already' not in (_hec_enable.stdout | lower)"
+  failed_when: _hec_enable.rc != 0
+
+- name: Look for an existing HEC token
+  become: true
+  no_log: true
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/services/data/inputs/http?output_mode=json&count=0"
+    user: "{{ splunk_admin_username }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: _hec_inputs
+
+- name: Create the HEC token
+  become: true
+  no_log: true
+  ansible.builtin.command: >-
+    {{ splunk_bin }} http-event-collector create {{ splunk_hec_token_name }}
+    -uri {{ splunk_mgmt_url }}
+    -description "OpenTelemetry YANG telemetry from the campus EVPN fabric"
+    -index {{ splunk_assurance_index }}
+    -indexes {{ splunk_assurance_index }}
+    -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  when: >-
+    _hec_inputs.json.entry
+    | selectattr('name', 'equalto', 'http://' ~ splunk_hec_token_name)
+    | list | length == 0
+
+- name: Read the HEC token back
+  become: true
+  no_log: true
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/services/data/inputs/http/{{ splunk_hec_token_name | urlencode }}?output_mode=json"
+    user: "{{ splunk_admin_username }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+  register: _hec_token_info
+
+- name: Record the HEC token
+  no_log: true
+  ansible.builtin.set_fact:
+    splunk_hec_token: "{{ _hec_token_info.json.entry[0].content.token }}"
+
+- name: Index and HEC summary
+  ansible.builtin.debug:
+    msg:
+      - "index  : {{ splunk_assurance_index }} (metric)"
+      - "HEC    : {{ splunk_hec_url }}"
+      - "token  : {{ splunk_hec_token_name }} (value withheld)"

@@ -19,6 +19,19 @@ This repo’s `settings.json` is mapped to the **live** Catalyst Center hierarch
 
 Shared services: DNS/DHCP/NTP `198.18.5.102` (`corp.pseudoco.com`), ISE AAA `198.18.5.101`, CatC/syslog/netflow `198.18.5.100` (Splunk `198.18.5.109`). CLI username is `admin`. Day-N composite `BGP-EVPN-BUILD.j2` syncs into CatC Template Hub project `Site-105` and is bound to that site only. DEFN is remapped to Site-105 (ASN 65535, Main/PROD/IOT); `DeployTemplate` stays `false` until provision is requested. State areas (`CALIFORNIA`, `NEW YORK`, `NORTH CAROLINA`, `TEXAS`) already exist in CatC; stage `01` only synthesizes area/building/floor under `HierarchyParent`.
 
+## `telemetry` (Site-105 only)
+
+Drives the streaming-telemetry subscriptions that feed [`07_assurance/splunk_evpn`](../../../07_assurance/splunk_evpn/). Stage `06` substitutes these values into `DEFN-TELEMETRY-SPLUNK.j2` and `FABRIC-TELEMETRY-SPLUNK.j2` as the templates are synced, so this file stays the single source of truth for where the fabric dials out.
+
+| Field | Example | Description |
+| --- | --- | --- |
+| `splunk.enabled` | `true` | `false` blanks the receiver IP, so `FABRIC-TELEMETRY-SPLUNK.j2` renders nothing. The supported way to keep the fabric silent. |
+| `splunk.receiver_ip` | `198.18.5.109` | OpenTelemetry collector address — the Splunk host |
+| `splunk.receiver_port` | `57444` | `yang_grpc` dial-out port |
+| `splunk.roles` | `["SPINE", "BORDER", "CLIENT"]` | `DEFN_NODE_ROLES` keys that receive subscriptions; expanded into literal-key lookups at sync time |
+
+A project with no `telemetry` block renders no subscriptions, which is why only Site-105 carries one.
+
 ---
 
 ## Table of Contents

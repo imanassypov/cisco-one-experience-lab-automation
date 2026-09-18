@@ -1,0 +1,156 @@
+# ============================================================================
+# assurance_verify / tasks/main.yml  —  Assurance stage 08
+# ============================================================================
+# Read-only end-to-end proof that the pipeline works, written as evidence in the
+# same HTML + Markdown shape stage 11 of the campus collection produces.
+#
+# Each check tests a different hop, so a failure localises the break:
+#
+#   collector_running  — the service is up
+#   fabric_connected   — N devices hold a TCP session on the receiver port
+#   export_healthy     — the collector is not failing to write to HEC
+#   metrics_arriving   — the index actually contains recent metric points
+#   lookup_joins       — cisco.node_id matches the device inventory hostname
+#                        (the silent failure: panels render but come back empty)
+#   dashboards_valid   — tools/validate_studio.py passes all three tiers
+#
+# Nothing here changes state.
+# ============================================================================
+---
+
+- name: Check the collector service state
+  become: true
+  ansible.builtin.command: "systemctl is-active {{ otel_service_name }}"
+  changed_when: false
+  failed_when: false
+  register: _svc
+
+- name: Count fabric devices connected to the receiver port
+  become: true
+  ansible.builtin.shell:
+    cmd: "ss -tn state established '( sport = :{{ otel_receiver_port }} )' | tail -n +2 | wc -l"
+  changed_when: false
+  register: _sessions
+
+- name: Read the collector's own telemetry
+  ansible.builtin.uri:
+    url: "http://localhost:8888/metrics"
+    return_content: true
+    status_code: [200]
+  changed_when: false
+  failed_when: false
+  register: _otel_metrics
+
+- name: Extract the HEC export failure counter
+  ansible.builtin.set_fact:
+    _send_failed: >-
+      {{ (_otel_metrics.content | default('')
+          | regex_findall('(?m)^otelcol_exporter_send_failed_metric_points\\S*\\s+(\\S+)$')
+          | map('float') | sum) if _otel_metrics.status | default(0) == 200 else -1 }}
+
+# Proves data is landing in the index and that the hostname join works. An empty
+# result here with a healthy collector almost always means cisco.node_id does not
+# match the device inventory hostname column.
+- name: Probe the index through the app's own lookup macro
+  become: true
+  no_log: true
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/servicesNS/nobody/{{ splunk_app_name }}/search/jobs"
+    method: POST
+    user: "{{ splunk_admin_username }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: form-urlencoded
+    body:
+      search: >-
+        | mstats latest("cisco.cp-vnis.") WHERE index={{ splunk_assurance_index }}
+        BY "cisco.node_id" | `evpn_lookup` | where isnotnull(role) | stats count AS n
+      exec_mode: oneshot
+      earliest_time: "-15m"
+      latest_time: now
+      output_mode: json
+    status_code: [200, 201]
+  changed_when: false
+  failed_when: false
+  register: _mstats_probe
+
+- name: Extract the joined node count
+  ansible.builtin.set_fact:
+    _joined_nodes: >-
+      {{ (_mstats_probe.json.results[0].n | default(0) | int)
+         if (_mstats_probe.json is defined and _mstats_probe.json.results | default([]) | length > 0)
+         else 0 }}
+
+- name: Validate the Dashboard Studio views
+  become: true
+  no_log: true
+  ansible.builtin.script:
+    cmd: "{{ playbook_dir }}/../../tools/validate_studio.py {{ splunk_admin_username }} {{ splunk_admin_password }}"
+    executable: /usr/bin/python3
+  environment:
+    SPLUNK_MGMT_URL: "{{ splunk_mgmt_url }}"
+    SPLUNK_ASSURANCE_SITE: "{{ assurance_site }}"
+  changed_when: false
+  failed_when: false
+  register: _studio
+
+- name: Build the result set
+  ansible.builtin.set_fact:
+    _assurance_results:
+      - label: Collector service running
+        expected: active
+        observed: "{{ _svc.stdout | trim }}"
+      - label: Fabric devices streaming to the receiver
+        expected: ">= 1"
+        observed: "{{ _sessions.stdout | trim }}"
+      - label: HEC export failures
+        expected: "0"
+        observed: "{{ 'collector metrics unreachable' if (_send_failed | float) < 0 else (_send_failed | float | int) }}"
+      - label: Nodes resolving through the device inventory lookup
+        expected: ">= 1"
+        observed: "{{ _joined_nodes }}"
+      - label: Dashboard Studio validation
+        expected: PASS
+        observed: "{{ 'PASS' if _studio.rc == 0 else 'FAIL' }}"
+
+- name: Apply the pass criteria
+  ansible.builtin.set_fact:
+    _assurance_rows:
+      - "{{ _assurance_results[0] | combine({'ok': _assurance_results[0].observed == 'active'}) }}"
+      - "{{ _assurance_results[1] | combine({'ok': (_assurance_results[1].observed | int) > 0}) }}"
+      - "{{ _assurance_results[2] | combine({'ok': (_send_failed | float) == 0}) }}"
+      - "{{ _assurance_results[3] | combine({'ok': (_assurance_results[3].observed | int) > 0}) }}"
+      - "{{ _assurance_results[4] | combine({'ok': _studio.rc == 0}) }}"
+
+- name: Create the evidence directory
+  delegate_to: localhost
+  become: false
+  ansible.builtin.file:
+    path: "{{ assurance_evidence_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Write the evidence report
+  delegate_to: localhost
+  become: false
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ assurance_evidence_dir }}/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - {src: assurance-verification.md.j2, dest: assurance-verification.md}
+    - {src: assurance-verification.html.j2, dest: assurance-verification.html}
+
+- name: Verification summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ _assurance_rows | selectattr('ok') | list | length }}/{{ _assurance_rows | length }}
+      checks passed. Report: {{ assurance_evidence_dir }}/assurance-verification.md
+
+- name: Fail when any check did not pass
+  ansible.builtin.assert:
+    that: _assurance_rows | rejectattr('ok') | list | length == 0
+    fail_msg: >-
+      Failed: {{ _assurance_rows | rejectattr('ok') | map(attribute='label') | join('; ') }}.
+      See {{ assurance_evidence_dir }}/assurance-verification.md for the detail.

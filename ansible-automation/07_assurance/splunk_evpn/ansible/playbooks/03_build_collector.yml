@@ -1,0 +1,31 @@
+---
+# =============================================================================
+# 03_build_collector.yml  —  Assurance stage 03
+# =============================================================================
+# Puts otelcol-yangfix on the Splunk host — the collector built with the patched
+# yang_grpc receiver that emits numeric YANG list keys (vni, evni, vlan-id) as
+# dimensions. The stock rpm drops them, which empties every per-VNI panel.
+#
+# Two modes, because the lab Splunk appliance normally has no Go toolchain and
+# no internet egress:
+#
+#   otel_build_mode=staged  (default) — copy a binary built elsewhere:
+#       ansible-playbook playbooks/03_build_collector.yml \
+#         -e otel_staged_binary=/path/to/otelcol-yangfix
+#
+#   otel_build_mode=local             — compile here with Go 1.25+ and ocb:
+#       ansible-playbook playbooks/03_build_collector.yml -e otel_build_mode=local
+#
+# Skipped entirely with -e otel_use_custom_binary=false, which falls back to the
+# stock /usr/bin/otelcol and loses per-VNI granularity.
+#
+# No-op when otel_custom_binary already exists.
+#
+# Run: ansible-playbook playbooks/03_build_collector.yml
+# =============================================================================
+- name: Build or stage the patched OpenTelemetry collector
+  hosts: splunk_servers
+  gather_facts: false
+  roles:
+    - role: splunk_preflight
+    - role: otel_collector_build

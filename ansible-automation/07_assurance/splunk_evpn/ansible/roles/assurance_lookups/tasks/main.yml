@@ -1,0 +1,132 @@
+# ============================================================================
+# assurance_lookups / tasks/main.yml  —  Assurance stage 05
+# ============================================================================
+# Generates the two Splunk lookup CSVs from the campus fabric intent instead of
+# maintaining them by hand.
+#
+# The dashboards join telemetry to context through these lookups: every panel
+# does `rename "cisco.node_id" AS hostname | lookup evpn_device_inventory ...`,
+# so a hostname that does not match the collector's node_id dimension produces
+# panels that are empty rather than wrong — a failure mode that is very easy to
+# miss. Deriving the CSVs from the same DEFN-*.j2 files that built the fabric
+# removes the chance of drift.
+#
+# Mechanism is the one verify_intent uses: the DEFN files are pure {% set %}
+# blocks, so concatenating them puts every variable in one Jinja scope, and an
+# epilogue appended last emits the whole lot as JSON. Here the files are read
+# from the repo rather than from Catalyst Center, so the same TELEMETRY_*
+# placeholder substitution that template_sync performs has to happen first.
+#
+# Produced: the two CSVs under splunk-app/campus_evpn_assurance/lookups/, ready
+#           for stage 06 to package into the .spl
+# ============================================================================
+---
+
+- name: Create a working directory for the intent extraction
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: assurance-intent
+  register: _lookup_tmp
+
+- name: Create the parts directory
+  ansible.builtin.file:
+    path: "{{ _lookup_tmp.path }}/parts"
+    state: directory
+    mode: "0700"
+
+- name: Find the DEFN templates
+  ansible.builtin.find:
+    paths: "{{ evpn_templates_dir }}"
+    patterns: "DEFN-*.j2"
+  register: _defn_files
+
+- name: Resolve the telemetry placeholders for this site
+  ansible.builtin.set_fact:
+    _telemetry_splunk: >-
+      {{
+        (evpn_settings.project | default([])
+         | selectattr('HierarchyBldg', 'defined')
+         | selectattr('HierarchyBldg', 'equalto', assurance_site)
+         | map(attribute='telemetry', default={})
+         | map('default', {}, true)
+         | list
+         | first
+         | default({})).get('splunk', {})
+      }}
+  vars:
+    evpn_settings: "{{ lookup('file', evpn_settings_json) | from_json }}"
+
+# The DEFN bodies carry literal {{ TELEMETRY_* }} placeholders that template_sync
+# substitutes at sync time. Unsubstituted, {% set X = {{ Y }} %} is a Jinja
+# syntax error, so the same replacement has to happen before rendering here.
+# The replace() output is not re-templated, so the {% set %} blocks survive.
+- name: Write each DEFN body into the parts directory
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', item.path)
+         | replace('{{ TELEMETRY_RECEIVER_IP }}', _telemetry_splunk.receiver_ip | default(''))
+         | replace('{{ TELEMETRY_RECEIVER_PORT }}', _telemetry_splunk.receiver_port | default('57444'))
+         | replace('{{ TELEMETRY_ROLES }}', _telemetry_splunk.roles | default([]) | to_json | replace('"', "'"))
+         | replace('{{ TEMPLATE_PROJECT_NAME }}', assurance_site) }}
+    dest: "{{ _lookup_tmp.path }}/parts/{{ '%02d' | format(idx) }}-{{ item.path | basename }}"
+    mode: "0600"
+  loop: "{{ _defn_files.files | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+    index_var: idx
+
+- name: Add the JSON-emitting epilogue
+  ansible.builtin.copy:
+    src: "{{ evpn_epilogue }}"
+    dest: "{{ _lookup_tmp.path }}/parts/zz-defn-extract-epilogue.j2"
+    mode: "0600"
+
+- name: Assemble the extractor template
+  ansible.builtin.assemble:
+    src: "{{ _lookup_tmp.path }}/parts"
+    dest: "{{ _lookup_tmp.path }}/extract.j2"
+    mode: "0600"
+
+- name: Render the fabric intent to JSON
+  ansible.builtin.template:
+    src: "{{ _lookup_tmp.path }}/extract.j2"
+    dest: "{{ _lookup_tmp.path }}/intent.json"
+    mode: "0600"
+
+- name: Read the rendered intent
+  ansible.builtin.slurp:
+    src: "{{ _lookup_tmp.path }}/intent.json"
+  register: _intent_raw
+
+- name: Build the fabric intent fact
+  ansible.builtin.set_fact:
+    _assurance_intent: "{{ _intent_raw.content | b64decode | from_json }}"
+
+- name: --DEBUG-- Extracted fabric intent
+  when: assurance_debug | bool
+  ansible.builtin.debug:
+    var: _assurance_intent
+
+- name: Render the device inventory lookup
+  ansible.builtin.template:
+    src: evpn_device_inventory.csv.j2
+    dest: "{{ splunk_app_src }}/lookups/evpn_device_inventory.csv"
+    mode: "0644"
+
+- name: Render the segment inventory lookup
+  ansible.builtin.template:
+    src: evpn_segment_inventory.csv.j2
+    dest: "{{ splunk_app_src }}/lookups/evpn_segment_inventory.csv"
+    mode: "0644"
+
+- name: Clean up the working directory
+  ansible.builtin.file:
+    path: "{{ _lookup_tmp.path }}"
+    state: absent
+
+- name: Lookup generation summary
+  ansible.builtin.debug:
+    msg:
+      - "site     : {{ assurance_site }}"
+      - "devices  : {{ _assurance_intent.loop_underlay | length }}"
+      - "segments : {{ _assurance_intent.overlay | map(attribute='vlan_ids') | map('length') | sum }}"

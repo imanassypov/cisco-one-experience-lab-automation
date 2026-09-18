@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# 04_deploy_collector.yml  —  Assurance stage 04
+# =============================================================================
+# Renders /etc/otel/collector/agent_config.yaml, points systemd at the custom
+# binary through a reversible drop-in, and restarts the service.
+#
+# Potentially disruptive: the restart drops telemetry for roughly 90 seconds.
+# The collector does not drain its gRPC streams on SIGTERM, so systemd waits out
+# TimeoutStopSec and force-kills it before the new process starts listening.
+#
+# Needs splunk_hec_token, so stage 02 runs first in the same play. Pass the
+# token explicitly to run this stage standalone:
+#   ansible-playbook playbooks/04_deploy_collector.yml -e splunk_hec_token=<token>
+#
+# Run: ansible-playbook playbooks/04_deploy_collector.yml
+# =============================================================================
+- name: Deploy the collector configuration and restart the service
+  hosts: splunk_servers
+  gather_facts: true
+  roles:
+    - role: splunk_index_hec
+      when: splunk_hec_token is not defined
+    - role: otel_collector_deploy

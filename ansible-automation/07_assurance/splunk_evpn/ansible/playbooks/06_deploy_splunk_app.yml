@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# 06_deploy_splunk_app.yml  —  Assurance stage 06
+# =============================================================================
+# Packages splunk-app/campus_evpn_assurance into a .spl and installs it.
+#
+# Potentially disruptive: `splunk install app -update 1` overwrites the existing
+# app but does not reload dashboards, so splunkd restarts afterwards and
+# in-flight searches are lost.
+#
+# The installed build number is asserted against default/app.conf after the
+# restart — Splunk will keep serving a cached older app if an install half-fails,
+# and the build number is the only reliable way to notice.
+#
+# Bump `build` in splunk-app/campus_evpn_assurance/default/app.conf whenever a
+# dashboard changes, or the assertion cannot tell old from new.
+#
+# Run: ansible-playbook playbooks/06_deploy_splunk_app.yml
+# =============================================================================
+- name: Build and install the dashboard app
+  hosts: splunk_servers
+  gather_facts: false
+  roles:
+    - role: splunk_app_deploy

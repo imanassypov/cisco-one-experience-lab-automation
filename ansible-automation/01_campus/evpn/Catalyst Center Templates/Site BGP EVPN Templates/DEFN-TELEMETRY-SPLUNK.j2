@@ -1,9 +1,10 @@
 {## CATC: productFamily=Switches and Hubs, softwareType=IOS-XE, productSeries=Cisco Catalyst 9300 Series Switches ##}
-{# Disabled for Site-105. Empty receiver prevents leftover CML collector 18.224.25.161. #}
-{# Re-enable by setting receiver IP/port and restoring DEFN_TELEMETRY_SPLUNK_ROLES.     #}
-{% set DEFN_TELEMETRY_SPLUNK_RECEIVER_IP = '' %}
-{% set DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT = '57444' %}
-{% set DEFN_TELEMETRY_SPLUNK_ROLES = [] %}
+{# Receiver IP/port/roles come from Settings/settings.json telemetry.splunk and are    #}
+{# substituted by template_sync (stage 06) before the blob reaches Catalyst Center.    #}
+{# Set telemetry.splunk.enabled=false there to blank the receiver and render nothing.  #}
+{% set DEFN_TELEMETRY_SPLUNK_RECEIVER_IP = '{{ TELEMETRY_RECEIVER_IP }}' %}
+{% set DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT = '{{ TELEMETRY_RECEIVER_PORT }}' %}
+{% set DEFN_TELEMETRY_SPLUNK_ROLES = {{ TELEMETRY_ROLES }} %}
 {% set DEFN_TELEMETRY_SPLUNK = [
   {
     'section': 'NVE Global State',

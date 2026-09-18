@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph BUILD["Build — 01_campus/evpn"]
+        direction TB
+        SET["Settings/settings.json<br/>telemetry.splunk"]
+        TPL["DEFN + FABRIC<br/>TELEMETRY-SPLUNK.j2"]
+        CATC["Catalyst Center<br/>Template Hub"]
+        SET -- "stage 06 substitutes<br/>receiver IP / port / roles" --> TPL
+        TPL -- "stage 06 sync" --> CATC
+    end
+
+    subgraph FABRIC["Site 105 fabric"]
+        direction TB
+        SW["Site_105-Leaf1 / Leaf2<br/>Site_105-Border-Spine"]
+        SUB["telemetry ietf subscription<br/>40101 - 40121, encode-kvgpb"]
+        SW --- SUB
+    end
+
+    subgraph ASSURE["Assure — 07_assurance/splunk_evpn"]
+        direction TB
+        OTEL["otelcol-yangfix<br/>yang_grpc :57444"]
+        HEC["splunk_hec exporter<br/>localhost:8088"]
+        IDX["index=evpn_assurance<br/>(metric)"]
+        LOOK["evpn_device_inventory<br/>evpn_segment_inventory"]
+        DASH["campus_evpn_assurance<br/>Summary / Details / Alerts"]
+        OTEL --> HEC --> IDX --> DASH
+        LOOK -- "cisco.node_id = hostname" --> DASH
+    end
+
+    CATC -- "stage 09 deploy" --> SW
+    SUB -- "gRPC dial-out to 198.18.5.109" --> OTEL
+    TPL -- "stage 05 derives lookups<br/>from the same DEFN intent" --> LOOK
+    DASH -. "stage 08 verifies" .-> SET

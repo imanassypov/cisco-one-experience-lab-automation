@@ -16,6 +16,19 @@ lab_access:
     access: "https://cat-center.corp.pseudoco.com"
     username: REPLACE_ME
     password: REPLACE_ME
+  # Splunk admin account — REST :8089 and Splunk Web :8000. Used by 07_assurance to
+  # create the evpn_assurance index, mint the HEC token, and install the dashboard app.
+  Splunk:
+    access: "https://splunk.corp.pseudoco.com:8000"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  # Linux account on the Splunk host. 07_assurance SSHes here to build and run the
+  # OpenTelemetry collector, so this account needs sudo. The key must equal the
+  # inventory hostname in 07_assurance/splunk_evpn/ansible/inventory/hosts.yml.
+  splunk_server:
+    access: "ssh: 198.18.5.109"
+    username: REPLACE_ME
+    password: REPLACE_ME
   Site_105-Leaf1:
     access: "ssh: 198.18.128.22"
     username: REPLACE_ME
