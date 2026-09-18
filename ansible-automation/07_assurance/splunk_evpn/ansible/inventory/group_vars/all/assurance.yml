@@ -37,6 +37,12 @@ otel_config_dir: /etc/otel/collector
 otel_config_path: "{{ otel_config_dir }}/agent_config.yaml"
 otel_service_name: splunk-otel-collector
 otel_custom_binary: /usr/local/bin/otelcol-yangfix
+# Only exists when the Splunk OpenTelemetry distro is installed. The lab host has
+# no collector package, so stage 04 installs its own unit and this is unused.
+otel_stock_binary: /usr/bin/otelcol
+# Service account for the unit stage 04 installs. Ignored when a packaged unit
+# already exists, since that one brings its own user.
+otel_service_user: otelcol
 otel_src_dir: "{{ playbook_dir }}/../../otel-collector"
 otel_receiver_bundle: receiver_yang_26_05_27.tar.gz
 otel_build_dir: /tmp/otelbuild

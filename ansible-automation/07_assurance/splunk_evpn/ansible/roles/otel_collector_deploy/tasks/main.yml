@@ -1,19 +1,26 @@
 # ============================================================================
 # otel_collector_deploy / tasks/main.yml  —  Assurance stage 04
 # ============================================================================
-# Renders the collector config, points systemd at the custom binary, and
-# restarts the service.
+# Renders the collector config, makes systemd run the right binary, and starts
+# the service.
+#
+# Two shapes, decided by whether the host already has a collector package:
+#
+#   unit present  — the Splunk OpenTelemetry distro is installed, so this only
+#                   drops in an ExecStart override. Reversible: delete
+#                   override.conf and the stock binary comes back.
+#   unit missing  — nothing to override, so a plain unit is installed instead.
+#                   otelcol-yangfix is a static Go binary with no package
+#                   dependencies, which is what makes that safe. This is the
+#                   normal case on the lab Splunk host.
 #
 # Two things here are load-bearing and easy to get wrong:
 #
 #   * The HEC endpoint is loopback. Splunk and the collector share this host and
 #     the exporter must not go out and back through the lab network.
-#   * A restart costs roughly 90 seconds. The old process does not drain its
-#     gRPC streams on SIGTERM, so systemd waits out TimeoutStopSec and then
-#     force-kills it. Expect a telemetry gap; that is not a failure.
-#
-# The systemd drop-in is reversible: delete the override.conf this stage writes
-# and the service falls back to the stock /usr/bin/otelcol.
+#   * A restart costs up to TimeoutStopSec. The fabric holds long-lived gRPC
+#     streams that do not drain on SIGTERM, so systemd waits and then kills the
+#     process. Expect a telemetry gap; that is not a failure.
 # ============================================================================
 ---
 
@@ -24,6 +31,46 @@
       splunk_hec_token is not set. Run stage 02 (02_splunk_index_hec.yml) first,
       or pass -e splunk_hec_token=<token>.
 
+# Probed here rather than reused from splunk_preflight so this stage can run
+# standalone.
+- name: Look for an existing collector unit
+  become: true
+  ansible.builtin.command: "systemctl cat {{ otel_service_name }}.service"
+  changed_when: false
+  failed_when: false
+  register: _unit_probe
+
+- name: Decide how this host will run the collector
+  ansible.builtin.set_fact:
+    _otel_own_unit: "{{ _unit_probe.rc != 0 }}"
+    otel_binary_in_use: "{{ otel_custom_binary if (otel_use_custom_binary | bool) else otel_stock_binary }}"
+
+- name: Report the deployment shape
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'No ' ~ otel_service_name ~ '.service on this host - installing one.'
+         if _otel_own_unit
+         else otel_service_name ~ '.service exists - installing an ExecStart drop-in.' }}
+
+- name: Fail when the stock collector was requested but none is installed
+  ansible.builtin.assert:
+    that: not (_otel_own_unit and not (otel_use_custom_binary | bool))
+    fail_msg: >-
+      otel_use_custom_binary is false, but this host has no collector package to
+      fall back to - {{ otel_stock_binary }} comes from the Splunk OpenTelemetry
+      distro, which is not installed. Build otelcol-yangfix and pass
+      -e otel_staged_binary=<path> instead.
+
+- name: Create the collector service account
+  become: true
+  when: _otel_own_unit
+  ansible.builtin.user:
+    name: "{{ otel_service_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ otel_config_dir }}"
+    create_home: false
+
 - name: Create the collector config directory
   become: true
   ansible.builtin.file:
@@ -33,22 +80,31 @@
     group: root
     mode: "0755"
 
-# 0640 root:root - the file carries the HEC token. The collector reads it as
-# root before dropping to its service user.
+# 0640 root:<service group> - the file carries the HEC token, and the collector
+# reads it as its own unprivileged user.
 - name: Render the collector config
   become: true
+  no_log: true
   ansible.builtin.template:
     src: "{{ otel_src_dir }}/agent_config.yaml.j2"
     dest: "{{ otel_config_path }}"
     owner: root
-    group: root
+    group: "{{ otel_service_user if _otel_own_unit else 'root' }}"
     mode: "0640"
-  register: _otel_config
-  no_log: true
 
-- name: Install the systemd drop-in for the custom binary
+- name: Install our own collector unit
   become: true
-  when: otel_use_custom_binary | bool
+  when: _otel_own_unit
+  ansible.builtin.template:
+    src: otel-collector.service.j2
+    dest: "/etc/systemd/system/{{ otel_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Override the packaged collector unit
+  become: true
+  when: not _otel_own_unit
   block:
     - name: Create the drop-in directory
       ansible.builtin.file:
@@ -62,44 +118,40 @@
     # SPLUNK_CONFIG comes from the unit's EnvironmentFile; the vanilla collector
     # does not read it on its own, so it is passed explicitly.
     - name: Write the drop-in
+      when: otel_use_custom_binary | bool
       ansible.builtin.copy:
         content: |
           [Service]
           ExecStart=
-          ExecStart={{ otel_custom_binary }} --config=${SPLUNK_CONFIG}
+          ExecStart={{ otel_binary_in_use }} --config=${SPLUNK_CONFIG}
         dest: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
         owner: root
         group: root
         mode: "0644"
-      register: _otel_override
 
-- name: Remove the drop-in when running the stock collector
-  become: true
-  when: not (otel_use_custom_binary | bool)
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
-    state: absent
-  register: _otel_override_removed
+    - name: Remove the drop-in when running the stock collector
+      when: not (otel_use_custom_binary | bool)
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
+        state: absent
 
-- name: Point the collector at the rendered config
-  become: true
-  ansible.builtin.lineinfile:
-    path: "{{ otel_config_dir }}/{{ otel_service_name }}.conf"
-    regexp: '^SPLUNK_CONFIG='
-    line: "SPLUNK_CONFIG={{ otel_config_path }}"
-    create: true
-    owner: root
-    group: root
-    mode: "0644"
-  register: _otel_envfile
+    - name: Point the packaged unit at the rendered config
+      ansible.builtin.lineinfile:
+        path: "{{ otel_config_dir }}/{{ otel_service_name }}.conf"
+        regexp: '^SPLUNK_CONFIG='
+        line: "SPLUNK_CONFIG={{ otel_config_path }}"
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
 
 - name: Reload systemd
   become: true
   ansible.builtin.systemd:
     daemon_reload: true
 
-# Roughly 90 s: the collector does not drain gRPC streams on SIGTERM, so systemd
-# waits out TimeoutStopSec before the new process starts listening.
+# Up to TimeoutStopSec: the collector does not drain gRPC streams on SIGTERM, so
+# systemd waits before the new process starts listening.
 - name: Restart the collector
   become: true
   ansible.builtin.systemd:
@@ -121,15 +173,14 @@
 
 - name: Verify the ExecStart matches the requested binary
   ansible.builtin.assert:
-    that: >-
-      (otel_custom_binary in _exec_start.stdout) if (otel_use_custom_binary | bool)
-      else (otel_custom_binary not in _exec_start.stdout)
+    that: otel_binary_in_use in _exec_start.stdout
     fail_msg: "Unexpected ExecStart after restart: {{ _exec_start.stdout }}"
 
 - name: Collector deployment summary
   ansible.builtin.debug:
     msg:
+      - "unit      : /etc/systemd/system/{{ otel_service_name }}.service{{ ' (installed by this role)' if _otel_own_unit else '.d/override.conf (drop-in)' }}"
       - "config    : {{ otel_config_path }}"
-      - "binary    : {{ otel_custom_binary if (otel_use_custom_binary | bool) else 'stock /usr/bin/otelcol' }}"
+      - "binary    : {{ otel_binary_in_use }}"
       - "listening : {{ ansible_host }}:{{ otel_receiver_port }}"
       - "exporting : {{ splunk_hec_url }} -> index={{ splunk_assurance_index }}"

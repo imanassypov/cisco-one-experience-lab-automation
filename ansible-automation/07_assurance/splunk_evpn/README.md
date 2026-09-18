@@ -192,8 +192,10 @@ and can be overridden with `-e`.
 | `otel_receiver_port` | `57444` | gRPC dial-out listener; must match `receiver_port` in settings.json |
 | `otel_config_path` | `/etc/otel/collector/agent_config.yaml` | Rendered collector config (gitignored — carries the token) |
 | `otel_service_name` | `splunk-otel-collector` | systemd unit |
+| `otel_service_user` | `otelcol` | Service account, created only when this role installs the unit |
 | `otel_custom_binary` | `/usr/local/bin/otelcol-yangfix` | Patched collector |
-| `otel_use_custom_binary` | `true` | `false` falls back to stock `/usr/bin/otelcol` and loses per-VNI panels |
+| `otel_stock_binary` | `/usr/bin/otelcol` | Only exists if the Splunk OTel distro is installed |
+| `otel_use_custom_binary` | `true` | `false` falls back to stock `/usr/bin/otelcol` and loses per-VNI panels. Only valid on a host that has the collector package installed. |
 | `otel_build_mode` | `staged` | `staged` copies a prebuilt binary; `local` compiles with `ocb` |
 | `otel_staged_binary` | `""` | Path to a prebuilt `otelcol-yangfix` when `otel_build_mode: staged` |
 | `assurance_site` | `Site-105` | Matches `HierarchyBldg` in settings.json and the `site` column in the lookups |
@@ -228,14 +230,20 @@ No-op if the binary is already there.
 ### Stage 04 — deploy the collector
 
 Renders [`agent_config.yaml.j2`](otel-collector/agent_config.yaml.j2) with the HEC token
-(mode `0640`, root-owned), writes a systemd drop-in that replaces `ExecStart`, reloads,
-restarts, and waits for port 57444 to open. It then reads `systemctl show -p ExecStart`
-back and asserts it matches the binary that was requested.
+(mode `0640`, root-owned), then makes systemd run it. Two shapes, decided by whether the
+host already has a collector package:
 
-> **Expect a ~90 second telemetry gap.** The collector does not drain its gRPC streams on
-> `SIGTERM`, so systemd waits out `TimeoutStopSec` and force-kills it. This is normal.
+| Host state | What stage 04 does |
+| --- | --- |
+| No `splunk-otel-collector.service` | Creates an `otelcol` system account and installs its own unit. Safe because `otelcol-yangfix` is a static Go binary with no package dependencies. **This is the lab Splunk host.** |
+| Unit already present | Installs only an `ExecStart` drop-in, leaving the package alone. Reversible — delete `override.conf` and the stock binary returns. |
 
-The drop-in is reversible — delete `override.conf` and the service returns to the stock rpm.
+Either way it reloads, restarts, waits for port 57444, then reads
+`systemctl show -p ExecStart` back and asserts it matches the binary that was requested.
+
+> **Expect a telemetry gap of up to `TimeoutStopSec` on restart.** The fabric holds
+> long-lived gRPC streams that do not drain on `SIGTERM`, so systemd waits and then kills
+> the process. This is normal.
 
 ### Stage 05 — render the lookups
 
