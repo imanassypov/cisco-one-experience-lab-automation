@@ -113,6 +113,10 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 <li><a href="#page-9008">8. Appendix — Wireless Troubleshooting</a></li>
 </ul>
 </div><div class="nav-section">
+  <div class="nav-section-title"><span class="arrow">▾</span>EVPN Fabric — DHCP Walkthrough <em>(optional)</em></div>
+  <ul class="nav-pages"><li><a href="#page-9010">How DHCP Works in a Multi-Tenant Fabric</a></li>
+</ul>
+</div><div class="nav-section">
   <div class="nav-section-title"><span class="arrow">▾</span>Macro / Micro Segmentation</div>
   <ul class="nav-pages"><li><a href="#page-7846">1. Overview</a></li>
 <li><a href="#page-7811">2. Macro Segmentation</a></li>
@@ -4152,6 +4156,180 @@ ansible-playbook playbooks/08_provision_devices.yml -e ap_provision_enabled=fals
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
 <p>Client connected? Continue to <strong>Macro / Micro Segmentation</strong>. Still stuck? Grab a proctor — and bring the output of steps 7 and 8, which is what they will ask for.</p>
+</div>
+</div></div>
+</div>
+</div><div class="section-anchor" id="section-9300">
+  <div class="section-header"><h2>EVPN Fabric — DHCP Walkthrough</h2></div>
+  <div class="page-card">
+  <div class="page-card-header"><span>💡</span>
+    <h3 id="page-9010" class="page-anchor">How DHCP Works in a Multi-Tenant Fabric</h3>
+  </div>
+  <div class="page-card-body"><h3>Optional — background reading, not a lab task</h3>
+<div class="admonition">
+<p>⏭️ <strong>You may skip this section entirely.</strong> Nothing here needs to be typed, clicked, or verified, and no later section depends on it. It exists to answer a question that almost every engineer asks the first time they look at a working EVPN fabric:</p>
+<p><em>“If every workstation lives inside a tenant VRF, and I cannot find a fusion router anywhere, how on earth do those workstations get a DHCP address?”</em></p>
+<p>If you want to understand how an EVPN fabric actually touches the outside world, and how one shared DHCP server can serve several isolated tenants without breaking that isolation, read on. Otherwise, continue to <strong>Macro / Micro Segmentation</strong>.</p>
+</div>
+<div class="admonition">
+<p>🧭 <strong>Whichever path you took, this section is for you.</strong> The fabric you are looking at is the same fabric either way — the manual track types the commands in, the automated track renders them from templates, and the running configuration that comes out the other end is identical.</p>
+<p><strong>If you took the manual path</strong>, you already typed every command discussed below by hand in <em>EVPN Fabric Provisioning</em>. Where this section quotes a file named <code>DEFN-something.j2</code>, that is the <strong>automated</strong> track's data model — the set of files that hold the site's design as plain data, which the pipeline then renders into CLI. They are explained in full in <strong>Infrastructure as Code — card 4, <a href="#page-9005">Understanding the EVPN Template Model</a></strong>. You do not need to have read it. Treat each DEFN quote as simply <em>“where this lab's design decision is recorded”</em>, and read the IOS-XE blocks — which are the same lines you configured — as the real subject matter.</p>
+<p><strong>If you took the automated path</strong>, the DEFN references will already be familiar, and this section shows you what several of those data files add up to once they are rendered onto a live switch.</p>
+</div>
+<hr>
+<h4>The puzzle</h4>
+<p>Site-105 carries three tenants — <code>Main</code>, <code>PROD</code>, and <code>IOT</code> — and they are genuinely isolated. Each has its own route distinguisher and its own route-target pair, and the design deliberately does <strong>no</strong> route leaking between them. On the manual path you saw this when you configured each <code>vrf definition</code> with only its own <code>route-target import</code> and <code>export</code> values and nothing borrowed from a neighbour. On the automated path the same decision is recorded as data in <code>DEFN-VRF.j2</code> (one of the design files covered in <a href="#page-9005">card 4</a>), which declares</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{# No DMZ shared-RT leak in this lab. #}
+{% set DEFN_VRF_BORDER_IMPORT_RTS = [] %}</pre>
+<p>An empty list means no VRF imports any other VRF's routes. Meanwhile the DHCP server — which also serves DNS and NTP — sits at <code>198.18.5.102</code> on the shared-services network. It is not a member of <code>Main</code>, <code>PROD</code>, or <code>IOT</code>. It is not a member of any VRF at all.</p>
+<p>So a workstation in VRF <code>Main</code> needs an address from a server that, by the routing table it lives in, it cannot reach. There are two separate answers, and it is worth getting them in the right order.</p>
+<hr>
+<h4>Answer 1 — the VRF-Lite handoff <em>does</em> exist. It just does not look like one.</h4>
+<p>Most people expect a VRF-Lite handoff to appear as a routed port carrying dot1Q subinterfaces — <code>interface Gi1/0/48.10</code>, <code>.101</code>, <code>.102</code>. That is the classic pattern, and it is the one people scan the configuration looking for. Site-105 does not use it.</p>
+<p>Instead, Site-105 builds the handoff as a plain <strong>trunk port plus one SVI per tenant</strong>. The routing is identical; only the encapsulation syntax differs. Manual-path students configured exactly this in the step <em>“Configure Spine external interface toward SD-WAN router (VRF-Lite)”</em>; on the automated path it is selected by a single data variable, <code>DEFN_L3OUT_HANDOFF = 'svi'</code>, in <code>DEFN-L3OUT.j2</code> (again, see <a href="#page-9005">card 4</a> for what these DEFN files are). Either way the result on the Border-Spine looks like this:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr>
+<th style="width: 14%;">Tenant VRF</th>
+<th style="width: 14%;">SVI</th>
+<th style="width: 24%;">Border-Spine address</th>
+<th style="width: 24%;">SD-WAN peer</th>
+<th style="width: 24%;">Peer AS</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><code>Main</code></td><td><code>Vlan10</code></td><td><code>192.168.255.1/31</code></td><td><code>192.168.255.0</code></td><td>65534</td></tr>
+<tr><td><code>PROD</code></td><td><code>Vlan101</code></td><td><code>192.168.255.3/31</code></td><td><code>192.168.255.2</code></td><td>65534</td></tr>
+<tr><td><code>IOT</code></td><td><code>Vlan102</code></td><td><code>192.168.255.5/31</code></td><td><code>192.168.255.4</code></td><td>65534</td></tr>
+</tbody>
+</table>
+<p>All three SVIs ride the single trunk <code>GigabitEthernet1/0/48</code>, and each one carries an eBGP session inside its own tenant address family:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">interface GigabitEthernet1/0/48
+ switchport mode trunk
+ cts manual
+!
+interface Vlan10
+ description Main
+ vrf forwarding Main
+ ip address 192.168.255.1 255.255.255.254
+!
+router bgp 65535
+ address-family ipv4 vrf Main
+  redistribute connected
+  neighbor 192.168.255.0 remote-as 65534
+  neighbor 192.168.255.0 activate</pre>
+<p>So the fabric <em>does</em> hand each tenant off to the outside world, per VRF, over separate BGP sessions. And there is no separate fusion router because <strong>the SD-WAN edge router is the fusion device</strong> — it terminates all three tenant sessions and decides what, if anything, gets stitched together on the far side. In a campus fabric this is the normal arrangement: the WAN edge you already own does the fusion job, so you do not deploy another box to do it.</p>
+<div class="admonition">
+<p>💡 <strong>Why a trunk instead of subinterfaces?</strong> Catalyst 9300 switch ports are Layer 2 by default, and an SVI handoff keeps the port that way — which means the same port can also carry <code>cts manual</code> for SGT propagation toward the WAN. The subinterface style requires <code>no switchport</code>, turning the port into a pure routed interface. Both styles are valid; this lab picks the SVI one. On the automated path that choice is a one-word data edit rather than a rewrite — flipping <code>DEFN_L3OUT_HANDOFF</code> to <code>'subif'</code> makes the renderer emit subinterfaces instead, and both renderers already ship in the repository.</p>
+</div>
+<hr>
+<h4>Answer 2 — DHCP does not use that handoff at all</h4>
+<p>This is the part that surprises people. The tenant VRF-Lite sessions carry ordinary user traffic. DHCP takes a completely different route — it steps <em>out</em> of the VRF entirely.</p>
+<p>Look at what sits on every tenant SVI on Leaf1 and Leaf2 — typed in by hand on the manual path, emitted by the <code>FABRIC-OVERLAY.j2</code> renderer on the automated one. Three lines do all the work:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ip dhcp relay information option vpn
+!
+interface Vlan10
+ description Main
+ vrf forwarding Main
+ mac-address 0001.0001.0010
+ ip address 10.10.255.1 255.255.255.0
+ ip dhcp relay source-interface Loopback0
+ ip helper-address global 198.18.5.102</pre>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr>
+<th style="width: 32%;">Command</th>
+<th style="width: 68%;">What it actually does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip helper-address <strong>global</strong> …</code></td>
+<td><strong>This is the key.</strong> Without the <code>global</code> keyword the switch would look up <code>198.18.5.102</code> inside VRF <code>Main</code> and fail. With it, the relayed packet is routed using the <strong>global routing table</strong> instead. The DHCP server therefore never has to exist inside a tenant VRF, and you need no route leaking, no shared route-target, and no fusion policy to reach it.</td>
+</tr>
+<tr>
+<td><code>ip dhcp relay source-interface Loopback0</code></td>
+<td>Sources the relayed packet from the leaf's underlay loopback — <code>172.30.255.1</code> on Leaf1, <code>172.30.255.2</code> on Leaf2. That loopback lives in the global table, so it gives the server a stable, routable address to send the reply back to.</td>
+</tr>
+<tr>
+<td><code>ip dhcp relay information option vpn</code></td>
+<td>Adds Option 82 sub-option 151, the <strong>VPN identifier</strong>, naming the VRF the request came from. This is what preserves multi-tenancy: the packet has left the VRF, but it still carries a label saying which VRF it belongs to.</td>
+</tr>
+</tbody>
+</table>
+<p>Notice also what the relay does <em>not</em> discard. The <code>giaddr</code> field is set to the SVI address the request arrived on — <code>10.10.255.1</code> for VLAN 10. That is the field a DHCP server has always used to pick a scope, and it still works here. Option 82 sub-option 151 is the extra insurance that lets the same server run overlapping address ranges in different tenants without confusing them.</p>
+<div class="admonition warning">
+<p>🛑 <strong>The single most common mistake.</strong> Omitting the word <code>global</code>. The configuration looks completely correct, the SVI is up, the server is pingable from the switch's management interface — and clients still never get an address, because the relay is trying to reach the server inside a VRF that has no route to it. If DHCP fails in a fabric like this one, check for that keyword first.</p>
+</div>
+<hr>
+<h4>Closing the loop — how the reply finds its way home</h4>
+<p>Sending the request out is only half the problem. The server now has to reply to <code>172.30.255.1</code>, a loopback buried inside the fabric. That works because of a <strong>second, easily missed BGP session</strong> on the Border-Spine — one that sits in the global table rather than in any tenant address family:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">router bgp 65535
+ address-family ipv4
+  network 172.30.255.1 mask 255.255.255.255
+  network 172.30.255.2 mask 255.255.255.255
+  network 172.30.255.3 mask 255.255.255.255
+  neighbor 192.168.255.6 activate</pre>
+<p>Those three <code>/32</code>s are the loopbacks of Leaf1, Leaf2, and the Border-Spine. Advertising them to the SD-WAN edge in the global table is what makes the DHCP reply routable back into the fabric. It is a small piece of configuration doing a load-bearing job — and it is the reason the whole <code>helper-address global</code> approach works at all.</p>
+<hr>
+<h4>The full round trip</h4>
+<p><img class="img-fluid" src="automation_images/evpn-dhcp-walkthrough.png" alt="Sequence diagram of a DHCP request from a workstation on Leaf1 travelling out of VRF Main through the global routing table to the shared DHCP server and back" width="865" height="762"></p>
+<p>Read the diagram in three bands. The blue bands at the top and bottom are inside tenant VRF <code>Main</code> — that is all the workstation ever sees. The green band in the middle is the global routing table, where the packet spends most of its life. The workstation has no idea that its DHCP request briefly left its own tenant, and the isolation is never actually broken, because the only thing that crossed the boundary was a relay packet carrying a VRF label.</p>
+<hr>
+<h4>Why leaves share a subnet — and where the anycast gateway went</h4>
+<p>One related question usually follows: a workstation on Leaf1 and a workstation on Leaf2 both receive addresses out of <code>10.10.255.0/24</code> and both use <code>10.10.255.1</code> as their default gateway. How can two different switches own the same gateway address?</p>
+<p>Two mechanisms, working together:</p>
+<ul>
+<li><strong>The VLAN is stretched.</strong> VLAN 10 maps to L2VNI <code>100010</code> — the VLAN id plus an offset of <code>100000</code>, a convention you applied by hand on the manual path and which the automated path records once in <code>DEFN-VNIOFFSETS.j2</code>. Both leaves add that VNI to <code>interface nve1</code> with the static multicast group <code>232.1.1.1</code> for broadcast traffic. As far as the workstations are concerned they are on the same wire, even though they are attached to different switches.</li>
+<li><strong>The gateway is distributed.</strong> Both leaves configure the <em>same</em> SVI address <em>and</em> the same <code>mac-address 0001.0001.0010</code>. Each leaf answers locally for that gateway, so traffic is routed at the first hop it hits and never tromboned across the fabric.</li>
+</ul>
+<p>If you went looking for <code>fabric forwarding mode anycast-gateway</code> and could not find it, that is why — that command is NX-OS syntax. On IOS-XE the distributed anycast gateway is expressed as a shared SVI address plus a shared <code>mac-address</code> statement, which is exactly what you see in the rendered configuration.</p>
+<hr>
+<h4>Proving it on the live fabric</h4>
+<p>Everything above is observable on your own pod, regardless of how you built it. These are the commands worth running on Leaf1:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show ip interface Vlan10 | include Helper|VPN
+show running-config | include ip dhcp relay
+show ip route 198.18.5.102
+show ip route vrf Main 198.18.5.102
+show ip dhcp relay information trusted-sources</pre>
+<p>The fourth command is the instructive one. Looking up the DHCP server <em>inside</em> VRF <code>Main</code> returns nothing — and the fabric works anyway. That absence is the whole point of this section.</p>
+<p><strong>If you took the automated path</strong>, stage 11 already asserted this for you and you do not need to type anything. The <code>dhcp_helper</code> check in <code>roles/verify_intent/vars/checks.yml</code> parses that same <code>show ip interface</code> output on both leaves and compares the helper it finds against the <code>dhcp_helper</code> value declared in <code>DEFN-OVERLAY.j2</code> — the very value that generated the configuration in the first place, which is what makes it a genuine intent check rather than a screenshot. In the evidence report it reads:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr>
+<th style="width: 40%;">Check</th>
+<th style="width: 14%;">Result</th>
+<th style="width: 46%;">Observed</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>DHCP helper on tenant SVIs</td><td><strong>PASS</strong></td><td><code>Vlan10 helper = 198.18.5.102</code></td></tr>
+<tr><td></td><td><strong>PASS</strong></td><td><code>Vlan101 helper = 198.18.5.102</code></td></tr>
+<tr><td></td><td><strong>PASS</strong></td><td><code>Vlan102 helper = 198.18.5.102</code></td></tr>
+</tbody>
+</table>
+<p><strong>If you took the manual path</strong>, the first command above is your equivalent — you are reading the state directly instead of having a playbook compare it against a declared value. That difference, rather than anything about DHCP, is the real distinction between the two tracks.</p>
+<hr>
+<h4>What to take away</h4>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr>
+<th style="width: 44%;">A reasonable assumption</th>
+<th style="width: 56%;">What Site-105 actually does</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>There is no VRF-Lite peering to the outside.</td><td>There is — three eBGP sessions, one per tenant, built as SVIs on a trunk rather than as subinterfaces on a routed port.</td></tr>
+<tr><td>A fabric needs a dedicated fusion router.</td><td>The SD-WAN edge performs the fusion role. A campus fabric rarely needs a second box for it.</td></tr>
+<tr><td>Shared services must be leaked into each tenant VRF.</td><td>Not for DHCP. <code>ip helper-address global</code> routes the relay in the global table, and Option 82 sub-option 151 keeps the tenants distinguishable at the server.</td></tr>
+<tr><td>Two switches cannot share a gateway address.</td><td>They can and must — a distributed anycast gateway is a shared SVI address plus a shared MAC on every leaf.</td></tr>
+</tbody>
+</table>
+<div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
+<div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
+<!-- Body -->
+<div style="padding: 18px 20px; color: #2e2e2e;">
+<p>That is the end of the optional material. Continue to <strong>Macro / Micro Segmentation</strong>, where those same three tenants become the basis for policy enforcement.</p>
 </div>
 </div></div>
 </div>

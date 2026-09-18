@@ -18,6 +18,8 @@ Upload this folder alongside the revised HTML so the references resolve.
 | `pipeline-subway-map.png` | Rendered map used in card **1** |
 | `template-model.mmd` | Mermaid source for the DEFN / FUNC / FABRIC data-flow diagram |
 | `template-model.png` | Rendered diagram used in card **4** |
+| `evpn-dhcp-walkthrough.mmd` | Mermaid source for the DHCP relay round-trip sequence diagram |
+| `evpn-dhcp-walkthrough.png` | Rendered diagram used in the optional **EVPN Fabric — DHCP Walkthrough** section (`#page-9010`) |
 
 Regenerate after editing a `.mmd` — substitute the diagram name:
 
@@ -29,6 +31,21 @@ ls -lh automation_images/<name>.png   # must stay under 1.2 MB
 ```
 
 Commit the `.mmd` and its `.png` together.
+
+> **Puppeteer gotcha.** `mmdc` drives headless Chrome through Puppeteer and fails with
+> `Could not find Chrome` if the browser was never downloaded into `~/.cache/puppeteer`.
+> Install it with `npx --yes puppeteer browsers install chrome`, then pass the binary
+> explicitly if `mmdc` still cannot find it:
+>
+> ```bash
+> echo '{"executablePath":"<path under ~/.cache/puppeteer>"}' > /tmp/puppeteer-config.json
+> mmdc -p /tmp/puppeteer-config.json -i automation_images/<name>.mmd -o automation_images/<name>.png --scale 3 -b white
+> ```
+
+> **Sequence-diagram gotcha.** A `Note over X` attached to the leftmost or rightmost
+> participant renders outside the SVG canvas and gets clipped when the PNG is cropped.
+> Span two participants instead — `Note over SD,DH` — so the box is centred inside the
+> drawing area.
 
 > **Subway map gotcha.** Its four rows are linked *subgraph-to-subgraph*
 > (`LINE1 --> LINE2`), not node-to-node. Linking across subgraphs makes Mermaid

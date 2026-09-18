@@ -1,0 +1,59 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#f0f6fa"
+    primaryTextColor: "#1b262c"
+    primaryBorderColor: "#049fd9"
+    lineColor: "#5a7181"
+    fontSize: "15px"
+    actorBkg: "#eaf4fb"
+    actorBorder: "#049fd9"
+    actorTextColor: "#1b262c"
+    signalColor: "#5a7181"
+    signalTextColor: "#1b262c"
+    labelBoxBkgColor: "#fdf6ec"
+    labelBoxBorderColor: "#e6a23c"
+    noteBkgColor: "#eafaf1"
+    noteBorderColor: "#2ecc71"
+    noteTextColor: "#1b262c"
+  sequence:
+    useMaxWidth: true
+    wrap: true
+    width: 190
+    actorMargin: 42
+    messageFontSize: 14
+    noteFontSize: 13
+---
+sequenceDiagram
+    autonumber
+    participant WS as Workstation<br/>Gi1/0/1 · VLAN 10
+    participant L1 as Leaf1<br/>Lo0 172.30.255.1
+    participant BS as Border-Spine<br/>Lo0 172.30.255.3
+    participant SD as SD-WAN edge<br/>AS 65534
+    participant DH as DHCP / DNS / NTP<br/>198.18.5.102
+
+    rect rgb(234, 244, 251)
+    Note over WS,L1: Inside tenant VRF "Main"
+    WS->>L1: DHCPDISCOVER (broadcast on VLAN 10)
+    end
+
+    Note over L1: Relay rewrites the packet:<br/>giaddr = 10.10.255.1 (SVI in VRF Main)<br/>Option 82 sub-opt 151 = VPN-ID "Main"<br/>source = Loopback0 (global table)<br/>destination looked up in the GLOBAL RIB
+
+    rect rgb(234, 250, 241)
+    Note over L1,DH: Outside every VRF — global routing table
+    L1->>BS: Unicast relay over the OSPF underlay
+    BS->>SD: Global-table eBGP path (neighbor 192.168.255.6)
+    SD->>DH: Forwarded to the shared-services server
+    Note over SD,DH: Reads Option 82 VPN-ID and giaddr,<br/>selects the scope for VRF Main / 10.10.255.0/24
+    DH-->>SD: DHCPOFFER addressed to 172.30.255.1
+    SD-->>BS: Return path: 172.30.255.1/32 is advertised<br/>to SD-WAN by the Border-Spine
+    BS-->>L1: Unicast back to Loopback0
+    end
+
+    rect rgb(234, 244, 251)
+    L1->>WS: DHCPOFFER relayed back into VLAN 10 / VRF Main
+    Note over WS,L1: REQUEST / ACK repeat the same round trip
+    end
+
+    Note over WS,BS: Workstation now holds 10.10.255.x in VRF Main<br/>— no fusion router and no route leaking involved
