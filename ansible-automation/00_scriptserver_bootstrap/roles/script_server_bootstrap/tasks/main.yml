@@ -18,10 +18,13 @@
   ansible.builtin.include_tasks: sync_repo.yml
 
 # After sync_repo, so a first-ever bootstrap publishes any images the student
-# staged in the checkout before running it.
+# staged in the checkout before running it. Tagged so images can be republished
+# on their own with --tags image_server, without re-running the apt and venv
+# work on a box whose libc6 state makes every apt transaction a risk.
 - name: Serve IOS-XE images over HTTP for SWIM
   ansible.builtin.include_tasks: http_image_server.yml
   when: script_server_image_http_enabled | bool
+  tags: [image_server]
 
 - name: Verify bootstrap
   ansible.builtin.include_tasks: verify.yml
