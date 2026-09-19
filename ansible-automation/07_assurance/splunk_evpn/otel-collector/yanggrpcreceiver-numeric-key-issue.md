@@ -1,15 +1,28 @@
 # yanggrpcreceiver — numeric YANG list keys are dropped (not emitted as dimensions or metrics)
 
-> **✅ RESOLVED** — Fixed in receiver build `receiver_yang_26_05_27` (tracked in
-> [`receiver_yang_26_05_27.tar.gz`](receiver_yang_26_05_27.tar.gz)), built into the
-> custom collector `otelcol-yangfix` and **deployed live on 2026-06-23**. Numeric
-> list keys (`vni`, `vni-id`, `evni`, `unit-number`, `evpn-inst-id`, `vlan-id`,
-> `evpn-stats-id`) are now promoted to dimensions. The fix corresponds to
-> **Option A** below (`extractKeysOnly` stringifies every leaf under the `keys`
-> branch via `formatValueToString`, regardless of value type). See
-> [Resolution](#resolution) at the end of this document for the deployed mechanism,
-> the resulting dimension-model change, and the dashboard impact. The body below is
-> retained as the original problem analysis (pre-fix, v0.154.0).
+> **✅ FIXED UPSTREAM — this is why the collector has a version floor.**
+>
+> Originally worked around with a locally patched receiver (`receiver_yang_26_05_27`,
+> built into a custom `otelcol-yangfix` binary). Upstream has since adopted the same
+> approach, so the patch and the custom build are gone: this project now installs stock
+> `otelcol-contrib` and pins a minimum version instead.
+>
+> | Release | `extractKeys` behaviour |
+> |---|---|
+> | ≤ v0.155.0 | Gated on `field.ValueByType.(*pb.TelemetryField_StringValue)` — numeric keys dropped |
+> | ≥ v0.161.0 | `extractKeysOnly` calls `formatValueToString(subField)` with no type gate — numeric keys emitted |
+>
+> `otel_package_version` in
+> [`assurance.yml`](../ansible/inventory/group_vars/all/assurance.yml) is therefore a
+> **floor, not a preference**. Pinning below 0.161.0 reintroduces exactly the failure
+> analysed below: dashboards render correctly and every per-VNI panel is empty.
+>
+> Upstream went further than the original patch — it also aliases `name`/`cname`/
+> `interface-name` to a uniform `interface` dimension and supports NX-OS. The receiver is
+> **alpha** stability, so verify after bumping rather than assuming.
+>
+> The body below is retained as the original problem analysis (pre-fix, v0.154.0). The
+> "Resolution" section at the end describes the local patch, which is now historical.
 
 **Component:** `receiver/yanggrpcreceiver`
 **Collector:** opentelemetry-collector-contrib `otelcol` **v0.154.2** (receiver pkg **v0.154.0**)

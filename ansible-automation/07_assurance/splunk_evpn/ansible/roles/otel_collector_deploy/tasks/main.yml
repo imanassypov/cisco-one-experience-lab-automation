@@ -1,26 +1,20 @@
 # ============================================================================
 # otel_collector_deploy / tasks/main.yml  —  Assurance stage 04
 # ============================================================================
-# Renders the collector config, makes systemd run the right binary, and starts
-# the service.
+# Renders the collector config over the one the package ships and restarts the
+# service.
 #
-# Two shapes, decided by whether the host already has a collector package:
+# The package owns the unit, the binary, the service account and the
+# EnvironmentFile, so there is nothing to override here - only the config to
+# replace. That is the whole benefit of the package-based install.
 #
-#   unit present  — the Splunk OpenTelemetry distro is installed, so this only
-#                   drops in an ExecStart override. Reversible: delete
-#                   override.conf and the stock binary comes back.
-#   unit missing  — nothing to override, so a plain unit is installed instead.
-#                   otelcol-yangfix is a static Go binary with no package
-#                   dependencies, which is what makes that safe. This is the
-#                   normal case on the lab Splunk host.
-#
-# Two things here are load-bearing and easy to get wrong:
+# Two things are load-bearing and easy to get wrong:
 #
 #   * The HEC endpoint is loopback. Splunk and the collector share this host and
 #     the exporter must not go out and back through the lab network.
-#   * A restart costs up to TimeoutStopSec. The fabric holds long-lived gRPC
-#     streams that do not drain on SIGTERM, so systemd waits and then kills the
-#     process. Expect a telemetry gap; that is not a failure.
+#   * The fabric holds long-lived gRPC streams that do not drain on SIGTERM, so
+#     a restart waits out TimeoutStopSec before systemd kills the process.
+#     Expect a telemetry gap; that is not a failure.
 # ============================================================================
 ---
 
@@ -31,54 +25,27 @@
       splunk_hec_token is not set. Run stage 02 (02_splunk_index_hec.yml) first,
       or pass -e splunk_hec_token=<token>.
 
-# Probed here rather than reused from splunk_preflight so this stage can run
-# standalone.
-- name: Look for an existing collector unit
-  become: true
-  ansible.builtin.command: "systemctl cat {{ otel_service_name }}.service"
-  changed_when: false
-  failed_when: false
-  register: _unit_probe
+- name: Confirm the collector package is installed
+  ansible.builtin.stat:
+    path: "{{ otel_binary }}"
+  register: _binary
 
-- name: Decide how this host will run the collector
-  ansible.builtin.set_fact:
-    _otel_own_unit: "{{ _unit_probe.rc != 0 }}"
-    otel_binary_in_use: "{{ otel_custom_binary if (otel_use_custom_binary | bool) else otel_stock_binary }}"
-
-- name: Report the deployment shape
-  ansible.builtin.debug:
-    msg: >-
-      {{ 'No ' ~ otel_service_name ~ '.service on this host - installing one.'
-         if _otel_own_unit
-         else otel_service_name ~ '.service exists - installing an ExecStart drop-in.' }}
-
-- name: Fail when the stock collector was requested but none is installed
+- name: Fail when the collector is missing
   ansible.builtin.assert:
-    that: not (_otel_own_unit and not (otel_use_custom_binary | bool))
+    that: _binary.stat.exists
     fail_msg: >-
-      otel_use_custom_binary is false, but this host has no collector package to
-      fall back to - {{ otel_stock_binary }} comes from the Splunk OpenTelemetry
-      distro, which is not installed. Build otelcol-yangfix and pass
-      -e otel_staged_binary=<path> instead.
+      {{ otel_binary }} does not exist. Run stage 03
+      (03_install_collector.yml) first.
 
-- name: Create the collector service account
+- name: Read the packaged unit's service account
   become: true
-  when: _otel_own_unit
-  ansible.builtin.user:
-    name: "{{ otel_service_user }}"
-    system: true
-    shell: /usr/sbin/nologin
-    home: "{{ otel_config_dir }}"
-    create_home: false
+  ansible.builtin.command: "systemctl show -p User --value {{ otel_service_name }}.service"
+  changed_when: false
+  register: _unit_user
 
-- name: Create the collector config directory
-  become: true
-  ansible.builtin.file:
-    path: "{{ otel_config_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
+- name: Resolve the account the collector runs as
+  ansible.builtin.set_fact:
+    _otel_run_as: "{{ _unit_user.stdout | trim | default(otel_package_name, true) or otel_package_name }}"
 
 # 0640 root:<service group> - the file carries the HEC token, and the collector
 # reads it as its own unprivileged user.
@@ -89,75 +56,19 @@
     src: "{{ otel_src_dir }}/agent_config.yaml.j2"
     dest: "{{ otel_config_path }}"
     owner: root
-    group: "{{ otel_service_user if _otel_own_unit else 'root' }}"
+    group: "{{ _otel_run_as }}"
     mode: "0640"
+  register: _config
 
-- name: Install our own collector unit
-  become: true
-  when: _otel_own_unit
-  ansible.builtin.template:
-    src: otel-collector.service.j2
-    dest: "/etc/systemd/system/{{ otel_service_name }}.service"
-    owner: root
-    group: root
-    mode: "0644"
-
-- name: Override the packaged collector unit
-  become: true
-  when: not _otel_own_unit
-  block:
-    - name: Create the drop-in directory
-      ansible.builtin.file:
-        path: "/etc/systemd/system/{{ otel_service_name }}.service.d"
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    # Blank ExecStart first: systemd appends rather than replaces otherwise.
-    # SPLUNK_CONFIG comes from the unit's EnvironmentFile; the vanilla collector
-    # does not read it on its own, so it is passed explicitly.
-    - name: Write the drop-in
-      when: otel_use_custom_binary | bool
-      ansible.builtin.copy:
-        content: |
-          [Service]
-          ExecStart=
-          ExecStart={{ otel_binary_in_use }} --config=${SPLUNK_CONFIG}
-        dest: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
-        owner: root
-        group: root
-        mode: "0644"
-
-    - name: Remove the drop-in when running the stock collector
-      when: not (otel_use_custom_binary | bool)
-      ansible.builtin.file:
-        path: "/etc/systemd/system/{{ otel_service_name }}.service.d/override.conf"
-        state: absent
-
-    - name: Point the packaged unit at the rendered config
-      ansible.builtin.lineinfile:
-        path: "{{ otel_config_dir }}/{{ otel_service_name }}.conf"
-        regexp: '^SPLUNK_CONFIG='
-        line: "SPLUNK_CONFIG={{ otel_config_path }}"
-        create: true
-        owner: root
-        group: root
-        mode: "0644"
-
-- name: Reload systemd
-  become: true
-  ansible.builtin.systemd:
-    daemon_reload: true
-
-# Up to TimeoutStopSec: the collector does not drain gRPC streams on SIGTERM, so
-# systemd waits before the new process starts listening.
+# The packaged unit already points at this path through its EnvironmentFile, so
+# a reload is only needed if something else edited the unit.
 - name: Restart the collector
   become: true
   ansible.builtin.systemd:
     name: "{{ otel_service_name }}"
     state: restarted
     enabled: true
+    daemon_reload: true
 
 - name: Wait for the MDT receiver port to open
   ansible.builtin.wait_for:
@@ -165,22 +76,18 @@
     port: "{{ otel_receiver_port }}"
     timeout: 180
 
-- name: Confirm the service is running the intended binary
+- name: Confirm the service is active
   become: true
-  ansible.builtin.command: "systemctl show -p ExecStart {{ otel_service_name }}.service"
+  ansible.builtin.command: "systemctl is-active {{ otel_service_name }}"
   changed_when: false
-  register: _exec_start
-
-- name: Verify the ExecStart matches the requested binary
-  ansible.builtin.assert:
-    that: otel_binary_in_use in _exec_start.stdout
-    fail_msg: "Unexpected ExecStart after restart: {{ _exec_start.stdout }}"
+  register: _active
+  failed_when: _active.stdout | trim != 'active'
 
 - name: Collector deployment summary
   ansible.builtin.debug:
     msg:
-      - "unit      : /etc/systemd/system/{{ otel_service_name }}.service{{ ' (installed by this role)' if _otel_own_unit else '.d/override.conf (drop-in)' }}"
+      - "unit      : {{ otel_service_name }}.service (running as {{ _otel_run_as }})"
       - "config    : {{ otel_config_path }}"
-      - "binary    : {{ otel_binary_in_use }}"
+      - "binary    : {{ otel_binary }}"
       - "listening : {{ ansible_host }}:{{ otel_receiver_port }}"
       - "exporting : {{ splunk_hec_url }} -> index={{ splunk_assurance_index }}"

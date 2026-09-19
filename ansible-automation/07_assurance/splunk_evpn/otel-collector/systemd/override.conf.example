@@ -1,3 +1,0 @@
-[Service]
-ExecStart=
-ExecStart=/usr/local/bin/otelcol-yangfix --config=${SPLUNK_CONFIG}

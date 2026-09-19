@@ -1,0 +1,105 @@
+# ============================================================================
+# otel_collector_install / tasks/main.yml  —  Assurance stage 03
+# ============================================================================
+# Installs upstream opentelemetry-collector-contrib from its official release
+# package. No compiler and no toolchain: the package is a static Go binary plus
+# a systemd unit, which is why it installs cleanly on a host whose apt or dnf
+# metadata is in a bad state.
+#
+# The version floor is not cosmetic. The yang_grpc receiver only began emitting
+# numeric YANG list keys (vni, evni, vlan-id) as dimensions in 0.161.0; before
+# that it gated key extraction on the protobuf value being a string, so every
+# per-VNI series silently collapsed into one. See
+# otel-collector/yanggrpcreceiver-numeric-key-issue.md.
+#
+# The package is fetched and installed directly rather than through a repo, so
+# nothing here depends on the host's package index being usable.
+# ============================================================================
+---
+
+- name: Determine the package flavour for this host
+  ansible.builtin.set_fact:
+    _otel_pkg_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
+    _otel_pkg_ext: "{{ 'rpm' if ansible_os_family == 'RedHat' else 'deb' }}"
+
+- name: Fail on an unsupported OS family
+  ansible.builtin.assert:
+    that: ansible_os_family in ['RedHat', 'Debian']
+    fail_msg: >-
+      Unsupported OS family '{{ ansible_os_family }}'. The collector release
+      packages are .deb and .rpm only; install otelcol-contrib
+      {{ otel_package_version }} by hand and re-run stage 04.
+
+- name: Check the installed collector version
+  ansible.builtin.command: "{{ otel_binary }} --version"
+  changed_when: false
+  failed_when: false
+  register: _installed
+
+- name: Decide whether the package needs installing
+  ansible.builtin.set_fact:
+    _otel_install_needed: "{{ _installed.rc != 0 or otel_package_version not in (_installed.stdout | default('')) }}"
+
+- name: Report the collector package state
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Installing ' ~ otel_package_name ~ ' ' ~ otel_package_version
+         if _otel_install_needed
+         else otel_package_name ~ ' ' ~ otel_package_version ~ ' already installed.' }}
+
+- name: Install the collector package
+  when: _otel_install_needed
+  block:
+    - name: Download the release package
+      become: true
+      ansible.builtin.get_url:
+        url: >-
+          {{ otel_package_base_url }}/v{{ otel_package_version }}/{{ otel_package_name }}_{{ otel_package_version }}_linux_{{ _otel_pkg_arch }}.{{ _otel_pkg_ext }}
+        dest: "/tmp/{{ otel_package_name }}_{{ otel_package_version }}_linux_{{ _otel_pkg_arch }}.{{ _otel_pkg_ext }}"
+        mode: "0644"
+      register: _pkg
+
+    # Installed from the local file, not a repo: the lab images carry broken
+    # package indexes and a repo refresh would fail before reaching this.
+    - name: Install the package on a Debian host
+      become: true
+      when: _otel_pkg_ext == 'deb'
+      ansible.builtin.apt:
+        deb: "{{ _pkg.dest }}"
+
+    - name: Install the package on a RedHat host
+      become: true
+      when: _otel_pkg_ext == 'rpm'
+      ansible.builtin.dnf:
+        name: "{{ _pkg.dest }}"
+        state: present
+        disable_gpg_check: true
+
+    - name: Remove the downloaded package
+      become: true
+      ansible.builtin.file:
+        path: "{{ _pkg.dest }}"
+        state: absent
+
+- name: List the components compiled into the collector
+  ansible.builtin.command: "{{ otel_binary }} components"
+  changed_when: false
+  register: _components
+
+# A contrib build without yang_grpc would start happily and then give the fabric
+# nothing to dial into - a failure that otherwise only shows up much later as
+# zero sessions on the receiver port.
+- name: Confirm the yang_grpc receiver is present
+  ansible.builtin.assert:
+    that: "'yang_grpc' in _components.stdout"
+    fail_msg: >-
+      {{ otel_binary }} has no yang_grpc receiver. Confirm the package really is
+      the contrib distribution - the core distribution does not carry it.
+
+- name: Collector package summary
+  ansible.builtin.debug:
+    msg:
+      - "package  : {{ otel_package_name }} {{ otel_package_version }} ({{ _otel_pkg_ext }}, {{ _otel_pkg_arch }})"
+      - "binary   : {{ otel_binary }}"
+      - "unit     : {{ otel_service_name }}.service"
+      - "yang_grpc: present"

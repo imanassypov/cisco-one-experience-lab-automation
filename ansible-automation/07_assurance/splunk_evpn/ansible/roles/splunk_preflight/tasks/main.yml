@@ -7,16 +7,17 @@
 # deploy.
 #
 # Checks:
-#   1. sudo works
-#   2. Splunk is installed at splunk_home and splunkd is running
-#   3. The Splunk admin credentials in the vault actually authenticate
-#   4. Whether the splunk-otel-collector systemd unit already exists
-#   5. Whether a Go toolchain + ocb are available (decides otel_build_mode)
-#   6. Nothing else is already listening on the MDT receiver port
+#   1. The vault carries both the SSH and the Splunk admin credentials
+#   2. sudo works
+#   3. Splunk is installed at splunk_home and splunkd is running
+#   4. The Splunk admin credentials actually authenticate
+#   5. Whether the collector package is already installed, and at what version
+#   6. Whether the collector release is downloadable at all
+#   7. Nothing else is already listening on the MDT receiver port
 #
 # Produced facts (consumed by later stages):
-#   _splunk_present, _splunk_version, _otel_unit_present, _otel_binary_present,
-#   _go_present, _ocb_present, _receiver_port_free
+#   _splunk_present, _splunk_version, _otel_present, _otel_version,
+#   _receiver_port_free
 # ============================================================================
 ---
 
@@ -89,26 +90,22 @@
   register: _splunk_auth
   failed_when: _splunk_auth.rc != 0
 
-- name: Look for the OpenTelemetry collector unit
-  become: true
-  ansible.builtin.command: "systemctl cat {{ otel_service_name }}.service"
+- name: Look for an installed collector
+  ansible.builtin.command: "{{ otel_binary }} --version"
   changed_when: false
   failed_when: false
-  register: _otel_unit
+  register: _otel_installed
 
-- name: Look for an already-built custom collector binary
-  ansible.builtin.stat:
-    path: "{{ otel_custom_binary }}"
-  register: _otel_binary_stat
-
-- name: Look for a Go toolchain and the collector builder
-  ansible.builtin.command: "command -v {{ item }}"
+- name: Confirm the collector release can be reached
+  delegate_to: localhost
+  become: false
+  ansible.builtin.uri:
+    url: "{{ otel_package_base_url }}/v{{ otel_package_version }}/"
+    method: HEAD
+    status_code: [200, 302, 404]
   changed_when: false
   failed_when: false
-  register: _toolchain
-  loop:
-    - go
-    - ocb
+  register: _release_reachable
 
 - name: Check whether the MDT receiver port is already in use
   become: true
@@ -121,10 +118,8 @@
   ansible.builtin.set_fact:
     _splunk_present: true
     _splunk_version: "{{ _splunk_version_raw.stdout | trim }}"
-    _otel_unit_present: "{{ _otel_unit.rc == 0 }}"
-    _otel_binary_present: "{{ _otel_binary_stat.stat.exists }}"
-    _go_present: "{{ (_toolchain.results | selectattr('item', 'equalto', 'go') | first).rc == 0 }}"
-    _ocb_present: "{{ (_toolchain.results | selectattr('item', 'equalto', 'ocb') | first).rc == 0 }}"
+    _otel_present: "{{ _otel_installed.rc == 0 }}"
+    _otel_version: "{{ _otel_installed.stdout | default('') | trim }}"
     _receiver_port_free: "{{ _port_probe.stdout | trim | length == 0 }}"
 
 - name: Preflight summary
@@ -133,22 +128,19 @@
       - "Splunk           : {{ _splunk_version }}"
       - "splunkd          : running"
       - "admin auth       : ok"
-      - "otel unit        : {{ 'present' if _otel_unit_present else 'MISSING - stage 04 will install one' }}"
-      - "otelcol-yangfix  : {{ 'already built' if _otel_binary_present else 'not built yet' }}"
-      - "go / ocb         : {{ 'both present' if (_go_present and _ocb_present) else 'not available - stage 03 needs otel_build_mode=staged' }}"
+      - "collector        : {{ _otel_version if _otel_present else 'not installed - stage 03 will install ' ~ otel_package_name ~ ' ' ~ otel_package_version }}"
+      - "release download : {{ 'reachable' if (_release_reachable.status | default(0)) in [200, 302] else 'NOT reachable from the control node' }}"
       - "port {{ otel_receiver_port }}      : {{ 'free' if _receiver_port_free else 'ALREADY IN USE' }}"
 
-# A build cannot happen without the toolchain, and a staged build cannot happen
-# without someone supplying the binary. Say so now rather than in stage 03.
-- name: Fail when neither a built binary nor a way to build one is available
-  ansible.builtin.assert:
-    that:
-      - _otel_binary_present or (_go_present and _ocb_present) or (otel_staged_binary | length > 0)
-    fail_msg: >-
-      otel_use_custom_binary is true but {{ otel_custom_binary }} does not exist,
-      this host has no Go/ocb toolchain, and otel_staged_binary is unset.
-      Build otelcol-yangfix elsewhere (see otel-collector/README.md) and pass
-      -e otel_staged_binary=/path/to/otelcol-yangfix, or set
-      -e otel_use_custom_binary=false to run the stock collector without
-      numeric YANG list keys.
-  when: otel_use_custom_binary | bool
+# Downloaded on the Splunk host, but an unreachable release URL from the control
+# node is a reliable signal that the lab has no path to GitHub at all.
+- name: Warn when the collector release cannot be reached
+  when:
+    - not _otel_present
+    - (_release_reachable.status | default(0)) not in [200, 302]
+  ansible.builtin.debug:
+    msg: >-
+      Could not reach {{ otel_package_base_url }} from the control node. If the
+      Splunk host also has no route to GitHub, download
+      {{ otel_package_name }}_{{ otel_package_version }}_linux_amd64.deb by hand
+      and install it before running stage 04.

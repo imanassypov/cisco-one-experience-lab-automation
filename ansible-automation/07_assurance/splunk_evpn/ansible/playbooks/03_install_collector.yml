@@ -1,0 +1,28 @@
+---
+# =============================================================================
+# 03_install_collector.yml  —  Assurance stage 03
+# =============================================================================
+# Installs upstream opentelemetry-collector-contrib from its official release
+# package. No compiler, no Go toolchain, no custom build.
+#
+# The version floor matters. yang_grpc only began emitting numeric YANG list
+# keys (vni, evni, vlan-id) as dimensions in 0.161.0; earlier releases gated key
+# extraction on the protobuf value being a string, which silently collapsed
+# every per-VNI series into one. Pinning lower produces dashboards that render
+# correctly and show nothing. See
+# otel-collector/yanggrpcreceiver-numeric-key-issue.md.
+#
+# The package is downloaded and installed directly rather than through a repo,
+# so a host with a broken package index still works.
+#
+# gather_facts is true: the package flavour comes from ansible_os_family and
+# ansible_architecture.
+#
+# Run: ansible-playbook playbooks/03_install_collector.yml
+#      ansible-playbook playbooks/03_install_collector.yml -e otel_package_version=0.162.0
+# =============================================================================
+- name: Install the OpenTelemetry collector package
+  hosts: splunk_servers
+  gather_facts: true
+  roles:
+    - role: otel_collector_install

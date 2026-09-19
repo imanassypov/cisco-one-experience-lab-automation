@@ -8,8 +8,8 @@
 # Order and why:
 #   01 preflight          read-only    prove the host before changing it
 #   02 index + HEC        additive     the collector needs the token
-#   03 build collector    additive     no-op if the binary is already there
-#   04 deploy collector   DISRUPTIVE   ~90 s telemetry gap on restart
+#   03 install collector  additive     upstream contrib package, no build
+#   04 deploy collector   DISRUPTIVE   telemetry gap while the service restarts
 #   05 render lookups     local only   CSVs must exist before the app is packaged
 #   06 deploy app         DISRUPTIVE   splunkd restart
 #   07 fabric telemetry   read-only    confirms the campus side targets us
@@ -20,13 +20,11 @@
 # settings.json points the fabric here, and prints what to run if it does not.
 #
 # Prerequisites:
-#   - Lab Topology/lab_access.yml holds 'Splunk' and 'splunk_server' entries
+#   - Lab Topology/lab_access.yml holds 'Splunk Enterprise' and 'splunk_server'
 #   - The fabric is already built by 01_campus/evpn
-#   - otelcol-yangfix is staged, or the Splunk host has Go 1.25+ and ocb
+#   - The Splunk host can reach github.com to download the collector package
 #
 # Run: ansible-playbook playbooks/00_assurance_deploy.yml
-#      ansible-playbook playbooks/00_assurance_deploy.yml \
-#        -e otel_staged_binary=/opt/build/otelcol-yangfix
 # =============================================================================
 - name: Assurance stage 01 - preflight
   ansible.builtin.import_playbook: 01_preflight.yml
@@ -34,8 +32,8 @@
 - name: Assurance stage 02 - index and HEC token
   ansible.builtin.import_playbook: 02_splunk_index_hec.yml
 
-- name: Assurance stage 03 - build the collector
-  ansible.builtin.import_playbook: 03_build_collector.yml
+- name: Assurance stage 03 - install the collector
+  ansible.builtin.import_playbook: 03_install_collector.yml
 
 - name: Assurance stage 04 - deploy the collector
   ansible.builtin.import_playbook: 04_deploy_collector.yml

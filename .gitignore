@@ -13,13 +13,11 @@
 !**/group_vars/all/lab.yml.example
 
 # Splunk assurance build output. The .spl is rebuilt from splunk-app/ on every
-# deploy, and the rendered collector config carries a live HEC token. The patched
-# receiver source bundle is the one tarball that must stay tracked - the custom
-# otelcol-yangfix binary cannot be rebuilt without it.
+# deploy. The collector config is only ever rendered onto the Splunk host, where
+# it carries a live HEC token, so a copy here would be a leak.
 **/packaging/dist/
 *.spl
 **/otel-collector/agent_config.yaml
-!**/otel-collector/receiver_yang_*.tar.gz
 
 # Python
 __pycache__/

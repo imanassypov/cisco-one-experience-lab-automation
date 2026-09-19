@@ -2,12 +2,13 @@
 # =============================================================================
 # 04_deploy_collector.yml  —  Assurance stage 04
 # =============================================================================
-# Renders /etc/otel/collector/agent_config.yaml, points systemd at the custom
-# binary through a reversible drop-in, and restarts the service.
+# Renders the collector config over the one the package ships and restarts the
+# service. The package owns the unit, binary and service account, so there is
+# nothing to override - only the config to replace.
 #
-# Potentially disruptive: the restart drops telemetry for roughly 90 seconds.
-# The collector does not drain its gRPC streams on SIGTERM, so systemd waits out
-# TimeoutStopSec and force-kills it before the new process starts listening.
+# Potentially disruptive: the fabric holds long-lived gRPC streams that do not
+# drain on SIGTERM, so systemd waits out TimeoutStopSec before the new process
+# starts listening. Expect a telemetry gap.
 #
 # Needs splunk_hec_token, so stage 02 runs first in the same play. Pass the
 # token explicitly to run this stage standalone:

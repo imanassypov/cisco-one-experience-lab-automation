@@ -11,7 +11,7 @@ Run the playbooks instead unless you have a reason not to. See the
 | --- | --- | --- |
 | 01 | `01_preflight.yml` | [Check the host](#1-check-the-host) |
 | 02 | `02_splunk_index_hec.yml` | [Create the index and HEC token](#2-create-the-index-and-hec-token) |
-| 03 | `03_build_collector.yml` | [Build otelcol-yangfix](#3-build-otelcol-yangfix) |
+| 03 | `03_install_collector.yml` | [Install the collector](#3-install-the-collector) |
 | 04 | `04_deploy_collector.yml` | [Configure and start the collector](#4-configure-and-start-the-collector) |
 | 05 | `05_render_lookups.yml` | [Populate the lookups](#5-populate-the-lookups) |
 | 06 | `06_deploy_splunk_app.yml` | [Install the app](#6-install-the-app) |
@@ -24,9 +24,8 @@ All commands run on the Splunk host (`198.18.5.109`) unless stated otherwise.
 
 ```bash
 /opt/splunk/bin/splunk status splunkd          # expect "splunkd is running"
-systemctl cat splunk-otel-collector.service    # does the unit exist?
+otelcol-contrib --version                      # is a collector already installed?
 ss -lntp | grep 57444                          # expect no output
-command -v go ocb                              # needed only for a local build
 ```
 
 ## 2. Create the index and HEC token
@@ -54,82 +53,59 @@ curl -sk -u <user>:<pass> \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["entry"][0]["content"]["datatype"])'
 ```
 
-## 3. Build otelcol-yangfix
+## 3. Install the collector
 
-The stock `yanggrpcreceiver` drops numeric YANG list keys (`vni`, `evni`, `vlan-id`), so
-every per-VNI panel comes back empty. Full analysis:
+Upstream `otelcol-contrib`, straight from its official release package. **Version 0.161.0
+is a floor, not a preference** — `yang_grpc` only began emitting numeric YANG list keys
+(`vni`, `evni`, `vlan-id`) as dimensions in that release, and anything older silently
+collapses every per-VNI series. Full analysis:
 [`otel-collector/yanggrpcreceiver-numeric-key-issue.md`](otel-collector/yanggrpcreceiver-numeric-key-issue.md).
 
-Needs **Go 1.25+** and **ocb v0.150.0**. The lab Splunk appliance usually has neither, so
-build on the script server or your laptop and copy the result over.
-
 ```bash
-mkdir -p /tmp/otelbuild/src && cd /tmp/otelbuild
-cp <repo>/ansible-automation/07_assurance/splunk_evpn/otel-collector/builder.yaml .
-tar -xzf <repo>/ansible-automation/07_assurance/splunk_evpn/otel-collector/receiver_yang_26_05_27.tar.gz -C ./src
-ocb --config builder.yaml
+VER=0.161.0
+curl -fLO "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${VER}/otelcol-contrib_${VER}_linux_amd64.deb"
+sudo apt-get install -y "./otelcol-contrib_${VER}_linux_amd64.deb"     # or: sudo rpm -Uvh <rpm>
 ```
 
-`builder.yaml` pins collector core v0.150.0 and replaces the upstream receiver module with
-`../src/receiver/yanggrpcreceiver`. That path ends up in `_build/go.mod` verbatim, so Go
-resolves it relative to `_build/` rather than to your working directory — keep
-`builder.yaml` and `src/` as siblings or the build cannot find the patched source.
+Installing from the local file rather than a repo is deliberate: the lab images carry
+broken package indexes and a repo refresh would fail first.
 
-Install it on the Splunk host:
+Confirm the receiver is actually in this build — the **core** distribution does not carry
+it, only **contrib**:
 
 ```bash
-sudo install -o root -g root -m 0755 ./_build/otelcol-yangfix /usr/local/bin/otelcol-yangfix
-# An ocb-built distribution has no --version flag. Listing components proves the
-# patched receiver is actually in the binary, which matters more anyway.
-/usr/local/bin/otelcol-yangfix components | grep yang_grpc
+otelcol-contrib --version
+otelcol-contrib components | grep yang_grpc
 ```
 
 ## 4. Configure and start the collector
 
 Render [`otel-collector/agent_config.yaml.j2`](otel-collector/agent_config.yaml.j2) by hand
-— substitute the HEC token from step 2 — and write it to `/etc/otel/collector/agent_config.yaml`
-with mode `0640`, owned by root. The file carries a live credential.
+— substitute the HEC token from step 2 — and write it over the config the package ships at
+`/etc/otelcol-contrib/config.yaml`, mode `0640`, group-owned by the packaged service
+account. The file carries a live credential.
 
 > **The HEC endpoint must be loopback.** Splunk and the collector share this host; the
 > exporter must not leave the box and come back.
 
-Point systemd at the custom binary. Blanking `ExecStart` first is required — systemd
-appends otherwise:
+The package owns the unit, binary, service account and EnvironmentFile, and that unit
+already points at this config path, so there is nothing to override:
 
 ```bash
-sudo mkdir -p /etc/systemd/system/splunk-otel-collector.service.d
-sudo tee /etc/systemd/system/splunk-otel-collector.service.d/override.conf >/dev/null <<'EOF'
-[Service]
-ExecStart=
-ExecStart=/usr/local/bin/otelcol-yangfix --config=${SPLUNK_CONFIG}
-EOF
-
-echo 'SPLUNK_CONFIG=/etc/otel/collector/agent_config.yaml' \
-  | sudo tee /etc/otel/collector/splunk-otel-collector.conf >/dev/null
-
-sudo systemctl daemon-reload
-sudo systemctl restart splunk-otel-collector.service
+sudo systemctl enable --now otelcol-contrib
+sudo systemctl restart otelcol-contrib
 ```
 
-> **Expect a ~90 second gap.** The collector does not drain its gRPC streams on `SIGTERM`,
-> so systemd waits out `TimeoutStopSec` and force-kills it before the new process listens.
+> **Expect a telemetry gap.** The fabric holds long-lived gRPC streams that do not drain on
+> `SIGTERM`, so systemd waits out `TimeoutStopSec` before the new process listens.
 
 Check it:
 
 ```bash
-systemctl show -p ExecStart splunk-otel-collector.service    # must name otelcol-yangfix
-sudo journalctl -u splunk-otel-collector --since '5 min ago' | grep 'Everything is ready'
+systemctl status otelcol-contrib
+sudo journalctl -u otelcol-contrib --since '5 min ago' | grep 'Everything is ready'
 ss -lntp | grep 57444
 ```
-
-### Rolling back to the stock collector
-
-```bash
-sudo rm /etc/systemd/system/splunk-otel-collector.service.d/override.conf
-sudo systemctl daemon-reload && sudo systemctl restart splunk-otel-collector.service
-```
-
-Numeric YANG keys will start dropping again.
 
 ## 5. Populate the lookups
 

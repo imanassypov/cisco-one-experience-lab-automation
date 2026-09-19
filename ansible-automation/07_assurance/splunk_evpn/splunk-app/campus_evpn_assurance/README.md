@@ -32,7 +32,7 @@ Collector pipeline into a Splunk **metrics** index.
 |---|---|
 | Splunk Enterprise / Cloud | **8.0+** (Dashboard Studio v2) |
 | Metrics index | `evpn_assurance` (type **metric**) — created by the admin; see [`SETUP_GUIDE.md`](../SETUP_GUIDE.md) |
-| Data source | OpenTelemetry Collector `otelcol-yangfix` → Splunk HEC → `index=evpn_assurance` |
+| Data source | OpenTelemetry Collector `otelcol-contrib` → Splunk HEC → `index=evpn_assurance` |
 | Search permissions | Splunk user must have search access to the **metrics** index (not all lab accounts do) |
 | JavaScript in dashboards | enabled (`ui-prefs.conf`) |
 
@@ -327,7 +327,7 @@ upgrade, and telemetry-pipeline procedures.
 |---|---|
 | [`../README.md`](../README.md) | Full pipeline architecture, CCIE-oriented telemetry primer, operator guide |
 | [`../SETUP_GUIDE.md`](../SETUP_GUIDE.md) | Install app + OTel collector, HEC, subscriptions |
-| [`../otel-collector/README.md`](../otel-collector/README.md) | `otelcol-yangfix`, numeric YANG keys, collector troubleshooting |
+| [`../otel-collector/README.md`](../otel-collector/README.md) | `otelcol-contrib`, the version floor, collector troubleshooting |
 | [`../model-config-snippets/telemetry-subscriptions.ios-xe.cfg`](../model-config-snippets/telemetry-subscriptions.ios-xe.cfg) | IOS-XE subscription IDs 40101–40121 |
 | [`../Model Maps/README.md`](../Model Maps/README.md) | CLI ⇄ Cisco YANG xpath reference (when available locally) |
 | [`../images/README.md`](../images/README.md) | Pipeline diagram assets |
