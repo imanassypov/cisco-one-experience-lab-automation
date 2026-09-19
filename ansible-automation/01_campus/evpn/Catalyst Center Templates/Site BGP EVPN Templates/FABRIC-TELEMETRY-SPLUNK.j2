@@ -41,27 +41,25 @@ telemetry ietf subscription {{ subscription['id'] }}
 !
 {% endfor %}
 {% endfor %}
-{# EVPN route statistics. Lives here rather than in FABRIC-NVE.j2 so that an     #}
-{# IOS-XE release without this CLI fails the LAST composite member instead of    #}
-{# the 5th: ABORT_TARGET_ON_ERROR would otherwise take MCAST, EVPN, OVERLAY,     #}
-{# NAC, CLIENT-PORTS and this template down with it.                            #}
-{# Emitted AFTER the subscriptions on purpose: if the CLI is rejected, all 22    #}
-{# subscriptions above it have already been applied.                            #}
-{# Leaf-only - the global l2vpn evpn section exists only on CLIENT nodes, so the #}
-{# broader TELEMETRY_ROLE_GUARD above cannot be reused. CatC Jinja has no        #}
-{# `not ... in`, hence the inverted BORDER/SPINE test.                           #}
-{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
-{# Skip: global l2vpn evpn is leaf-only. #}
-{% else %}
-! -----------------------------------------------------------------------------
-! EVPN route statistics - feeds sub 40113 (/evpn-oper-data/evpn-stats)
-! -----------------------------------------------------------------------------
-! @start-ignore-compliance
-l2vpn evpn
- telemetry enable statistics
-!
-! @end-ignore-compliance
-{% endif %}
+{# EVPN route statistics were emitted here. REMOVED 2026-09-19.                   #}
+{#                                                                                #}
+{# Two separate faults, both confirmed on the box:                                #}
+{#  1. The template emitted `telemetry enable statistics` as ONE line. Cisco's    #}
+{#     EVPN Route Statistics doc (see 07_assurance Model Maps) specifies two      #}
+{#     nested commands: `telemetry enable` then `statistics`.                     #}
+{#  2. Neither form works on this platform. On C9300 / IOS-XE 26.01.02 the        #}
+{#     parser rejects the keyword outright:                                       #}
+{#       Site_105-Leaf1(config-evpn)#telemetry ?                                  #}
+{#       % Unrecognized command                                                   #}
+{#     and `show running-config all | include telemetry enable` returns nothing.  #}
+{#     Also invalid on 17.12.01, so this is a platform gap, not a release gate.   #}
+{#                                                                                #}
+{# Moving the line out of FABRIC-NVE.j2 only relocated the failure - CatC still   #}
+{# rejected it here with NCTP10214. Subscription 40113                            #}
+{# (/evpn-oper-data/evpn-stats) is left in place but will report no counters on   #}
+{# C9300: the feature that populates it cannot be enabled here. Re-test if the    #}
+{# fabric ever moves to a platform that accepts `telemetry enable` / `statistics` #}
+{# under l2vpn evpn.                                                              #}
 ! =============================================================================
 ! Verification commands
 ! =============================================================================

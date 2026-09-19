@@ -31,6 +31,27 @@ l2vpn evpn
  statistics
 ```
 
+Note these are **two nested commands**, not a single `telemetry enable statistics` line.
+
+> **Not available on the Site-105 fabric (verified 2026-09-19).** The C9300 running
+> IOS-XE 26.01.02 does not implement this keyword at all:
+>
+> ```text
+> Site_105-Leaf1(config-evpn)#telemetry ?
+> % Unrecognized command
+> ```
+>
+> `show running-config all | include telemetry enable` also returns nothing, and the
+> command is equally invalid on 17.12.01 — so this is a platform gap, not a release
+> gate. Catalyst Center rejected it with `NCTP10214 … Invalid CLI`, which aborted the
+> rest of the composite. The enable block was therefore removed from
+> `FABRIC-TELEMETRY-SPLUNK.j2`.
+>
+> Consequence: **subscription 40113 (`/evpn-oper-data/evpn-stats`) will report no
+> counters on this fabric**, so the "EVPN Route Updates" dashboard panels stay empty.
+> The subscription is left configured so it starts working automatically if the fabric
+> moves to a platform that supports the feature.
+
 The reference topology adds two VLAN-based EVIs (1 and 2), an Ethernet Segment, and a Port-channel
 access port, but the only config that gates these counters is `telemetry enable` + `statistics`.
 
