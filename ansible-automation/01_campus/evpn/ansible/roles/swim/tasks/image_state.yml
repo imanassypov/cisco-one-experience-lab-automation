@@ -43,31 +43,28 @@
   ansible.builtin.set_fact:
     swim_image_up_to_date: >-
       {{ swim_image_up_to_date | default({})
-         | combine({item.image_file: (_tagged | from_json | length > 0
-                                      and _stale | from_json | length == 0)}) }}
+         | combine({item.image_file: (_verdict | trim | bool)}) }}
   loop: "{{ _swim_entries }}"
   loop_control:
     label: "{{ item.image_file }}"
   vars:
-    _devices: "{{ _swim_device_images.json.response | default([]) }}"
-    # goldenImages is null, not [], on untagged devices — `or []` covers both.
-    _tagged: >-
-      {%- set out = [] -%}
+    _devices: "{{ _swim_device_images.json.response | default([], true) }}"
+    # goldenImages is ABSENT, not null, on untagged devices, so .get() is
+    # required: d.goldenImages raises inside `or []` and that failure silently
+    # leaves this whole fact undefined rather than erroring here.
+    _verdict: >-
+      {%- set tagged = [] -%}
+      {%- set stale = [] -%}
       {%- for d in _devices -%}
-      {%- if item.image_file in ((d.goldenImages or []) | map(attribute='name') | list) -%}
-      {%- set _ = out.append(d.managementAddress) -%}
+      {%- set names = (d.get('goldenImages') or []) | selectattr('name', 'defined') | map(attribute='name') | list -%}
+      {%- if item.image_file in names -%}
+      {%- set _ = tagged.append(d.get('managementAddress')) -%}
+      {%- if d.get('networkDeviceUpdateStatus') != 'DEVICE_UP_TO_DATE' -%}
+      {%- set _ = stale.append(d.get('managementAddress')) -%}
+      {%- endif -%}
       {%- endif -%}
       {%- endfor -%}
-      {{ out | to_json }}
-    _stale: >-
-      {%- set out = [] -%}
-      {%- for d in _devices -%}
-      {%- if item.image_file in ((d.goldenImages or []) | map(attribute='name') | list)
-             and d.networkDeviceUpdateStatus != 'DEVICE_UP_TO_DATE' -%}
-      {%- set _ = out.append(d.managementAddress) -%}
-      {%- endif -%}
-      {%- endfor -%}
-      {{ out | to_json }}
+      {{ (tagged | length > 0) and (stale | length == 0) }}
 
 - name: "--DEBUG-- Per-image up-to-date verdict"
   ansible.builtin.debug:
