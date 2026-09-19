@@ -19,6 +19,14 @@
 *.spl
 **/otel-collector/agent_config.yaml
 
+# IOS-XE software images staged for SWIM (stage 11). Multi-GB binaries that must
+# never reach git — GitHub hard-rejects anything over 100 MB. The bootstrap
+# copies whatever is in here onto the script server's HTTP root, from where
+# Catalyst Center pulls it. Drop the .bin files in by hand.
+iosxe_images/*
+!iosxe_images/.gitkeep
+!iosxe_images/README.md
+
 # Python
 __pycache__/
 *.py[cod]

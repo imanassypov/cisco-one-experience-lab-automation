@@ -50,12 +50,60 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 - Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
 - OS packages, kept deliberately minimal: `git`, `pip`, and the versioned `pythonX.Y-venv`. No compiler and no `-dev` headers — every pinned wheel is prebuilt for this interpreter, and on the dCloud image `libffi-dev` / `libssl-dev` cannot install without dragging `libc6` forward
 - The user virtualenv at `~/venv` (Ansible is **not** installed with apt/yum)
-- Pinned `ansible-core`, `paramiko`, `netaddr`, plus `genie` and `pyats` — stage 10 parses every CLI response with Genie, which adds roughly 700 MB — and `rich`, which renders the stage 10 markdown report in the terminal
+- Pinned `ansible-core`, `paramiko`, `netaddr`, plus `genie` and `pyats` — stage 12 parses every CLI response with Genie, which adds roughly 700 MB — and `rich`, which renders the stage 12 markdown report in the terminal
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali's default shell is zsh) and symlinked into `~/bin`
 - Pinned Cisco Galaxy collections — see [`files/requirements.yml`](roles/script_server_bootstrap/files/requirements.yml) for the authoritative versions
 - On Kali, disables the HashiCorp apt source if it targets `kali-rolling` (that repo has no Release file and breaks `apt update`)
 - Seeds `inventory/group_vars/all/lab.yml` from the tracked example, and never overwrites it afterwards
+- An nginx site on port **8080** serving IOS-XE software images to Catalyst Center — see below
+
+## The IOS-XE image server
+
+Campus stage 11 (SWIM) upgrades the fabric switches. Catalyst Center has to pull
+the `.bin` from somewhere, and in this pod that somewhere is the script server.
+
+> **Why not import from cisco.com.** Catalyst Center refuses every CCO image
+> here with `NCSW10375: … is not the latest or suggested image from cisco`,
+> including builds its own catalogue flags `ciscoLatest` or
+> `recommended=CISCO`, and `software.cisco.com` answers **HTTP 403** from the
+> script server. Serving the file locally sidesteps the CCO catalogue entirely,
+> which also means you are not restricted to the handful of builds Cisco
+> currently suggests.
+
+The images are **not in git** — they are hundreds of MB each and GitHub rejects
+anything over 100 MB. Stage them by hand, exactly like `.vault` and `lab.yml`:
+
+```bash
+# From your laptop, into the checkout on the script server
+scp iosxe_images/*.bin cisco@198.18.134.12:cisco-one-experience-lab-automation/iosxe_images/
+```
+
+Then bootstrap (or re-bootstrap). Every `.bin` found in `iosxe_images/` is
+copied to the web root and proved downloadable before the play finishes:
+
+```bash
+ansible-playbook playbooks/01_bootstrap_script_server.yml
+curl -I http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin   # expect 200
+```
+
+Browse `http://198.18.134.12:8080/` for a directory listing of what Catalyst
+Center can see.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `script_server_image_http_enabled` | `true` | Set false to skip the image server entirely |
+| `script_server_image_http_port` | `8080` | Own port, so nginx's default site is left alone |
+| `script_server_image_root` | `/var/www/iosxe-images` | Where the published images live |
+| `script_server_image_source_dir` | `<repo>/iosxe_images` | Where you stage the `.bin` files |
+
+The matching consumer is `swim.import_source: remote` plus `swim.image_base_url`
+in `01_campus/evpn/Settings/settings.json`. Point that at this server and stage
+11 will import from it.
+
+nginx is installed **only if missing** — it already ships on the dCloud Kali
+image, and a needless apt transaction on this box risks the `libc6` breakage
+described below.
 
 > **Why so little is installed from apt.** The dCloud image tracks `kali-rolling` and `kali-last-snapshot` at the same time, so apt offers base packages far newer than what is installed — `python3` 3.14 against 3.13, `libc6` 2.43 against 2.40. Asking apt for an already-installed package is an upgrade request, and upgrading `python3` breaks the ~120 installed `python3-*` packages that require an older one. So the bootstrap names as little as possible and never runs `apt --fix-broken install`, which would attempt exactly that system-wide upgrade.
 

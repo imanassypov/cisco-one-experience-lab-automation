@@ -1,0 +1,156 @@
+---
+# =============================================================================
+# script_server_bootstrap / tasks/http_image_server.yml
+# =============================================================================
+# Serve IOS-XE software images over HTTP so Catalyst Center can pull them for
+# SWIM (campus stage 11).
+#
+# Why this exists: CCO import does not work in this pod. Catalyst Center rejects
+# every image with NCSW10375 "not the latest or suggested image from cisco",
+# including builds its own catalogue flags as ciscoLatest or recommended=CISCO,
+# and software.cisco.com answers HTTP 403 from here. Serving the .bin locally
+# sidesteps the CCO catalogue entirely, so any image may be used rather than
+# only the handful Cisco currently suggests.
+#
+# The .bin files are NOT in git - they are hundreds of MB and GitHub rejects
+# anything over 100 MB. Stage them by hand into iosxe_images/ in the checkout,
+# the same way .vault and lab.yml are provided. This task copies whatever is
+# there onto the web root; an empty folder is not an error, it just means SWIM
+# has nothing to pull yet.
+#
+# Pre:  images staged in {{ script_server_image_source_dir }}
+# Post: nginx serving them at
+#       http://<script server>:{{ script_server_image_http_port }}/<file>.bin
+# =============================================================================
+
+# nginx ships on the dCloud Kali image. Installing it unconditionally would be
+# an apt transaction on a box whose libc6 state already blocks new packages
+# (the same breakage that made sshpass uninstallable), so only touch apt when
+# the binary is genuinely absent.
+- name: Check whether nginx is already installed
+  ansible.builtin.stat:
+    path: /usr/sbin/nginx
+  register: script_server_nginx_bin
+
+- name: Install nginx only when missing
+  ansible.builtin.apt:
+    name: nginx-light
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+    NEEDRESTART_MODE: a
+    NEEDRESTART_SUSPEND: "1"
+  when:
+    - ansible_os_family == "Debian"
+    - not script_server_nginx_bin.stat.exists
+
+- name: Install nginx only when missing (RedHat)
+  ansible.builtin.package:
+    name: nginx
+    state: present
+  become: true
+  when:
+    - ansible_os_family == "RedHat"
+    - not script_server_nginx_bin.stat.exists
+
+- name: Create the image web root
+  ansible.builtin.file:
+    path: "{{ script_server_image_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# A dedicated server block on its own port, rather than editing the default
+# site, so re-running cannot clobber anything else the box serves.
+- name: Install the image server nginx site
+  ansible.builtin.template:
+    src: iosxe-images.nginx.j2
+    dest: /etc/nginx/sites-available/iosxe-images
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: script_server_image_site
+  when: ansible_os_family == "Debian"
+
+- name: Enable the image server site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/iosxe-images
+    dest: /etc/nginx/sites-enabled/iosxe-images
+    state: link
+  become: true
+  register: script_server_image_link
+  when: ansible_os_family == "Debian"
+
+- name: Validate the nginx configuration before restarting
+  ansible.builtin.command: nginx -t
+  become: true
+  changed_when: false
+  register: script_server_nginx_test
+  failed_when: script_server_nginx_test.rc != 0
+
+- name: Enable and (re)start nginx
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: "{{ 'restarted' if (script_server_image_site.changed | default(false) or script_server_image_link.changed | default(false)) else 'started' }}"
+  become: true
+
+# ── Preposition the images ───────────────────────────────────────────────────
+- name: Look for staged IOS-XE images in the checkout
+  ansible.builtin.find:
+    paths: "{{ script_server_image_source_dir }}"
+    patterns: "*.bin"
+    file_type: file
+  register: script_server_staged_images
+
+- name: Report what was found
+  ansible.builtin.debug:
+    msg: >-
+      {{ (script_server_staged_images.files | length) }} image(s) staged in
+      {{ script_server_image_source_dir }}
+      {{ '- nothing to publish; drop .bin files there and re-run'
+         if script_server_staged_images.files | length == 0 else '' }}
+
+# remote_src because the bootstrap runs ON the script server: the files are
+# already on this host, in the checkout. Copying a multi-hundred-MB file through
+# the controller would be pointless and slow.
+- name: Publish images to the web root
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ script_server_image_root }}/{{ item.path | basename }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  loop: "{{ script_server_staged_images.files }}"
+  loop_control:
+    label: "{{ item.path | basename }} ({{ (item.size / 1024 / 1024) | round | int }} MB)"
+
+- name: Confirm each image is actually downloadable
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ script_server_image_http_port }}/{{ item.path | basename }}"
+    method: HEAD
+    status_code: 200
+  loop: "{{ script_server_staged_images.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: script_server_image_probe
+
+- name: Image server summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ ['IOS-XE image server ready on port ' ~ script_server_image_http_port,
+          'Web root: ' ~ script_server_image_root,
+          'Point settings.json swim.image_base_url at:',
+          '  http://' ~ (ansible_default_ipv4.address | default('<script-server>'))
+          ~ ':' ~ script_server_image_http_port]
+         + (script_server_staged_images.files
+            | map(attribute='path') | map('basename')
+            | map('regex_replace', '^', '  serving: ') | list) }}

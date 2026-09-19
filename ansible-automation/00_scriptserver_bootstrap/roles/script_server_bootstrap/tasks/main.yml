@@ -17,5 +17,11 @@
 - name: Clone or pull the GitHub repository
   ansible.builtin.include_tasks: sync_repo.yml
 
+# After sync_repo, so a first-ever bootstrap publishes any images the student
+# staged in the checkout before running it.
+- name: Serve IOS-XE images over HTTP for SWIM
+  ansible.builtin.include_tasks: http_image_server.yml
+  when: script_server_image_http_enabled | bool
+
 - name: Verify bootstrap
   ansible.builtin.include_tasks: verify.yml

@@ -5,16 +5,22 @@
 # Pull the image from Cisco Connection Online into the Catalyst Center image
 # repository, then mark it golden for the site and role.
 #
-# Import source is CCO, so no image file is staged in the repo and nothing
-# multi-GB is ever copied to the script server. Catalyst Center downloads it
-# directly from cisco.com, which requires Cisco.com credentials configured under
-# System > Settings > Cisco.com Credentials. Without them the import fails with
-# a credentials error rather than a not-found.
+# Import source is chosen per project by settings.json swim.import_source:
+#
+#   remote  Catalyst Center pulls the .bin over HTTP from the script server,
+#           which the 00_scriptserver_bootstrap collection publishes from
+#           iosxe_images/. This is the working path in this pod and is not
+#           limited to Cisco-suggested builds.
+#   CCO     Catalyst Center downloads from cisco.com. Needs Cisco.com
+#           credentials under System > Settings and egress to cisco.com.
+#           Verified broken here on 2026-09-19: every image is refused with
+#           NCSW10375 "not the latest or suggested image from cisco", including
+#           ones CatC's own catalogue flags ciscoLatest / recommended=CISCO.
 #
 # The rollback image is imported here too, not at rollback time. If the upgrade
 # goes wrong the recovery path must already have its target sitting in the
-# repository — discovering mid-incident that the old image needs a 1.2 GB
-# download is the wrong moment to find out.
+# repository — discovering mid-incident that the old image needs a download is
+# the wrong moment to find out.
 #
 # Two different "family" names are in play and they are NOT interchangeable:
 #   device_image_family_name — the SWIM identifier, used for tagging
@@ -30,20 +36,30 @@
 # Post: image present in the CatC repository and tagged golden for the site
 # =============================================================================
 
-- name: "11.2 | Import upgrade image from CCO"
+- name: "11.2 | Import upgrade image"
   cisco.dnac.swim_workflow_manager:
     state: merged
     dnac_api_task_timeout: "{{ swim_import_timeout }}"
     dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
-      - import_image_details:
-          type: CCO
-          cco_image_details:
-            image_name:
-              - "{{ item.image_file }}"
+      - import_image_details: "{{ _cco if _source == 'CCO' else _remote }}"
+  vars:
+    _source: "{{ item.import_source | default('CCO') | upper }}"
+    _cco:
+      type: CCO
+      cco_image_details:
+        image_name:
+          - "{{ item.image_file }}"
+    _remote:
+      type: remote
+      url_details:
+        payload:
+          - source_url:
+              - "{{ item.image_base_url | default('') }}/{{ item.image_file }}"
+            is_third_party: false
   loop: "{{ _swim_entries }}"
   loop_control:
-    label: "{{ item.image_file }}"
+    label: "{{ item.image_file }} via {{ item.import_source | default('CCO') }}"
   register: _swim_import
   failed_when: false
 
@@ -53,17 +69,27 @@
 # 2026-09-19, where the error named 17.12.06 while 26.01.01 was the real target.
 # The rollback image is also non-fatal: losing the recovery target should not
 # stop an upgrade that is otherwise fine.
-- name: "11.2 | Import rollback image from CCO"
+- name: "11.2 | Import rollback image"
   cisco.dnac.swim_workflow_manager:
     state: merged
     dnac_api_task_timeout: "{{ swim_import_timeout }}"
     dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
-      - import_image_details:
-          type: CCO
-          cco_image_details:
-            image_name:
-              - "{{ item.rollback_image_file }}"
+      - import_image_details: "{{ _cco if _source == 'CCO' else _remote }}"
+  vars:
+    _source: "{{ item.import_source | default('CCO') | upper }}"
+    _cco:
+      type: CCO
+      cco_image_details:
+        image_name:
+          - "{{ item.rollback_image_file }}"
+    _remote:
+      type: remote
+      url_details:
+        payload:
+          - source_url:
+              - "{{ item.image_base_url | default('') }}/{{ item.rollback_image_file }}"
+            is_third_party: false
   loop: "{{ _swim_entries | selectattr('rollback_image_file', 'defined') | list }}"
   loop_control:
     label: "{{ item.rollback_image_file }}"

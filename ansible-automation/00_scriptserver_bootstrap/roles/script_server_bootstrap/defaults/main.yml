@@ -20,6 +20,21 @@ script_server_profile: "{{ ansible_user_dir }}/.profile"
 script_server_zshrc: "{{ ansible_user_dir }}/.zshrc"
 script_server_zprofile: "{{ ansible_user_dir }}/.zprofile"
 
+# ── IOS-XE image HTTP server (feeds campus stage 11 SWIM) ──────────────────
+# Catalyst Center pulls software images from here instead of cisco.com. CCO
+# import is unusable in this pod: every image is rejected with NCSW10375 "not
+# the latest or suggested image from cisco" — even builds CatC's own catalogue
+# marks ciscoLatest or recommended=CISCO — and software.cisco.com answers 403
+# from the script server. Serving locally also lifts the restriction to
+# Cisco-suggested builds, so any image may be used.
+script_server_image_http_enabled: true
+# Own port rather than 80, so the default nginx site is left alone.
+script_server_image_http_port: 8080
+script_server_image_root: /var/www/iosxe-images
+# Staged by hand in the checkout and gitignored, exactly like .vault and
+# lab.yml — these are hundreds of MB and GitHub rejects anything over 100 MB.
+script_server_image_source_dir: "{{ script_server_repo_dest }}/iosxe_images"
+
 # Lab DNS first so corp.pseudoco.com (CatC, ISE, …) resolves. dCloud resolver
 # stays as fallback. glibc does not fail over on NXDOMAIN, so the lab server
 # must be first. 198.18.5.102 recurses for public names (GitHub/PyPI).
