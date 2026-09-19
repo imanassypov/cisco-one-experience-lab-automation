@@ -1271,10 +1271,39 @@ leaves a record on disk to work from.
 | Import fails with a credentials error | Cisco.com credentials not set in Catalyst Center | System > Settings > Cisco.com Credentials |
 | Import fails “not found” | `image_file` does not match the published name | Check the exact filename on cisco.com |
 | Tagging fails | `device_image_family_name` holds an inventory family | Use the SWIM identifier — see the box above |
-| “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Re-run 11.1, confirm against the inventory record |
+| “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Re-run 09.1, confirm against the inventory record |
+| “No eligible devices” on a fabric that is already upgraded | Nothing to do — this is the idempotent case | Not a failure. 09.3/09.4 pass it once Catalyst Center reports every golden-tagged device `DEVICE_UP_TO_DATE` |
 | Distribute fails on flash space | Older images filling flash | Catalyst Center auto-cleans; check the device manually if it persists |
-| Activation “succeeds” but version unchanged | `schedule_validate` was true — a dry run | The role hardcodes `false`; check for an override |
-| Rollback refused | `activate_lower_image_version` not true | The rollback phase sets this automatically |
+| Activation “succeeds” but version unchanged | On Catalyst Center ≥ 3.1.3.0 `schedule_validate` is never sent, so a dry run is not the cause — check `networkDeviceImageUpdates` for the real per-device status | See the activation note below |
+| Rollback refused | `activate_lower_image_version` not true | The rollback phase sets this automatically, **but see the note below — the flag is not sent on Catalyst Center ≥ 3.1.3.0** |
+
+> **Activation looks dead for ~12 minutes, and that is normal.**
+> On a verified 2026-09-19 run the three Site-105 switches took **16.4 minutes**
+> end to end: boot options are written at T+0, then nothing visible happens
+> until the reload (~T+12), `install commit` lands ~4 minutes later, and only
+> then do the Catalyst Center tasks flip to SUCCESS. During the window the
+> devices show as `Unreachable` with
+> `reachabilityFailureReason: "In Service Maintenace"` — that is maintenance
+> mode, not a fault. Do not abort an activation that merely looks stuck; check
+> per-device progress instead:
+>
+> ```bash
+> GET /dna/intent/api/v1/networkDeviceImageUpdates?parentId=<taskId>   # order=DESC, uppercase
+> GET /dna/intent/api/v1/networkDeviceImages                           # networkDeviceUpdateStatus
+> ```
+
+> **`device_upgrade_mode`, `activate_lower_image_version`, `distribute_if_needed`
+> and `schedule_validate` are silently ignored on this cluster.**
+> `swim_workflow_manager` branches on the Catalyst Center version. Below
+> 3.1.3.0 it calls `trigger_software_image_activation` and those four options
+> travel in the payload. At 3.1.3.0 and above — which is this lab — it calls
+> `bulk_update_images_on_network_devices`
+> (`POST /dna/intent/api/v1/networkDeviceImages/activate/bulk`), whose body
+> carries only `id`, `installedImages`, `compatibleFeatures` and
+> `networkValidationIds`. The options are still accepted by the argument spec,
+> so nothing warns you. Catalyst Center chose install mode by itself on the
+> verified run, so the upgrade was unaffected — but do not rely on those knobs,
+> and treat the rollback phase as unproven until it is tested on hardware.
 
 After activation, verify the fabric survived the reload with stage 12, then
 re-check telemetry is still streaming:

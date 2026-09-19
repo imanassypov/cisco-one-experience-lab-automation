@@ -56,11 +56,14 @@
 # Activation with distribute_if_needed would paper over a failure here, so stop
 # instead: a distribute that failed on two of three devices must not turn into a
 # partial reload.
+- name: "09.3 | Establish whether the image is already everywhere"
+  ansible.builtin.include_tasks: image_state.yml
+
 - name: "09.3 | Fail if distribution did not complete"
   ansible.builtin.assert:
     that:
       - not (item.failed | default(false))
-      - swim_failure_signatures | select('in', (item.msg | default('') | string | lower)) | list | length == 0
+      - _hits | length == 0 or (_only_no_eligible and _already_running)
     fail_msg: >-
       Could not distribute {{ item.item.image_file }} to {{ item.item.site_name }}.
       "No eligible devices" almost always means the image is missing from the
@@ -68,10 +71,22 @@
       Other causes: insufficient flash, the device unreachable from Catalyst
       Center, or device_family_name / device_series_name not matching the
       inventory record (09.1 resync refreshes those).
+      This is NOT the harmless re-run case: Catalyst Center still reports at
+      least one golden-tagged device that is not DEVICE_UP_TO_DATE, or no device
+      is tagged golden for this image at all.
       Reported: {{ item.msg | default('no message') }}
+    success_msg: >-
+      {{ item.item.image_file }} -> {{ item.item.site_name }}:
+      {{ 'already running everywhere it is golden — nothing to distribute'
+         if (_hits | length > 0) else 'distributed' }}
   loop: "{{ _swim_distribute.results }}"
   loop_control:
     label: "{{ item.item.site_name }}"
+  vars:
+    _msg: "{{ item.msg | default('') | string | lower }}"
+    _hits: "{{ swim_failure_signatures | select('in', _msg) | list }}"
+    _only_no_eligible: "{{ _hits | reject('equalto', 'no eligible devices') | list | length == 0 }}"
+    _already_running: "{{ swim_image_up_to_date[item.item.image_file] | default(false) }}"
 
 - name: "09.3 | Write distribution evidence"
   ansible.builtin.copy:

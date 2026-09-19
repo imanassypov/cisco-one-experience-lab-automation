@@ -68,6 +68,12 @@ swim_sync_device_config: false
 #
 # Checking item.failed alone is therefore not enough. Any phase whose msg matches
 # one of these fragments (case-insensitive) is treated as failed.
+#
+# One exception, handled in 09.3/09.4: "no eligible devices" is also what a clean
+# re-run of an already-upgraded fabric looks like. Those phases consult
+# tasks/image_state.yml and let it pass only when Catalyst Center confirms every
+# golden-tagged device is DEVICE_UP_TO_DATE. Every other signature still fails,
+# even on an up-to-date fabric.
 swim_failure_signatures:
   - "not found"
   - "could not be found"

@@ -96,20 +96,35 @@
 
 # Evidence is written before this assert so a failed activation still leaves a
 # record on disk to work from.
+- name: "09.4 | Establish whether the image is already everywhere"
+  ansible.builtin.include_tasks: image_state.yml
+
 - name: "09.4 | Fail if activation did not complete"
   ansible.builtin.assert:
     that:
       - not (item.failed | default(false))
-      - swim_failure_signatures | select('in', (item.msg | default('') | string | lower)) | list | length == 0
+      - _hits | length == 0 or (_only_no_eligible and _already_running)
     fail_msg: >-
       Activation of {{ item.item.image_file }} at {{ item.item.site_name }} did
       not complete. "No eligible devices" means nothing reloaded — the image is
       most likely missing from the repository or not staged in flash, so check
       phases 09.2 and 09.3 rather than the devices.
+      This is NOT the harmless re-run case: Catalyst Center still reports at
+      least one golden-tagged device that is not DEVICE_UP_TO_DATE, or no device
+      is tagged golden for this image at all.
       If devices DID begin upgrading, check `show version` and
       `show install summary` before re-running.
       Rollback: -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
       Reported: {{ item.msg | default('no message') }}
+    success_msg: >-
+      {{ item.item.image_file }} @ {{ item.item.site_name }}:
+      {{ 'already running everywhere it is golden — nothing to activate'
+         if (_hits | length > 0) else 'activated' }}
   loop: "{{ _swim_activate.results }}"
   loop_control:
     label: "{{ item.item.site_name }}"
+  vars:
+    _msg: "{{ item.msg | default('') | string | lower }}"
+    _hits: "{{ swim_failure_signatures | select('in', _msg) | list }}"
+    _only_no_eligible: "{{ _hits | reject('equalto', 'no eligible devices') | list | length == 0 }}"
+    _already_running: "{{ swim_image_up_to_date[item.item.image_file] | default(false) }}"

@@ -1,0 +1,75 @@
+---
+# =============================================================================
+# swim / tasks/image_state.yml  —  shared helper
+# =============================================================================
+# Answers one question for 09.3 and 09.4: is this image ALREADY running on every
+# device it is tagged golden for?
+#
+# Both phases report "No eligible devices" for two opposite reasons:
+#   nothing to do   — the fabric already runs the image (a clean re-run)
+#   nothing worked  — the image is missing, untagged, or the family/series
+#                     filters match no device
+# The module returns `status: success` either way, so the message alone cannot
+# tell them apart and the 09.x asserts used to fail a perfectly good re-run.
+#
+# Scoping comes free from golden tagging: `goldenImages` is populated only on
+# devices this image is tagged for, so the WLC and anything outside the site
+# drop out without a site-member lookup. A device tagged golden but NOT
+# `DEVICE_UP_TO_DATE` is a real target that still needs work, which is what
+# makes "nothing to do" safe to assert.
+#
+# Requiring at least one tagged device is deliberate: if golden tagging silently
+# failed, zero devices are tagged, nothing is "stale", and a naive check would
+# call that success — the exact failure this role already guards against in 09.2.
+#
+# Pre:  _swim_entries, _catc_token
+# Post: swim_image_up_to_date — {image_file: bool}
+# =============================================================================
+
+- name: "Read per-device image state"
+  ansible.builtin.uri:
+    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/networkDeviceImages?limit=500&offset=1"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify | bool }}"
+    status_code: 200
+  register: _swim_device_images
+  # Never block a phase on this: it only ever downgrades a failure to a pass,
+  # so losing it just restores the old, stricter behaviour.
+  failed_when: false
+
+- name: "Record which images are already running everywhere they are golden"
+  ansible.builtin.set_fact:
+    swim_image_up_to_date: >-
+      {{ swim_image_up_to_date | default({})
+         | combine({item.image_file: (_tagged | from_json | length > 0
+                                      and _stale | from_json | length == 0)}) }}
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.image_file }}"
+  vars:
+    _devices: "{{ _swim_device_images.json.response | default([]) }}"
+    # goldenImages is null, not [], on untagged devices — `or []` covers both.
+    _tagged: >-
+      {%- set out = [] -%}
+      {%- for d in _devices -%}
+      {%- if item.image_file in ((d.goldenImages or []) | map(attribute='name') | list) -%}
+      {%- set _ = out.append(d.managementAddress) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out | to_json }}
+    _stale: >-
+      {%- set out = [] -%}
+      {%- for d in _devices -%}
+      {%- if item.image_file in ((d.goldenImages or []) | map(attribute='name') | list)
+             and d.networkDeviceUpdateStatus != 'DEVICE_UP_TO_DATE' -%}
+      {%- set _ = out.append(d.managementAddress) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out | to_json }}
+
+- name: "--DEBUG-- Per-image up-to-date verdict"
+  ansible.builtin.debug:
+    var: swim_image_up_to_date
+  when: catc_debug | default(false) | bool
