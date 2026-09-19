@@ -13,6 +13,11 @@
 # so re-running the stage does not invalidate a collector that is already
 # streaming.
 #
+# Every task that puts credentials on a command line is no_log, and none of them
+# fail on their own. Each is followed by a check that surfaces rc, stdout and
+# stderr with the password scrubbed - no_log on a failing task otherwise hides
+# the one thing needed to fix it.
+#
 # Produced: splunk_hec_token — consumed by otel_collector_deploy
 # ============================================================================
 ---
@@ -23,21 +28,44 @@
   ansible.builtin.command: >-
     {{ splunk_bin }} list index -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
   changed_when: false
+  failed_when: false
   register: _indexes
+
+- name: Report a failure listing indexes
+  when: _indexes.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      Could not list Splunk indexes (rc={{ _indexes.rc }}).
+      stdout: {{ _indexes.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _indexes.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
 
 - name: Create the metrics index
   become: true
   no_log: true
+  when: splunk_assurance_index not in _indexes.stdout
   ansible.builtin.command: >-
     {{ splunk_bin }} add index {{ splunk_assurance_index }}
     -datatype metric
     -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
-  when: splunk_assurance_index not in _indexes.stdout
+  failed_when: false
   register: _index_created
+
+- name: Report a failure creating the index
+  when:
+    - _index_created is not skipped
+    - _index_created.rc | default(0) != 0
+  ansible.builtin.fail:
+    msg: |
+      Could not create the {{ splunk_assurance_index }} index (rc={{ _index_created.rc }}).
+      stdout: {{ _index_created.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _index_created.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
+      A permissions or ownership complaint usually means the CLI is running as
+      the wrong user - check who owns {{ splunk_home }}.
 
 - name: Confirm the index is a metrics index
   become: true
   no_log: true
+  failed_when: false
   ansible.builtin.uri:
     url: "{{ splunk_mgmt_url }}/services/data/indexes/{{ splunk_assurance_index }}?output_mode=json"
     user: "{{ splunk_admin_username }}"
@@ -45,7 +73,19 @@
     force_basic_auth: true
     validate_certs: false
   register: _index_info
-  failed_when: _index_info.json.entry[0].content.datatype != 'metric'
+
+- name: Verify the index exists and holds metrics
+  ansible.builtin.assert:
+    that:
+      - _index_info.status | default(0) == 200
+      - (_index_info.json.entry[0].content.datatype | default('')) == 'metric'
+    fail_msg: >-
+      {{ splunk_assurance_index }} is
+      {{ 'missing (HTTP ' ~ (_index_info.status | default('?')) ~ ')'
+         if (_index_info.status | default(0)) != 200
+         else 'datatype ' ~ (_index_info.json.entry[0].content.datatype | default('unknown')) ~ ', not metric' }}.
+      An event index accepts the collector's HTTP POSTs and then discards every
+      metric point, which is indistinguishable from a dead collector.
 
 - name: Enable the HTTP Event Collector
   become: true
@@ -54,9 +94,17 @@
     {{ splunk_bin }} http-event-collector enable -uri {{ splunk_mgmt_url }}
     -enable-ssl 1 -port {{ splunk_hec_port }}
     -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  failed_when: false
+  changed_when: "'already' not in (_hec_enable.stdout | default('') | lower)"
   register: _hec_enable
-  changed_when: "'already' not in (_hec_enable.stdout | lower)"
-  failed_when: _hec_enable.rc != 0
+
+- name: Report a failure enabling HEC
+  when: _hec_enable.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      Could not enable the HTTP Event Collector (rc={{ _hec_enable.rc }}).
+      stdout: {{ _hec_enable.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _hec_enable.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
 
 - name: Look for an existing HEC token
   become: true
@@ -72,6 +120,10 @@
 - name: Create the HEC token
   become: true
   no_log: true
+  when: >-
+    _hec_inputs.json.entry
+    | selectattr('name', 'equalto', 'http://' ~ splunk_hec_token_name)
+    | list | length == 0
   ansible.builtin.command: >-
     {{ splunk_bin }} http-event-collector create {{ splunk_hec_token_name }}
     -uri {{ splunk_mgmt_url }}
@@ -79,14 +131,23 @@
     -index {{ splunk_assurance_index }}
     -indexes {{ splunk_assurance_index }}
     -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
-  when: >-
-    _hec_inputs.json.entry
-    | selectattr('name', 'equalto', 'http://' ~ splunk_hec_token_name)
-    | list | length == 0
+  failed_when: false
+  register: _hec_created
+
+- name: Report a failure creating the HEC token
+  when:
+    - _hec_created is not skipped
+    - _hec_created.rc | default(0) != 0
+  ansible.builtin.fail:
+    msg: |
+      Could not create the {{ splunk_hec_token_name }} HEC token (rc={{ _hec_created.rc }}).
+      stdout: {{ _hec_created.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _hec_created.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
 
 - name: Read the HEC token back
   become: true
   no_log: true
+  failed_when: false
   ansible.builtin.uri:
     url: "{{ splunk_mgmt_url }}/services/data/inputs/http/{{ splunk_hec_token_name | urlencode }}?output_mode=json"
     user: "{{ splunk_admin_username }}"
@@ -94,6 +155,14 @@
     force_basic_auth: true
     validate_certs: false
   register: _hec_token_info
+
+- name: Verify the HEC token was readable
+  ansible.builtin.assert:
+    that: _hec_token_info.status | default(0) == 200
+    fail_msg: >-
+      Could not read the {{ splunk_hec_token_name }} HEC token back
+      (HTTP {{ _hec_token_info.status | default('?') }}). Without it the
+      collector has nothing to authenticate with.
 
 - name: Record the HEC token
   no_log: true

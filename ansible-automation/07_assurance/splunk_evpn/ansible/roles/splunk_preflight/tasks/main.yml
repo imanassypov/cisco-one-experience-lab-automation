@@ -80,15 +80,25 @@
   failed_when: "'is running' not in _splunkd_status.stdout"
 
 # Proves the vault credentials work before stage 02 tries to create an index
-# with them. no_log because the password is on the argument list.
+# with them. no_log because the password is on the argument list; the follow-up
+# task surfaces the failure with it scrubbed.
 - name: Confirm the Splunk admin credentials authenticate
   become: true
   no_log: true
   ansible.builtin.command: >-
     {{ splunk_bin }} list index -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
   changed_when: false
+  failed_when: false
   register: _splunk_auth
-  failed_when: _splunk_auth.rc != 0
+
+- name: Report a Splunk authentication failure
+  when: _splunk_auth.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      The 'Splunk Enterprise' credentials from the vault did not authenticate
+      (rc={{ _splunk_auth.rc }}).
+      stdout: {{ _splunk_auth.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _splunk_auth.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
 
 - name: Look for an installed collector
   ansible.builtin.command: "{{ otel_binary }} --version"
@@ -96,13 +106,17 @@
   failed_when: false
   register: _otel_installed
 
+# HEADs the real asset, not the release directory - GitHub 404s the directory
+# path, which made this report a false negative. follow_redirects is required:
+# release assets are a 302 to the CDN.
 - name: Confirm the collector release can be reached
   delegate_to: localhost
   become: false
   ansible.builtin.uri:
-    url: "{{ otel_package_base_url }}/v{{ otel_package_version }}/"
+    url: "{{ otel_package_base_url }}/v{{ otel_package_version }}/{{ otel_package_name }}_{{ otel_package_version }}_linux_amd64.deb"
     method: HEAD
-    status_code: [200, 302, 404]
+    follow_redirects: all
+    status_code: [200, 302, 403, 404]
   changed_when: false
   failed_when: false
   register: _release_reachable

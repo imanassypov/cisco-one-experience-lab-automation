@@ -1,0 +1,28 @@
+dist:
+  module: github.com/imanassypov/otelcol-yangfix
+  name: otelcol-yangfix
+  description: OpenTelemetry Collector with patched Cisco YANG gRPC receiver
+  output_path: ./_build
+
+receivers:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.150.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver v0.150.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.150.0
+
+exporters:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/splunkhecexporter v0.150.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.56.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.56.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.56.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.56.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.56.0
+
+# Written verbatim into _build/go.mod, so go resolves this relative to _build/
+# rather than to the directory ocb was run from. The patched source sits beside
+# _build, which is why this climbs one level.
+replaces:
+  - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/yanggrpcreceiver => ../src/receiver/yanggrpcreceiver
