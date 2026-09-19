@@ -159,14 +159,21 @@
     src: "{{ splunk_home }}/etc/apps/{{ splunk_app_name }}/default/app.conf"
   register: _remote_app_conf
 
+# Extracted into a fact rather than inlined in the assert. A double-quoted YAML
+# scalar turns \\s into \s, which is what the regex needs; the same text in a
+# plain or folded scalar stays \\s and matches nothing. Doing it once keeps the
+# working quoting in one place.
+- name: Extract the installed build number
+  ansible.builtin.set_fact:
+    _remote_build: "{{ _remote_app_conf.content | b64decode | regex_search('(?m)^build\\s*=\\s*(\\S+)', '\\1') | default([], true) | first | default('not found', true) }}"
+
 - name: Verify the installed build matches the source
   ansible.builtin.assert:
-    that:
-      - (_remote_app_conf.content | b64decode | regex_search('(?m)^build\\s*=\\s*(\\S+)', '\\1') | first) == _app_build
+    that: _remote_build == _app_build
     fail_msg: >-
-      Installed build is
-      {{ _remote_app_conf.content | b64decode | regex_search('(?m)^build\\s*=\\s*(\\S+)', '\\1') | first }}
-      but the source says {{ _app_build }}. The install did not take effect.
+      Installed build is {{ _remote_build }} but the source says {{ _app_build }}.
+      The install did not take effect - Splunk keeps serving the previous app if
+      an install half-fails.
 
 - name: App deployment summary
   ansible.builtin.debug:
