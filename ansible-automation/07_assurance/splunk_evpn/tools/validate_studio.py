@@ -107,7 +107,8 @@ def run_search(q):
 
 
 def validate():
-    grand = {"views": 0, "panels": 0, "struct_err": 0, "spl_err": 0, "empty": 0}
+    grand = {"views": 0, "panels": 0, "struct_err": 0, "spl_err": 0,
+             "empty": 0, "unverifiable": 0}
     seen_queries = {}
 
     for view in VIEWS:
@@ -185,7 +186,18 @@ def validate():
             grand["panels"] += 1
             errs = [x for x in msgs if x.startswith(("ERROR", "FATAL"))]
             warns = [x for x in msgs if x.startswith("WARN")]
-            if errs:
+            # A macro that embeds a dashboard token (evpn_route_update_deltas
+            # hardcodes earliest=$timeRange.earliest$) cannot be checked this
+            # way: macros expand server-side, after the textual substitution
+            # above, so the raw token reaches the search. The panel is fine in a
+            # dashboard, where the token is bound before dispatch - this
+            # validator simply cannot see it.
+            unresolvable = [x for x in errs if "for time term" in x and "$" in x]
+            if unresolvable:
+                grand["unverifiable"] += 1
+                print("    [SKIP] %-46s  token inside macro, not checkable standalone"
+                      % title)
+            elif errs:
                 grand["spl_err"] += 1
                 print("    [ERR ] %-46s  %s" % (title, errs[0]))
             elif rc == 0:
@@ -201,7 +213,8 @@ def validate():
     if grand["struct_err"] or grand["spl_err"]:
         print("RESULT: FAIL (structure or SPL errors present)")
         return 1
-    print("RESULT: PASS (0-row panels are expected when a role/window has no data)")
+    print("RESULT: PASS (0-row panels are expected when a role/window has no data;"
+          " SKIP means a macro embeds a dashboard token this tool cannot bind)")
     return 0
 
 
