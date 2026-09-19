@@ -1,8 +1,8 @@
 ---
 # =============================================================================
-# swim_for_assurance / defaults/main.yml
+# swim / defaults/main.yml
 # =============================================================================
-# Knobs for stage 11. Overridable with -e.
+# Knobs for stage 09. Overridable with -e.
 #
 # Nothing here selects an image. Images, site and device targeting all come from
 # settings.json → project[].swim, so the data model stays the single source of
@@ -17,10 +17,10 @@ swim_run_import: true
 swim_run_distribute: true
 
 # Activation reloads every targeted device, and it is ON by default so a bare
-#   ansible-playbook playbooks/11_swim_for_assurance.yml
+#   ansible-playbook playbooks/09_swim.yml
 # performs the whole upgrade with no extra flags.
 #
-# *** A DEFAULT RUN OF STAGE 11 RELOADS THE FABRIC. ***
+# *** A DEFAULT RUN OF STAGE 09 RELOADS THE FABRIC. ***
 #
 # To stage the image in flash and stop short of the reload — the safe
 # business-hours run — opt out explicitly:

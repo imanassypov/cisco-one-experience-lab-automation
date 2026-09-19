@@ -1,23 +1,23 @@
 ---
 # =============================================================================
-# swim_for_assurance / tasks/postcheck.yml  —  Stage 11.5
+# swim / tasks/postcheck.yml  —  Stage 09.5
 # =============================================================================
-# IMAGE compliance after activation, compared against the baseline from 11.1.
+# IMAGE compliance after activation, compared against the baseline from 09.1.
 #
 # Read-only. Compliance answers "is every device running the image Catalyst
 # Center considers golden for its site" — which is exactly the question an
-# upgrade is supposed to change the answer to, and the reason 11.1 took a
+# upgrade is supposed to change the answer to, and the reason 09.1 took a
 # baseline first.
 #
 # This is not a substitute for stage 12. Compliance checks the image; stage 12
 # checks that VRFs, VNIs, EVPN state and telemetry subscriptions survived the
 # reload. Run both.
 #
-# Pre:  devices reloaded by 11.4
-# Post: evidence/<run_id>-11_swim-postcheck.json
+# Pre:  devices reloaded by 09.4
+# Post: evidence/<run_id>-09_swim-postcheck.json
 # =============================================================================
 
-- name: "11.5 | Post-activation IMAGE compliance"
+- name: "09.5 | Post-activation IMAGE compliance"
   cisco.catalystcenter.network_compliance_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -39,7 +39,7 @@
     var: _swim_postcheck
   when: catc_debug | default(false) | bool
 
-- name: "11.5 | Report compliance outcome"
+- name: "09.5 | Report compliance outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.site_name }}:
@@ -49,19 +49,19 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "11.5 | Write postcheck evidence"
+- name: "09.5 | Write postcheck evidence"
   ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-postcheck.json"
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-postcheck.json"
     mode: "0644"
     content: "{{ _evidence | to_nice_json }}"
   vars:
     _evidence:
-      phase: "11.5 postcheck"
+      phase: "09.5 postcheck"
       run_id: "{{ swim_run_id }}"
       expected_version: "{{ _swim_entries | map(attribute='image_version') | list }}"
       compliance: "{{ _swim_postcheck.results | map(attribute='msg') | list }}"
 
-- name: "11.5 | Fail if the compliance run did not execute"
+- name: "09.5 | Fail if the compliance run did not execute"
   ansible.builtin.assert:
     that: not (item.failed | default(false))
     fail_msg: >-
@@ -73,7 +73,7 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "11.5 | Next step"
+- name: "09.5 | Next step"
   ansible.builtin.debug:
     msg:
       - "Image upgrade complete. Verify the fabric survived the reload:"

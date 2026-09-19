@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 11_swim_for_assurance.yml  —  Pipeline stage 11
+# 09_swim.yml  —  Pipeline stage 09
 # =============================================================================
 # Software Image Management for the campus fabric, so the switches run an image
 # whose YANG coverage matches what assurance expects.
@@ -9,7 +9,7 @@
 # under project[].swim, exactly like every other thing this pipeline builds.
 # Nothing is passed on the command line except the safety gates.
 #
-# Phases (role: swim_for_assurance):
+# Phases (role: swim):
 #   11.1 preflight       resync inventory, baseline IMAGE compliance  read-only
 #   11.2 import_and_tag  pull from CCO, mark golden                   CatC only
 #   11.3 distribute      copy to device flash, no reload              safe
@@ -39,7 +39,7 @@
 #      distribute_if_needed}
 #
 # Produced:
-#   evidence/<run_id>-11_swim-<phase>.json per phase
+#   evidence/<run_id>-09_swim-<phase>.json per phase
 #   In Catalyst Center: image imported, tagged golden, distributed, optionally
 #   activated.
 #
@@ -55,26 +55,30 @@
 # cisco.catalystcenter 2.11.0 fixed exactly that (line 4280 defaults to []
 # and skips device-tag filtering when empty).
 #
-# Depends on: stages 01-05. Every SWIM call targets devices by site_name plus
+# Depends on: stages 01-08. Every SWIM call targets devices by site_name plus
 # family/series/role, so devices must already be discovered, managed and
 # assigned to the site.
 #
-# Excluded from 00_site_deploy.yml by design — an image upgrade is an
-# operational decision, not part of building a site.
+# Runs before stage 10 on purpose: the switches should be on their intended
+# image before EVPN and telemetry configuration is pushed onto them.
+#
+# Included in 00_site_deploy.yml, which means a full site build reloads the
+# fabric here. Build without an image change using:
+#   ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false
 #
 # Run — full upgrade, RELOADS every device (default):
-#   ansible-playbook playbooks/11_swim_for_assurance.yml
+#   ansible-playbook playbooks/09_swim.yml
 #
 # Run — stage the image in flash only, no reload (safe any time):
-#   ansible-playbook playbooks/11_swim_for_assurance.yml -e swim_activate=false
+#   ansible-playbook playbooks/09_swim.yml -e swim_activate=false
 #
 # Run — emergency rollback to the previous image (RELOADS every device):
-#   ansible-playbook playbooks/11_swim_for_assurance.yml \
+#   ansible-playbook playbooks/09_swim.yml \
 #     -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
 #
 # Run — a single phase:
-#   ansible-playbook playbooks/11_swim_for_assurance.yml --tags swim_distribute
-#   ansible-playbook playbooks/11_swim_for_assurance.yml -e catc_debug=true
+#   ansible-playbook playbooks/09_swim.yml --tags swim_distribute
+#   ansible-playbook playbooks/09_swim.yml -e catc_debug=true
 # =============================================================================
 - name: Campus fabric software image management
   hosts: catalyst_center
@@ -110,4 +114,4 @@
         tasks_from: load_settings
       tags: [always]
   roles:
-    - role: swim_for_assurance
+    - role: swim

@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim_for_assurance / tasks/preflight.yml  —  Stage 11.1
+# swim / tasks/preflight.yml  —  Stage 09.1
 # =============================================================================
 # Resync inventory, then take a baseline IMAGE compliance reading.
 #
@@ -10,14 +10,14 @@
 # from the device. A stale record silently narrows the target set, which shows
 # up as "no eligible devices" much later in distribute.
 #
-# The baseline reading is what makes the postcheck in 11.5 meaningful: without a
+# The baseline reading is what makes the postcheck in 09.5 meaningful: without a
 # before, an after tells you nothing about whether this stage changed anything.
 #
 # Pre:  _swim_entries — from tasks/main.yml
 # Post: _swim_preflight_compliance — registered results, written to evidence
 # =============================================================================
 
-- name: "11.1 | Resync devices at the target site"
+- name: "09.1 | Resync devices at the target site"
   cisco.catalystcenter.inventory_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -36,7 +36,7 @@
   # current. Surfacing it beats aborting, so the operator sees the reason.
   failed_when: false
 
-- name: "11.1 | Report resync outcome"
+- name: "09.1 | Report resync outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.site_name }}:
@@ -45,7 +45,7 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "11.1 | Baseline IMAGE compliance"
+- name: "09.1 | Baseline IMAGE compliance"
   cisco.catalystcenter.network_compliance_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -69,14 +69,14 @@
     var: _swim_preflight_compliance
   when: catc_debug | default(false) | bool
 
-- name: "11.1 | Write preflight evidence"
+- name: "09.1 | Write preflight evidence"
   ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-preflight.json"
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-preflight.json"
     mode: "0644"
     content: "{{ _evidence | to_nice_json }}"
   vars:
     _evidence:
-      phase: "11.1 preflight"
+      phase: "09.1 preflight"
       run_id: "{{ swim_run_id }}"
       sites: "{{ _swim_entries | map(attribute='site_name') | list }}"
       resync: "{{ _swim_resync.results | map(attribute='msg') | list }}"

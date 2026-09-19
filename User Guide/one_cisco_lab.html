@@ -1712,7 +1712,7 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 </blockquote>
 <hr>
 <h4>The two paths cover the same ground in a different order</h4>
-<p>This is the single most important thing to understand before you start. The traditional path builds the <strong>fabric first</strong>, then brings Catalyst Center in afterwards. The automated pipeline is the other way round: it builds <strong>Catalyst Center first</strong>, and then uses Catalyst Center to push the fabric configuration in stage 09.</p>
+<p>This is the single most important thing to understand before you start. The traditional path builds the <strong>fabric first</strong>, then brings Catalyst Center in afterwards. The automated pipeline is the other way round: it builds <strong>Catalyst Center first</strong>, and then uses Catalyst Center to push the fabric configuration in stage 10.</p>
 <p>Use this table to map between the two:</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
@@ -2936,8 +2936,8 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
 <ul>
 <li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
-<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 09 turns its switch port into a trunk. That is why wireless finishes last.</li>
-<li><strong>The orchestrator stops at stage 09.</strong> Stages 10 and 11 are deliberately yours to run — one blocks on that hardware wait, and the other is the proof you keep.</li>
+<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
+<li><strong>The orchestrator stops at stage 10.</strong> Stages 10 and 11 are deliberately yours to run — one blocks on that hardware wait, and the other is the proof you keep.</li>
 </ul>
 <hr>
 <h4>One machine does the work</h4>
@@ -3118,14 +3118,14 @@ ansible-playbook --version</pre>
 <tr><td>06</td><td><code>06_template_sync.yml</code></td><td>Uploads the 24 Jinja2 templates and the composite manifest into a Catalyst Center CLI project named <code>Site-105</code>. This is the fabric design, as code.</td><td><span class="safety design">Design change</span></td></tr>
 <tr><td>07</td><td><code>07_network_profile.yml</code></td><td>Builds four switching profiles, the wireless design including your <code>PSEUDOCO-POD<em>nn</em></code> SSID, the FlexConnect settings, and the <code>HQ-Wireless</code> profile.</td><td><span class="safety design">Design change</span></td></tr>
 <tr><td>08</td><td><code>08_provision_devices.yml</code></td><td>Provisions the switches, then the wireless controller, then any access points already known to Catalyst Center.</td><td><span class="safety maybe">Can reboot APs</span></td></tr>
-<tr><td>09</td><td><code>09_deploy_composite.yml</code></td><td>Renders the templates per device and pushes the resulting EVPN configuration to the three switches.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
-<tr><td>10</td><td><code>10_await_access_points.yml</code></td><td>Waits for the access point to reach Catalyst Center, records its MAC in <code>lab.yml</code>, then names, site-assigns and provisions it. Not part of <code>00_site_deploy.yml</code> — it blocks on hardware booting.</td><td><span class="safety maybe">Reboots your AP</span></td></tr>
-<tr><td>11</td><td><code>11_swim_for_assurance.yml</code></td><td>Imports the IOS-XE image named in <code>settings.json</code> from cisco.com, tags it golden, stages it in device flash and reloads the switches onto it. Add <code>-e swim_activate=false</code> to stage without reloading.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
+<tr><td>09</td><td><code>09_swim.yml</code></td><td>Imports the IOS-XE image named in <code>settings.json</code> from the script server, tags it golden, stages it in device flash and reloads the switches onto it. Runs before the EVPN push so the fabric is already on its intended image. Add <code>-e swim_activate=false</code> to stage without reloading.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
+<tr><td>10</td><td><code>10_deploy_composite.yml</code></td><td>Renders the templates per device and pushes the resulting EVPN configuration to the three switches.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
+<tr><td>11</td><td><code>11_await_access_points.yml</code></td><td>Waits for the access point to reach Catalyst Center, records its MAC in <code>lab.yml</code>, then names, site-assigns and provisions it. Not part of <code>00_site_deploy.yml</code> — it blocks on hardware booting.</td><td><span class="safety maybe">Reboots your AP</span></td></tr>
 <tr><td>12</td><td><code>12_verify_intent.yml</code></td><td>Collects <code>show</code> output and compares it against the design. Changes nothing.</td><td><span class="safety ro">Read-only</span></td></tr>
 </tbody>
 </table>
 <div class="admonition warning">
-<p>🛑 <strong>Stage 09 pushes live configuration to the switches.</strong> That is the point of it — but be aware it is the stage that changes the network. Stage 08 can reboot access points on a controller shared with other pods. Neither is dangerous in this lab; both deserve your attention in a real one.</p>
+<p>🛑 <strong>Stage 10 pushes live configuration to the switches.</strong> That is the point of it — but be aware it is the stage that changes the network. Stage 08 can reboot access points on a controller shared with other pods. Neither is dangerous in this lab; both deserve your attention in a real one.</p>
 </div>
 <hr>
 <h4>Option A — Run the whole thing</h4>
@@ -3142,13 +3142,13 @@ ansible-playbook playbooks/05_assign_to_site.yml
 ansible-playbook playbooks/06_template_sync.yml
 ansible-playbook playbooks/07_network_profile.yml
 ansible-playbook playbooks/08_provision_devices.yml
-ansible-playbook playbooks/09_deploy_composite.yml
-ansible-playbook playbooks/10_await_access_points.yml
-ansible-playbook playbooks/11_swim_for_assurance.yml
+ansible-playbook playbooks/09_swim.yml
+ansible-playbook playbooks/10_deploy_composite.yml
+ansible-playbook playbooks/11_await_access_points.yml
 ansible-playbook playbooks/12_verify_intent.yml</pre>
 <p>The last three behave differently from the rest, so do not be surprised by them.</p>
-<p><strong>Stage 10 sits there and waits.</strong> It polls Catalyst Center for up to ten minutes while the access point boots on the trunk stage 09 just built, then records its MAC and provisions it. A long quiet pause is the playbook working, not hanging. You can start it the moment stage 09 finishes — there is no advantage to watching the controller first. Card <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a> covers what it does in full.</p>
-<p><strong>Stage 11 upgrades the switch software and reloads them.</strong> It copies an IOS-XE image into each switch's flash and then activates it, which reboots all three. Run it when you can afford the fabric to drop, or add <code>-e swim_activate=false</code> to stage the image now and reload later.</p>
+<p><strong>Stage 11 sits there and waits.</strong> It polls Catalyst Center for up to ten minutes while the access point boots on the trunk stage 10 just built, then records its MAC and provisions it. A long quiet pause is the playbook working, not hanging. You can start it the moment stage 10 finishes — there is no advantage to watching the controller first. Card <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a> covers what it does in full.</p>
+<p><strong>Stage 09 upgrades the switch software and reloads them.</strong> It copies an IOS-XE image into each switch's flash and then activates it, which reboots all three. Run it when you can afford the fabric to drop, or add <code>-e swim_activate=false</code> to stage the image now and reload later.</p>
 <p><strong>Stage 12 is the only read-only stage.</strong> It changes nothing and produces the evidence report, so run it as often as you like.</p>
 <p>After each stage, open Catalyst Center and look at what changed.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
@@ -3162,17 +3162,17 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <tr><td>06</td><td><strong>Design &gt; CLI Templates</strong> — a CLI project called <code>Site-105</code> with 25 templates</td></tr>
 <tr><td>07</td><td><strong>Design &gt; Network Profiles</strong> and <strong>Workflows &gt; Wireless</strong> — your SSID</td></tr>
 <tr><td>08</td><td><strong>Provision &gt; Inventory</strong> — provisioning status turns green</td></tr>
-<tr><td>09</td><td><strong>Activities &gt; Tasks</strong> — one deployment task per switch</td></tr>
-<tr><td>10</td><td><strong>Provision &gt; Inventory</strong> — the access point appears, gains a name and a site, then turns green</td></tr>
-<tr><td>11</td><td><strong>Design &gt; Image Repository</strong> — the image appears and is tagged golden for the site</td></tr>
+<tr><td>09</td><td><strong>Design &gt; Image Repository</strong> — the image appears and is tagged golden for the site</td></tr>
+<tr><td>10</td><td><strong>Activities &gt; Tasks</strong> — one deployment task per switch</td></tr>
+<tr><td>11</td><td><strong>Provision &gt; Inventory</strong> — the access point appears, gains a name and a site, then turns green</td></tr>
 <tr><td>12</td><td>Nothing changes in the GUI — read <code>evidence/stage12-verification.html</code> instead</td></tr>
 </tbody>
 </table>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a2-stage01-sites.png" alt="Catalyst Center network hierarchy after stage 01" width="865" height="430"></p>
 <p><img class="img-fluid" role="presentation" src="" data-missing="a2-stage06-templates-project.png" alt="Template Hub showing the Site-105 CLI project" width="865" height="430"></p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a2-stage09-composite-deploy.png" alt="Stage 09 deployment summary table in the terminal" width="865" height="400"></p>
+<p><img class="img-fluid" role="presentation" src="" data-missing="a2-stage09-composite-deploy.png" alt="Stage 10 deployment summary table in the terminal" width="865" height="400"></p>
 <hr>
-<h4>What stage 09 actually pushes</h4>
+<h4>What stage 10 actually pushes</h4>
 <p>This is the stage that creates the EVPN fabric — the same configuration the traditional path asks you to paste by hand. It does not come from the playbook. It comes from a set of Jinja2 templates that stage 06 uploaded into Catalyst Center, which Catalyst Center then renders <strong>separately for each device</strong>.</p>
 <p>The templates are split into three kinds of file:</p>
 <ul>
@@ -3191,10 +3191,10 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <tbody>
 <tr><td><code>-e catc_debug=true</code></td><td>Prints the raw API requests and responses. The first thing to try when a stage fails.</td></tr>
 <tr><td><code>-e state=deleted</code></td><td>On stages 01 and 03, removes what was created instead of creating it.</td></tr>
-<tr><td><code>-e wireless_provision_enabled=false</code></td><td>On stage 08, skips the wireless controller. Stage 10 never touches the controller, so you do not need this flag for access-point work — see <a href="#page-9007">the wireless card</a>.</td></tr>
+<tr><td><code>-e wireless_provision_enabled=false</code></td><td>On stage 08, skips the wireless controller. Stage 11 never touches the controller, so you do not need this flag for access-point work — see <a href="#page-9007">the wireless card</a>.</td></tr>
 <tr><td><code>-e ap_provision_enabled=false</code></td><td>On stage 08, skips access points.</td></tr>
-<tr><td><code>-e ap_expected_count=2</code></td><td>On stage 10, waits for two access points rather than stopping at the first.</td></tr>
-<tr><td><code>-e ap_provision_after_discovery=false</code></td><td>On stage 10, records the MAC in <code>lab.yml</code> but stops short of provisioning.</td></tr>
+<tr><td><code>-e ap_expected_count=2</code></td><td>On stage 11, waits for two access points rather than stopping at the first.</td></tr>
+<tr><td><code>-e ap_provision_after_discovery=false</code></td><td>On stage 11, records the MAC in <code>lab.yml</code> but stops short of provisioning.</td></tr>
 <tr><td><code>-e force_reprovision=true</code></td><td>On stage 08, re-provisions devices Catalyst Center already considers done.</td></tr>
 <tr><td><code>-e template_source=git</code></td><td>On stage 06, pulls templates from GitHub instead of the local checkout.</td></tr>
 </tbody>
@@ -3304,7 +3304,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <tr><th style="width: 40%;">Symptom</th><th style="width: 60%;">What to do</th></tr>
 </thead>
 <tbody>
-<tr><td>A handful of checks fail on one device</td><td>Re-run stage 09 — a deployment task may have timed out</td></tr>
+<tr><td>A handful of checks fail on one device</td><td>Re-run stage 10 — a deployment task may have timed out</td></tr>
 <tr><td>Everything is <code>NOT VERIFIED</code></td><td>Command Runner is unhappy. Confirm the devices are reachable and managed in Inventory.</td></tr>
 <tr><td>You want to see the raw CLI output</td><td>Re-run with <code>-e catc_debug=true</code></td></tr>
 <tr><td>You want the play to stop on the first mismatch</td><td>Run with <code>-e verify_fail_on_mismatch=true</code></td></tr>
@@ -3499,7 +3499,7 @@ exit-address-family
   - path: "Catalyst Center Templates/Site 106 BGP EVPN Templates"
     project_name: "Site-106"</pre>
 </li>
-<li>Add a matching entry to the settings file so stage 09 knows where to deploy it.</li>
+<li>Add a matching entry to the settings file so stage 10 knows where to deploy it.</li>
 <li>Re-run stages 06 and 09. Both sites deploy in one pass.</li>
 </ol>
 <p>That is the scaling story. The renderers are written once; each new site is a folder of data and one inventory row.</p>
@@ -3642,7 +3642,7 @@ git commit -m "Site-105: add DEV tenant (id 103, L3VNI 110103) and PROD voice VL
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ansible-automation/01_campus/evpn/ansible
 
 ansible-playbook playbooks/06_template_sync.yml     # upload the new design
-ansible-playbook playbooks/09_deploy_composite.yml  # render it and push to the switches
+ansible-playbook playbooks/10_deploy_composite.yml  # render it and push to the switches
 ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
@@ -3704,11 +3704,11 @@ ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
 <tr><th style="width: 38%;">Symptom</th><th style="width: 32%;">Likely cause</th><th style="width: 30%;">Fix</th></tr>
 </thead>
 <tbody>
-<tr><td>Stage 06 succeeds but nothing changed on the switches</td><td>You skipped stage 09</td><td>Stage 06 only uploads. Stage 09 deploys.</td></tr>
+<tr><td>Stage 06 succeeds but nothing changed on the switches</td><td>You skipped stage 10</td><td>Stage 06 only uploads. Stage 10 deploys.</td></tr>
 <tr><td>New tenant appears in <code>show vrf</code> but does not route</td><td>No overlay group for it</td><td>Add the group to <code>DEFN-OVERLAY.j2</code> (step 3 above)</td></tr>
 <tr><td>Catalyst Center prompts for variable values at deploy time</td><td>A new variable was introduced without a dummy <code>{% set %}</code></td><td>See the quirks table in <a href="#page-9005">4. Understanding the EVPN Template Model</a></td></tr>
-<tr><td>Stage 09 deploys but the old configuration is still there</td><td>An older template version was selected</td><td>Re-run stage 06, then stage 09</td></tr>
-<tr><td>Stage 12 fails on the new VLAN only</td><td>Stage 09 partially timed out</td><td>Re-run stage 09, then stage 12</td></tr>
+<tr><td>Stage 10 deploys but the old configuration is still there</td><td>An older template version was selected</td><td>Re-run stage 06, then stage 10</td></tr>
+<tr><td>Stage 12 fails on the new VLAN only</td><td>Stage 10 partially timed out</td><td>Re-run stage 10, then stage 12</td></tr>
 </tbody>
 </table>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
@@ -3753,7 +3753,7 @@ ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
 </tbody>
 </table>
 <div class="admonition">
-<p>👀 <strong>Why the access point could not be provisioned earlier.</strong> Until stage 09 ran, the switch port the access point is plugged into was not a trunk, so the access point could not reach the controller and could not register. That is why stages 04 and 08 never discovered one. The ordering is deliberate, not a bug.</p>
+<p>👀 <strong>Why the access point could not be provisioned earlier.</strong> Until stage 10 ran, the switch port the access point is plugged into was not a trunk, so the access point could not reach the controller and could not register. That is why stages 04 and 08 never discovered one. The ordering is deliberate, not a bug.</p>
 </div>
 <h4>The sequence, end to end</h4>
 <p>Wireless is the one part of this lab that cannot be done in a single pass, because a physical device has to boot and find its controller in the middle of it. The order is fixed:</p>
@@ -3769,7 +3769,7 @@ ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
 <tr><td>5</td><td>Stage <strong>11</strong> verifies wireless alongside the fabric</td><td>Needs the access point actually serving the SSID</td></tr>
 </tbody>
 </table>
-<p>The waiting is all in steps 2 and 3, and stage 10 does that waiting for you.</p>
+<p>The waiting is all in steps 2 and 3, and stage 11 does that waiting for you.</p>
 <hr>
 <h4>Step 1 — Verify the SSID</h4>
 <p>Log into the controller using the Chrome bookmark (<strong>C9800-WLC</strong>) or browse to <strong>https://wlc.corp.pseudoco.com</strong> with <strong>admin/C1sco12345</strong>.</p>
@@ -3786,8 +3786,8 @@ ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show wlan summary</pre>
 <hr>
 <h4>Step 2 — Watch the access point appear, in two places</h4>
-<p>With <code>Gi1/0/2</code> now trunked, the access point can find the controller. It then has to show up <strong>twice</strong>, a few minutes apart — and it is the second one that stage 10 actually waits for. You do not have to sit and watch this happen; stage 10 polls for you. It is worth understanding, though, because it explains where the time goes.</p>
-<p><strong>First, on the controller.</strong> Go to <strong>Configuration &gt; Wireless &gt; Access Points</strong> and wait for it to appear as <strong>Registered</strong>. This usually takes a few minutes after stage 09 completes.</p>
+<p>With <code>Gi1/0/2</code> now trunked, the access point can find the controller. It then has to show up <strong>twice</strong>, a few minutes apart — and it is the second one that stage 11 actually waits for. You do not have to sit and watch this happen; stage 11 polls for you. It is worth understanding, though, because it explains where the time goes.</p>
+<p><strong>First, on the controller.</strong> Go to <strong>Configuration &gt; Wireless &gt; Access Points</strong> and wait for it to appear as <strong>Registered</strong>. This usually takes a few minutes after stage 10 completes.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">C9800#show ap summary
 Number of APs: 1
 
@@ -3800,19 +3800,19 @@ SITE-105-AP-1                    3     AIR-AP4800-B-K9      084f.a950.f028 10b3.
 <p>Note the access point's <strong>Ethernet MAC address</strong> — the wired MAC, not the radio MAC. Above, that is <code>084f.a950.f028</code> and not <code>10b3.d66c.c860</code>. You will not have to type it anywhere, but seeing it here makes the next step easier to follow.</p>
 <p><strong>Then, in Catalyst Center.</strong> The controller syncs its access point list up to Catalyst Center, which lags the controller by a few more minutes. Check <strong>Provision &gt; Inventory</strong>, or filter for Unified APs, until the access point is listed there too.</p>
 <div class="admonition">
-<p>👀 <strong>This is the wait people used to get caught by.</strong> Provisioning looks the access point up in <em>Catalyst Center</em> by its Ethernet MAC — not on the controller. Doing it by hand while the access point is Registered on the 9800 but not yet in Catalyst Center inventory fails, even though the controller plainly shows it. Stage 10 waits for the Catalyst Center side specifically, which is why you can start it early.</p>
+<p>👀 <strong>This is the wait people used to get caught by.</strong> Provisioning looks the access point up in <em>Catalyst Center</em> by its Ethernet MAC — not on the controller. Doing it by hand while the access point is Registered on the 9800 but not yet in Catalyst Center inventory fails, even though the controller plainly shows it. Stage 11 waits for the Catalyst Center side specifically, which is why you can start it early.</p>
 </div>
 <hr>
 <h4>Step 3 — Let the pipeline pick up and provision the access point</h4>
 <p>You do <strong>not</strong> copy the MAC address by hand, and you do not re-run stage 08. One command does the rest:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook playbooks/10_await_access_points.yml</pre>
+ansible-playbook playbooks/11_await_access_points.yml</pre>
 <p>It polls Catalyst Center until an access point appears — up to ten minutes by default — writes the Ethernet MAC into <code>lab.yml</code> in the right format, and then <strong>names</strong> the access point, <strong>assigns it to the Site-105 floor</strong>, and <strong>provisions</strong> it. Your pod number and every comment in <code>lab.yml</code> are left untouched. It is safe to re-run, and safe to start before the access point has registered; it simply waits.</p>
-<p>You can start it as soon as stage 09 finishes rather than watching the controller.</p>
+<p>You can start it as soon as stage 10 finishes rather than watching the controller.</p>
 <p>If you have two access points, tell it so it does not stop at the first:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_await_access_points.yml -e ap_expected_count=2</pre>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_await_access_points.yml -e ap_expected_count=2</pre>
 <p>To stop after writing the MAC, without provisioning:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/10_await_access_points.yml -e ap_provision_after_discovery=false</pre>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/11_await_access_points.yml -e ap_provision_after_discovery=false</pre>
 <div class="admonition">
 <p>👀 <strong>Why this stage exists.</strong> Doing it by hand means reading a MAC off the controller, converting <code>084f.a950.f028</code> to <code>08:4f:a9:50:f0:28</code>, and picking the <em>Ethernet</em> MAC rather than the Base Radio MAC that Catalyst Center shows in its inventory column. Get any of those wrong and the provision fails with an unhelpful “not found among the Unified AP devices”. The playbook removes all three traps.</p>
 </div>
@@ -4057,7 +4057,7 @@ From settings.json: SSID PSEUDOCO-POD05, wireless VLANs 10, 101, 102, 1 access p
 <tr><th style="width: 40%;">Symptom</th><th style="width: 60%;">What to do</th></tr>
 </thead>
 <tbody>
-<tr><td>A handful of checks fail on one device</td><td>Re-run stage 09 — a deployment task may have timed out</td></tr>
+<tr><td>A handful of checks fail on one device</td><td>Re-run stage 10 — a deployment task may have timed out</td></tr>
 <tr><td>A check fails on <em>every</em> device with the same value</td><td>The design changed, not the fabric. Compare the DEFN template in Catalyst Center against your checkout.</td></tr>
 <tr><td>Everything is <code>NOT VERIFIED</code></td><td>Command Runner is unhappy. Confirm the devices are reachable and managed in Inventory.</td></tr>
 <tr><td>The run aborts naming a VRF id</td><td><code>DEFN_VRF_TO_NODE</code> references an id that <code>DEFN_VRF</code> does not define. Fix the template in Template Programmer.</td></tr>
@@ -4105,7 +4105,7 @@ From settings.json: SSID PSEUDOCO-POD05, wireless VLANs 10, 101, 102, 1 access p
 </tr>
 <tr>
 <td>2</td><td>The access-point trunk is correct</td>
-<td>On the leaf: <code>show interface Gi1/0/2 trunk</code>. Native VLAN 10, allowed 10, 101, 102.<br><em>Manual track:</em> re-apply the access-port configuration from <a href="#page-7583">1. EVPN Fabric Provisioning</a>.<br><em>IaC track:</em> stage 09 did not deploy — re-run it.</td>
+<td>On the leaf: <code>show interface Gi1/0/2 trunk</code>. Native VLAN 10, allowed 10, 101, 102.<br><em>Manual track:</em> re-apply the access-port configuration from <a href="#page-7583">1. EVPN Fabric Provisioning</a>.<br><em>IaC track:</em> stage 10 did not deploy — re-run it.</td>
 </tr>
 <tr>
 <td>3</td><td>The SSID is enabled</td>
@@ -4113,7 +4113,7 @@ From settings.json: SSID PSEUDOCO-POD05, wireless VLANs 10, 101, 102, 1 access p
 </tr>
 <tr>
 <td>4</td><td>The access point carries the right tags</td>
-<td><code>show ap tag summary</code> — tag source should be <code>Static</code>, not factory default.<br><em>Manual track:</em> the Policy tag <code>DCLOUD-XAR-FLEX-PT</code> and Site tag <code>FLEX-SITE</code> are set by hand on the <strong>Edit AP</strong> page — recheck them.<br><em>IaC track:</em> tags are Catalyst Center-generated; factory defaults mean stage 10 never provisioned the access point.</td>
+<td><code>show ap tag summary</code> — tag source should be <code>Static</code>, not factory default.<br><em>Manual track:</em> the Policy tag <code>DCLOUD-XAR-FLEX-PT</code> and Site tag <code>FLEX-SITE</code> are set by hand on the <strong>Edit AP</strong> page — recheck them.<br><em>IaC track:</em> tags are Catalyst Center-generated; factory defaults mean stage 11 never provisioned the access point.</td>
 </tr>
 <tr>
 <td>5</td><td>The client reaches authentication</td>

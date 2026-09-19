@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 00_site_deploy.yml  —  Full pipeline orchestrator (stages 01–09)
+# 00_site_deploy.yml  —  Full pipeline orchestrator (stages 01–10)
 # =============================================================================
 # Builds a Catalyst Center deployment end-to-end by importing each stage
 # playbook in dependency order. The orchestrator itself declares no vars and
@@ -18,10 +18,20 @@
 #
 # Order is significant — each stage consumes objects created by the previous:
 #   01 hierarchy → 02 settings → 03 credentials → 04 discovery → 05 assign
-#   → 06 templates → 07 profiles → 08 provision → 09 composite deploy
+#   → 06 templates → 07 profiles → 08 provision → 09 SWIM → 10 composite deploy
+#
+# Stage 09 sits before the composite deploy on purpose: the switches should be
+# running their intended image before EVPN and telemetry configuration is
+# pushed onto them, not after.
+#
+# 🛑 Stage 09 RELOADS the switches. Activation is default-on, so a plain run of
+# this orchestrator upgrades and reboots the fabric between stages 08 and 10.
+# To build the site without an image change:
+#   ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false
 #
 # Excluded by design:
-#   12_verify_intent.yml — read-only intent verification via Command Runner; on demand
+#   11_await_access_points.yml — blocks on an access point booting; on demand
+#   12_verify_intent.yml       — read-only intent verification via Command Runner; on demand
 #
 # Run: ansible-playbook playbooks/00_site_deploy.yml
 # =============================================================================
@@ -49,5 +59,8 @@
 - name: Stage 08 - Provision devices
   import_playbook: 08_provision_devices.yml
 
-- name: Stage 09 - Deploy composite templates
-  import_playbook: 09_deploy_composite.yml
+- name: Stage 09 - Software image management
+  import_playbook: 09_swim.yml
+
+- name: Stage 10 - Deploy composite templates
+  import_playbook: 10_deploy_composite.yml

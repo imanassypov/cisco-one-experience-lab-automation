@@ -47,7 +47,7 @@
 #   _ap_config             — one accesspoint_workflow_manager entry per AP
 #   _ap_provision_config   — one POST /wirelessAccessPoints/provision per site
 #   In Catalyst Center: devices in PROVISIONED state with site settings and the
-#   switching profile applied — the precondition for stage 09 template deploy —
+#   switching profile applied — the precondition for stage 10 template deploy —
 #   controllers provisioned with the AP locations they serve, and APs named,
 #   assigned to their site, and provisioned so their policy and site tags exist
 #   and they actually broadcast the SSID.

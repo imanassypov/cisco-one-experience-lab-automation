@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 10_await_access_points.yml  —  Pipeline stage 10
+# 11_await_access_points.yml  —  Pipeline stage 11
 # =============================================================================
 # Waits for an access point to reach Catalyst Center, records its Ethernet MAC
 # in inventory/group_vars/all/lab.yml, then provisions it.
@@ -9,7 +9,7 @@
 # --------------------------------------------------------------------------
 # Wireless is the one part of this lab that cannot complete in a single pass: a
 # physical AP has to boot and find its controller in the middle of it. The AP
-# cannot join until stage 09 makes Gi1/0/2 an AP trunk, so at first-run time
+# cannot join until stage 10 makes Gi1/0/2 an AP trunk, so at first-run time
 # there is no AP for stage 08 to provision.
 #
 # Bridging that gap by hand is where students lose time. They have to notice
@@ -29,7 +29,7 @@
 # 9800 unless -e wireless_provision_enabled=false is remembered. Calling the AP
 # tasks directly removes that footgun.
 #
-# Runs after: 09_deploy_composite.yml
+# Runs after: 10_deploy_composite.yml
 # Runs before: 12_verify_intent.yml
 #
 # Deliberately NOT part of 00_site_deploy.yml. It blocks on hardware booting,
@@ -45,9 +45,9 @@
 #   inventory/group_vars/all/lab.yml — lab_ap_macs populated, comments intact
 #   On Catalyst Center: APs named, assigned to their floor, and provisioned
 #
-# Run: ansible-playbook playbooks/10_await_access_points.yml
-#      ansible-playbook playbooks/10_await_access_points.yml -e ap_expected_count=2
-#      ansible-playbook playbooks/10_await_access_points.yml -e ap_provision_after_discovery=false
+# Run: ansible-playbook playbooks/11_await_access_points.yml
+#      ansible-playbook playbooks/11_await_access_points.yml -e ap_expected_count=2
+#      ansible-playbook playbooks/11_await_access_points.yml -e ap_provision_after_discovery=false
 # =============================================================================
 - name: Wait for access points and record their MACs in lab.yml
   hosts: catalyst_center

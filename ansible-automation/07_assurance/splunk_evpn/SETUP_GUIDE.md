@@ -156,7 +156,7 @@ Do **not** paste subscriptions onto the switches. They are rendered by
 ```bash
 cd ansible-automation/01_campus/evpn/ansible
 ansible-playbook playbooks/06_template_sync.yml
-ansible-playbook playbooks/09_deploy_composite.yml
+ansible-playbook playbooks/10_deploy_composite.yml
 ansible-playbook playbooks/12_verify_intent.yml
 ```
 

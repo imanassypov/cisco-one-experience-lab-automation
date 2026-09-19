@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim_for_assurance / tasks/rollback.yml  —  Stage 11.6
+# swim / tasks/rollback.yml  —  Stage 09.6
 # =============================================================================
 # DISRUPTIVE recovery path. Re-tags the previous image golden and activates it,
 # reloading every targeted device back onto the older version.
@@ -12,10 +12,10 @@
 # on swim_rollback. Re-importing and re-tagging the upgrade image on the way to
 # a downgrade would undo the thing being rolled back.
 #
-# Depends on 11.2 having imported rollback_image_file. That is why both images
+# Depends on 09.2 having imported rollback_image_file. That is why both images
 # are imported up front: the recovery target must already be in the repository.
 #
-# The one meaningful difference from 11.4: activate_lower_image_version must be
+# The one meaningful difference from 09.4: activate_lower_image_version must be
 # true, because the rollback target is by definition older than what is running.
 # Left false, Catalyst Center refuses the downgrade.
 #
@@ -23,18 +23,18 @@
 # Post: devices running the previous image
 # =============================================================================
 
-- name: "11.6 | Require a rollback image to be declared"
+- name: "09.6 | Require a rollback image to be declared"
   ansible.builtin.assert:
     that: item.rollback_image_file is defined and item.rollback_image_file | length > 0
     fail_msg: >-
       {{ item.site_name }} has no swim.rollback_image_file in settings.json, so
       there is nothing to roll back to. Add the previously-running image name
-      and re-run stage 11.2 to import it before attempting a rollback.
+      and re-run stage 09.2 to import it before attempting a rollback.
   loop: "{{ _swim_entries }}"
   loop_control:
     label: "{{ item.site_name }}"
 
-- name: "11.6 | Announce the rollback"
+- name: "09.6 | Announce the rollback"
   ansible.builtin.debug:
     msg:
       - "ROLLING BACK {{ item.site_name }} to {{ item.rollback_image_file }}"
@@ -43,7 +43,7 @@
   loop_control:
     label: "{{ item.site_name }}"
 
-- name: "11.6 | Re-tag the previous image as golden"
+- name: "09.6 | Re-tag the previous image as golden"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -61,7 +61,7 @@
   register: _swim_rollback_tag
   failed_when: false
 
-- name: "11.6 | Fail if the rollback image could not be tagged"
+- name: "09.6 | Fail if the rollback image could not be tagged"
   ansible.builtin.assert:
     that: not (item.failed | default(false))
     fail_msg: >-
@@ -73,7 +73,7 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "11.6 | Activate the previous image"
+- name: "09.6 | Activate the previous image"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -101,20 +101,20 @@
     var: _swim_rollback_activate
   when: catc_debug | default(false) | bool
 
-- name: "11.6 | Write rollback evidence"
+- name: "09.6 | Write rollback evidence"
   ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-rollback.json"
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-rollback.json"
     mode: "0644"
     content: "{{ _evidence | to_nice_json }}"
   vars:
     _evidence:
-      phase: "11.6 rollback"
+      phase: "09.6 rollback"
       run_id: "{{ swim_run_id }}"
       rolled_back_to: "{{ _swim_entries | map(attribute='rollback_image_file') | list }}"
       tagging: "{{ _swim_rollback_tag.results | map(attribute='msg') | list }}"
       activation: "{{ _swim_rollback_activate.results | map(attribute='msg') | list }}"
 
-- name: "11.6 | Fail if the rollback did not complete"
+- name: "09.6 | Fail if the rollback did not complete"
   ansible.builtin.assert:
     that: not (item.failed | default(false))
     fail_msg: >-
@@ -126,10 +126,10 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "11.6 | Next step"
+- name: "09.6 | Next step"
   ansible.builtin.debug:
     msg:
       - "Rollback complete. Confirm the fabric came back:"
       - "  ansible-playbook playbooks/12_verify_intent.yml"
       - "NOTE: the previous image is now the golden tag for this site. Stage"
-      - "11.2 will re-tag the upgrade image the next time it runs."
+      - "09.2 will re-tag the upgrade image the next time it runs."

@@ -219,7 +219,7 @@ vi inventory/group_vars/all/lab.yml
 | Variable | Value |
 |----------|-------|
 | `lab_pod_id` | Your dCloud POD number from the lab printout (integer), set for you in Step 3. Stages 01–05 and 07–09 **fail** while it is `REPLACE_ME`, so a skipped value cannot push another student's SSID (`PSEUDOCO-PODnn`) onto the shared WLC. Zero-padded to two digits at run time, so pod 7 yields `PSEUDOCO-POD07`. The pod is **only** that SSID — not switch IPs or site paths. Which playbooks use it: [README — lab_pod_id](README.md#lab_pod_id--wlan-ssid-only). |
-| `lab_ap_macs` | Leave `[]` until **after** stage 09 — and then let the automation fill it. The composite programs the AP trunk (`Gi1/0/2`, native VLAN 10); until then the AP cannot join the WLC and Catalyst Center has no Unified AP. Once stage 09 is done, run `10_await_access_points.yml`: it waits for the AP to reach Catalyst Center, writes the **Ethernet** MAC into this file, then names the AP, assigns it to Site-105 and provisions it. Fill it by hand only if you prefer — colon-separated, Ethernet MAC not Base Radio MAC. |
+| `lab_ap_macs` | Leave `[]` until **after** stage 10 — and then let the automation fill it. The composite programs the AP trunk (`Gi1/0/2`, native VLAN 10); until then the AP cannot join the WLC and Catalyst Center has no Unified AP. Once stage 10 is done, run `11_await_access_points.yml`: it waits for the AP to reach Catalyst Center, writes the **Ethernet** MAC into this file, then names the AP, assigns it to Site-105 and provisions it. Fill it by hand only if you prefer — colon-separated, Ethernet MAC not Base Radio MAC. |
 
 To try a different pod for one run without editing the file:
 

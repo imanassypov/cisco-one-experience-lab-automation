@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim_for_assurance / tasks/import_and_tag.yml  —  Stage 11.2
+# swim / tasks/import_and_tag.yml  —  Stage 09.2
 # =============================================================================
 # Pull the image from Cisco Connection Online into the Catalyst Center image
 # repository, then mark it golden for the site and role.
@@ -36,7 +36,7 @@
 # Post: image present in the CatC repository and tagged golden for the site
 # =============================================================================
 
-- name: "11.2 | Import upgrade image"
+- name: "09.2 | Import upgrade image"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_import_timeout }}"
@@ -69,7 +69,7 @@
 # 2026-09-19, where the error named 17.12.06 while 26.01.01 was the real target.
 # The rollback image is also non-fatal: losing the recovery target should not
 # stop an upgrade that is otherwise fine.
-- name: "11.2 | Import rollback image"
+- name: "09.2 | Import rollback image"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_import_timeout }}"
@@ -96,12 +96,12 @@
   register: _swim_import_rollback
   failed_when: false
 
-- name: "11.2 | Warn if the rollback image did not import"
+- name: "09.2 | Warn if the rollback image did not import"
   ansible.builtin.debug:
     msg: >-
       WARNING: rollback image {{ item.item.rollback_image_file }} did not import
       ({{ item.msg | default('no message') }}).
-      The upgrade can proceed, but stage 11.6 has no recovery target until this
+      The upgrade can proceed, but stage 09.6 has no recovery target until this
       image is in the repository.
   loop: "{{ _swim_import_rollback.results | default([]) }}"
   loop_control:
@@ -117,7 +117,7 @@
 #
 # _swim_soft_failed folds item.failed together with a msg scan, because the
 # module returns failed=false while reporting "CCO image ... not found" in msg.
-- name: "11.2 | Report import outcome"
+- name: "09.2 | Report import outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.image_file }}:
@@ -133,7 +133,7 @@
     label: "{{ item.item.image_file }}"
 
 # Authoritative check: ask the repository rather than believe the module.
-- name: "11.2 | Confirm the image actually reached the repository"
+- name: "09.2 | Confirm the image actually reached the repository"
   ansible.builtin.uri:
     url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/image/importation?imageName={{ item.image_file | urlencode }}"
     method: GET
@@ -146,7 +146,7 @@
     label: "{{ item.image_file }}"
   register: _swim_repo_check
 
-- name: "11.2 | Fail if the upgrade image is not in the repository"
+- name: "09.2 | Fail if the upgrade image is not in the repository"
   ansible.builtin.assert:
     that: item.json.response | default([]) | length > 0
     fail_msg: >-
@@ -162,7 +162,7 @@
   loop_control:
     label: "{{ item.item.image_file }}"
 
-- name: "11.2 | Tag the upgrade image golden for the site"
+- name: "09.2 | Tag the upgrade image golden for the site"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -181,7 +181,7 @@
   register: _swim_tag
   failed_when: false
 
-- name: "11.2 | Report tagging outcome"
+- name: "09.2 | Report tagging outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.image_file }} @ {{ item.item.site_name }}:
@@ -191,7 +191,7 @@
   loop_control:
     label: "{{ item.item.image_file }}"
 
-- name: "11.2 | Fail if the image could not be tagged golden"
+- name: "09.2 | Fail if the image could not be tagged golden"
   ansible.builtin.assert:
     that:
       - not (item.failed | default(false))
@@ -207,14 +207,14 @@
   loop_control:
     label: "{{ item.item.image_file }}"
 
-- name: "11.2 | Write import and tag evidence"
+- name: "09.2 | Write import and tag evidence"
   ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-import_and_tag.json"
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-import_and_tag.json"
     mode: "0644"
     content: "{{ _evidence | to_nice_json }}"
   vars:
     _evidence:
-      phase: "11.2 import_and_tag"
+      phase: "09.2 import_and_tag"
       run_id: "{{ swim_run_id }}"
       import_source: CCO
       images: "{{ _swim_entries | map(attribute='image_file') | list }}"

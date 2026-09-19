@@ -165,7 +165,7 @@ Run from the script server, with the dCloud VPN up.
    ```bash
    cd ansible-automation/01_campus/evpn/ansible
    ansible-playbook playbooks/06_template_sync.yml
-   ansible-playbook playbooks/09_deploy_composite.yml
+   ansible-playbook playbooks/10_deploy_composite.yml
    ```
 
 4. **Run this collection:**
@@ -385,7 +385,7 @@ Settings/settings.json
 DEFN-TELEMETRY-SPLUNK.j2      {{ TELEMETRY_RECEIVER_IP }} → 198.18.5.109
 FABRIC-TELEMETRY-SPLUNK.j2    {{ TELEMETRY_ROLE_GUARD }}  → DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] or …
           │
-          │  stage 09 deploy_composite pushes the rendered CLI
+          │  stage 10 deploy_composite pushes the rendered CLI
           ▼
 telemetry ietf subscription 40101…40121 on each fabric node
           │

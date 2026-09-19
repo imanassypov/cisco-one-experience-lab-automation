@@ -40,8 +40,8 @@
 #
 # Read-only: issues nothing but GETs and Command Runner read requests.
 #
-# Depends on: stages 01-09. Stage 11 (SWIM) is independent — run it before this
-# stage when an image upgrade is part of the change being verified.
+# Depends on: stages 01-10. Stage 09 (SWIM) reloads the switches, so run this
+# after it rather than before — a fabric mid-reload will fail every check.
 #
 # Run: ansible-playbook playbooks/12_verify_intent.yml
 #      ansible-playbook playbooks/12_verify_intent.yml -e catc_debug=true

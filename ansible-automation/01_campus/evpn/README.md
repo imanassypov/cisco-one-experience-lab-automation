@@ -52,7 +52,7 @@ Stages, in order, from `ansible/playbooks/`:
 | `06_template_sync.yml` | Sync Jinja from a local folder or GitHub into a CatC CLI project (`Site-105`) |
 | `07_network_profile.yml` | Network profile (switching, wireless design, wireless) |
 | `08_provision_devices.yml` | Provision wired devices, then wireless controllers |
-| `09_deploy_composite.yml` | Deploy composite (do not run until asked) |
+| `10_deploy_composite.yml` | Deploy composite (do not run until asked) |
 
 Safe to inspect after the repo-root `.vault` can decrypt `Lab Topology/lab_access.yml`: syntax-check or a dry read of `06_template_sync.yml`. Real CatC runs stay on the script server (`cisco.catalystcenter` / `cisco.dnac`). Install collections from `ansible/collections/requirements.yml` into `~/venv` if a stage reports a missing collection.
 
@@ -93,14 +93,14 @@ devices by their CatC loopbacks through Command Runner, not over SSH.
 
 | Playbook | Purpose |
 | --- | --- |
-| `playbooks/11_swim_for_assurance.yml` | Software image management. Imports the image declared in `settings.json` → `project[].swim` from cisco.com (CCO), tags it golden, and stages it in device flash. Activation reloads devices and is gated behind explicit flags |
+| `playbooks/09_swim.yml` | Software image management. Imports the image declared in `settings.json` → `project[].swim` from cisco.com (CCO), tags it golden, and stages it in device flash. Activation reloads devices and is gated behind explicit flags |
 | `playbooks/12_verify_intent.yml` | Compares VRFs, VNIs, loopbacks, EVPN/NVE state, SVIs, client ports, SSID and AP tags against `settings.json` + the DEFN templates in CatC → `ansible/evidence/stage12-verification.md` |
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 
 # Stage the image in flash. Nothing reloads; safe during business hours.
-ansible-playbook playbooks/11_swim_for_assurance.yml
+ansible-playbook playbooks/09_swim.yml
 
 # Verify the fabric against declared intent.
 ansible-playbook playbooks/12_verify_intent.yml

@@ -673,7 +673,7 @@ All three automation paths read `settings.json` from GitHub and iterate over eve
 | Device Credentials | `GitOps-BuildSettings-v3` | `playbooks/03_credentials.yml` | `credentials.py` | `device_credentials.*` |
 | Device Discovery | `GitOps-DeviceDiscovery-v3` | `playbooks/04_device_discovery.yml` | `device_discovery.py` | `device_list`, `device_credentials.*` |
 | Network Profile | `GitOps-BuildNetworkProfile-v3` | `playbooks/07_network_profile.yml` | `network_profile.py` | `lab.*`, `network_profile.*`, `wireless_design.*`, `wireless_profile.*` |
-| Provisioning | `GitOps-Provisioning-v3` | `playbooks/08_provision_devices.yml` + `playbooks/09_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*`, `access_points[]` |
+| Provisioning | `GitOps-Provisioning-v3` | `playbooks/08_provision_devices.yml` + `playbooks/10_deploy_composite.yml` | `deploy_composite.py` | `device_list`, `network_profile.DayNTemplateNames`, `wireless_controller.*`, `access_points[]` |
 
 All Ansible playbooks run from [`evpn/ansible/`](../ansible/).
 

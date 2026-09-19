@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim_for_assurance / tasks/distribute.yml  —  Stage 11.3
+# swim / tasks/distribute.yml  —  Stage 09.3
 # =============================================================================
 # Copy the golden image into each device's flash. No reload, no change to the
 # running image — the device keeps forwarding throughout, which is why this
@@ -12,13 +12,13 @@
 # reported and skipped rather than corrupting the transfer.
 #
 # Targeting here uses the INVENTORY family and series, not the SWIM identifier
-# used for tagging in 11.2. See the header of import_and_tag.yml.
+# used for tagging in 09.2. See the header of import_and_tag.yml.
 #
-# Pre:  image tagged golden by 11.2
+# Pre:  image tagged golden by 09.2
 # Post: image staged in flash on every device matching site + role + family
 # =============================================================================
 
-- name: "11.3 | Distribute image to devices"
+- name: "09.3 | Distribute image to devices"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
@@ -43,7 +43,7 @@
     var: _swim_distribute
   when: catc_debug | default(false) | bool
 
-- name: "11.3 | Report distribution outcome"
+- name: "09.3 | Report distribution outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.image_file }} -> {{ item.item.site_name }}:
@@ -56,7 +56,7 @@
 # Activation with distribute_if_needed would paper over a failure here, so stop
 # instead: a distribute that failed on two of three devices must not turn into a
 # partial reload.
-- name: "11.3 | Fail if distribution did not complete"
+- name: "09.3 | Fail if distribution did not complete"
   ansible.builtin.assert:
     that:
       - not (item.failed | default(false))
@@ -64,32 +64,32 @@
     fail_msg: >-
       Could not distribute {{ item.item.image_file }} to {{ item.item.site_name }}.
       "No eligible devices" almost always means the image is missing from the
-      repository or is not tagged golden for this site — check phase 11.2.
+      repository or is not tagged golden for this site — check phase 09.2.
       Other causes: insufficient flash, the device unreachable from Catalyst
       Center, or device_family_name / device_series_name not matching the
-      inventory record (11.1 resync refreshes those).
+      inventory record (09.1 resync refreshes those).
       Reported: {{ item.msg | default('no message') }}
   loop: "{{ _swim_distribute.results }}"
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "11.3 | Write distribution evidence"
+- name: "09.3 | Write distribution evidence"
   ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-distribute.json"
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-distribute.json"
     mode: "0644"
     content: "{{ _evidence | to_nice_json }}"
   vars:
     _evidence:
-      phase: "11.3 distribute"
+      phase: "09.3 distribute"
       run_id: "{{ swim_run_id }}"
       images: "{{ _swim_entries | map(attribute='image_file') | list }}"
       distribution: "{{ _swim_distribute.results | map(attribute='msg') | list }}"
 
-- name: "11.3 | Distribution complete — no devices reloaded"
+- name: "09.3 | Distribution complete — no devices reloaded"
   ansible.builtin.debug:
     msg:
       - "Image is staged in flash. Nothing has reloaded and the fabric is unchanged."
       - "Activation was skipped because -e swim_activate=false was supplied."
       - "To activate, re-run without that flag:"
-      - "  ansible-playbook playbooks/11_swim_for_assurance.yml"
+      - "  ansible-playbook playbooks/09_swim.yml"
   when: not (swim_activate | bool)

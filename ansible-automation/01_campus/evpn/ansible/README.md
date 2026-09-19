@@ -22,7 +22,7 @@ Run the playbooks in numerical order:
 10. SSH to the switches and collect read-only verification evidence.
 11. Wait for the AP to reach Catalyst Center, record its Ethernet MAC in
     `lab_ap_macs`, then name it, assign it to Site-105 and provision it — all
-    in `10_await_access_points.yml`.
+    in `11_await_access_points.yml`.
 
 Stages 01–09 use the Catalyst Center API. Stage 12 is the only playbook that
 logs in to the switches.
@@ -41,11 +41,11 @@ Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
 - Set `lab_pod_id` in `inventory/group_vars/all/lab.yml`. The bootstrap seeds
   that file from `lab.yml.example` with `REPLACE_ME`; stages that load
   `settings.json` stop until you replace it. The file is gitignored, so your
-  values survive later pulls. Leave `lab_ap_macs: []` until **after** stage 09. Stage 08
+  values survive later pulls. Leave `lab_ap_macs: []` until **after** stage 10. Stage 08
   provision does not program AP ports. The composite does (`Gi1/0/2` trunk,
   native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
   CAPWAP-join, so Catalyst Center has no Unified AP to provision. You do not
-  fill `lab_ap_macs` by hand: run `10_await_access_points.yml` after stage 09
+  fill `lab_ap_macs` by hand: run `11_await_access_points.yml` after stage 10
   and it waits for the AP to reach Catalyst Center, writes the Ethernet MAC
   into `lab.yml`, then names, site-assigns and provisions the AP.
 - Run every command from this directory so Ansible finds `ansible.cfg`:
@@ -554,7 +554,7 @@ Open **Tools > Discovery** and confirm:
 Then open **Provision > Inventory**. Confirm the WLC and all three switches are
 present. They may still be unassigned or under Global until stage 05. Do
 **not** expect a Unified AP here — stage 04 never discovers APs, and the AP
-cannot join until stage 09 programs `Gi1/0/2`.
+cannot join until stage 10 programs `Gi1/0/2`.
 
 ---
 
@@ -641,7 +641,7 @@ to the wrong site; correct that in CatC before proceeding.
 
 This stage copies DEFN, FUNC, and FABRIC Jinja plus the composite YAML into
 Catalyst Center **Design > CLI Templates**. It does **not** push CLI onto
-switches; stage 09 later deploys the composite `BGP-EVPN-BUILD.j2`.
+switches; stage 10 later deploys the composite `BGP-EVPN-BUILD.j2`.
 
 A **CLI project** is created if it does not already exist. This lab’s project
 is named **Site-105**. Students should see that project after the first
@@ -987,8 +987,8 @@ Provisioning applies site settings and profiles. Three passes, in order:
 The WLC is listed in DC-Site-10’s `device_list` but is **not** sent to the SDA
 provision API. APs are not in `device_list` and are **not** expected in
 Inventory on this first run. Stage 08 does not program `Gi1/0/2`. The AP
-cannot join until stage 09 deploys the composite. Leave `lab_ap_macs: []`
-so the AP pass skips. After stage 09, fill the Ethernet MAC and re-run 08
+cannot join until stage 10 deploys the composite. Leave `lab_ap_macs: []`
+so the AP pass skips. After stage 10, fill the Ethernet MAC and re-run 08
 for name / site / provision. Without that later pass, a joined AP stays on
 default tags and never broadcasts `PSEUDOCO-PODnn`.
 
@@ -1002,7 +1002,7 @@ default tags and never broadcasts `PSEUDOCO-PODnn`.
 - AP name, mode, location, floor/site, and optional RF profile
 
 AP `{APn_MAC}` values come from `lab_ap_macs`. On the first 08 leave the
-list empty. After stage 09, enter the AP's **Ethernet MAC**, not its radio
+list empty. After stage 10, enter the AP's **Ethernet MAC**, not its radio
 MAC. Unresolved AP rows are skipped.
 
 ### Catalyst Center APIs
@@ -1087,9 +1087,9 @@ failure. Recap `changed=1` is the **WLC** workflow manager only. The Site-105
 
 A later run typically skips the three switches (“already provisioned”) and
 still force-provisions the WLC unless `-e force_wireless_provisioning=false`.
-Do not fill `lab_ap_macs` or chase a Unified AP row yet. Stage 09 programs
+Do not fill `lab_ap_macs` or chase a Unified AP row yet. Stage 10 programs
 the AP ports. After a Unified AP appears in Inventory, the MAC + AP-pass
-re-run (and its expected output) is under stage 09.
+re-run (and its expected output) is under stage 10.
 
 ### Where to verify in Catalyst Center
 
@@ -1102,7 +1102,7 @@ reachable devices — **no Unified AP**:
 CDP on Leaf1/Leaf2 `Gi1/0/2` only means the AP is powered. Stage 04 does
 not discover APs (the WLC RANGE job is `198.18.5.103` only). Stage 08 does
 not set the AP trunk. Do not expect the AP on the WLC or in CatC until
-stage 09 has deployed.
+stage 10 has deployed.
 
 ### Disruption warning
 
@@ -1114,9 +1114,182 @@ does not re-assign an AP that is already in its floor.
 
 ---
 
-## Stage 09 — Deploy the EVPN composite
+## Stage 09 — Software image management (SWIM)
 
-**Playbook:** `playbooks/09_deploy_composite.yml`
+**Playbook:** `playbooks/09_swim.yml`
+**Role:** `swim`
+**Safety:** **Disruptive by default — a plain run reloads the switches.** Opt out
+with `-e swim_activate=false` to stage the image without reloading.
+
+### What it accomplishes
+
+Lifts the fabric onto a declared IOS-XE image. The EVPN telemetry subscriptions
+stage 10 deploys, and the Splunk assurance collection in `07_assurance` that
+consumes them, depend on YANG models whose coverage moves between IOS-XE trains
+— so pinning the image is part of standing up assurance rather than a separate
+errand.
+
+The image is declared in `settings.json` alongside everything else the pipeline
+builds, under `project[].swim`. Nothing is passed on the command line except the
+safety gates.
+
+### Data read
+
+`settings.json` → `project[].swim`:
+
+| Field | Purpose |
+| --- | --- |
+| `enabled` | Projects without this set to `true` are skipped entirely |
+| `import_source` | `CCO` — Catalyst Center downloads from cisco.com |
+| `image_file` | Image name exactly as published on cisco.com |
+| `image_version` | Recorded in evidence; not sent to the API |
+| `rollback_image_file` | Recovery target, imported up front alongside the upgrade |
+| `site_name` | Full hierarchy path, e.g. `Global/NORTH CAROLINA/Durham/Site-105/MAIN` |
+| `device_role` | `ALL`, or `ACCESS` / `DISTRIBUTION` / `CORE` / `BORDER ROUTER` |
+| `device_image_family_name` | **SWIM identifier** for tagging, e.g. `Cisco Catalyst 9300 Switch` |
+| `device_family_name` | **Inventory family** for distribute/activate, e.g. `Switches and Hubs` |
+| `device_series_name` | **Inventory series**, e.g. `Cisco Catalyst 9300 Series Switches` |
+| `activate_lower_image_version` | `false` blocks accidental downgrades |
+| `device_upgrade_mode` | `install` — the IOS-XE three-step sequence |
+| `distribute_if_needed` | Fallback distribution during activation |
+
+> **Three “family” names, and they are not interchangeable.**
+> `device_image_family_name` is the SWIM identifier used for *tagging*;
+> `device_family_name` and `device_series_name` are *inventory* fields used for
+> *distribute* and *activate*. Swapping them fails with “no eligible devices
+> found” and no further explanation. Discover the SWIM identifier with
+> `GET /dna/intent/api/v1/image/importation/device-family-identifiers`.
+
+### Phases
+
+| Phase | Tag | Effect |
+| --- | --- | --- |
+| 11.1 preflight | `swim_preflight` | Resync inventory, baseline IMAGE compliance — read-only |
+| 11.2 import_and_tag | `swim_import` | Pull from CCO, mark golden — Catalyst Center only |
+| 11.3 distribute | `swim_distribute` | Copy into device flash — **no reload** |
+| 11.4 activate | `swim_activate` | Reload onto the new image — **disruptive** |
+| 11.5 postcheck | `swim_postcheck` | IMAGE compliance after activation — read-only |
+| 11.6 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
+
+A default run executes 11.1–11.5, **including the reload in 11.4**, so a single
+command performs the whole upgrade. Add `-e swim_activate=false` to stop after
+11.3: the image lands in flash, the devices keep running their current version,
+and the fabric is untouched — the safe business-hours run.
+
+> 🛑 **Stage 09 reloads the fabric by default.** Unlike stage 12, this stage is
+> not safe to run casually. Site-105 is three switches with no redundancy, so the
+> overlay drops for the length of the reload. Use `-e swim_activate=false` when
+> you only mean to stage the image.
+
+The resync in 11.1 is not ceremony: every later phase targets devices by
+`site_name` + family + series + role, and those fields come from the Catalyst
+Center inventory record. A stale record silently narrows the target set, which
+only surfaces as a failure much later in distribute.
+
+### Prerequisites
+
+CCO import needs Cisco.com credentials configured in Catalyst Center under
+**System > Settings > Cisco.com Credentials**. Without them the import fails
+with a credentials error rather than a not-found.
+
+### Running it
+
+Full upgrade. **This reloads every device** and drops the overlay until they
+return:
+
+```bash
+ansible-playbook playbooks/09_swim.yml
+```
+
+Stage the image in flash without reloading — safe during business hours:
+
+```bash
+ansible-playbook playbooks/09_swim.yml -e swim_activate=false
+```
+
+Emergency rollback to the previous image. **Also reloads every device:**
+
+```bash
+ansible-playbook playbooks/09_swim.yml \
+  -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+```
+
+A single phase, or with debug output:
+
+```bash
+ansible-playbook playbooks/09_swim.yml --tags swim_distribute
+ansible-playbook playbooks/09_swim.yml -e catc_debug=true
+```
+
+> **Why rollback is gated but activation is not.** Activation is the point of
+> the stage, so it runs on a bare command. A downgrade is an exceptional act,
+> and making it as easy as an upgrade is how a fabric gets reverted by a stray
+> `--extra-var`. Its gates are asserted before any phase runs, so wrong flags
+> fail immediately rather than after a twenty-minute distribute.
+
+### Knobs
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `swim_run_preflight` | `true` | Run 11.1 |
+| `swim_run_import` | `true` | Run 11.2 |
+| `swim_run_distribute` | `true` | Run 11.3 |
+| `swim_activate` | `true` | Run 11.4. **Set `false` to stage without reloading** |
+| `swim_rollback` | `false` | Run 11.6 instead of the forward phases |
+| `swim_rollback_confirm` | `""` | Must be `YES` to roll back |
+| `swim_reload_ack` | `""` | Must be `RELOAD_OK` to roll back |
+| `swim_run_postcheck` | `true` | Run 11.5 after activation |
+| `swim_task_timeout` | `7200` | Seconds; must outlast a reload |
+| `swim_task_poll_interval` | `60` | Seconds between task polls |
+| `swim_import_timeout` | `3600` | Seconds; a ~1.2 GB CCO download |
+
+> **The timeout must outlast the reload.** Timing out would not stop the
+> upgrade — it would only stop Ansible watching it, leaving the fabric
+> mid-activation with no record of the outcome.
+
+### Evidence
+
+One JSON per phase in `evidence/`, gitignored:
+
+```text
+evidence/<run_id>-11_swim-preflight.json
+evidence/<run_id>-11_swim-import_and_tag.json
+evidence/<run_id>-11_swim-distribute.json
+evidence/<run_id>-11_swim-activate.json
+evidence/<run_id>-11_swim-postcheck.json
+evidence/<run_id>-11_swim-rollback.json
+```
+
+Evidence is written **before** the phase asserts, so a failed activation still
+leaves a record on disk to work from.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Resolution |
+| --- | --- | --- |
+| `No project in settings.json has swim.enabled` | No `swim` block, or `enabled: false` | Add the block to the project you want upgraded |
+| Import fails with a credentials error | Cisco.com credentials not set in Catalyst Center | System > Settings > Cisco.com Credentials |
+| Import fails “not found” | `image_file` does not match the published name | Check the exact filename on cisco.com |
+| Tagging fails | `device_image_family_name` holds an inventory family | Use the SWIM identifier — see the box above |
+| “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Re-run 11.1, confirm against the inventory record |
+| Distribute fails on flash space | Older images filling flash | Catalyst Center auto-cleans; check the device manually if it persists |
+| Activation “succeeds” but version unchanged | `schedule_validate` was true — a dry run | The role hardcodes `false`; check for an override |
+| Rollback refused | `activate_lower_image_version` not true | The rollback phase sets this automatically |
+
+After activation, verify the fabric survived the reload with stage 12, then
+re-check telemetry is still streaming:
+
+```bash
+ansible-playbook playbooks/12_verify_intent.yml
+cd ../../../07_assurance/splunk_evpn/ansible
+ansible-playbook playbooks/08_verify_assurance.yml
+```
+
+---
+
+## Stage 10 — Deploy the EVPN composite
+
+**Playbook:** `playbooks/10_deploy_composite.yml`
 **Safety:** **Disruptive. Pushes rendered CLI to the three fabric switches.**
 
 ### What it accomplishes
@@ -1172,7 +1345,7 @@ to copy the rendered configuration to the device.
 Only run after reviewing stages 06–08:
 
 ```bash
-ansible-playbook playbooks/09_deploy_composite.yml
+ansible-playbook playbooks/10_deploy_composite.yml
 ```
 
 ### Important expected output
@@ -1336,7 +1509,7 @@ membership from the site, not only the Inventory Site column.
    ansible-playbook playbooks/08_provision_devices.yml -e wireless_provision_enabled=false
    ```
 
-   > Normally you do not run this by hand at all. `10_await_access_points.yml`
+   > Normally you do not run this by hand at all. `11_await_access_points.yml`
    > calls the AP pass directly, so the controller pass cannot run by accident.
    > The command above is for re-asserting an AP that has drifted back onto
    > default tags after the pipeline has already been through.
@@ -1446,7 +1619,7 @@ membership from the site, not only the Inventory Site column.
    Do not use `-e force_reprovision=true` — that PUT-reprovisions the
    three fabric switches.
 
-### Important expected output (AP pass after stage 09)
+### Important expected output (AP pass after stage 10)
 
 Verified on Kali (2026-09-15) with one Ethernet MAC in `lab_ap_macs` and
 `-e wireless_provision_enabled=false`: `failed=0`, `changed=1`.
@@ -1508,183 +1681,11 @@ Do not treat Configuring as a failed play, and do not re-run 08 to
 ### Disruption warning
 
 The deployment forces template application and can rewrite the switch running
-configuration even when there is no visible diff. Do not rerun stage 09 casually
+configuration even when there is no visible diff. Do not rerun stage 10 casually
 on a live lab.
 
 ---
 
-## Stage 11 — Software image management (SWIM)
-
-**Playbook:** `playbooks/11_swim_for_assurance.yml`
-**Role:** `swim_for_assurance`
-**Safety:** **Disruptive by default — a plain run reloads the switches.** Opt out
-with `-e swim_activate=false` to stage the image without reloading.
-
-### What it accomplishes
-
-Lifts the fabric onto a declared IOS-XE image. The EVPN telemetry subscriptions
-stage 09 deploys, and the Splunk assurance collection in `07_assurance` that
-consumes them, depend on YANG models whose coverage moves between IOS-XE trains
-— so pinning the image is part of standing up assurance rather than a separate
-errand.
-
-The image is declared in `settings.json` alongside everything else the pipeline
-builds, under `project[].swim`. Nothing is passed on the command line except the
-safety gates.
-
-### Data read
-
-`settings.json` → `project[].swim`:
-
-| Field | Purpose |
-| --- | --- |
-| `enabled` | Projects without this set to `true` are skipped entirely |
-| `import_source` | `CCO` — Catalyst Center downloads from cisco.com |
-| `image_file` | Image name exactly as published on cisco.com |
-| `image_version` | Recorded in evidence; not sent to the API |
-| `rollback_image_file` | Recovery target, imported up front alongside the upgrade |
-| `site_name` | Full hierarchy path, e.g. `Global/NORTH CAROLINA/Durham/Site-105/MAIN` |
-| `device_role` | `ALL`, or `ACCESS` / `DISTRIBUTION` / `CORE` / `BORDER ROUTER` |
-| `device_image_family_name` | **SWIM identifier** for tagging, e.g. `Cisco Catalyst 9300 Switch` |
-| `device_family_name` | **Inventory family** for distribute/activate, e.g. `Switches and Hubs` |
-| `device_series_name` | **Inventory series**, e.g. `Cisco Catalyst 9300 Series Switches` |
-| `activate_lower_image_version` | `false` blocks accidental downgrades |
-| `device_upgrade_mode` | `install` — the IOS-XE three-step sequence |
-| `distribute_if_needed` | Fallback distribution during activation |
-
-> **Three “family” names, and they are not interchangeable.**
-> `device_image_family_name` is the SWIM identifier used for *tagging*;
-> `device_family_name` and `device_series_name` are *inventory* fields used for
-> *distribute* and *activate*. Swapping them fails with “no eligible devices
-> found” and no further explanation. Discover the SWIM identifier with
-> `GET /dna/intent/api/v1/image/importation/device-family-identifiers`.
-
-### Phases
-
-| Phase | Tag | Effect |
-| --- | --- | --- |
-| 11.1 preflight | `swim_preflight` | Resync inventory, baseline IMAGE compliance — read-only |
-| 11.2 import_and_tag | `swim_import` | Pull from CCO, mark golden — Catalyst Center only |
-| 11.3 distribute | `swim_distribute` | Copy into device flash — **no reload** |
-| 11.4 activate | `swim_activate` | Reload onto the new image — **disruptive** |
-| 11.5 postcheck | `swim_postcheck` | IMAGE compliance after activation — read-only |
-| 11.6 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
-
-A default run executes 11.1–11.5, **including the reload in 11.4**, so a single
-command performs the whole upgrade. Add `-e swim_activate=false` to stop after
-11.3: the image lands in flash, the devices keep running their current version,
-and the fabric is untouched — the safe business-hours run.
-
-> 🛑 **Stage 11 reloads the fabric by default.** Unlike stage 12, this stage is
-> not safe to run casually. Site-105 is three switches with no redundancy, so the
-> overlay drops for the length of the reload. Use `-e swim_activate=false` when
-> you only mean to stage the image.
-
-The resync in 11.1 is not ceremony: every later phase targets devices by
-`site_name` + family + series + role, and those fields come from the Catalyst
-Center inventory record. A stale record silently narrows the target set, which
-only surfaces as a failure much later in distribute.
-
-### Prerequisites
-
-CCO import needs Cisco.com credentials configured in Catalyst Center under
-**System > Settings > Cisco.com Credentials**. Without them the import fails
-with a credentials error rather than a not-found.
-
-### Running it
-
-Full upgrade. **This reloads every device** and drops the overlay until they
-return:
-
-```bash
-ansible-playbook playbooks/11_swim_for_assurance.yml
-```
-
-Stage the image in flash without reloading — safe during business hours:
-
-```bash
-ansible-playbook playbooks/11_swim_for_assurance.yml -e swim_activate=false
-```
-
-Emergency rollback to the previous image. **Also reloads every device:**
-
-```bash
-ansible-playbook playbooks/11_swim_for_assurance.yml \
-  -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
-```
-
-A single phase, or with debug output:
-
-```bash
-ansible-playbook playbooks/11_swim_for_assurance.yml --tags swim_distribute
-ansible-playbook playbooks/11_swim_for_assurance.yml -e catc_debug=true
-```
-
-> **Why rollback is gated but activation is not.** Activation is the point of
-> the stage, so it runs on a bare command. A downgrade is an exceptional act,
-> and making it as easy as an upgrade is how a fabric gets reverted by a stray
-> `--extra-var`. Its gates are asserted before any phase runs, so wrong flags
-> fail immediately rather than after a twenty-minute distribute.
-
-### Knobs
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `swim_run_preflight` | `true` | Run 11.1 |
-| `swim_run_import` | `true` | Run 11.2 |
-| `swim_run_distribute` | `true` | Run 11.3 |
-| `swim_activate` | `true` | Run 11.4. **Set `false` to stage without reloading** |
-| `swim_rollback` | `false` | Run 11.6 instead of the forward phases |
-| `swim_rollback_confirm` | `""` | Must be `YES` to roll back |
-| `swim_reload_ack` | `""` | Must be `RELOAD_OK` to roll back |
-| `swim_run_postcheck` | `true` | Run 11.5 after activation |
-| `swim_task_timeout` | `7200` | Seconds; must outlast a reload |
-| `swim_task_poll_interval` | `60` | Seconds between task polls |
-| `swim_import_timeout` | `3600` | Seconds; a ~1.2 GB CCO download |
-
-> **The timeout must outlast the reload.** Timing out would not stop the
-> upgrade — it would only stop Ansible watching it, leaving the fabric
-> mid-activation with no record of the outcome.
-
-### Evidence
-
-One JSON per phase in `evidence/`, gitignored:
-
-```text
-evidence/<run_id>-11_swim-preflight.json
-evidence/<run_id>-11_swim-import_and_tag.json
-evidence/<run_id>-11_swim-distribute.json
-evidence/<run_id>-11_swim-activate.json
-evidence/<run_id>-11_swim-postcheck.json
-evidence/<run_id>-11_swim-rollback.json
-```
-
-Evidence is written **before** the phase asserts, so a failed activation still
-leaves a record on disk to work from.
-
-### Troubleshooting
-
-| Symptom | Likely cause | Resolution |
-| --- | --- | --- |
-| `No project in settings.json has swim.enabled` | No `swim` block, or `enabled: false` | Add the block to the project you want upgraded |
-| Import fails with a credentials error | Cisco.com credentials not set in Catalyst Center | System > Settings > Cisco.com Credentials |
-| Import fails “not found” | `image_file` does not match the published name | Check the exact filename on cisco.com |
-| Tagging fails | `device_image_family_name` holds an inventory family | Use the SWIM identifier — see the box above |
-| “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Re-run 11.1, confirm against the inventory record |
-| Distribute fails on flash space | Older images filling flash | Catalyst Center auto-cleans; check the device manually if it persists |
-| Activation “succeeds” but version unchanged | `schedule_validate` was true — a dry run | The role hardcodes `false`; check for an override |
-| Rollback refused | `activate_lower_image_version` not true | The rollback phase sets this automatically |
-
-After activation, verify the fabric survived the reload with stage 12, then
-re-check telemetry is still streaming:
-
-```bash
-ansible-playbook playbooks/12_verify_intent.yml
-cd ../../../07_assurance/splunk_evpn/ansible
-ansible-playbook playbooks/08_verify_assurance.yml
-```
-
----
 
 ## Stage 12 — Verify intent against the fabric
 
@@ -1765,7 +1766,7 @@ brief` reports `protocol up`; a config line proves none of that.
 > fabric with no NVE peers, or a controller with no access points joined. The
 > `genie_parse` filter turns that into an empty dict, so the check reports the
 > value as absent and fails on its own terms. Only a genuine parsing problem,
-> such as a missing parser, aborts the run. Run stage 12 before stage 09 and you
+> such as a missing parser, aborts the run. Run stage 12 before stage 10 and you
 > will see those checks fail, which is the correct answer.
 
 ### Run it
@@ -1917,7 +1918,7 @@ verified the student's pod and AP values.
   is Site-105 `SUCCESS` with 3 child tasks, WLC “provisioned successfully”,
   and recap `failed=0`. Recap `changed=1` is the WLC only.
 - **Stage 08 skips SITE-105-AP-1/AP-2:** expected on the first 08.
-  `lab_ap_macs` stays empty until after stage 09. CDP on the leaf is not a
+  `lab_ap_macs` stays empty until after stage 10. CDP on the leaf is not a
   CatC discovery and does not mean the AP has joined.
 - **AP-pass 08 after 09, `changed=1`:** expected. The one change is
   name/locate. `SITE-105-AP-2` skipped is a one-AP pod. Summary
@@ -1930,11 +1931,11 @@ verified the student's pod and AP values.
   `ST_Durha_Site-105_d97a1_0` / `PT_Durha_Site-_MAIN_70ab7` / `TYPICAL`,
   alongside the dCloud pre-built `DCLOUD-XAR-FLEX-PT` and the factory
   defaults.
-- **AP on CDP, missing on WLC/CatC before stage 09:** expected. Stage 08
+- **AP on CDP, missing on WLC/CatC before stage 10:** expected. Stage 08
   does not program `Gi1/0/2`. After the composite deploy, confirm trunk
   native 10, VLAN 10 + NVE up, AP DHCP, then CAPWAP to `198.18.5.103`.
-  See stage 09 “Inventory: at least one AP discovered”.
-- **Stage 09 recap `changed=0` with `FAILED - RETRYING` then three SUCCESS
+  See stage 10 “Inventory: at least one AP discovered”.
+- **Stage 10 recap `changed=0` with `FAILED - RETRYING` then three SUCCESS
   rows:** expected. Poll, not failure. Shared `deploymentId` is one CatC job.
   Still verify CLI (stage 12 / `Gi1/0/2`); do not re-run 09 on a live lab
   unless asked.
