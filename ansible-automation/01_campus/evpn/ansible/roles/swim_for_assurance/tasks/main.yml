@@ -50,6 +50,10 @@
 #          image_file: "cat9k_iosxe.26.01.01.SPA.bin", ...}}, {HierarchyBldg:
 #          "Site-106"} ]
 #   Out: _swim_entries = [ {project: "Site-105", image_file: "cat9k_...bin", ...} ]
+# tags: always on everything up to the phases. Every phase depends on
+# _swim_entries, so a tag-filtered run like --tags swim_distribute would
+# otherwise skip the setup and die on "'_swim_entries' is undefined". The reload
+# gates must be unskippable for the same reason they exist at all.
 - name: Build SWIM work list from settings.json
   ansible.builtin.set_fact:
     _swim_entries: >-
@@ -72,11 +76,13 @@
         | map(attribute='HierarchyBldg')
         | list
       }}
+  tags: [always]
 
 - name: "--DEBUG-- SWIM work list"
   ansible.builtin.debug:
     var: _swim_entries
   when: catc_debug | default(false) | bool
+  tags: [always]
 
 # A stage that silently does nothing is worse than one that fails: stage 12
 # would then report the old version with no clue why. Fail loudly instead.
@@ -87,6 +93,7 @@
       No project in settings.json has swim.enabled = true. Add a swim block to
       the project you want upgraded, or skip this stage.
     success_msg: "SWIM enabled for: {{ _swim_projects | join(', ') }}"
+  tags: [always]
 
 # Every phase writes evidence; create the directory once rather than per phase.
 - name: Ensure evidence directory exists
@@ -94,6 +101,7 @@
     path: "{{ swim_evidence_dir }}"
     state: directory
     mode: "0755"
+  tags: [always]
 
 # ── Reload gates ─────────────────────────────────────────────────────────────
 # Activation is default-on and deliberately ungated, so stage 11 runs the whole
@@ -111,6 +119,7 @@
   when:
     - swim_activate | bool
     - not (swim_rollback | bool)
+  tags: [always]
 
 - name: Enforce rollback gates
   ansible.builtin.assert:
@@ -122,6 +131,7 @@
       all three flags if that is intended:
         -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
   when: swim_rollback | bool
+  tags: [always]
 
 # ── Phases ───────────────────────────────────────────────────────────────────
 # Rollback is a recovery path, not a step in the normal sequence: when it is
