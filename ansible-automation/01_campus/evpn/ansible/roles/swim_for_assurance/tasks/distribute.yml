@@ -19,10 +19,10 @@
 # =============================================================================
 
 - name: "11.3 | Distribute image to devices"
-  cisco.dnac.swim_workflow_manager:
+  cisco.catalystcenter.swim_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_task_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - image_distribution_details:
           image_name: "{{ item.image_file }}"

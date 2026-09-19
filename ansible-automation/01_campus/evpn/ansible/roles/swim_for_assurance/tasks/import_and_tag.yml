@@ -37,10 +37,10 @@
 # =============================================================================
 
 - name: "11.2 | Import upgrade image"
-  cisco.dnac.swim_workflow_manager:
+  cisco.catalystcenter.swim_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_import_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_import_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - import_image_details: "{{ _cco if _source == 'CCO' else _remote }}"
   vars:
@@ -70,10 +70,10 @@
 # The rollback image is also non-fatal: losing the recovery target should not
 # stop an upgrade that is otherwise fine.
 - name: "11.2 | Import rollback image"
-  cisco.dnac.swim_workflow_manager:
+  cisco.catalystcenter.swim_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_import_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_import_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - import_image_details: "{{ _cco if _source == 'CCO' else _remote }}"
   vars:
@@ -135,11 +135,11 @@
 # Authoritative check: ask the repository rather than believe the module.
 - name: "11.2 | Confirm the image actually reached the repository"
   ansible.builtin.uri:
-    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/image/importation?imageName={{ item.image_file | urlencode }}"
+    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/image/importation?imageName={{ item.image_file | urlencode }}"
     method: GET
     headers:
       X-Auth-Token: "{{ _catc_token }}"
-    validate_certs: "{{ dnac_verify | bool }}"
+    validate_certs: "{{ catc_verify | bool }}"
     status_code: 200
   loop: "{{ _swim_entries }}"
   loop_control:
@@ -163,10 +163,10 @@
     label: "{{ item.item.image_file }}"
 
 - name: "11.2 | Tag the upgrade image golden for the site"
-  cisco.dnac.swim_workflow_manager:
+  cisco.catalystcenter.swim_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_task_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - tagging_details:
           image_name: "{{ item.image_file }}"

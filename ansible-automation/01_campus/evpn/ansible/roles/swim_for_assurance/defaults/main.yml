@@ -75,3 +75,6 @@ swim_failure_signatures:
   - "not available"
   - "failed"
   - "unable to"
+  # A module traceback surfaces as MODULE FAILURE, which failed_when: false then
+  # hides. That is how a golden-tag crash still reported "golden" on 2026-09-19.
+  - "module failure"

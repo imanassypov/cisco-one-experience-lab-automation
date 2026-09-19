@@ -44,10 +44,10 @@
     label: "{{ item.site_name }}"
 
 - name: "11.6 | Re-tag the previous image as golden"
-  cisco.dnac.swim_workflow_manager:
+  cisco.catalystcenter.swim_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_task_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - tagging_details:
           image_name: "{{ item.rollback_image_file }}"
@@ -74,10 +74,10 @@
     label: "{{ item.item.site_name }}"
 
 - name: "11.6 | Activate the previous image"
-  cisco.dnac.swim_workflow_manager:
+  cisco.catalystcenter.swim_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_task_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - image_activation_details:
           image_name: "{{ item.rollback_image_file }}"

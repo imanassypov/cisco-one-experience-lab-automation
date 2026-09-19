@@ -18,10 +18,10 @@
 # =============================================================================
 
 - name: "11.1 | Resync devices at the target site"
-  cisco.dnac.inventory_workflow_manager:
+  cisco.catalystcenter.inventory_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_task_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - site_name: "{{ item.site_name }}"
         device_resync: true
@@ -46,10 +46,10 @@
     label: "{{ item.item.site_name }}"
 
 - name: "11.1 | Baseline IMAGE compliance"
-  cisco.dnac.network_compliance_workflow_manager:
+  cisco.catalystcenter.network_compliance_workflow_manager:
     state: merged
-    dnac_api_task_timeout: "{{ swim_task_timeout }}"
-    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    catalystcenter_api_task_timeout: "{{ swim_task_timeout }}"
+    catalystcenter_task_poll_interval: "{{ swim_task_poll_interval }}"
     config:
       - site_name: "{{ item.site_name }}"
         run_compliance: true

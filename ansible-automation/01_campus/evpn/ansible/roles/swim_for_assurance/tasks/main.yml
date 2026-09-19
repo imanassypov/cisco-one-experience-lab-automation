@@ -25,14 +25,14 @@
 # Sourced:
 #   settings_data.project[].swim  — image, site, device targeting (settings.json)
 #   catc_username / catc_password — Lab Topology/lab_access.yml (vault)
-#   dnac_* connection vars        — inventory/group_vars/catalyst_center/
+#   catc_* connection vars        — inventory/group_vars/catalyst_center/
 #
 # Produced:
 #   evidence/<run_id>-11_swim-<phase>.json per phase
 #   In Catalyst Center: image in the repository, tagged golden for the site,
 #   distributed to flash, and optionally activated.
 #
-# Module: cisco.dnac.swim_workflow_manager, inventory_workflow_manager,
+# Module: cisco.catalystcenter.swim_workflow_manager, inventory_workflow_manager,
 #         network_compliance_workflow_manager. Connection parameters come from
 #         module_defaults in the playbook, matching every other stage.
 #

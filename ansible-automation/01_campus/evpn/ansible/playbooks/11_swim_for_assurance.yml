@@ -44,8 +44,16 @@
 #   activated.
 #
 # gather_facts is true — ansible_date_time supplies swim_run_id.
-# Modules: cisco.dnac.swim_workflow_manager, inventory_workflow_manager,
+# Modules: cisco.catalystcenter.swim_workflow_manager, inventory_workflow_manager,
 #          network_compliance_workflow_manager
+#
+# cisco.catalystcenter rather than cisco.dnac, which every other stage uses.
+# cisco.dnac 6.46.0 crashes golden tagging with
+#   TypeError: 'NoneType' object is not iterable
+# at swim_workflow_manager.py:3380, because it does
+# tagging_details.get("device_tags") with no default and then iterates it.
+# cisco.catalystcenter 2.11.0 fixed exactly that (line 4280 defaults to []
+# and skips device-tag filtering when empty).
 #
 # Depends on: stages 01-05. Every SWIM call targets devices by site_name plus
 # family/series/role, so devices must already be discovered, managed and
@@ -74,36 +82,18 @@
   vars:
     catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
   module_defaults:
-    cisco.dnac.swim_workflow_manager:
-      dnac_host: "{{ dnac_host }}"
-      dnac_username: "{{ catc_username }}"
-      dnac_password: "{{ catc_password }}"
-      dnac_verify: "{{ dnac_verify }}"
-      dnac_port: "{{ dnac_port }}"
-      dnac_version: "{{ dnac_version }}"
-      dnac_debug: "{{ dnac_debug }}"
-      dnac_log_level: "{{ dnac_log_level }}"
-      dnac_log: "{{ dnac_log }}"
-    cisco.dnac.inventory_workflow_manager:
-      dnac_host: "{{ dnac_host }}"
-      dnac_username: "{{ catc_username }}"
-      dnac_password: "{{ catc_password }}"
-      dnac_verify: "{{ dnac_verify }}"
-      dnac_port: "{{ dnac_port }}"
-      dnac_version: "{{ dnac_version }}"
-      dnac_debug: "{{ dnac_debug }}"
-      dnac_log_level: "{{ dnac_log_level }}"
-      dnac_log: "{{ dnac_log }}"
-    cisco.dnac.network_compliance_workflow_manager:
-      dnac_host: "{{ dnac_host }}"
-      dnac_username: "{{ catc_username }}"
-      dnac_password: "{{ catc_password }}"
-      dnac_verify: "{{ dnac_verify }}"
-      dnac_port: "{{ dnac_port }}"
-      dnac_version: "{{ dnac_version }}"
-      dnac_debug: "{{ dnac_debug }}"
-      dnac_log_level: "{{ dnac_log_level }}"
-      dnac_log: "{{ dnac_log }}"
+    cisco.catalystcenter.swim_workflow_manager: &catc_conn
+      catalystcenter_host: "{{ catc_host }}"
+      catalystcenter_username: "{{ catc_username }}"
+      catalystcenter_password: "{{ catc_password }}"
+      catalystcenter_verify: "{{ catc_verify }}"
+      catalystcenter_port: "{{ catc_port }}"
+      catalystcenter_version: "{{ catc_version }}"
+      catalystcenter_debug: "{{ catc_debug }}"
+      catalystcenter_log_level: "{{ dnac_log_level }}"
+      catalystcenter_log: "{{ dnac_log }}"
+    cisco.catalystcenter.inventory_workflow_manager: *catc_conn
+    cisco.catalystcenter.network_compliance_workflow_manager: *catc_conn
   pre_tasks:
     # tags: always — a tag-filtered run such as --tags swim_import would
     # otherwise skip these, leaving settings_data unset and the role failing
