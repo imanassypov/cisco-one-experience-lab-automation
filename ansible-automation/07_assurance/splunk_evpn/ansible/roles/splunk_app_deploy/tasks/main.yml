@@ -87,13 +87,16 @@
     path: "/tmp/{{ splunk_app_name }}-{{ _app_version }}.spl"
     state: absent
 
+# 'splunk restart' takes no -auth: its syntax is 'restart [splunkweb]', and an
+# unrecognised flag is forwarded to splunkd, which rejects it with 'Bad Option
+# -a'. It is a local operation and needs no credentials.
+#
 # The prompt suppression and the closed stdin are both load-bearing. Without
 # them the CLI blocks on a question nobody can answer: the task hangs forever
 # with splunkd already stopped, so Splunk stays down rather than merely failing.
 # The timeout is the backstop if a future release finds a new way to ask.
 - name: Restart splunkd so the new dashboards load
   become: true
-  no_log: true
   ansible.builtin.command:
     argv:
       - timeout
@@ -103,12 +106,28 @@
       - --accept-license
       - --answer-yes
       - --no-prompt
-      - -auth
-      - "{{ splunk_admin_username }}:{{ splunk_admin_password }}"
     stdin: ""
   failed_when: false
   changed_when: _restart.rc == 0
   register: _restart
+
+# A timeout kills the restart mid-startup and leaves splunkd stopped, which is a
+# worse outcome than the failure itself. Bring it back before reporting.
+- name: Recover splunkd when the restart did not complete
+  when: _restart.rc != 0
+  become: true
+  ansible.builtin.command:
+    argv:
+      - timeout
+      - "{{ splunk_restart_timeout }}"
+      - "{{ splunk_bin }}"
+      - start
+      - --accept-license
+      - --answer-yes
+      - --no-prompt
+    stdin: ""
+  failed_when: false
+  register: _recover
 
 - name: Report a failure restarting splunkd
   when: _restart.rc != 0
@@ -116,9 +135,11 @@
     msg: |
       splunkd did not restart cleanly (rc={{ _restart.rc }}{{ ' - timed out after '
       ~ splunk_restart_timeout ~ 's' if _restart.rc == 124 else '' }}).
+      Recovery start: {{ 'succeeded, Splunk is up' if _recover.rc == 0
+                         else 'ALSO FAILED (rc=' ~ _recover.rc ~ ') - Splunk is DOWN' }}
       stdout: {{ _restart.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
       stderr: {{ _restart.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
-      Splunk may be stopped. On the host:
+      To start it by hand:
         sudo {{ splunk_bin }} start --accept-license --answer-yes --no-prompt
 
 - name: Wait for splunkd to come back

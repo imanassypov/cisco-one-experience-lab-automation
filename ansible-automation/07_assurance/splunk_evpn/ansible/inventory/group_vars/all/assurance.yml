@@ -28,8 +28,10 @@ splunk_app_src: "{{ playbook_dir }}/../../splunk-app/{{ splunk_app_name }}"
 splunk_app_build_script: "{{ playbook_dir }}/../../packaging/build-app.sh"
 splunk_app_dist_dir: "{{ playbook_dir }}/../../packaging/dist"
 # Splunk must restart to pick up a reinstalled app; this is the only disruptive
-# step in the collection.
-splunk_restart_timeout: 180
+# step in the collection. A full restart on the lab host takes well over three
+# minutes - most of it waiting for the web server - so this is generous on
+# purpose. It is a backstop against a wedged CLI, not a performance target.
+splunk_restart_timeout: 600
 
 # ── OpenTelemetry collector ─────────────────────────────────────────────────
 otel_receiver_port: 57444
