@@ -6,16 +6,19 @@ ASSURANCE_DIR=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 APP_DIR="${ASSURANCE_DIR}/splunk-app/campus_evpn_assurance"
 DIST_DIR="${SCRIPT_DIR}/dist"
 
+# Read from [launcher], the stanza app.conf actually defines version in. An
+# [app] stanza is not valid app.conf and Splunk rejects its keys at startup.
 version=$(
   awk '
-    $0 == "[app]" { in_app = 1; next }
-    /^\[/ && $0 != "[app]" { in_app = 0 }
-    in_app && $1 == "version" { print $3; exit }
+    $0 == "[launcher]" { in_launcher = 1; next }
+    /^\[/ { in_launcher = 0 }
+    in_launcher && $1 == "version" { print $3; exit }
   ' "${APP_DIR}/default/app.conf"
 )
 
 if [[ -z "${version}" ]]; then
   echo "Could not determine app version from ${APP_DIR}/default/app.conf" >&2
+  echo "Expected a 'version = X.Y.Z' line inside the [launcher] stanza." >&2
   exit 1
 fi
 
