@@ -105,6 +105,11 @@
       dnac_log_level: "{{ dnac_log_level }}"
       dnac_log: "{{ dnac_log }}"
   pre_tasks:
+    - name: Obtain Catalyst Center auth token
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: auth_token
+
     - name: Load settings.json
       ansible.builtin.import_role:
         name: catc_common

@@ -41,6 +41,27 @@ telemetry ietf subscription {{ subscription['id'] }}
 !
 {% endfor %}
 {% endfor %}
+{# EVPN route statistics. Lives here rather than in FABRIC-NVE.j2 so that an     #}
+{# IOS-XE release without this CLI fails the LAST composite member instead of    #}
+{# the 5th: ABORT_TARGET_ON_ERROR would otherwise take MCAST, EVPN, OVERLAY,     #}
+{# NAC, CLIENT-PORTS and this template down with it.                            #}
+{# Emitted AFTER the subscriptions on purpose: if the CLI is rejected, all 22    #}
+{# subscriptions above it have already been applied.                            #}
+{# Leaf-only - the global l2vpn evpn section exists only on CLIENT nodes, so the #}
+{# broader TELEMETRY_ROLE_GUARD above cannot be reused. CatC Jinja has no        #}
+{# `not ... in`, hence the inverted BORDER/SPINE test.                           #}
+{% if DEVICE_HOSTNAME in DEFN_NODE_ROLES['BORDER'] or DEVICE_HOSTNAME in DEFN_NODE_ROLES['SPINE'] %}
+{# Skip: global l2vpn evpn is leaf-only. #}
+{% else %}
+! -----------------------------------------------------------------------------
+! EVPN route statistics - feeds sub 40113 (/evpn-oper-data/evpn-stats)
+! -----------------------------------------------------------------------------
+! @start-ignore-compliance
+l2vpn evpn
+ telemetry enable statistics
+!
+! @end-ignore-compliance
+{% endif %}
 ! =============================================================================
 ! Verification commands
 ! =============================================================================

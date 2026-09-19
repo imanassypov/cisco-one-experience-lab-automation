@@ -58,3 +58,20 @@ swim_run_id: "{{ ansible_date_time.iso8601_basic_short | default('norun') }}"
 
 # Compliance is read-only here; never let it push config back at the device.
 swim_sync_device_config: false
+
+# ── Soft-failure detection ───────────────────────────────────────────────────
+# cisco.dnac workflow managers routinely return failed=false AND status=success
+# while doing nothing, putting the real outcome in msg. A 2026-09-19 run reported
+# ok at every phase with "CCO image ... not found", "could not be found" and
+# "No eligible devices for bulk distribution" buried in msg — the whole stage was
+# a no-op that looked like a clean upgrade.
+#
+# Checking item.failed alone is therefore not enough. Any phase whose msg matches
+# one of these fragments (case-insensitive) is treated as failed.
+swim_failure_signatures:
+  - "not found"
+  - "could not be found"
+  - "no eligible devices"
+  - "not available"
+  - "failed"
+  - "unable to"

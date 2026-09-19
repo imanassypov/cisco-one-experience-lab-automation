@@ -50,25 +50,51 @@
 
 # no_log is deliberately NOT used here. It censors the failure as well as the
 # secret, and a silent SWIM import is indistinguishable from a successful one.
+#
+# _swim_soft_failed folds item.failed together with a msg scan, because the
+# module returns failed=false while reporting "CCO image ... not found" in msg.
 - name: "11.2 | Report import outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.image_file }}:
-      {{ 'imported / already present' if not (item.failed | default(false))
+      {{ 'imported / already present' if not (item.failed | default(false) or _hit)
          else 'IMPORT FAILED — ' ~ (item.msg | default('see evidence')) }}
+  vars:
+    _hit: >-
+      {{ swim_failure_signatures
+         | select('in', (item.msg | default('') | string | lower))
+         | list | length > 0 }}
   loop: "{{ _swim_import.results }}"
   loop_control:
     label: "{{ item.item.image_file }}"
 
-- name: "11.2 | Fail if the upgrade image did not reach the repository"
+# Authoritative check: ask the repository rather than believe the module.
+- name: "11.2 | Confirm the image actually reached the repository"
+  ansible.builtin.uri:
+    url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/image/importation?imageName={{ item.image_file | urlencode }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ dnac_verify | bool }}"
+    status_code: 200
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.image_file }}"
+  register: _swim_repo_check
+
+- name: "11.2 | Fail if the upgrade image is not in the repository"
   ansible.builtin.assert:
-    that: not (item.failed | default(false))
+    that: item.json.response | default([]) | length > 0
     fail_msg: >-
-      Could not import {{ item.item.image_file }} from CCO.
-      Check System > Settings > Cisco.com Credentials in Catalyst Center, and
-      that the image name matches the file published on cisco.com exactly.
-      Reported: {{ item.msg | default('no message') }}
-  loop: "{{ _swim_import.results }}"
+      {{ item.item.image_file }} is NOT in the Catalyst Center image repository
+      after the import phase, so nothing downstream can work.
+      The image name must match a build Catalyst Center is offered by CCO
+      exactly — a name that merely exists on cisco.com is not enough. List what
+      this cluster can actually import with:
+        GET /dna/intent/api/v1/images
+      (note: offset/limit return an empty set on this build — call it plain).
+    success_msg: "{{ item.item.image_file }} present in the repository"
+  loop: "{{ _swim_repo_check.results }}"
   loop_control:
     label: "{{ item.item.image_file }}"
 
@@ -103,12 +129,15 @@
 
 - name: "11.2 | Fail if the image could not be tagged golden"
   ansible.builtin.assert:
-    that: not (item.failed | default(false))
+    that:
+      - not (item.failed | default(false))
+      - swim_failure_signatures | select('in', (item.msg | default('') | string | lower)) | list | length == 0
     fail_msg: >-
       Could not tag {{ item.item.image_file }} golden at {{ item.item.site_name }}.
-      The usual cause is device_image_family_name holding an inventory family
-      ("Switches and Hubs") instead of the SWIM identifier
-      ("{{ item.item.device_image_family_name }}" is what settings.json declares).
+      Either the image is not in the repository, or device_image_family_name
+      holds an inventory family ("Switches and Hubs") instead of the SWIM
+      identifier (settings.json declares
+      "{{ item.item.device_image_family_name }}").
       Reported: {{ item.msg | default('no message') }}
   loop: "{{ _swim_tag.results }}"
   loop_control:

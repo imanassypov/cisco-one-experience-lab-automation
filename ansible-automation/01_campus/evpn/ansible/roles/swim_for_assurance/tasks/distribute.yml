@@ -58,12 +58,16 @@
 # partial reload.
 - name: "11.3 | Fail if distribution did not complete"
   ansible.builtin.assert:
-    that: not (item.failed | default(false))
+    that:
+      - not (item.failed | default(false))
+      - swim_failure_signatures | select('in', (item.msg | default('') | string | lower)) | list | length == 0
     fail_msg: >-
       Could not distribute {{ item.item.image_file }} to {{ item.item.site_name }}.
-      Common causes: insufficient flash, the device unreachable from Catalyst
+      "No eligible devices" almost always means the image is missing from the
+      repository or is not tagged golden for this site — check phase 11.2.
+      Other causes: insufficient flash, the device unreachable from Catalyst
       Center, or device_family_name / device_series_name not matching the
-      inventory record (stage 11.1 resync refreshes those).
+      inventory record (11.1 resync refreshes those).
       Reported: {{ item.msg | default('no message') }}
   loop: "{{ _swim_distribute.results }}"
   loop_control:

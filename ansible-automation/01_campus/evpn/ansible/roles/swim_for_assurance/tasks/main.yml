@@ -47,7 +47,7 @@
 #
 # Example
 #   In : settings_data.project = [ {HierarchyBldg: "Site-105", swim: {enabled: true,
-#          image_file: "cat9k_iosxe.26.01.02.SPA.bin", ...}}, {HierarchyBldg:
+#          image_file: "cat9k_iosxe.26.01.01.SPA.bin", ...}}, {HierarchyBldg:
 #          "Site-106"} ]
 #   Out: _swim_entries = [ {project: "Site-105", image_file: "cat9k_...bin", ...} ]
 - name: Build SWIM work list from settings.json

@@ -6,7 +6,6 @@
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-ROLES.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-LOOPBACKS.j2" %}
 {% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-VNIOFFSETS.j2" %}
-{% include "{{ TEMPLATE_PROJECT_NAME }}/DEFN-TELEMETRY-SPLUNK.j2" %}
 {# Dereference Catalyst Center magic variable #}
 {% set DEVICE_HOSTNAME = __device.hostname | default('', true) %}
 {# Resolve the VRF objects for this device #}
@@ -61,8 +60,5 @@ interface nve1
 l2vpn evpn
  replication-type static
  router-id {{ DEFN_LOOP_NAME['UNDERLAY'] }}
-{% if DEFN_TELEMETRY_SPLUNK_RECEIVER_IP %}
- telemetry enable statistics
-{% endif %}
 !
 {% endif %}
