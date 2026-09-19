@@ -56,10 +56,17 @@ telemetry ietf subscription {{ subscription['id'] }}
 {#                                                                                #}
 {# Moving the line out of FABRIC-NVE.j2 only relocated the failure - CatC still   #}
 {# rejected it here with NCTP10214. Subscription 40113                            #}
-{# (/evpn-oper-data/evpn-stats) is left in place but will report no counters on   #}
-{# C9300: the feature that populates it cannot be enabled here. Re-test if the    #}
-{# fabric ever moves to a platform that accepts `telemetry enable` / `statistics` #}
-{# under l2vpn evpn.                                                              #}
+{# (/evpn-oper-data/evpn-stats) was disabled in DEFN-TELEMETRY-SPLUNK.j2 on the   #}
+{# same day: the device rejected its XPath too ("Invalid XPath filter"), so it    #}
+{# was the single Invalid entry in `show telemetry ietf subscription summary`.    #}
+{#                                                                                #}
+{# TODO (IOS-XE 26.2): restore this enable block AND sub 40113 TOGETHER when the  #}
+{# official 26.2 release ships - neither is useful alone. Probe first with        #}
+{# `telemetry ?` under `l2vpn evpn` (read-only). Restore as TWO nested commands,  #}
+{# not the single line this template used to emit:                                #}
+{#   l2vpn evpn                                                                   #}
+{#    telemetry enable                                                            #}
+{#    statistics                                                                  #}
 ! =============================================================================
 ! Verification commands
 ! =============================================================================

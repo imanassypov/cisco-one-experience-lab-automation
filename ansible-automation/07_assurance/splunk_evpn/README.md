@@ -533,6 +533,55 @@ Credentials are wrapped in `no_log: true` throughout, so debug output stays safe
 | App installs but dashboards look old | Build number not bumped, or a cached browser | Bump `build` in `default/app.conf`; hard-refresh Splunk Web |
 | `validate_studio.py` reports 0-row panels | No data in the window, not an error | Only structural and SPL errors fail the stage |
 
+## Known gaps
+
+### EVPN Route Statistics (sub 40113) is disabled on C9300
+
+The **"EVPN Route Updates by Device"** and **"EVPN Route Updates by Role"** panels on the
+executive overview will render empty, and the `evpn_route_update_deltas` macro returns no
+rows. This is expected on the current image, not a misconfiguration.
+
+The feature needs two things and the Catalyst 9300 supports neither on IOS-XE 17.12.01 or
+26.01.02:
+
+| Requirement | Observed |
+| --- | --- |
+| CLI `l2vpn evpn` → `telemetry enable` → `statistics` | `telemetry ?` under `config-evpn` → `% Unrecognized command`. Catalyst Center rejected the push with `NCTP10214 … Invalid CLI` |
+| Subscription on `/evpn-oper-data/evpn-stats` | `40113  Configured Invalid  Invalid XPath filter: '/evpn-oper-data/evpn-stats'` |
+
+Both were removed on 2026-09-19 — the CLI from
+`FABRIC-TELEMETRY-SPLUNK.j2` and the subscription from `DEFN-TELEMETRY-SPLUNK.j2` — because
+a rejected CLI aborts the remaining composite members for that device, and an invalid
+subscription just consumes one of the 150 slots.
+
+> **Removing it from the template does not remove it from the devices.** The composite
+> deploy only adds configuration; it never deletes a subscription pushed by an earlier run.
+> Until someone clears it, `show telemetry ietf subscription summary` will keep reporting
+> `Invalid 1`. Clean it up once per switch with:
+>
+> ```text
+> configure terminal
+> no telemetry ietf subscription 40113
+> ```
+
+The dashboard panels and the `evpn_route_update_deltas` macro were deliberately left in
+place so nothing needs rebuilding when the platform catches up.
+
+> **TODO — re-test on the official IOS-XE 26.2 release.** Restore the enable block and sub
+> 40113 **together**; neither is useful alone. Probe first, it is read-only and settles it
+> in one command:
+>
+> ```text
+> configure terminal
+> l2vpn evpn
+> telemetry ?
+> ```
+>
+> If the keyword exists, restore the CLI as **two nested commands** (`telemetry enable`,
+> then `statistics`) — not the single `telemetry enable statistics` line the template
+> originally emitted, which was wrong independently of platform support. Both files carry
+> the verbatim restore blocks in their header comments.
+
 ## Credits
 
 Ported from the standalone *Campus BGP EVPN VXLAN Catalyst Center Automation and Splunk

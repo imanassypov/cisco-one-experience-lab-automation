@@ -47,10 +47,25 @@ Note these are **two nested commands**, not a single `telemetry enable statistic
 > rest of the composite. The enable block was therefore removed from
 > `FABRIC-TELEMETRY-SPLUNK.j2`.
 >
-> Consequence: **subscription 40113 (`/evpn-oper-data/evpn-stats`) will report no
-> counters on this fabric**, so the "EVPN Route Updates" dashboard panels stay empty.
-> The subscription is left configured so it starts working automatically if the fabric
-> moves to a platform that supports the feature.
+> **Subscription 40113 was removed too.** The device rejects the XPath as well as the CLI:
+>
+> ```text
+> 40113  Configured Invalid  Invalid XPath filter: '/evpn-oper-data/evpn-stats'.
+> ```
+>
+> It was the single `Invalid` entry in `show telemetry ietf subscription summary` and never
+> produced a data point, so it only consumed one of the 150 subscription slots. It is gone
+> from `DEFN-TELEMETRY-SPLUNK.j2` as of 2026-09-19. Note the composite deploy only ADDS
+> config, so the subscription stays on already-provisioned switches until it is cleared by
+> hand with `no telemetry ietf subscription 40113`.
+>
+> Consequence: the "EVPN Route Updates" dashboard panels and the
+> `evpn_route_update_deltas` macro stay empty. Both were left in place so nothing needs
+> rebuilding later.
+>
+> **TODO (IOS-XE 26.2):** re-test on the official 26.2 release and restore the CLI and the
+> subscription **together** — neither is useful alone. Restore blocks are in the header
+> comments of both templates.
 
 The reference topology adds two VLAN-based EVIs (1 and 2), an Ethernet Segment, and a Port-channel
 access port, but the only config that gates these counters is `telemetry enable` + `statistics`.

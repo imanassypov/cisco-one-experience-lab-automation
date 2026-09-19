@@ -5,6 +5,27 @@
 {% set DEFN_TELEMETRY_SPLUNK_RECEIVER_IP = '{{ TELEMETRY_RECEIVER_IP }}' %}
 {% set DEFN_TELEMETRY_SPLUNK_RECEIVER_PORT = '{{ TELEMETRY_RECEIVER_PORT }}' %}
 {% set DEFN_TELEMETRY_SPLUNK_ROLES = {{ TELEMETRY_ROLES }} %}
+{# DISABLED 2026-09-19 - 'EVPN Route Statistics' (sub 40113). C9300 rejects the xpath: #}
+{#   40113  Configured Invalid  Invalid XPath filter: '/evpn-oper-data/evpn-stats'.    #}
+{# It was the 1 Invalid entry in `show telemetry ietf subscription summary` and never  #}
+{# produced a data point. The CLI that gates those counters is unsupported here too    #}
+{# (`telemetry ?` under config-evpn returns % Unrecognized command), so the            #}
+{# subscription cannot work on this image. Jinja has no comment syntax INSIDE a set    #}
+{# tag, so the entry is deleted rather than commented. Restore between 40112 and       #}
+{# 40114, verbatim:                                                                    #}
+{#   {                                                                                 #}
+{#     'section': 'EVPN Route Statistics',                                             #}
+{#     'xpath': '/evpn-oper-data/evpn-stats',                                          #}
+{#     'subscriptions': [                                                              #}
+{#       {'id': '40113', 'policy': 'periodic', 'period': '6000'}                       #}
+{#     ]                                                                               #}
+{#   },                                                                                #}
+{#                                                                                     #}
+{# TODO (IOS-XE 26.2): re-test when the official 26.2 release ships. Restore the block  #}
+{# above AND the `telemetry enable` / `statistics` config in FABRIC-TELEMETRY-SPLUNK   #}
+{# TOGETHER - the subscription is useless without the CLI, and the CLI is rejected     #}
+{# without platform support. Check first with `telemetry ?` under `l2vpn evpn`; it is  #}
+{# read-only and settles it in one command. See 07_assurance README "Known gaps".      #}
 {% set DEFN_TELEMETRY_SPLUNK = [
   {
     'section': 'NVE Global State',
@@ -52,13 +73,6 @@
     'subscriptions': [
       {'id': '40111', 'policy': 'on-change', 'period': ''},
       {'id': '40112', 'policy': 'periodic', 'period': '30000'}
-    ]
-  },
-  {
-    'section': 'EVPN Route Statistics',
-    'xpath': '/evpn-oper-data/evpn-stats',
-    'subscriptions': [
-      {'id': '40113', 'policy': 'periodic', 'period': '6000'}
     ]
   },
   {
