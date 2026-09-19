@@ -248,25 +248,70 @@ restarts. The package owns the unit, binary and user, so there is nothing to ove
 
 ### Stage 05 — render the lookups
 
-Runs entirely on the control node. Reads the `DEFN-*.j2` files and `settings.json` out of
-`01_campus/evpn`, concatenates them into one Jinja scope, appends the same
-`zz-defn-extract-epilogue.j2` that stage 11 of the campus collection uses, renders the
-fabric intent to JSON, and templates both CSVs from it.
+Runs entirely on the control node. Nothing is written to the Splunk host, and nothing
+outside `splunk-app/.../lookups/` is modified.
 
-This is the part worth understanding, because it removes the pipeline's nastiest failure
-mode. Every panel does:
+**Why this stage exists.** Every dashboard panel joins telemetry to context through the
+device inventory:
 
 ```spl
-| mstats ... BY "cisco.node_id" | `evpn_lookup`
+| mstats latest("cisco.cp-vnis.") WHERE `evpn_index` BY "cisco.node_id" | `evpn_lookup`
 ```
 
-and `evpn_lookup` expands to `rename "cisco.node_id" AS hostname | lookup
-evpn_device_inventory hostname OUTPUT site role ...`. If `hostname` does not match exactly
-what the collector emits as `cisco.node_id`, every panel renders correctly and returns
-nothing. Generating the CSV from the same DEFN files that named the devices makes that
-mismatch impossible.
+where `evpn_lookup` expands to
+`rename "cisco.node_id" AS hostname | lookup evpn_device_inventory hostname OUTPUT site role ...`.
 
-For Site 105 that produces:
+If `hostname` does not match **exactly** what the collector emits as `cisco.node_id`, every
+panel renders correctly and returns nothing. That is the nastiest failure mode in this
+system, because it looks like "no data" rather than an error — no panel goes red, no search
+logs a warning. Generating the CSV from the same files that named the devices in the first
+place removes the possibility of drift.
+
+**How it works.** The `DEFN-*.j2` files are pure `{% set %}` blocks — data, no output. So
+concatenating them puts every variable in a single Jinja scope, and an epilogue appended
+last emits the lot as JSON:
+
+```
+01_campus/evpn/Catalyst Center Templates/Site BGP EVPN Templates/
+  DEFN-ROLES.j2 ┐
+  DEFN-VRF.j2   ├─ copied to a tempdir as 00-, 01-, 02-… so order is deterministic
+  DEFN-OVERLAY.j2 ┤   and the zz- epilogue always sorts last
+  …             ┘
+        │
+        │  assemble  →  extract.j2
+        ▼
+  {{ {"node_roles": DEFN_NODE_ROLES, "loop_underlay": DEFN_LOOP_UNDERLAY,
+      "overlay": DEFN_OVERLAY, "vrfs": DEFN_VRF, …} | to_json }}
+        │
+        │  render  →  intent.json
+        ▼
+  evpn_device_inventory.csv     evpn_segment_inventory.csv
+```
+
+Three details that are load-bearing:
+
+- **The epilogue is shared with the campus collection.** Stage 05 uses the very same
+  [`zz-defn-extract-epilogue.j2`](../../01_campus/evpn/ansible/roles/verify_intent/files/zz-defn-extract-epilogue.j2)
+  that stage 11 uses to verify intent, so the two collections cannot disagree about what
+  the fabric is. Adding a field there makes it available to both.
+- **Placeholders are substituted first.** `DEFN-TELEMETRY-SPLUNK.j2` carries literal
+  `{{ TELEMETRY_RECEIVER_IP }}` markers that `template_sync` fills at sync time. Left
+  alone, `{% set X = {{ Y }} %}` is a Jinja syntax error, so stage 05 applies the same
+  substitution before rendering — which is also why the telemetry receiver and
+  subscription IDs end up in the extracted intent.
+- **`copy:` with `content:` is not re-templated.** Ansible renders the expression once;
+  the `{% set %}` blocks in the result pass through untouched.
+
+**Assembling it by hand** is occasionally useful when a DEFN change breaks the render:
+
+```bash
+ansible-playbook playbooks/05_render_lookups.yml -e assurance_debug=true
+```
+
+That dumps `_assurance_intent` — the full extracted structure — before the CSVs are
+written.
+
+**What it produces for Site 105:**
 
 | hostname | loopback | role |
 | --- | --- | --- |
@@ -274,10 +319,23 @@ For Site 105 that produces:
 | `Site_105-Leaf2.corp.pseudoco.com` | 172.30.255.2 | `leaf` |
 | `Site_105-Border-Spine.corp.pseudoco.com` | 172.30.255.3 | `border-spine` |
 
+and one segment row per overlay VLAN, with `l2vni = L2VNIOFFSET + vlan` and the `l3vni`
+taken from the matching `DEFN_VRF` entry:
+
+| vlan | l2vni | l3vni | vrf |
+| --- | --- | --- | --- |
+| 10 | 100010 | 110010 | Main |
+| 101 | 100101 | 110101 | PROD |
+| 102 | 100102 | 110102 | IOT |
+
 > Site 105 folds spine, route-reflector and border onto one node, so it gets the single
 > role `border-spine` rather than two rows. The lookup is keyed on `hostname` and would
 > only ever return the first match. The Details view's role selector offers
 > **Leafs** and **Border-Spine** to match.
+
+> **The generated CSVs are committed**, so the repo always shows what the dashboards are
+> joining against — but they are generated output. Re-run this stage after any fabric
+> change rather than editing them by hand.
 
 ### Stage 06 — deploy the app
 
