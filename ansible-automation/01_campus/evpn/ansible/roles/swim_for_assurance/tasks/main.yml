@@ -127,8 +127,14 @@
 # Rollback is a recovery path, not a step in the normal sequence: when it is
 # requested it runs alone, because importing and re-tagging the upgrade image on
 # the way to a downgrade is exactly the wrong thing to do.
+# apply: is required on every include below. A tag on include_tasks selects the
+# include itself but not the tasks it pulls in, so --tags swim_import would run
+# the include and nothing else.
 - name: "Stage 11.6 | Rollback to the previous image"
-  ansible.builtin.include_tasks: rollback.yml
+  ansible.builtin.include_tasks:
+    file: rollback.yml
+    apply:
+      tags: [swim_rollback]
   when: swim_rollback | bool
   tags: [swim_rollback]
 
@@ -136,27 +142,42 @@
   when: not (swim_rollback | bool)
   block:
     - name: "Stage 11.1 | Preflight — resync and baseline compliance"
-      ansible.builtin.include_tasks: preflight.yml
+      ansible.builtin.include_tasks:
+        file: preflight.yml
+        apply:
+          tags: [swim_preflight]
       when: swim_run_preflight | bool
       tags: [swim_preflight]
 
-    - name: "Stage 11.2 | Import from CCO and tag golden"
-      ansible.builtin.include_tasks: import_and_tag.yml
+    - name: "Stage 11.2 | Import and tag golden"
+      ansible.builtin.include_tasks:
+        file: import_and_tag.yml
+        apply:
+          tags: [swim_import]
       when: swim_run_import | bool
       tags: [swim_import]
 
     - name: "Stage 11.3 | Distribute image to device flash"
-      ansible.builtin.include_tasks: distribute.yml
+      ansible.builtin.include_tasks:
+        file: distribute.yml
+        apply:
+          tags: [swim_distribute]
       when: swim_run_distribute | bool
       tags: [swim_distribute]
 
     - name: "Stage 11.4 | Activate image (reloads devices)"
-      ansible.builtin.include_tasks: activate.yml
+      ansible.builtin.include_tasks:
+        file: activate.yml
+        apply:
+          tags: [swim_activate]
       when: swim_activate | bool
       tags: [swim_activate]
 
     - name: "Stage 11.5 | Post-activation compliance"
-      ansible.builtin.include_tasks: postcheck.yml
+      ansible.builtin.include_tasks:
+        file: postcheck.yml
+        apply:
+          tags: [swim_postcheck]
       when:
         - swim_activate | bool
         - swim_run_postcheck | bool
