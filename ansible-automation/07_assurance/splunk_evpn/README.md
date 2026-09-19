@@ -267,6 +267,17 @@ system, because it looks like "no data" rather than an error — no panel goes r
 logs a warning. Generating the CSV from the same files that named the devices in the first
 place removes the possibility of drift.
 
+> **The key is the SHORT hostname.** IOS-XE builds `node_id_str` from the bare `hostname`
+> command and does not append `ip domain name`, so the fabric emits `Site_105-Leaf1` while
+> the DEFN intent keys (and Catalyst Center inventory) use
+> `Site_105-Leaf1.corp.pseudoco.com`. The lookup templates strip the domain for the
+> `hostname` column and keep the FQDN in `source`. This bit us on 2026-09-19: generating
+> from intent is necessary but not sufficient, because intent is keyed differently from
+> telemetry. There is no device-side option to send the FQDN — the
+> `telemetry ietf subscription` submode has no node-id knob (checked on IOS-XE 26.01.02).
+> The same rule applies to `overlay_leaves` / `access_leaves` in the segment lookup, which
+> `executive_overview` splits and renames to `cisco.node_id` before joining.
+
 **How it works.** The `DEFN-*.j2` files are pure `{% set %}` blocks — data, no output. So
 concatenating them puts every variable in a single Jinja scope, and an epilogue appended
 last emits the lot as JSON:

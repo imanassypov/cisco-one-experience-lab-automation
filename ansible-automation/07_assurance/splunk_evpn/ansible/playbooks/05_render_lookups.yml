@@ -11,9 +11,14 @@
 # stage 06 packages the result.
 #
 # The join that matters: evpn_device_inventory.hostname must equal the
-# collector's cisco.node_id dimension, which is the Catalyst Center inventory
-# hostname (IOS hostname + ip domain name). Get it wrong and every panel renders
-# but returns nothing.
+# collector's cisco.node_id dimension, which IOS-XE takes from the bare
+# `hostname` command. The domain from `ip domain name` is NOT appended, so this
+# is the SHORT name (Site_105-Leaf1), not the Catalyst Center inventory FQDN.
+# Verified on the fabric 2026-09-19; there is no telemetry option to change it.
+# Get it wrong and every panel renders but returns nothing.
+# evpn_segment_inventory.overlay_leaves / access_leaves are join keys too -
+# executive_overview splits overlay_leaves into cisco.node_id - so the same
+# short-name rule applies there.
 #
 # Sourced: 01_campus/evpn/Catalyst Center Templates/Site BGP EVPN Templates/DEFN-*.j2
 #          01_campus/evpn/Settings/settings.json

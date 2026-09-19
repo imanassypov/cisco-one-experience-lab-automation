@@ -2,8 +2,11 @@
 {#- Keyed on the access VLAN: the dashboards look up `vlan AS access_vlan`.   -#}
 {#- L2VNI is derived the same way FABRIC-NVE.j2 derives it (offset + vlan);   -#}
 {#- L3VNI is explicit on each DEFN_VRF entry.                                 -#}
+{#- overlay_leaves / access_leaves are join keys, not labels: executive_      -#}
+{#- overview splits overlay_leaves and renames it to cisco.node_id before     -#}
+{#- evpn_lookup, so these must carry the SHORT hostname the device emits.     -#}
 {%- set l2_offset = _assurance_intent.l2vni_offset | int -%}
-{%- set leaves = _assurance_intent.node_roles.get('CLIENT', []) | join(' ') -%}
+{%- set leaves = _assurance_intent.node_roles.get('CLIENT', []) | map('regex_replace', '\..*$', '') | join(' ') -%}
 {%- set l3_by_vrf = {} -%}
 {%- for v in _assurance_intent.vrfs %}{% set _ = l3_by_vrf.update({v.name: v.l3_vni}) %}{% endfor -%}
 vlan,l2vni,l3vni,vrf,segment_name,overlay_leaves,access_leaves

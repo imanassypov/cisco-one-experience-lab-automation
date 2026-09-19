@@ -1,4 +1,4 @@
 vlan,l2vni,l3vni,vrf,segment_name,overlay_leaves,access_leaves
-10,100010,110010,Main,Main,Site_105-Leaf1.corp.pseudoco.com Site_105-Leaf2.corp.pseudoco.com,Site_105-Leaf1.corp.pseudoco.com Site_105-Leaf2.corp.pseudoco.com
-101,100101,110101,PROD,PROD,Site_105-Leaf1.corp.pseudoco.com Site_105-Leaf2.corp.pseudoco.com,Site_105-Leaf1.corp.pseudoco.com Site_105-Leaf2.corp.pseudoco.com
-102,100102,110102,IOT,IOT,Site_105-Leaf1.corp.pseudoco.com Site_105-Leaf2.corp.pseudoco.com,Site_105-Leaf1.corp.pseudoco.com Site_105-Leaf2.corp.pseudoco.com
+10,100010,110010,Main,Main,Site_105-Leaf1 Site_105-Leaf2,Site_105-Leaf1 Site_105-Leaf2
+101,100101,110101,PROD,PROD,Site_105-Leaf1 Site_105-Leaf2,Site_105-Leaf1 Site_105-Leaf2
+102,100102,110102,IOT,IOT,Site_105-Leaf1 Site_105-Leaf2,Site_105-Leaf1 Site_105-Leaf2

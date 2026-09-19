@@ -124,9 +124,15 @@ evpn_device_inventory.csv   source,hostname,ip_address,loopback,site,role,descri
 evpn_segment_inventory.csv  vlan,l2vni,l3vni,vrf,segment_name,overlay_leaves,access_leaves
 ```
 
-`hostname` **must** equal the `cisco.node_id` dimension the collector emits — the Catalyst
-Center inventory hostname, which is the IOS hostname plus `ip domain name`. Get it wrong
-and every dashboard panel renders correctly and returns nothing.
+`hostname` **must** equal the `cisco.node_id` dimension the collector emits. IOS-XE takes
+that from the bare `hostname` command and does **not** append `ip domain name`, so it is the
+short name — `Site_105-Leaf1`, not `Site_105-Leaf1.corp.pseudoco.com`. There is no telemetry
+configuration option to make the device send the FQDN (verified on IOS-XE 26.01.02: the
+`telemetry ietf subscription` submode offers no node-id knob). Get it wrong and every
+dashboard panel renders correctly and returns nothing.
+
+`overlay_leaves` / `access_leaves` in the segment lookup follow the same rule — the
+executive overview splits `overlay_leaves` and renames it to `cisco.node_id` before joining.
 
 ## 6. Install the app
 
