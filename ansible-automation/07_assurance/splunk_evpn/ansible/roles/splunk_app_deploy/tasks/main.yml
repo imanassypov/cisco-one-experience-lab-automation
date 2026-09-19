@@ -57,24 +57,69 @@
 - name: Install the app
   become: true
   no_log: true
-  ansible.builtin.command: >-
-    {{ splunk_bin }} install app /tmp/{{ splunk_app_name }}-{{ _app_version }}.spl
-    -update 1
-    -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
+  ansible.builtin.command:
+    argv:
+      - "{{ splunk_bin }}"
+      - install
+      - app
+      - "/tmp/{{ splunk_app_name }}-{{ _app_version }}.spl"
+      - -update
+      - "1"
+      - --accept-license
+      - --answer-yes
+      - --no-prompt
+      - -auth
+      - "{{ splunk_admin_username }}:{{ splunk_admin_password }}"
+    stdin: ""
+  failed_when: false
   register: _install
-  changed_when: _install.rc == 0
+
+- name: Report a failure installing the app
+  when: _install.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      Could not install {{ splunk_app_name }} (rc={{ _install.rc }}).
+      stdout: {{ _install.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _install.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
 
 - name: Remove the uploaded package
   ansible.builtin.file:
     path: "/tmp/{{ splunk_app_name }}-{{ _app_version }}.spl"
     state: absent
 
+# The prompt suppression and the closed stdin are both load-bearing. Without
+# them the CLI blocks on a question nobody can answer: the task hangs forever
+# with splunkd already stopped, so Splunk stays down rather than merely failing.
+# The timeout is the backstop if a future release finds a new way to ask.
 - name: Restart splunkd so the new dashboards load
   become: true
   no_log: true
-  ansible.builtin.command: >-
-    {{ splunk_bin }} restart -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
-  changed_when: true
+  ansible.builtin.command:
+    argv:
+      - timeout
+      - "{{ splunk_restart_timeout }}"
+      - "{{ splunk_bin }}"
+      - restart
+      - --accept-license
+      - --answer-yes
+      - --no-prompt
+      - -auth
+      - "{{ splunk_admin_username }}:{{ splunk_admin_password }}"
+    stdin: ""
+  failed_when: false
+  changed_when: _restart.rc == 0
+  register: _restart
+
+- name: Report a failure restarting splunkd
+  when: _restart.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      splunkd did not restart cleanly (rc={{ _restart.rc }}{{ ' - timed out after '
+      ~ splunk_restart_timeout ~ 's' if _restart.rc == 124 else '' }}).
+      stdout: {{ _restart.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
+      stderr: {{ _restart.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
+      Splunk may be stopped. On the host:
+        sudo {{ splunk_bin }} start --accept-license --answer-yes --no-prompt
 
 - name: Wait for splunkd to come back
   become: true
