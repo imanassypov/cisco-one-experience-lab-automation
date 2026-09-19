@@ -22,27 +22,34 @@
 # ============================================================================
 ---
 
-- name: List existing indexes
+# Existence is checked over REST, not with 'splunk list index'. That CLI command
+# does not report metric indexes, so a metric index that already existed looked
+# absent and the create below failed with 'An index with name=... already exists'.
+- name: Look for the assurance index
   become: true
   no_log: true
-  ansible.builtin.command: >-
-    {{ splunk_bin }} list index -auth {{ splunk_admin_username }}:{{ splunk_admin_password }}
-  changed_when: false
   failed_when: false
-  register: _indexes
+  ansible.builtin.uri:
+    url: "{{ splunk_mgmt_url }}/services/data/indexes/{{ splunk_assurance_index }}?output_mode=json"
+    user: "{{ splunk_admin_username }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  register: _index_probe
 
-- name: Report a failure listing indexes
-  when: _indexes.rc != 0
+- name: Report an unusable response from the index API
+  when: _index_probe.status | default(0) not in [200, 404]
   ansible.builtin.fail:
-    msg: |
-      Could not list Splunk indexes (rc={{ _indexes.rc }}).
-      stdout: {{ _indexes.stdout | default('') | replace(splunk_admin_password, '<redacted>') }}
-      stderr: {{ _indexes.stderr | default('') | replace(splunk_admin_password, '<redacted>') }}
+    msg: >-
+      Unexpected HTTP {{ _index_probe.status | default('?') }} from
+      {{ splunk_mgmt_url }}/services/data/indexes. Check that the
+      'Splunk Enterprise' vault credentials are an admin account.
 
 - name: Create the metrics index
   become: true
   no_log: true
-  when: splunk_assurance_index not in _indexes.stdout
+  when: _index_probe.status == 404
   ansible.builtin.command: >-
     {{ splunk_bin }} add index {{ splunk_assurance_index }}
     -datatype metric
@@ -109,6 +116,7 @@
 - name: Look for an existing HEC token
   become: true
   no_log: true
+  failed_when: false
   ansible.builtin.uri:
     url: "{{ splunk_mgmt_url }}/services/data/inputs/http?output_mode=json&count=0"
     user: "{{ splunk_admin_username }}"
@@ -117,11 +125,20 @@
     validate_certs: false
   register: _hec_inputs
 
+- name: Report a failure listing HEC tokens
+  when: _hec_inputs.status | default(0) != 200
+  ansible.builtin.fail:
+    msg: >-
+      Could not list HEC tokens (HTTP {{ _hec_inputs.status | default('?') }}).
+      HEC may not be enabled on this instance.
+
+# The REST name is prefixed with the scheme, so 'evpn-collector' appears as
+# 'http://evpn-collector'.
 - name: Create the HEC token
   become: true
   no_log: true
   when: >-
-    _hec_inputs.json.entry
+    _hec_inputs.json.entry | default([])
     | selectattr('name', 'equalto', 'http://' ~ splunk_hec_token_name)
     | list | length == 0
   ansible.builtin.command: >-
