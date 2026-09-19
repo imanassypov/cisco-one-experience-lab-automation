@@ -1,0 +1,110 @@
+---
+# =============================================================================
+# swim_for_assurance / tasks/activate.yml  —  Stage 11.4
+# =============================================================================
+# DISRUPTIVE. Reloads every targeted device onto the distributed image.
+#
+# Runs by default — `swim_activate` is true in defaults/main.yml, so a bare
+# stage 11 run performs the whole upgrade. Opt out with `-e swim_activate=false`
+# to stage the image in flash and stop.
+#
+# On IOS-XE in install mode Catalyst Center drives the three-step sequence:
+#   install add       stage the package         (no reload — usually already
+#                                                done by 11.3)
+#   install activate  RELOAD HAPPENS HERE
+#   install commit    make it persistent across the next reload
+#
+# Two settings are easy to get wrong and both are read from settings.json:
+#   schedule_validate        must be false to actually activate. true is a
+#                            dry-run that validates and changes nothing, which
+#                            looks like a clean success.
+#   activate_lower_image_version  false blocks accidental downgrades. Rollback
+#                            sets it true — that is the whole difference.
+#
+# The Site-105 fabric is three switches with no redundancy, so a reload drops
+# the overlay. Expect the fabric down for the length of the reload and stage 12
+# to fail until BGP and NVE re-converge.
+#
+# Pre:  image distributed by 11.3
+# Post: devices running the new image; EVPN/telemetry state rebuilt from config
+# =============================================================================
+
+- name: "11.4 | Announce the reload"
+  ansible.builtin.debug:
+    msg:
+      - "ACTIVATING {{ item.image_file }} at {{ item.site_name }}"
+      - "Devices WILL reload. Overlay connectivity drops until they return."
+      - "Timeout {{ swim_task_timeout }}s, polled every {{ swim_task_poll_interval }}s."
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.site_name }}"
+
+- name: "11.4 | Activate the golden image"
+  cisco.dnac.swim_workflow_manager:
+    state: merged
+    # Must outlast the reload. Timing out here would not stop the upgrade — it
+    # would only stop Ansible watching it, leaving the fabric mid-activation
+    # with no record of the outcome.
+    dnac_api_task_timeout: "{{ swim_task_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - image_activation_details:
+          image_name: "{{ item.image_file }}"
+          site_name: "{{ item.site_name }}"
+          device_role: "{{ item.device_role | default('ALL') }}"
+          device_family_name: "{{ item.device_family_name }}"
+          device_series_name: "{{ item.device_series_name }}"
+          activate_lower_image_version: "{{ item.activate_lower_image_version | default(false) }}"
+          device_upgrade_mode: "{{ item.device_upgrade_mode | default('install') }}"
+          # Safety net only: 11.3 should already have staged the image, and it
+          # asserts on failure. This covers a device that joined the site since.
+          distribute_if_needed: "{{ item.distribute_if_needed | default(true) }}"
+          # false = perform the activation. true would silently dry-run.
+          schedule_validate: false
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.image_file }} @ {{ item.site_name }}"
+  register: _swim_activate
+  failed_when: false
+
+- name: "--DEBUG-- Activation detail"
+  ansible.builtin.debug:
+    var: _swim_activate
+  when: catc_debug | default(false) | bool
+
+- name: "11.4 | Report activation outcome"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.image_file }} @ {{ item.item.site_name }}:
+      {{ 'activated' if not (item.failed | default(false))
+         else 'ACTIVATION FAILED — ' ~ (item.msg | default('see evidence')) }}
+  loop: "{{ _swim_activate.results }}"
+  loop_control:
+    label: "{{ item.item.site_name }}"
+
+- name: "11.4 | Write activation evidence"
+  ansible.builtin.copy:
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-activate.json"
+    mode: "0644"
+    content: "{{ _evidence | to_nice_json }}"
+  vars:
+    _evidence:
+      phase: "11.4 activate"
+      run_id: "{{ swim_run_id }}"
+      images: "{{ _swim_entries | map(attribute='image_file') | list }}"
+      activation: "{{ _swim_activate.results | map(attribute='msg') | list }}"
+
+# Evidence is written before this assert so a failed activation still leaves a
+# record on disk to work from.
+- name: "11.4 | Fail if activation did not complete"
+  ansible.builtin.assert:
+    that: not (item.failed | default(false))
+    fail_msg: >-
+      Activation of {{ item.item.image_file }} at {{ item.item.site_name }} did
+      not complete. The devices may be partially upgraded — check
+      `show version` and `show install summary` before re-running.
+      Rollback: -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+      Reported: {{ item.msg | default('no message') }}
+  loop: "{{ _swim_activate.results }}"
+  loop_control:
+    label: "{{ item.item.site_name }}"

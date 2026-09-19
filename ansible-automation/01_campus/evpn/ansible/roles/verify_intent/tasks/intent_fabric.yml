@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/intent_fabric.yml  —  Stage 11.2
+# verify_intent / tasks/intent_fabric.yml  —  Stage 12.2
 # ============================================================================
 # Turns the DEFN-*.j2 bodies fetched from Catalyst Center into a plain data
 # structure.
@@ -114,7 +114,7 @@
       DEFN_VRF_TO_NODE assigns VRF id(s)
       {{ _assigned | difference(_defined) | join(', ') }}
       that DEFN_VRF does not define; it defines {{ _defined | join(', ') }}.
-      Fix DEFN-VRF.j2 in Catalyst Center Template Programmer — stage 11 reads
+      Fix DEFN-VRF.j2 in Catalyst Center Template Programmer — stage 12 reads
       the intent from Catalyst Center, not from the repo checkout.
     success_msg: >-
       All {{ _assigned | length }} assigned VRF id(s) are defined in DEFN_VRF.

@@ -24,7 +24,7 @@ Run the playbooks in numerical order:
     `lab_ap_macs`, then name it, assign it to Site-105 and provision it — all
     in `10_await_access_points.yml`.
 
-Stages 01–09 use the Catalyst Center API. Stage 11 is the only playbook that
+Stages 01–09 use the Catalyst Center API. Stage 12 is the only playbook that
 logs in to the switches.
 
 ## Before you begin
@@ -1211,7 +1211,7 @@ shared across three IPs is CatC grouping one Template Hub job, not a bug.
 
 The role continues across per-device failures so one red row does not hide
 the others. CatC `SUCCESS` means the workflow finished; it does **not** prove
-EVPN or the AP trunk is in running-config. Run stage 11, and on each leaf:
+EVPN or the AP trunk is in running-config. Run stage 12, and on each leaf:
 
 ```text
 show running-config interface GigabitEthernet1/0/2
@@ -1252,7 +1252,7 @@ and at least one AP joins, expect **five** reachable rows. Verified
 
 The four wired/WLC rows were already Success after stage 08. The fifth
 row is new here: CatC learned the AP **from the WLC after the join**,
-not from stage 04 RANGE jobs and not from stage 08 provision. Stage 11
+not from stage 04 RANGE jobs and not from stage 08 provision. Stage 12
 is still the authoritative switch running-config.
 
 ### Inventory: at least one AP discovered
@@ -1513,14 +1513,187 @@ on a live lab.
 
 ---
 
-## Stage 11 — Verify intent against the fabric
+## Stage 11 — Software image management (SWIM)
 
-**Playbook:** `playbooks/11_verify_intent.yml`
+**Playbook:** `playbooks/11_swim_for_assurance.yml`
+**Role:** `swim_for_assurance`
+**Safety:** **Disruptive by default — a plain run reloads the switches.** Opt out
+with `-e swim_activate=false` to stage the image without reloading.
+
+### What it accomplishes
+
+Lifts the fabric onto a declared IOS-XE image. The EVPN telemetry subscriptions
+stage 09 deploys, and the Splunk assurance collection in `07_assurance` that
+consumes them, depend on YANG models whose coverage moves between IOS-XE trains
+— so pinning the image is part of standing up assurance rather than a separate
+errand.
+
+The image is declared in `settings.json` alongside everything else the pipeline
+builds, under `project[].swim`. Nothing is passed on the command line except the
+safety gates.
+
+### Data read
+
+`settings.json` → `project[].swim`:
+
+| Field | Purpose |
+| --- | --- |
+| `enabled` | Projects without this set to `true` are skipped entirely |
+| `import_source` | `CCO` — Catalyst Center downloads from cisco.com |
+| `image_file` | Image name exactly as published on cisco.com |
+| `image_version` | Recorded in evidence; not sent to the API |
+| `rollback_image_file` | Recovery target, imported up front alongside the upgrade |
+| `site_name` | Full hierarchy path, e.g. `Global/NORTH CAROLINA/Durham/Site-105/MAIN` |
+| `device_role` | `ALL`, or `ACCESS` / `DISTRIBUTION` / `CORE` / `BORDER ROUTER` |
+| `device_image_family_name` | **SWIM identifier** for tagging, e.g. `Cisco Catalyst 9300 Switch` |
+| `device_family_name` | **Inventory family** for distribute/activate, e.g. `Switches and Hubs` |
+| `device_series_name` | **Inventory series**, e.g. `Cisco Catalyst 9300 Series Switches` |
+| `activate_lower_image_version` | `false` blocks accidental downgrades |
+| `device_upgrade_mode` | `install` — the IOS-XE three-step sequence |
+| `distribute_if_needed` | Fallback distribution during activation |
+
+> **Three “family” names, and they are not interchangeable.**
+> `device_image_family_name` is the SWIM identifier used for *tagging*;
+> `device_family_name` and `device_series_name` are *inventory* fields used for
+> *distribute* and *activate*. Swapping them fails with “no eligible devices
+> found” and no further explanation. Discover the SWIM identifier with
+> `GET /dna/intent/api/v1/image/importation/device-family-identifiers`.
+
+### Phases
+
+| Phase | Tag | Effect |
+| --- | --- | --- |
+| 11.1 preflight | `swim_preflight` | Resync inventory, baseline IMAGE compliance — read-only |
+| 11.2 import_and_tag | `swim_import` | Pull from CCO, mark golden — Catalyst Center only |
+| 11.3 distribute | `swim_distribute` | Copy into device flash — **no reload** |
+| 11.4 activate | `swim_activate` | Reload onto the new image — **disruptive** |
+| 11.5 postcheck | `swim_postcheck` | IMAGE compliance after activation — read-only |
+| 11.6 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
+
+A default run executes 11.1–11.5, **including the reload in 11.4**, so a single
+command performs the whole upgrade. Add `-e swim_activate=false` to stop after
+11.3: the image lands in flash, the devices keep running their current version,
+and the fabric is untouched — the safe business-hours run.
+
+> 🛑 **Stage 11 reloads the fabric by default.** Unlike stage 12, this stage is
+> not safe to run casually. Site-105 is three switches with no redundancy, so the
+> overlay drops for the length of the reload. Use `-e swim_activate=false` when
+> you only mean to stage the image.
+
+The resync in 11.1 is not ceremony: every later phase targets devices by
+`site_name` + family + series + role, and those fields come from the Catalyst
+Center inventory record. A stale record silently narrows the target set, which
+only surfaces as a failure much later in distribute.
+
+### Prerequisites
+
+CCO import needs Cisco.com credentials configured in Catalyst Center under
+**System > Settings > Cisco.com Credentials**. Without them the import fails
+with a credentials error rather than a not-found.
+
+### Running it
+
+Full upgrade. **This reloads every device** and drops the overlay until they
+return:
+
+```bash
+ansible-playbook playbooks/11_swim_for_assurance.yml
+```
+
+Stage the image in flash without reloading — safe during business hours:
+
+```bash
+ansible-playbook playbooks/11_swim_for_assurance.yml -e swim_activate=false
+```
+
+Emergency rollback to the previous image. **Also reloads every device:**
+
+```bash
+ansible-playbook playbooks/11_swim_for_assurance.yml \
+  -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+```
+
+A single phase, or with debug output:
+
+```bash
+ansible-playbook playbooks/11_swim_for_assurance.yml --tags swim_distribute
+ansible-playbook playbooks/11_swim_for_assurance.yml -e catc_debug=true
+```
+
+> **Why rollback is gated but activation is not.** Activation is the point of
+> the stage, so it runs on a bare command. A downgrade is an exceptional act,
+> and making it as easy as an upgrade is how a fabric gets reverted by a stray
+> `--extra-var`. Its gates are asserted before any phase runs, so wrong flags
+> fail immediately rather than after a twenty-minute distribute.
+
+### Knobs
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `swim_run_preflight` | `true` | Run 11.1 |
+| `swim_run_import` | `true` | Run 11.2 |
+| `swim_run_distribute` | `true` | Run 11.3 |
+| `swim_activate` | `true` | Run 11.4. **Set `false` to stage without reloading** |
+| `swim_rollback` | `false` | Run 11.6 instead of the forward phases |
+| `swim_rollback_confirm` | `""` | Must be `YES` to roll back |
+| `swim_reload_ack` | `""` | Must be `RELOAD_OK` to roll back |
+| `swim_run_postcheck` | `true` | Run 11.5 after activation |
+| `swim_task_timeout` | `7200` | Seconds; must outlast a reload |
+| `swim_task_poll_interval` | `60` | Seconds between task polls |
+| `swim_import_timeout` | `3600` | Seconds; a ~1.2 GB CCO download |
+
+> **The timeout must outlast the reload.** Timing out would not stop the
+> upgrade — it would only stop Ansible watching it, leaving the fabric
+> mid-activation with no record of the outcome.
+
+### Evidence
+
+One JSON per phase in `evidence/`, gitignored:
+
+```text
+evidence/<run_id>-11_swim-preflight.json
+evidence/<run_id>-11_swim-import_and_tag.json
+evidence/<run_id>-11_swim-distribute.json
+evidence/<run_id>-11_swim-activate.json
+evidence/<run_id>-11_swim-postcheck.json
+evidence/<run_id>-11_swim-rollback.json
+```
+
+Evidence is written **before** the phase asserts, so a failed activation still
+leaves a record on disk to work from.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Resolution |
+| --- | --- | --- |
+| `No project in settings.json has swim.enabled` | No `swim` block, or `enabled: false` | Add the block to the project you want upgraded |
+| Import fails with a credentials error | Cisco.com credentials not set in Catalyst Center | System > Settings > Cisco.com Credentials |
+| Import fails “not found” | `image_file` does not match the published name | Check the exact filename on cisco.com |
+| Tagging fails | `device_image_family_name` holds an inventory family | Use the SWIM identifier — see the box above |
+| “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Re-run 11.1, confirm against the inventory record |
+| Distribute fails on flash space | Older images filling flash | Catalyst Center auto-cleans; check the device manually if it persists |
+| Activation “succeeds” but version unchanged | `schedule_validate` was true — a dry run | The role hardcodes `false`; check for an override |
+| Rollback refused | `activate_lower_image_version` not true | The rollback phase sets this automatically |
+
+After activation, verify the fabric survived the reload with stage 12, then
+re-check telemetry is still streaming:
+
+```bash
+ansible-playbook playbooks/12_verify_intent.yml
+cd ../../../07_assurance/splunk_evpn/ansible
+ansible-playbook playbooks/08_verify_assurance.yml
+```
+
+---
+
+## Stage 12 — Verify intent against the fabric
+
+**Playbook:** `playbooks/12_verify_intent.yml`
 **Safety:** Read-only.
 
 ### What it accomplishes
 
-Stage 11 closes the loop: it compares what the pipeline *declared* against what
+Stage 12 closes the loop: it compares what the pipeline *declared* against what
 the devices are *actually running*, and writes a pass/fail report.
 
 Live state is collected through Catalyst Center **Command Runner**, so the play
@@ -1538,7 +1711,7 @@ Intent comes from two places:
 
 The DEFN templates are read from Catalyst Center Template Programmer, **not**
 from the repo checkout. Stage 06 seeds Catalyst Center from git or a local
-folder depending on `template_source`; stage 11 verifies what was actually
+folder depending on `template_source`; stage 12 verifies what was actually
 deployed. A DEFN file edited locally and never synced therefore cannot produce
 a false pass, and the stage works from a checkout with no templates in it.
 
@@ -1592,19 +1765,19 @@ brief` reports `protocol up`; a config line proves none of that.
 > fabric with no NVE peers, or a controller with no access points joined. The
 > `genie_parse` filter turns that into an empty dict, so the check reports the
 > value as absent and fails on its own terms. Only a genuine parsing problem,
-> such as a missing parser, aborts the run. Run stage 11 before stage 09 and you
+> such as a missing parser, aborts the run. Run stage 12 before stage 09 and you
 > will see those checks fail, which is the correct answer.
 
 ### Run it
 
 ```bash
-ansible-playbook playbooks/11_verify_intent.yml
+ansible-playbook playbooks/12_verify_intent.yml
 ```
 
 Report without failing the play, for a known-broken demo fabric:
 
 ```bash
-ansible-playbook playbooks/11_verify_intent.yml -e verify_fail_on_mismatch=false
+ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=false
 ```
 
 ### Important expected output
@@ -1616,8 +1789,8 @@ ansible-playbook playbooks/11_verify_intent.yml -e verify_fail_on_mismatch=false
 │ Fail          : 0
 │ Not verified  : 0
 │ Not applicable: 7
-│ Report        : …/evidence/stage11-verification.md
-│ HTML          : …/evidence/stage11-verification.html
+│ Report        : …/evidence/stage12-verification.md
+│ HTML          : …/evidence/stage12-verification.html
 ```
 
 `Not applicable` is expected: `FABRIC-OVERLAY.j2` skips the L2 sections on
@@ -1630,17 +1803,17 @@ driven from the script server, not your laptop:
 
 | File | Use |
 | --- | --- |
-| `evidence/stage11-verification.md` | Reading in a terminal or editor, diffing between runs |
-| `evidence/stage11-verification.html` | A formal verification report for sharing or printing |
+| `evidence/stage12-verification.md` | Reading in a terminal or editor, diffing between runs |
+| `evidence/stage12-verification.html` | A formal verification report for sharing or printing |
 
 Read the markdown on the script server. `rich` is installed in the venv and
 renders the headings and tables in colour:
 
 ```bash
-python -m rich.markdown evidence/stage11-verification.md | less -R
+python -m rich.markdown evidence/stage12-verification.md | less -R
 ```
 
-Or plainly, with no renderer: `less evidence/stage11-verification.md`.
+Or plainly, with no renderer: `less evidence/stage12-verification.md`.
 
 > `No module named 'rich'` means the venv was built before `rich` joined the
 > pinned list in `script_server_python_packages`. Re-run
@@ -1651,7 +1824,7 @@ Or plainly, with no renderer: `less evidence/stage11-verification.md`.
 Or pull either file back:
 
 ```bash
-scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage11-verification.html .
+scp cisco@198.18.134.12:cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible/evidence/stage12-verification.html .
 ```
 
 Both contain the result counts, the devices in scope, which Catalyst Center
@@ -1668,15 +1841,15 @@ separately:
 
 | Sample | View it |
 | --- | --- |
-| [`docs/sample-reports/stage11-verification.md`](docs/sample-reports/stage11-verification.md) | Renders directly on GitHub |
-| [`docs/sample-reports/stage11-verification.html`](docs/sample-reports/stage11-verification.html) | Download and open in a browser — GitHub shows HTML as source |
+| [`docs/sample-reports/stage12-verification.md`](docs/sample-reports/stage12-verification.md) | Renders directly on GitHub |
+| [`docs/sample-reports/stage12-verification.html`](docs/sample-reports/stage12-verification.html) | Download and open in a browser — GitHub shows HTML as source |
 
 These are a point-in-time snapshot of Site-105, not output from your pod. Use
 them to see the report shape before you run the stage.
 
 ### Where to verify in Catalyst Center
 
-Stage 11 changes nothing in CatC, so there is no required UI check. You can
+Stage 12 changes nothing in CatC, so there is no required UI check. You can
 compare device reachability under **Provision > Inventory**, but the saved
 switch CLI is the actual verification evidence.
 
@@ -1763,9 +1936,9 @@ verified the student's pod and AP values.
   See stage 09 “Inventory: at least one AP discovered”.
 - **Stage 09 recap `changed=0` with `FAILED - RETRYING` then three SUCCESS
   rows:** expected. Poll, not failure. Shared `deploymentId` is one CatC job.
-  Still verify CLI (stage 11 / `Gi1/0/2`); do not re-run 09 on a live lab
+  Still verify CLI (stage 12 / `Gi1/0/2`); do not re-run 09 on a live lab
   unless asked.
-- **Stage 11 times out on `198.18.128.22–24`:** the dCloud VPN is usually down.
+- **Stage 12 times out on `198.18.128.22–24`:** the dCloud VPN is usually down.
 
 Use `-e catc_debug=true` or `-e dnac_debug=true` only when troubleshooting.
 Debug output can include API payloads and live tokens; redact it before sharing

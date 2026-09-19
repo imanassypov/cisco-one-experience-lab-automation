@@ -3,17 +3,62 @@
 # Recreate: copy this file, fill passwords, then:
 #   ansible-vault encrypt lab_access.yml
 # Playbooks load lab_access via ansible-automation/plugins/vars/lab_access.py.
+#
+# Every key below exists in the encrypted file, in this order. Keys are looked up
+# verbatim — `lab_access['Splunk Enterprise']`, `lab_access[inventory_hostname]` —
+# so renaming one silently yields an empty dict rather than an error. The `access`
+# values are topology, not secrets, and are mirrored in
+# PseudoCo_Lab_Access_Lookup.md; only username/password/enable_password are held back.
 lab_access:
+
+  # ---------------------------------------------------------------------------
+  # Automation control plane
+  # ---------------------------------------------------------------------------
+  # Kali box every playbook runs from. Catalyst Center is not reachable from a
+  # laptop, so this is the real execution host.
   script_server:
     access: "ssh: 198.18.134.12"
     username: cisco
     password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Operator jump hosts (RDP)
+  # ---------------------------------------------------------------------------
   Jumphost1:
     access: "RDP: 198.18.133.36"
     username: REPLACE_ME
     password: REPLACE_ME
+  Jumphost2:
+    access: "RDP: 198.18.133.37"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Jumphost3:
+    access: "RDP: 198.18.133.38"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Management platforms (HTTPS / REST)
+  # ---------------------------------------------------------------------------
+  # Drives every stage of the campus pipeline via the Intent API.
   "Catalyst Center":
     access: "https://cat-center.corp.pseudoco.com"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "Identity Services Engine":
+    access: "https://ise.corp.pseudoco.com/admin/login.jsp"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "Catalyst SD-WAN Manager":
+    access: "https://sd-wan.corp.pseudoco.com/"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "Cisco 9800-WLC":
+    access: "https://wlc.corp.pseudoco.com/webui/"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "Cisco Nexus Dashboard":
+    access: "https://ndfc.corp.pseudoco.com/"
     username: REPLACE_ME
     password: REPLACE_ME
   # Splunk web / REST admin (:8000 and :8089). Used by 07_assurance to create the
@@ -30,8 +75,187 @@ lab_access:
     access: "ssh: 198.18.5.109"
     username: REPLACE_ME
     password: REPLACE_ME
+  "Secure Network Analytics":
+    access: "https://smc.corp.pseudoco.com/"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "Cisco Telemetry Broker":
+    access: "https://ctb-m.corp.pseudoco.com/login"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Directory identities — 802.1X / ISE test users, not host logins
+  # ---------------------------------------------------------------------------
+  # `access` names the authorisation group and its VLAN, not a reachable address.
+  Kit:
+    access: "Production (19)"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Pat:
+    access: "Production (19)"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Nik:
+    access: "Main (16)"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Lee:
+    access: "Contractor"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  PRODUser:
+    access: "Production (19)"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  MainUser:
+    access: "Main (16)"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  IOTUser:
+    access: "IoT (18)"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Endpoints — `access` encodes RDP target / auth method / segment / owner
+  # ---------------------------------------------------------------------------
+  Workstation-1:
+    access: "RDP: 198.18.133.50 / EAP-TLS / PROD / Pat"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Workstation-2:
+    access: "RDP: 198.18.133.51 / EAP-TLS / PROD / Kit"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  Workstation-3:
+    access: "RDP: 198.18.133.52 / EAP-TLS / Main / Nik"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  # MAB-authenticated headless device — no interactive login, so no credentials.
+  Workstation-IOT:
+    access: "RDP: 198.18.133.53 / MAB / IOT"
+  RWST-1:
+    access: "RDP: 198.18.133.55 / ZTNA / Contractor / Lee"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  RWST-2:
+    access: "RDP: 198.18.133.56 / ZTNA / Production / Kit"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # SD-WAN control plane
+  # ---------------------------------------------------------------------------
+  "vmanage / SD-WAN Manager":
+    access: "ssh: 198.18.133.10"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "vbond / SD-WAN Validator":
+    access: "ssh: 198.18.133.11"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "vsmart / SD-WAN Controller":
+    access: "ssh: 198.18.133.12"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Shared infrastructure
+  # ---------------------------------------------------------------------------
+  inet8kv:
+    access: "ssh: 198.18.133.21"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  inet-rwkst:
+    access: "ssh: 198.18.134.101"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  # Wireless controller shared across pods — never re-provision it casually.
+  C9800-WLC:
+    access: "ssh: 198.18.5.102"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  HQ-SITE10-CEDGE8Kv:
+    access: "ssh: 198.18.133.13"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "AD1 Server":
+    access: "RDP: 198.18.5.102"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  vFTD:
+    access: "ssh: 198.18.133.39"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  ISE:
+    access: "ssh: 198.18.5.101"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Data centre fabric (02_data_center)
+  # ---------------------------------------------------------------------------
+  DC-SITE11-CEDGE8Kv:
+    access: "ssh: 198.18.133.14"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  DC-Leaf1:
+    access: "ssh: 198.18.128.101"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  DC-Leaf2:
+    access: "ssh: 198.18.128.102"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  DC-Service-Leaf:
+    access: "ssh: 198.18.128.13"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  DC-SPINE-1:
+    access: "ssh: 198.18.128.11"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  DC-SPINE-2:
+    access: "ssh: 198.18.128.12"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "MAIN - SERVER1":
+    access: "ssh: 198.18.133.15"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "PROD - SERVER1":
+    access: "ssh: 198.18.133.16"
+    username: REPLACE_ME
+    password: REPLACE_ME
+  "IOT - SERVER1":
+    access: "ssh: 198.18.133.17"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # ---------------------------------------------------------------------------
+  # Campus BGP EVPN fabric (01_campus) — Site-105
+  # ---------------------------------------------------------------------------
+  # These three keys MUST match the hostnames in
+  # 01_campus/evpn/ansible/inventory/static_inventory.yml, and the DEFN_NODE_ROLES
+  # keys in the Catalyst Center templates use the FQDN form of the same names.
+  # `enable_password` is required here and nowhere else — IOS-XE privilege 15.
+  Site_105-Border-Spine:
+    access: "ssh: 198.18.128.24"
+    username: REPLACE_ME
+    password: REPLACE_ME
+    enable_password: REPLACE_ME
   Site_105-Leaf1:
     access: "ssh: 198.18.128.22"
     username: REPLACE_ME
     password: REPLACE_ME
     enable_password: REPLACE_ME
+  Site_105-Leaf2:
+    access: "ssh: 198.18.128.23"
+    username: REPLACE_ME
+    password: REPLACE_ME
+    enable_password: REPLACE_ME
+  BRANCH-SITE105-SEC-RTR:
+    access: "ssh: 198.18.128.25"
+    username: REPLACE_ME
+    password: REPLACE_ME

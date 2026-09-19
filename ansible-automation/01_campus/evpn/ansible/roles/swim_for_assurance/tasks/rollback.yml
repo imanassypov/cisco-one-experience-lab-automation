@@ -1,0 +1,135 @@
+---
+# =============================================================================
+# swim_for_assurance / tasks/rollback.yml  —  Stage 11.6
+# =============================================================================
+# DISRUPTIVE recovery path. Re-tags the previous image golden and activates it,
+# reloading every targeted device back onto the older version.
+#
+# Only reachable when all three gates are set (checked in tasks/main.yml):
+#   -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+#
+# Runs INSTEAD OF the forward phases, never after them — tasks/main.yml branches
+# on swim_rollback. Re-importing and re-tagging the upgrade image on the way to
+# a downgrade would undo the thing being rolled back.
+#
+# Depends on 11.2 having imported rollback_image_file. That is why both images
+# are imported up front: the recovery target must already be in the repository.
+#
+# The one meaningful difference from 11.4: activate_lower_image_version must be
+# true, because the rollback target is by definition older than what is running.
+# Left false, Catalyst Center refuses the downgrade.
+#
+# Pre:  settings.json project[].swim.rollback_image_file, already imported
+# Post: devices running the previous image
+# =============================================================================
+
+- name: "11.6 | Require a rollback image to be declared"
+  ansible.builtin.assert:
+    that: item.rollback_image_file is defined and item.rollback_image_file | length > 0
+    fail_msg: >-
+      {{ item.site_name }} has no swim.rollback_image_file in settings.json, so
+      there is nothing to roll back to. Add the previously-running image name
+      and re-run stage 11.2 to import it before attempting a rollback.
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.site_name }}"
+
+- name: "11.6 | Announce the rollback"
+  ansible.builtin.debug:
+    msg:
+      - "ROLLING BACK {{ item.site_name }} to {{ item.rollback_image_file }}"
+      - "Devices WILL reload. Overlay connectivity drops until they return."
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.site_name }}"
+
+- name: "11.6 | Re-tag the previous image as golden"
+  cisco.dnac.swim_workflow_manager:
+    state: merged
+    dnac_api_task_timeout: "{{ swim_task_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - tagging_details:
+          image_name: "{{ item.rollback_image_file }}"
+          device_role: "{{ item.device_role | default('ALL') }}"
+          device_image_family_name: "{{ item.device_image_family_name }}"
+          site_name: "{{ item.site_name }}"
+          tagging: true
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.rollback_image_file }} @ {{ item.site_name }}"
+  register: _swim_rollback_tag
+  failed_when: false
+
+- name: "11.6 | Fail if the rollback image could not be tagged"
+  ansible.builtin.assert:
+    that: not (item.failed | default(false))
+    fail_msg: >-
+      Could not tag {{ item.item.rollback_image_file }} golden at
+      {{ item.item.site_name }}. If the image is not in the repository, import
+      it first: -e swim_rollback=false with swim.rollback_image_file set.
+      Reported: {{ item.msg | default('no message') }}
+  loop: "{{ _swim_rollback_tag.results }}"
+  loop_control:
+    label: "{{ item.item.site_name }}"
+
+- name: "11.6 | Activate the previous image"
+  cisco.dnac.swim_workflow_manager:
+    state: merged
+    dnac_api_task_timeout: "{{ swim_task_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - image_activation_details:
+          image_name: "{{ item.rollback_image_file }}"
+          site_name: "{{ item.site_name }}"
+          device_role: "{{ item.device_role | default('ALL') }}"
+          device_family_name: "{{ item.device_family_name }}"
+          device_series_name: "{{ item.device_series_name }}"
+          # REQUIRED for a rollback — the target is older than what is running.
+          activate_lower_image_version: true
+          device_upgrade_mode: "{{ item.device_upgrade_mode | default('install') }}"
+          distribute_if_needed: true
+          schedule_validate: false
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.rollback_image_file }} @ {{ item.site_name }}"
+  register: _swim_rollback_activate
+  failed_when: false
+
+- name: "--DEBUG-- Rollback activation detail"
+  ansible.builtin.debug:
+    var: _swim_rollback_activate
+  when: catc_debug | default(false) | bool
+
+- name: "11.6 | Write rollback evidence"
+  ansible.builtin.copy:
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-rollback.json"
+    mode: "0644"
+    content: "{{ _evidence | to_nice_json }}"
+  vars:
+    _evidence:
+      phase: "11.6 rollback"
+      run_id: "{{ swim_run_id }}"
+      rolled_back_to: "{{ _swim_entries | map(attribute='rollback_image_file') | list }}"
+      tagging: "{{ _swim_rollback_tag.results | map(attribute='msg') | list }}"
+      activation: "{{ _swim_rollback_activate.results | map(attribute='msg') | list }}"
+
+- name: "11.6 | Fail if the rollback did not complete"
+  ansible.builtin.assert:
+    that: not (item.failed | default(false))
+    fail_msg: >-
+      Rollback to {{ item.item.rollback_image_file }} at {{ item.item.site_name }}
+      did not complete. Devices may be in a mixed state — check `show version`
+      and `show install summary` on each before retrying.
+      Reported: {{ item.msg | default('no message') }}
+  loop: "{{ _swim_rollback_activate.results }}"
+  loop_control:
+    label: "{{ item.item.site_name }}"
+
+- name: "11.6 | Next step"
+  ansible.builtin.debug:
+    msg:
+      - "Rollback complete. Confirm the fabric came back:"
+      - "  ansible-playbook playbooks/12_verify_intent.yml"
+      - "NOTE: the previous image is now the golden tag for this site. Stage"
+      - "11.2 will re-tag the upgrade image the next time it runs."

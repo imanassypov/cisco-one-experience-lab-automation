@@ -2,7 +2,7 @@
 # assurance_verify / tasks/main.yml  —  Assurance stage 08
 # ============================================================================
 # Read-only end-to-end proof that the pipeline works, written as evidence in the
-# same HTML + Markdown shape stage 11 of the campus collection produces.
+# same HTML + Markdown shape stage 12 of the campus collection produces.
 #
 # Each check tests a different hop, so a failure localises the break:
 #

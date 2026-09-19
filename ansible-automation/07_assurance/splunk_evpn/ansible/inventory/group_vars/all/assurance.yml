@@ -60,7 +60,7 @@ assurance_site: Site-105
 # cannot drift from the fabric intent.
 evpn_settings_json: "{{ playbook_dir }}/../../../../01_campus/evpn/Settings/settings.json"
 evpn_templates_dir: "{{ playbook_dir }}/../../../../01_campus/evpn/Catalyst Center Templates/Site BGP EVPN Templates"
-# Shared with stage 11 of the campus collection so both read fabric intent the
+# Shared with stage 12 of the campus collection so both read fabric intent the
 # same way; changing the extracted fields in one place updates both.
 evpn_epilogue: "{{ playbook_dir }}/../../../../01_campus/evpn/ansible/roles/verify_intent/files/zz-defn-extract-epilogue.j2"
 

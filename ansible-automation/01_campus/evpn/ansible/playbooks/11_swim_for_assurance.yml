@@ -1,0 +1,113 @@
+---
+# =============================================================================
+# 11_swim_for_assurance.yml  —  Pipeline stage 11
+# =============================================================================
+# Software Image Management for the campus fabric, so the switches run an image
+# whose YANG coverage matches what assurance expects.
+#
+# The image, the site and the device targeting are declared in settings.json
+# under project[].swim, exactly like every other thing this pipeline builds.
+# Nothing is passed on the command line except the safety gates.
+#
+# Phases (role: swim_for_assurance):
+#   11.1 preflight       resync inventory, baseline IMAGE compliance  read-only
+#   11.2 import_and_tag  pull from CCO, mark golden                   CatC only
+#   11.3 distribute      copy to device flash, no reload              safe
+#   11.4 activate        reload onto the new image                    DISRUPTIVE
+#   11.5 postcheck       IMAGE compliance after activation            read-only
+#   11.6 rollback        re-tag previous image and activate it        DISRUPTIVE
+#
+# *** A DEFAULT RUN RELOADS THE FABRIC. ***
+# Phases 11.1-11.5 all run with no extra flags, so one command performs the
+# whole upgrade. Add -e swim_activate=false to stage the image in flash and stop
+# before the reload — that is the safe business-hours run.
+#
+# Rollback is the exception and stays gated behind three explicit flags: making
+# a downgrade as easy as an upgrade is how a fabric gets reverted by accident.
+#
+# Import source is CCO: Catalyst Center downloads the image straight from
+# cisco.com, so no multi-GB binary is staged in the repo or on the script
+# server. This requires Cisco.com credentials under
+# System > Settings > Cisco.com Credentials.
+#
+# Sourced:
+#   Lab Topology/lab_access.yml (vault) — Catalyst Center username/password
+#   settings.json → settings_data.project[].swim (via catc_common.load_settings)
+#     {enabled, import_source, image_file, image_version, rollback_image_file,
+#      site_name, device_role, device_image_family_name, device_family_name,
+#      device_series_name, activate_lower_image_version, device_upgrade_mode,
+#      distribute_if_needed}
+#
+# Produced:
+#   evidence/<run_id>-11_swim-<phase>.json per phase
+#   In Catalyst Center: image imported, tagged golden, distributed, optionally
+#   activated.
+#
+# gather_facts is true — ansible_date_time supplies swim_run_id.
+# Modules: cisco.dnac.swim_workflow_manager, inventory_workflow_manager,
+#          network_compliance_workflow_manager
+#
+# Depends on: stages 01-05. Every SWIM call targets devices by site_name plus
+# family/series/role, so devices must already be discovered, managed and
+# assigned to the site.
+#
+# Excluded from 00_site_deploy.yml by design — an image upgrade is an
+# operational decision, not part of building a site.
+#
+# Run — full upgrade, RELOADS every device (default):
+#   ansible-playbook playbooks/11_swim_for_assurance.yml
+#
+# Run — stage the image in flash only, no reload (safe any time):
+#   ansible-playbook playbooks/11_swim_for_assurance.yml -e swim_activate=false
+#
+# Run — emergency rollback to the previous image (RELOADS every device):
+#   ansible-playbook playbooks/11_swim_for_assurance.yml \
+#     -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+#
+# Run — a single phase:
+#   ansible-playbook playbooks/11_swim_for_assurance.yml --tags swim_distribute
+#   ansible-playbook playbooks/11_swim_for_assurance.yml -e catc_debug=true
+# =============================================================================
+- name: Campus fabric software image management
+  hosts: catalyst_center
+  gather_facts: true
+  vars:
+    catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
+  module_defaults:
+    cisco.dnac.swim_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+    cisco.dnac.inventory_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+    cisco.dnac.network_compliance_workflow_manager:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+      dnac_log_level: "{{ dnac_log_level }}"
+      dnac_log: "{{ dnac_log }}"
+  pre_tasks:
+    - name: Load settings.json
+      ansible.builtin.import_role:
+        name: catc_common
+        tasks_from: load_settings
+  roles:
+    - role: swim_for_assurance

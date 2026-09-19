@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/report.yml  —  Stage 11.7
+# verify_intent / tasks/report.yml  —  Stage 12.7
 # ============================================================================
 # Writes the markdown and HTML reports, prints the console summary, and only
 # then fails.

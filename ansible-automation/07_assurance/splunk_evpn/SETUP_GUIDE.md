@@ -157,7 +157,7 @@ Do **not** paste subscriptions onto the switches. They are rendered by
 cd ansible-automation/01_campus/evpn/ansible
 ansible-playbook playbooks/06_template_sync.yml
 ansible-playbook playbooks/09_deploy_composite.yml
-ansible-playbook playbooks/11_verify_intent.yml
+ansible-playbook playbooks/12_verify_intent.yml
 ```
 
 Subscriptions land in the 40101–40121 band, deliberately above the range Catalyst Center

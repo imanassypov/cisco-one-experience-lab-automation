@@ -1,6 +1,6 @@
-# Stage 11 — Intent verification
+# Stage 12 — Intent verification
 
-Generated 2026-09-16 10:13:18 UTC by `11_verify_intent.yml`.
+Generated 2026-09-17 11:28:45 UTC by `12_verify_intent.yml`.
 
 Declared intent is compared against live device state collected through
 Catalyst Center Command Runner. Intent comes from `settings.json` and from the
@@ -11,13 +11,13 @@ what was actually deployed rather than what the repo currently says.
 
 | Outcome | Count |
 | --- | --- |
-| Pass | 44 |
+| Pass | 45 |
 | Fail | 0 |
 | Not verified | 0 |
 | Not applicable | 7 |
 
 **PASSED** —
-51 check(s) across
+52 check(s) across
 4 device(s).
 
 ## Devices
@@ -35,19 +35,19 @@ Fabric definitions read from Catalyst Center Template Programmer:
 
 | Template | Project | Template ID | Last updated |
 | --- | --- | --- | --- |
-| `DEFN-BORDER-DMZ-TUNNELS.j2` | Site-105 | `eb6701a3-4b80-4c0a-a806-7cf363ec9141` | 2026-09-15 17:20 |
-| `DEFN-CLIENT-PORTS.j2` | Site-105 | `19f95673-76a9-4c18-9bdb-eccb32b8b4b7` | 2026-09-15 17:20 |
-| `DEFN-L3OUT.j2` | Site-105 | `174412e9-c286-489e-910d-2fbfcee5af3e` | 2026-09-15 17:20 |
-| `DEFN-LOOPBACKS.j2` | Site-105 | `0b1a18c6-d41d-43db-aeed-b9d14c00c1c5` | 2026-09-15 17:20 |
-| `DEFN-MCAST.j2` | Site-105 | `67224eb3-c18f-41a8-bf7f-b326f167e44e` | 2026-09-15 17:20 |
-| `DEFN-NAC.j2` | Site-105 | `459e601b-fe30-4571-b004-5380be60cdfd` | 2026-09-15 17:20 |
-| `DEFN-OVERLAY.j2` | Site-105 | `d1659043-f7bb-42df-8aa2-96e8a993d0f6` | 2026-09-15 17:20 |
-| `DEFN-ROLES.j2` | Site-105 | `66c2c21d-6fc4-4431-b086-3a499b7f1324` | 2026-09-15 17:20 |
-| `DEFN-TELEMETRY-SPLUNK.j2` | Site-105 | `cde9cc44-12fb-444d-b88e-65cd1b4dca03` | 2026-09-15 17:20 |
-| `DEFN-VNIOFFSETS.j2` | Site-105 | `e7b8a6ce-6cc7-496f-820a-86fb21f80ae8` | 2026-09-15 17:20 |
-| `DEFN-VRF.j2` | Site-105 | `e8c85b71-3e8f-43a5-94b6-dd0528b348e0` | 2026-09-15 17:20 |
+| `DEFN-BORDER-DMZ-TUNNELS.j2` | Site-105 | `a1fc4c69-015f-42d9-ab39-7f21efd4abd3` | 2026-09-16 19:12 |
+| `DEFN-CLIENT-PORTS.j2` | Site-105 | `3d290b65-95d3-4920-8ffb-65218d672f4b` | 2026-09-16 19:12 |
+| `DEFN-L3OUT.j2` | Site-105 | `190226ca-3af6-460b-8ee1-15340a2cee10` | 2026-09-16 19:12 |
+| `DEFN-LOOPBACKS.j2` | Site-105 | `613fe72a-fa25-4934-8fae-a9261e6c3112` | 2026-09-16 19:12 |
+| `DEFN-MCAST.j2` | Site-105 | `d3b22354-f24a-43f7-b7b8-10a477f4ee7f` | 2026-09-16 19:12 |
+| `DEFN-NAC.j2` | Site-105 | `46b613ed-0cd5-4680-bb89-a4fa7a71c619` | 2026-09-16 19:12 |
+| `DEFN-OVERLAY.j2` | Site-105 | `a02e46bd-ae64-4510-91f8-193f90cb729f` | 2026-09-16 19:12 |
+| `DEFN-ROLES.j2` | Site-105 | `c9755fe0-ef1f-4a24-8d61-cfe7a9aa5b80` | 2026-09-16 19:12 |
+| `DEFN-TELEMETRY-SPLUNK.j2` | Site-105 | `b59453d7-1fac-4faf-ab8d-f97c9029122f` | 2026-09-16 19:12 |
+| `DEFN-VNIOFFSETS.j2` | Site-105 | `48879331-bbce-44ce-85e1-e40ee1faa87a` | 2026-09-16 19:12 |
+| `DEFN-VRF.j2` | Site-105 | `15b72b9a-4a62-4b11-b3e7-645952bf0f27` | 2026-09-17 11:20 |
 
-From `settings.json`: SSID `PSEUDOCO-POD12`,
+From `settings.json`: SSID `PSEUDOCO-POD05`,
 wireless VLANs 10, 101, 102,
 1 access point(s).
 
@@ -180,8 +180,9 @@ Genie. Every comparison is exact equality on a parsed field.
 
 | Check | Result | Intended | Observed |
 | --- | --- | --- | --- |
-| SSID provisioned on the controller | PASS | `SSID PSEUDOCO-POD12 = PSEUDOCO-POD12` | `PSEUDOCO-POD12` |
-| SSID administratively up | PASS | `PSEUDOCO-POD12 status = UP` | `UP` |
+| SSID provisioned on the controller | PASS | `SSID PSEUDOCO-POD05 = PSEUDOCO-POD05` | `PSEUDOCO-POD05` |
+| SSID administratively up | PASS | `PSEUDOCO-POD05 status = UP` | `UP` |
+| Access point count matches settings.json | PASS | `access points joined = 1` | `1` |
 | Access points registered | PASS | `SITE-105-AP-1 state = Registered` | `Registered` |
 | Access point Ethernet MAC matches settings.json | PASS | `SITE-105-AP-1 Ethernet MAC = 084fa950f028` | `084fa950f028` |
 | Access point on Catalyst Center tags | PASS | `SITE-105-AP-1 tag source = Static` | `Static` |

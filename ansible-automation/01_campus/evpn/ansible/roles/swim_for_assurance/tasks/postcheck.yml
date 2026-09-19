@@ -1,0 +1,83 @@
+---
+# =============================================================================
+# swim_for_assurance / tasks/postcheck.yml  —  Stage 11.5
+# =============================================================================
+# IMAGE compliance after activation, compared against the baseline from 11.1.
+#
+# Read-only. Compliance answers "is every device running the image Catalyst
+# Center considers golden for its site" — which is exactly the question an
+# upgrade is supposed to change the answer to, and the reason 11.1 took a
+# baseline first.
+#
+# This is not a substitute for stage 12. Compliance checks the image; stage 12
+# checks that VRFs, VNIs, EVPN state and telemetry subscriptions survived the
+# reload. Run both.
+#
+# Pre:  devices reloaded by 11.4
+# Post: evidence/<run_id>-11_swim-postcheck.json
+# =============================================================================
+
+- name: "11.5 | Post-activation IMAGE compliance"
+  cisco.dnac.network_compliance_workflow_manager:
+    state: merged
+    dnac_api_task_timeout: "{{ swim_task_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - site_name: "{{ item.site_name }}"
+        run_compliance: true
+        run_compliance_categories:
+          - IMAGE
+        sync_device_config: "{{ swim_sync_device_config }}"
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.site_name }}"
+  register: _swim_postcheck
+  failed_when: false
+
+- name: "--DEBUG-- Post-activation compliance detail"
+  ansible.builtin.debug:
+    var: _swim_postcheck
+  when: catc_debug | default(false) | bool
+
+- name: "11.5 | Report compliance outcome"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.site_name }}:
+      {{ 'compliance run completed' if not (item.failed | default(false))
+         else 'COMPLIANCE RUN FAILED — ' ~ (item.msg | default('see evidence')) }}
+  loop: "{{ _swim_postcheck.results }}"
+  loop_control:
+    label: "{{ item.item.site_name }}"
+
+- name: "11.5 | Write postcheck evidence"
+  ansible.builtin.copy:
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-postcheck.json"
+    mode: "0644"
+    content: "{{ _evidence | to_nice_json }}"
+  vars:
+    _evidence:
+      phase: "11.5 postcheck"
+      run_id: "{{ swim_run_id }}"
+      expected_version: "{{ _swim_entries | map(attribute='image_version') | list }}"
+      compliance: "{{ _swim_postcheck.results | map(attribute='msg') | list }}"
+
+- name: "11.5 | Fail if the compliance run did not execute"
+  ansible.builtin.assert:
+    that: not (item.failed | default(false))
+    fail_msg: >-
+      Post-activation compliance could not run at {{ item.item.site_name }}.
+      The upgrade itself may still be fine — confirm with
+      `ansible-playbook playbooks/12_verify_intent.yml`.
+      Reported: {{ item.msg | default('no message') }}
+  loop: "{{ _swim_postcheck.results }}"
+  loop_control:
+    label: "{{ item.item.site_name }}"
+
+- name: "11.5 | Next step"
+  ansible.builtin.debug:
+    msg:
+      - "Image upgrade complete. Verify the fabric survived the reload:"
+      - "  ansible-playbook playbooks/12_verify_intent.yml"
+      - "Then re-check assurance telemetry is still streaming:"
+      - "  cd ../../../07_assurance/splunk_evpn/ansible"
+      - "  ansible-playbook playbooks/08_verify_assurance.yml"

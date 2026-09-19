@@ -61,4 +61,4 @@
           - "  ansible-playbook playbooks/06_template_sync.yml"
           - "  ansible-playbook playbooks/09_deploy_composite.yml"
           - "Then confirm on the switches:"
-          - "  ansible-playbook playbooks/11_verify_intent.yml"
+          - "  ansible-playbook playbooks/12_verify_intent.yml"

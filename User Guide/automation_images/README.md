@@ -104,8 +104,8 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 
 | Filename | What to capture |
 |---|---|
-| `a3-evidence-html-report.png` | `evidence/stage11-verification.html` open in a browser |
-| `a3-md-report.png` | `python -m rich.markdown evidence/stage11-verification.md \| less -R` in the terminal |
+| `a3-evidence-html-report.png` | `evidence/stage12-verification.html` open in a browser |
+| `a3-md-report.png` | `python -m rich.markdown evidence/stage12-verification.md \| less -R` in the terminal |
 
 ### Card 4 — Template Model
 
@@ -119,7 +119,7 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 |---|---|
 | `a5-git-diff.png` | `git diff` of a DEFN edit |
 | `a5-catc-version-history.png` | Catalyst Center template version history showing the git commit message as the version comment |
-| `a5-new-vlan-verified.png` | Stage 11 report row proving the new VLAN/VRF landed |
+| `a5-new-vlan-verified.png` | Stage 12 report row proving the new VLAN/VRF landed |
 
 ### Card 6 — WLC (automated path)
 

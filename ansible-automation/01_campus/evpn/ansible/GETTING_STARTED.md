@@ -94,6 +94,11 @@ prompt on a re-run: `LAB_POD_ID=7 ./stage-script-server.sh`.
 The script writes `.vault` for you as well. It holds the **passphrase**, one
 bare line, no quotes, and it is gitignored so a fresh clone never has one.
 
+Creating it by hand instead: `cp .vault.example .vault`, then replace the single
+placeholder line with the passphrase. The file must contain nothing else —
+Ansible reads the whole file and strips it, so a stray comment line becomes part
+of the passphrase and every playbook fails with `Decryption failed`.
+
 Confirm it opens the credential map:
 
 ```bash

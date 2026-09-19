@@ -1,0 +1,60 @@
+---
+# =============================================================================
+# swim_for_assurance / defaults/main.yml
+# =============================================================================
+# Knobs for stage 11. Overridable with -e.
+#
+# Nothing here selects an image. Images, site and device targeting all come from
+# settings.json → project[].swim, so the data model stays the single source of
+# truth and this file only carries operational safety and timing.
+# =============================================================================
+
+# ── Phase selection ──────────────────────────────────────────────────────────
+# Import, tag and distribute are non-disruptive: they copy a .bin into flash and
+# leave the device running its current image.
+swim_run_preflight: true
+swim_run_import: true
+swim_run_distribute: true
+
+# Activation reloads every targeted device, and it is ON by default so a bare
+#   ansible-playbook playbooks/11_swim_for_assurance.yml
+# performs the whole upgrade with no extra flags.
+#
+# *** A DEFAULT RUN OF STAGE 11 RELOADS THE FABRIC. ***
+#
+# To stage the image in flash and stop short of the reload — the safe
+# business-hours run — opt out explicitly:
+#   -e swim_activate=false
+swim_activate: true
+
+# Rollback re-tags the prior image golden and activates it, which also reloads.
+# It replaces the normal phases rather than following them, and unlike activate
+# it stays gated: a downgrade is an exceptional act, never a default one.
+#   -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+swim_rollback: false
+swim_rollback_confirm: ""
+swim_reload_ack: ""
+
+# Post-activation IMAGE compliance. Only meaningful once something activated,
+# so it follows the activate phase and is skipped with it.
+swim_run_postcheck: true
+
+# ── Timing ───────────────────────────────────────────────────────────────────
+# Catalyst Center polls the device through the reload. A 9300 install/activate
+# cycle runs well past the collection's 1200s default, and a timeout here leaves
+# the upgrade running on the device with Ansible no longer watching it — the
+# same trap that left splunkd down earlier in this project. Two hours, polled a
+# minute apart, covers a three-device serial activation with headroom.
+swim_task_timeout: 7200
+swim_task_poll_interval: 60
+
+# Import pulls a ~1.2 GB image from cisco.com into the CatC repository.
+swim_import_timeout: 3600
+
+# ── Evidence ─────────────────────────────────────────────────────────────────
+# One JSON per phase, alongside the stage 12 reports. Gitignored.
+swim_evidence_dir: "{{ (playbook_dir ~ '/../evidence') | realpath }}"
+swim_run_id: "{{ ansible_date_time.iso8601_basic_short | default('norun') }}"
+
+# Compliance is read-only here; never let it push config back at the device.
+swim_sync_device_config: false

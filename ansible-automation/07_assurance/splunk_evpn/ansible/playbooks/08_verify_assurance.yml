@@ -2,7 +2,7 @@
 # =============================================================================
 # 08_verify_assurance.yml  —  Assurance stage 08
 # =============================================================================
-# Read-only end-to-end proof, written as evidence in the same shape stage 11 of
+# Read-only end-to-end proof, written as evidence in the same shape stage 12 of
 # the campus collection produces.
 #
 # One check per hop, so a failure localises the break: service up, fabric

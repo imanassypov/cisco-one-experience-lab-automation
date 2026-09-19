@@ -292,7 +292,7 @@ Three details that are load-bearing:
 
 - **The epilogue is shared with the campus collection.** Stage 05 uses the very same
   [`zz-defn-extract-epilogue.j2`](../../01_campus/evpn/ansible/roles/verify_intent/files/zz-defn-extract-epilogue.j2)
-  that stage 11 uses to verify intent, so the two collections cannot disagree about what
+  that stage 12 uses to verify intent, so the two collections cannot disagree about what
   the fabric is. Adding a field there makes it available to both.
 - **Placeholders are substituted first.** `DEFN-TELEMETRY-SPLUNK.j2` carries literal
   `{{ TELEMETRY_RECEIVER_IP }}` markers that `template_sync` fills at sync time. Left
@@ -369,7 +369,7 @@ Five checks, one per hop, so a failure localises the break:
 | Dashboard Studio validation | `tools/validate_studio.py` exits 0 |
 
 Writes `evidence/assurance-verification.md` and `.html` in the same shape as the campus
-stage 11 report, then fails the play if any check did not pass.
+stage 12 report, then fails the play if any check did not pass.
 
 ## Relationship to the campus collection
 
@@ -389,7 +389,7 @@ FABRIC-TELEMETRY-SPLUNK.j2    {{ TELEMETRY_ROLE_GUARD }}  → DEVICE_HOSTNAME in
           ▼
 telemetry ietf subscription 40101…40121 on each fabric node
           │
-          │  stage 11 verify_intent confirms Valid + Connected
+          │  stage 12 verify_intent confirms Valid + Connected
           ▼
 07_assurance/splunk_evpn  ← this collection
 ```
@@ -497,7 +497,7 @@ Credentials are wrapped in `no_log: true` throughout, so debug output stays safe
    08 verify           read-only   → evidence/
             │
             ▼
-01_campus/evpn  11_verify_intent    confirms subscriptions Valid + receivers Connected
+01_campus/evpn  12_verify_intent    confirms subscriptions Valid + receivers Connected
 ```
 
 ## Troubleshooting

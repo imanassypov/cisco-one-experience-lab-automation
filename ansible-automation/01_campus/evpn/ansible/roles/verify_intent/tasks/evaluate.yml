@@ -1,5 +1,5 @@
 # ============================================================================
-# verify_intent / tasks/evaluate.yml  —  Stage 11.6
+# verify_intent / tasks/evaluate.yml  —  Stage 12.6
 # ============================================================================
 # Runs every check in vars/checks.yml against the collected CLI output.
 #

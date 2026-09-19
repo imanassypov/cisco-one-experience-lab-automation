@@ -30,7 +30,7 @@
 # tasks directly removes that footgun.
 #
 # Runs after: 09_deploy_composite.yml
-# Runs before: 11_verify_intent.yml
+# Runs before: 12_verify_intent.yml
 #
 # Deliberately NOT part of 00_site_deploy.yml. It blocks on hardware booting,
 # which can take minutes, and the orchestrator should not stall on something no
@@ -262,4 +262,4 @@
         msg:
           - "Access points provisioned. They reboot on provision and take 1-3 minutes to rejoin."
           - "Confirm on the controller:  show ap tag summary   (tag source should be Static)"
-          - "Then verify the fabric:     ansible-playbook playbooks/11_verify_intent.yml"
+          - "Then verify the fabric:     ansible-playbook playbooks/12_verify_intent.yml"

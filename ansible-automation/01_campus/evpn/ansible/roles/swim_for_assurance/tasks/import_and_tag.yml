@@ -1,0 +1,129 @@
+---
+# =============================================================================
+# swim_for_assurance / tasks/import_and_tag.yml  —  Stage 11.2
+# =============================================================================
+# Pull the image from Cisco Connection Online into the Catalyst Center image
+# repository, then mark it golden for the site and role.
+#
+# Import source is CCO, so no image file is staged in the repo and nothing
+# multi-GB is ever copied to the script server. Catalyst Center downloads it
+# directly from cisco.com, which requires Cisco.com credentials configured under
+# System > Settings > Cisco.com Credentials. Without them the import fails with
+# a credentials error rather than a not-found.
+#
+# The rollback image is imported here too, not at rollback time. If the upgrade
+# goes wrong the recovery path must already have its target sitting in the
+# repository — discovering mid-incident that the old image needs a 1.2 GB
+# download is the wrong moment to find out.
+#
+# Two different "family" names are in play and they are NOT interchangeable:
+#   device_image_family_name — the SWIM identifier, used for tagging
+#                              ("Cisco Catalyst 9300 Switch")
+#   device_family_name       — the inventory family, used for distribute and
+#                              activate ("Switches and Hubs")
+# Swapping them yields "no eligible devices found" with no further explanation.
+#
+# Both steps are idempotent: an already-imported image and an already-golden tag
+# both return ok / changed=false.
+#
+# Pre:  _swim_entries — from tasks/main.yml
+# Post: image present in the CatC repository and tagged golden for the site
+# =============================================================================
+
+- name: "11.2 | Import upgrade image from CCO"
+  cisco.dnac.swim_workflow_manager:
+    state: merged
+    dnac_api_task_timeout: "{{ swim_import_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - import_image_details:
+          type: CCO
+          cco_image_details:
+            # image_name is a list; both images go in one call so the rollback
+            # target lands in the repository before anything can be activated.
+            image_name: "{{ [item.image_file] + ([item.rollback_image_file] if item.rollback_image_file is defined else []) }}"
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.image_file }}"
+  register: _swim_import
+  failed_when: false
+
+# no_log is deliberately NOT used here. It censors the failure as well as the
+# secret, and a silent SWIM import is indistinguishable from a successful one.
+- name: "11.2 | Report import outcome"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.image_file }}:
+      {{ 'imported / already present' if not (item.failed | default(false))
+         else 'IMPORT FAILED — ' ~ (item.msg | default('see evidence')) }}
+  loop: "{{ _swim_import.results }}"
+  loop_control:
+    label: "{{ item.item.image_file }}"
+
+- name: "11.2 | Fail if the upgrade image did not reach the repository"
+  ansible.builtin.assert:
+    that: not (item.failed | default(false))
+    fail_msg: >-
+      Could not import {{ item.item.image_file }} from CCO.
+      Check System > Settings > Cisco.com Credentials in Catalyst Center, and
+      that the image name matches the file published on cisco.com exactly.
+      Reported: {{ item.msg | default('no message') }}
+  loop: "{{ _swim_import.results }}"
+  loop_control:
+    label: "{{ item.item.image_file }}"
+
+- name: "11.2 | Tag the upgrade image golden for the site"
+  cisco.dnac.swim_workflow_manager:
+    state: merged
+    dnac_api_task_timeout: "{{ swim_task_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - tagging_details:
+          image_name: "{{ item.image_file }}"
+          device_role: "{{ item.device_role | default('ALL') }}"
+          # SWIM identifier, not the inventory family — see header.
+          device_image_family_name: "{{ item.device_image_family_name }}"
+          site_name: "{{ item.site_name }}"
+          tagging: true
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.image_file }} @ {{ item.site_name }}"
+  register: _swim_tag
+  failed_when: false
+
+- name: "11.2 | Report tagging outcome"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.image_file }} @ {{ item.item.site_name }}:
+      {{ 'golden' if not (item.failed | default(false))
+         else 'TAG FAILED — ' ~ (item.msg | default('see evidence')) }}
+  loop: "{{ _swim_tag.results }}"
+  loop_control:
+    label: "{{ item.item.image_file }}"
+
+- name: "11.2 | Fail if the image could not be tagged golden"
+  ansible.builtin.assert:
+    that: not (item.failed | default(false))
+    fail_msg: >-
+      Could not tag {{ item.item.image_file }} golden at {{ item.item.site_name }}.
+      The usual cause is device_image_family_name holding an inventory family
+      ("Switches and Hubs") instead of the SWIM identifier
+      ("{{ item.item.device_image_family_name }}" is what settings.json declares).
+      Reported: {{ item.msg | default('no message') }}
+  loop: "{{ _swim_tag.results }}"
+  loop_control:
+    label: "{{ item.item.image_file }}"
+
+- name: "11.2 | Write import and tag evidence"
+  ansible.builtin.copy:
+    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-11_swim-import_and_tag.json"
+    mode: "0644"
+    content: "{{ _evidence | to_nice_json }}"
+  vars:
+    _evidence:
+      phase: "11.2 import_and_tag"
+      run_id: "{{ swim_run_id }}"
+      import_source: CCO
+      images: "{{ _swim_entries | map(attribute='image_file') | list }}"
+      import: "{{ _swim_import.results | map(attribute='msg') | list }}"
+      tagging: "{{ _swim_tag.results | map(attribute='msg') | list }}"

@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 11_verify_intent.yml  —  Pipeline stage 11
+# 12_verify_intent.yml  —  Pipeline stage 12
 # =============================================================================
 # Verifies that what the fabric is actually running matches what the pipeline
 # declared, and writes a markdown report.
@@ -16,35 +16,36 @@
 # and the stage works from a checkout with no templates in it at all.
 #
 # Live state is collected through Catalyst Center Command Runner
-# (POST /dna/intent/api/v1/network-device-poller/cli/read-request), so stage 11
+# (POST /dna/intent/api/v1/network-device-poller/cli/read-request), so stage 12
 # needs no SSH to the switches. It runs from the Kali script server like every
 # other stage, and works even when the path to the fabric management addresses
 # is down.
 #
 # Role: verify_intent
-#   11.1 intent_templates — DEFN bodies from Catalyst Center
-#   11.2 intent_fabric    — render them to data
-#   11.3 intent_settings  — intent declared in settings.json
-#   11.4 resolve_devices  — management IP to device UUID
-#   11.5 run_commands     — Command Runner, batched 5 commands per request
-#   11.6 evaluate         — check declared against observed
-#   11.7 report           — markdown + console summary, then fail on mismatch
+#   12.1 intent_templates — DEFN bodies from Catalyst Center
+#   12.2 intent_fabric    — render them to data
+#   12.3 intent_settings  — intent declared in settings.json
+#   12.4 resolve_devices  — management IP to device UUID
+#   12.5 run_commands     — Command Runner, batched 5 commands per request
+#   12.6 evaluate         — check declared against observed
+#   12.7 report           — markdown + console summary, then fail on mismatch
 #
 # Sourced (pre_tasks, order matters):
 #   catc_common tasks_from: auth_token    → _catc_token
 #   catc_common tasks_from: load_settings → settings_data
 #
 # Produced:
-#   evidence/stage11-verification.md on the host that ran the play — Kali when
+#   evidence/stage12-verification.md on the host that ran the play — Kali when
 #   driven from the script server, not the laptop. Gitignored.
 #
 # Read-only: issues nothing but GETs and Command Runner read requests.
 #
-# Depends on: stages 01-09
+# Depends on: stages 01-09. Stage 11 (SWIM) is independent — run it before this
+# stage when an image upgrade is part of the change being verified.
 #
-# Run: ansible-playbook playbooks/11_verify_intent.yml
-#      ansible-playbook playbooks/11_verify_intent.yml -e catc_debug=true
-#      ansible-playbook playbooks/11_verify_intent.yml -e verify_fail_on_mismatch=false
+# Run: ansible-playbook playbooks/12_verify_intent.yml
+#      ansible-playbook playbooks/12_verify_intent.yml -e catc_debug=true
+#      ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=false
 # =============================================================================
 - name: Verify deployed fabric against declared intent
   hosts: catalyst_center

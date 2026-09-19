@@ -1,11 +1,11 @@
 # ============================================================================
-# verify_intent / tasks/intent_templates.yml  —  Stage 11.1
+# verify_intent / tasks/intent_templates.yml  —  Stage 12.1
 # ============================================================================
 # Downloads the DEFN-*.j2 template bodies from Catalyst Center Template
 # Programmer.
 #
 # The repo checkout is deliberately NOT read. Stage 06 seeds Catalyst Center
-# from either git or a local folder depending on template_source; stage 11 must
+# from either git or a local folder depending on template_source; stage 12 must
 # verify what Catalyst Center actually holds, because that is what stage 09
 # deployed. A DEFN file edited locally and never synced therefore cannot
 # produce a false pass, and this stage works from a checkout that has no
@@ -25,7 +25,7 @@
 # ── Step A: Which Template Programmer projects hold this site's intent ────
 #
 # settings.json names the project on every Day-N template entry, so the same
-# field that tells stage 06 where to push tells stage 11 where to read.
+# field that tells stage 06 where to push tells stage 12 where to read.
 #
 # Example
 #   In : settings_data.project[].network_profile.DayNTemplateNames = [
@@ -109,7 +109,7 @@
     fail_msg: >-
       No {{ verify_defn_prefix }}*.j2 templates in Catalyst Center project(s)
       {{ _verify_projects | join(', ') }}. Run stage 06 (06_template_sync.yml)
-      first — stage 11 reads the fabric intent from what Catalyst Center holds,
+      first — stage 12 reads the fabric intent from what Catalyst Center holds,
       not from the repo checkout.
     success_msg: >-
       {{ _defn_index | length }} DEFN template(s) to read from

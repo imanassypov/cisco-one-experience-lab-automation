@@ -1,0 +1,178 @@
+---
+# =============================================================================
+# swim_for_assurance / tasks/main.yml  —  Pipeline stage 11
+# =============================================================================
+# Software Image Management for the Site-105 campus fabric, driven entirely from
+# settings.json so the image is declared in the same place as everything else
+# the pipeline builds.
+#
+# Why "for assurance": the EVPN telemetry subscriptions stage 09 deploys, and
+# the Splunk assurance collection in 07_assurance that consumes them, depend on
+# YANG models whose coverage moves between IOS-XE trains. Lifting the fabric to
+# a known image is therefore part of standing up assurance, not a side errand.
+#
+# Phase order — each is a separate file and can be run alone with tags:
+#   11.1 preflight       resync inventory, baseline IMAGE compliance   (read-only)
+#   11.2 import_and_tag  pull image from CCO, mark it golden           (CatC only)
+#   11.3 distribute      copy image to device flash, no reload         (safe)
+#   11.4 activate        reload onto the new image                     (DISRUPTIVE)
+#   11.5 postcheck       IMAGE compliance after activation             (read-only)
+#   11.6 rollback        re-tag prior image and activate it            (DISRUPTIVE)
+#
+# Phases 11.1-11.5 run by default, including the reload in 11.4. 11.6 replaces
+# them and stays locked behind explicit flags — see defaults/main.yml.
+#
+# Sourced:
+#   settings_data.project[].swim  — image, site, device targeting (settings.json)
+#   catc_username / catc_password — Lab Topology/lab_access.yml (vault)
+#   dnac_* connection vars        — inventory/group_vars/catalyst_center/
+#
+# Produced:
+#   evidence/<run_id>-11_swim-<phase>.json per phase
+#   In Catalyst Center: image in the repository, tagged golden for the site,
+#   distributed to flash, and optionally activated.
+#
+# Module: cisco.dnac.swim_workflow_manager, inventory_workflow_manager,
+#         network_compliance_workflow_manager. Connection parameters come from
+#         module_defaults in the playbook, matching every other stage.
+#
+# Depends on: stages 01-05 (devices must be discovered, managed and assigned to
+# the site, because every SWIM call targets devices by site_name + role).
+# =============================================================================
+
+# ── Build the work list ──────────────────────────────────────────────────────
+# One entry per settings.json project that declares swim.enabled. Projects
+# without a swim block, or with it disabled, drop out here rather than being
+# guarded at every task.
+#
+# Example
+#   In : settings_data.project = [ {HierarchyBldg: "Site-105", swim: {enabled: true,
+#          image_file: "cat9k_iosxe.26.01.02.SPA.bin", ...}}, {HierarchyBldg:
+#          "Site-106"} ]
+#   Out: _swim_entries = [ {project: "Site-105", image_file: "cat9k_...bin", ...} ]
+- name: Build SWIM work list from settings.json
+  ansible.builtin.set_fact:
+    _swim_entries: >-
+      {{
+        settings_data.project
+        | default([])
+        | selectattr('swim', 'defined')
+        | selectattr('swim.enabled', 'defined')
+        | selectattr('swim.enabled')
+        | map(attribute='swim')
+        | list
+      }}
+    _swim_projects: >-
+      {{
+        settings_data.project
+        | default([])
+        | selectattr('swim', 'defined')
+        | selectattr('swim.enabled', 'defined')
+        | selectattr('swim.enabled')
+        | map(attribute='HierarchyBldg')
+        | list
+      }}
+
+- name: "--DEBUG-- SWIM work list"
+  ansible.builtin.debug:
+    var: _swim_entries
+  when: catc_debug | default(false) | bool
+
+# A stage that silently does nothing is worse than one that fails: stage 12
+# would then report the old version with no clue why. Fail loudly instead.
+- name: Assert at least one project declares swim
+  ansible.builtin.assert:
+    that: _swim_entries | length > 0
+    fail_msg: >-
+      No project in settings.json has swim.enabled = true. Add a swim block to
+      the project you want upgraded, or skip this stage.
+    success_msg: "SWIM enabled for: {{ _swim_projects | join(', ') }}"
+
+# Every phase writes evidence; create the directory once rather than per phase.
+- name: Ensure evidence directory exists
+  ansible.builtin.file:
+    path: "{{ swim_evidence_dir }}"
+    state: directory
+    mode: "0755"
+
+# ── Reload gates ─────────────────────────────────────────────────────────────
+# Activation is default-on and deliberately ungated, so stage 11 runs the whole
+# upgrade in one command. The announcement below is the only warning an operator
+# gets; `-e swim_activate=false` is the opt-out.
+#
+# Rollback stays gated. Making a downgrade as easy as an upgrade is how a fabric
+# gets reverted by a stray --extra-var.
+- name: Warn that a default run reloads the fabric
+  ansible.builtin.debug:
+    msg:
+      - "Stage 11 will ACTIVATE {{ _swim_entries | map(attribute='image_file') | join(', ') }}"
+      - "Every device at {{ _swim_projects | join(', ') }} WILL RELOAD."
+      - "To stage the image without reloading, re-run with: -e swim_activate=false"
+  when:
+    - swim_activate | bool
+    - not (swim_rollback | bool)
+
+- name: Enforce rollback gates
+  ansible.builtin.assert:
+    that:
+      - swim_rollback_confirm == "YES"
+      - swim_reload_ack == "RELOAD_OK"
+    fail_msg: >-
+      Rollback re-tags the previous image and reloads every device. Re-run with
+      all three flags if that is intended:
+        -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
+  when: swim_rollback | bool
+
+# ── Phases ───────────────────────────────────────────────────────────────────
+# Rollback is a recovery path, not a step in the normal sequence: when it is
+# requested it runs alone, because importing and re-tagging the upgrade image on
+# the way to a downgrade is exactly the wrong thing to do.
+- name: "Stage 11.6 | Rollback to the previous image"
+  ansible.builtin.include_tasks: rollback.yml
+  when: swim_rollback | bool
+  tags: [swim_rollback]
+
+- name: Run the forward upgrade phases
+  when: not (swim_rollback | bool)
+  block:
+    - name: "Stage 11.1 | Preflight — resync and baseline compliance"
+      ansible.builtin.include_tasks: preflight.yml
+      when: swim_run_preflight | bool
+      tags: [swim_preflight]
+
+    - name: "Stage 11.2 | Import from CCO and tag golden"
+      ansible.builtin.include_tasks: import_and_tag.yml
+      when: swim_run_import | bool
+      tags: [swim_import]
+
+    - name: "Stage 11.3 | Distribute image to device flash"
+      ansible.builtin.include_tasks: distribute.yml
+      when: swim_run_distribute | bool
+      tags: [swim_distribute]
+
+    - name: "Stage 11.4 | Activate image (reloads devices)"
+      ansible.builtin.include_tasks: activate.yml
+      when: swim_activate | bool
+      tags: [swim_activate]
+
+    - name: "Stage 11.5 | Post-activation compliance"
+      ansible.builtin.include_tasks: postcheck.yml
+      when:
+        - swim_activate | bool
+        - swim_run_postcheck | bool
+      tags: [swim_postcheck]
+
+- name: Stage 11 summary
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        ['SWIM stage 11 complete for: ' ~ (_swim_projects | join(', ')),
+         'Mode          : ' ~ ('ROLLBACK' if swim_rollback | bool else 'upgrade'),
+         'Activated     : ' ~ ('yes — devices reloaded' if swim_activate | bool or swim_rollback | bool
+                               else 'no — image staged in flash only'),
+         'Evidence      : ' ~ swim_evidence_dir]
+        + (['Next          : ansible-playbook playbooks/12_verify_intent.yml']
+           if swim_activate | bool or swim_rollback | bool
+           else ['Next          : re-run without -e swim_activate=false '
+                 ~ 'during a maintenance window to reload onto the new image'])
+      }}

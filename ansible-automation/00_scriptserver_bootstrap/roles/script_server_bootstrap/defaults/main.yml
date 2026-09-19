@@ -40,12 +40,12 @@ script_server_netaddr_version: "1.3.0"
 # Official SDKs for CatC 3.1.3.0 API (3.1.5 appliance; no 3.1.5 SDK profile).
 script_server_catalystcentersdk_version: "3.1.3.0.1"
 script_server_dnacentersdk_version: "2.10.6"
-# Genie parsers back every stage 11 check. Pinned together because a parser
+# Genie parsers back every stage 12 check. Pinned together because a parser
 # schema change renames keys and would silently break checks — the same class of
 # drift as an unpinned collection.
 script_server_genie_version: "26.8"
 script_server_pyats_version: "26.8"
-# Terminal renderer for the stage 11 markdown report. Pure Python, so it comes
+# Terminal renderer for the stage 12 markdown report. Pure Python, so it comes
 # from pip rather than apt, which on this image cannot install glow without
 # upgrading libc6.
 script_server_rich_version: "15.0.0"
@@ -56,7 +56,7 @@ script_server_python_packages:
   - "netaddr=={{ script_server_netaddr_version }}"
   - "catalystcentersdk=={{ script_server_catalystcentersdk_version }}"
   - "dnacentersdk=={{ script_server_dnacentersdk_version }}"
-  # Stage 11 parses every CLI response with Genie instead of matching text, so
+  # Stage 12 parses every CLI response with Genie instead of matching text, so
   # pyATS is required. Both packages are needed: genie alone does not pull
   # pyats, and the import fails with "No module named 'pyats'". Adds roughly
   # 700 MB to the venv.

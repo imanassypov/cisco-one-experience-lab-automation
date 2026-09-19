@@ -88,16 +88,22 @@ This playbook does **not** build the fabric. After CatC has provisioned Site 105
 | Site_105-Leaf2 | Leaf | 198.18.128.23 | 172.30.255.2 |
 | Site_105-Border-Spine | Border + spine | 198.18.128.24 | 172.30.255.3 |
 
-The SSH column is for manual troubleshooting only — stage 11 reaches these
+The SSH column is for manual troubleshooting only — stage 12 reaches these
 devices by their CatC loopbacks through Command Runner, not over SSH.
 
 | Playbook | Purpose |
 | --- | --- |
-| `playbooks/11_verify_intent.yml` | Compares VRFs, VNIs, loopbacks, EVPN/NVE state, SVIs, client ports, SSID and AP tags against `settings.json` + the DEFN templates in CatC → `ansible/evidence/stage11-verification.md` |
+| `playbooks/11_swim_for_assurance.yml` | Software image management. Imports the image declared in `settings.json` → `project[].swim` from cisco.com (CCO), tags it golden, and stages it in device flash. Activation reloads devices and is gated behind explicit flags |
+| `playbooks/12_verify_intent.yml` | Compares VRFs, VNIs, loopbacks, EVPN/NVE state, SVIs, client ports, SSID and AP tags against `settings.json` + the DEFN templates in CatC → `ansible/evidence/stage12-verification.md` |
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook playbooks/11_verify_intent.yml
+
+# Stage the image in flash. Nothing reloads; safe during business hours.
+ansible-playbook playbooks/11_swim_for_assurance.yml
+
+# Verify the fabric against declared intent.
+ansible-playbook playbooks/12_verify_intent.yml
 ```
 
 `ansible/evidence/` is local output and is gitignored.
