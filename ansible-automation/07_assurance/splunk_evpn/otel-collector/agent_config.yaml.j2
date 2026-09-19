@@ -10,8 +10,8 @@ receivers:
       disk:
       network:
 
-  # Numeric YANG list keys (vni, evni, vlan-id) are only emitted as dimensions by the
-  # patched yanggrpcreceiver build 26_05_27; the stock receiver silently drops them.
+  # Numeric YANG list keys (vni, evni, vlan-id) are only emitted as dimensions by
+  # otelcol-contrib 0.161.0 and later; earlier releases silently drop them.
   yang_grpc:
     endpoint: "0.0.0.0:{{ otel_receiver_port }}"
     transport: tcp

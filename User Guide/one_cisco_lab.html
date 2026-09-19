@@ -4362,7 +4362,7 @@ show ip dhcp relay information trusted-sources</pre>
 <p><img class="img-fluid" role="presentation" src="automation_images/assurance-pipeline.png" alt="Build and assure pipeline: settings.json drives the telemetry templates, Catalyst Center deploys the subscriptions, the fabric dials out over gRPC to the OpenTelemetry collector on the Splunk host, which exports to the evpn_assurance metrics index feeding the dashboards" width="1000"></p>
 <hr>
 <h4>What the switches send</h4>
-<p>Each fabric node runs 21 <strong>Model-Driven Telemetry</strong> subscriptions, IDs <code>40101</code>–<code>40121</code>. They are ordinary IOS-XE configuration, rendered by <code>FABRIC-TELEMETRY-SPLUNK.j2</code> alongside every other block of the fabric build:</p>
+<p>Each fabric node runs 19 <strong>Model-Driven Telemetry</strong> subscriptions in the <code>40101</code>–<code>40121</code> band (<code>40113</code> and <code>40118</code> are unused). They are ordinary IOS-XE configuration, rendered by <code>FABRIC-TELEMETRY-SPLUNK.j2</code> alongside every other block of the fabric build:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">telemetry ietf subscription 40105
  encoding encode-kvgpb
  filter xpath /nve-oper-data/nve-oper/nve-peer-oper
@@ -4373,18 +4373,19 @@ show ip dhcp relay information trusted-sources</pre>
 <p>Two things are worth noticing. The <code>filter xpath</code> is a path into the switch's <strong>operational YANG model</strong> — the same data <code>show nve peers</code> renders as text, but structured. And <code>update-policy on-change</code> means the switch speaks only when something actually changes, rather than being polled on a timer. A VTEP adjacency dropping produces a message within milliseconds; a stable fabric produces almost no traffic at all.</p>
 <p>The subscription IDs sit deliberately in the 40000 band. Catalyst Center creates its own dynamic subscriptions for wired Assurance using IDs below 10000, and the two must not collide.</p>
 <hr>
-<h4>Why a custom collector</h4>
-<p>The switches dial out to an <strong>OpenTelemetry collector</strong> running on the Splunk host, which converts the encoded YANG into Splunk metric points. The lab runs a patched build of that collector rather than the stock one, for a reason worth understanding.</p>
-<p>YANG lists are keyed. The per-VNI counters list is keyed by <code>vni</code> — a number. The stock collector silently discarded numeric list keys, which meant every metric arrived without the VNI it belonged to. Nothing errored; the dashboards simply rendered empty panels. This is a good example of a failure mode that looks like “no data” but is really “data with its identity removed”.</p>
+<h4>Why the collector version matters</h4>
+<p>The switches dial out to an <strong>OpenTelemetry collector</strong> running on the Splunk host, which converts the encoded YANG into Splunk metric points. The lab installs the <strong>stock upstream <code>otelcol-contrib</code> package</strong> — no compiler, no toolchain, no custom build — but pins it to a version <em>floor</em> of <code>0.161.0</code>, for a reason worth understanding.</p>
+<p>YANG lists are keyed. The per-VNI counters list is keyed by <code>vni</code> — a number. Collector releases before <code>0.161.0</code> gated key extraction on the value being a string, so numeric list keys were silently discarded and every metric arrived without the VNI it belonged to. Nothing errored; the dashboards simply rendered empty panels. This is a good example of a failure mode that looks like “no data” but is really “data with its identity removed”.</p>
+<p>That bug is why the lab originally ran a locally patched collector build. The fix was adopted upstream in <code>0.161.0</code>, so the patched build is now history and the stock package is used instead — but the pin remains, because installing an older release would reintroduce the same invisible failure. It is a floor, not a preference.</p>
 <hr>
 <h4>The join that makes it useful</h4>
 <p>Raw telemetry identifies a device as <code>cisco.node_id</code> and nothing more. To say <em>“this is a leaf at Site-105”</em>, Splunk joins each metric against a lookup table of the fabric inventory. Every dashboard panel therefore begins with the same enrichment:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">| mstats latest("cisco.cp-vnis.") WHERE index=evpn_assurance BY "cisco.node_id"
 | `evpn_lookup`</pre>
-<p>That lookup table is generated from the fabric's own design files, not maintained by hand. If a device name in the table did not exactly match what the collector reports, every panel would render perfectly and return nothing — which is precisely the sort of silent failure that automation should remove rather than create.</p>
+<p>That lookup table is generated from the fabric's own design files, not maintained by hand — but generating it is necessary rather than sufficient. The design files key every node by its full domain name (<code>Site_105-Leaf1.corp.pseudoco.com</code>), while IOS-XE builds the telemetry <code>node_id</code> from the bare <code>hostname</code> command and does <em>not</em> append <code>ip domain name</code>. The switch therefore reports <code>Site_105-Leaf1</code>. The generator strips the domain so the two sides meet; keep the full name and every panel renders perfectly and returns nothing. There is no device-side setting to change this — the <code>telemetry ietf subscription</code> configuration has no node-id option.</p>
 <hr>
 <h4>What you get</h4>
-<p>Three dashboards. <strong>Summary</strong> is the fabric-wide roll-up: BGP sessions up and down, VXLAN tunnel state, EVPN route churn, and which segments live where.</p>
+<p>Three dashboards. <strong>Summary</strong> is the fabric-wide roll-up: BGP sessions up and down, VXLAN tunnel state, BGP table-version churn, and which segments live where.</p>
 <p><img class="img-fluid" role="presentation" src="automation_images/assurance-dashboard-executive.png" alt="Splunk Summary dashboard showing fabric-wide scorecards, BGP session trends, a tenant VRF Sankey diagram and segment inventory" width="820"></p>
 <p><strong>Details</strong> narrows to one role at a time — at Site-105 that is the two leaves or the combined Border-Spine — with per-node BGP state, NVE peer adjacency, tunnel status and VXLAN throughput.</p>
 <p><img class="img-fluid" role="presentation" src="automation_images/assurance-dashboard-leafs.png" alt="Splunk Details dashboard filtered to leaf nodes, showing per-node scorecards, BGP session state, NVE peer adjacency and VXLAN throughput" width="700"></p>
@@ -4392,6 +4393,9 @@ show ip dhcp relay information trusted-sources</pre>
 <p><img class="img-fluid" role="presentation" src="automation_images/assurance-dashboard-alerts.png" alt="Splunk Alerts dashboard listing BGP session drops, VNI state changes and tunnel failures" width="900"></p>
 <div class="admonition">
 <p>🔎 <strong>The screenshots come from the reference fabric</strong> this work was originally built against — a six-node CML lab — so the device names read <code>Leaf-01</code>, <code>Spine-02</code> and so on rather than <code>Site_105-Leaf1</code>. The panels and queries are identical; only the inventory differs.</p>
+</div>
+<div class="admonition">
+<p>⚠️ <strong>The two “EVPN Route Updates” panels on Summary stay empty on this fabric.</strong> They are fed by EVPN route statistics, which the Catalyst 9300 does not implement on either IOS-XE release used here. The enabling CLI is rejected by the parser (<code>telemetry ?</code> under <code>l2vpn evpn</code> returns <code>% Unrecognized command</code>) and the matching subscription is rejected as an invalid XPath, so both were removed from the templates. The panels are left in place so nothing needs rebuilding if a future release adds support. Everything else on the dashboards is live.</p>
 </div>
 <hr>
 <h4>Running it</h4>

@@ -70,11 +70,6 @@ toolchain is needed either.
 > does password auth in-process and is already pinned in
 > [`ansible-automation/requirements.txt`](../../requirements.txt).
 
-> **Why a patched collector?** The stock `yanggrpcreceiver` silently drops numeric YANG
-> list keys (`vni`, `evni`, `vlan-id`), so every per-VNI panel comes back empty. The patch
-> and its analysis are in
-> [`otel-collector/yanggrpcreceiver-numeric-key-issue.md`](otel-collector/yanggrpcreceiver-numeric-key-issue.md).
-
 ## Directory structure
 
 ```

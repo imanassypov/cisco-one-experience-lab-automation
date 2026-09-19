@@ -20,9 +20,10 @@ dashboards in `campus_evpn_assurance` consume:
 
 > **Telemetry note (peer-vni-group):** Rows 7–9 of the **PEER** table below (`peer-vni-group/vni`,
 > `/evni`, `/rmac`) are the **17.18 replacement** for the deprecated `cp-vnis` / top-level `rmac`
-> leaves. The `vni` and `evni` leaves are **list keys of type `uint32`**. The
-> `yanggrpcreceiver` (v0.154.x) used by our collector cannot emit numeric list keys as Splunk
-> dimensions, so per-VNI rows are discriminated by the **`rmac`** value instead. See
+> leaves. The `vni` and `evni` leaves are **list keys of type `uint32`**. Collector releases
+> before `otelcol-contrib` 0.161.0 could not emit numeric list keys as Splunk dimensions, so
+> per-VNI rows had to be discriminated by the **`rmac`** value instead. The lab now runs
+> 0.161.0 or later, where the numeric keys arrive as dimensions. See
 > [`../otel-collector/yanggrpcreceiver-numeric-key-issue.md`](../otel-collector/yanggrpcreceiver-numeric-key-issue.md).
 
 ---

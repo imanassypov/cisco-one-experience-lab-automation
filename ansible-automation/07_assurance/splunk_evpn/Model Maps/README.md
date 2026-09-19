@@ -55,8 +55,8 @@ telemetry primer (MDT, OTel, worked metric example), see [`../README.md`](../REA
 
 | Topic | Where documented |
 | --- | --- |
-| Numeric YANG list keys (`vni`, `evni`, `vni-id`) — **fixed** in patched `yanggrpcreceiver` build `26_05_27` / `otelcol-yangfix` | [`../otel-collector/yanggrpcreceiver-numeric-key-issue.md`](../otel-collector/yanggrpcreceiver-numeric-key-issue.md) |
-| Stock `yanggrpcreceiver` v0.154.x drops numeric list keys (rollback path only) | [`../otel-collector/README.md`](../otel-collector/README.md) — Custom collector build & rollback |
+| Numeric YANG list keys (`vni`, `evni`, `vni-id`) — **fixed upstream** in `otelcol-contrib` 0.161.0, which is why that version is a floor | [`../otel-collector/yanggrpcreceiver-numeric-key-issue.md`](../otel-collector/yanggrpcreceiver-numeric-key-issue.md) |
+| Releases up to v0.155.0 drop numeric list keys — historical, and the reason for the pin | [`../otel-collector/README.md`](../otel-collector/README.md) |
 | `cp-vnis` / top-level `rmac` deprecated in 17.18, replaced by `peer-vni-group/{vni,evni,rmac}` | [NVE-Component-Model-Map.md → Version-gating summary](NVE-Component-Model-Map.md#version-gating-summary-1718) |
 | EVPN route-stat leaves are cumulative Update/Delete counters (take a delta in Splunk) | [EVPN-Route-Statistics-Model-Map.md → Telemetry note](EVPN-Route-Statistics-Model-Map.md#why-this-matters-for-the-splunk-evpn-assurance-pipeline) |
 | Collector configuration & dimension-model migration | [`../otel-collector/README.md`](../otel-collector/README.md) |
