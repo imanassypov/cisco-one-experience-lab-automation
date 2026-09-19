@@ -105,14 +105,19 @@
       dnac_log_level: "{{ dnac_log_level }}"
       dnac_log: "{{ dnac_log }}"
   pre_tasks:
+    # tags: always — a tag-filtered run such as --tags swim_import would
+    # otherwise skip these, leaving settings_data unset and the role failing
+    # with "No project in settings.json has swim.enabled = true".
     - name: Obtain Catalyst Center auth token
       ansible.builtin.import_role:
         name: catc_common
         tasks_from: auth_token
+      tags: [always]
 
     - name: Load settings.json
       ansible.builtin.import_role:
         name: catc_common
         tasks_from: load_settings
+      tags: [always]
   roles:
     - role: swim_for_assurance
