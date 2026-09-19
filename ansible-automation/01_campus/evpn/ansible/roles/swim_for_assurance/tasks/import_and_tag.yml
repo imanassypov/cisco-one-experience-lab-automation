@@ -39,14 +39,52 @@
       - import_image_details:
           type: CCO
           cco_image_details:
-            # image_name is a list; both images go in one call so the rollback
-            # target lands in the repository before anything can be activated.
-            image_name: "{{ [item.image_file] + ([item.rollback_image_file] if item.rollback_image_file is defined else []) }}"
+            image_name:
+              - "{{ item.image_file }}"
   loop: "{{ _swim_entries }}"
   loop_control:
     label: "{{ item.image_file }}"
   register: _swim_import
   failed_when: false
+
+# Separate call from the upgrade image on purpose. Passing both in one
+# cco_image_details.image_name list meant a problem with the rollback image
+# failed the whole task and the upgrade image never imported either — observed
+# 2026-09-19, where the error named 17.12.06 while 26.01.01 was the real target.
+# The rollback image is also non-fatal: losing the recovery target should not
+# stop an upgrade that is otherwise fine.
+- name: "11.2 | Import rollback image from CCO"
+  cisco.dnac.swim_workflow_manager:
+    state: merged
+    dnac_api_task_timeout: "{{ swim_import_timeout }}"
+    dnac_task_poll_interval: "{{ swim_task_poll_interval }}"
+    config:
+      - import_image_details:
+          type: CCO
+          cco_image_details:
+            image_name:
+              - "{{ item.rollback_image_file }}"
+  loop: "{{ _swim_entries | selectattr('rollback_image_file', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.rollback_image_file }}"
+  register: _swim_import_rollback
+  failed_when: false
+
+- name: "11.2 | Warn if the rollback image did not import"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: rollback image {{ item.item.rollback_image_file }} did not import
+      ({{ item.msg | default('no message') }}).
+      The upgrade can proceed, but stage 11.6 has no recovery target until this
+      image is in the repository.
+  loop: "{{ _swim_import_rollback.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.rollback_image_file | default('n/a') }}"
+  when:
+    - item.failed | default(false)
+      or (swim_failure_signatures
+          | select('in', (item.msg | default('') | string | lower))
+          | list | length > 0)
 
 # no_log is deliberately NOT used here. It censors the failure as well as the
 # secret, and a silent SWIM import is indistinguishable from a successful one.
