@@ -20,7 +20,7 @@ script_server_profile: "{{ ansible_user_dir }}/.profile"
 script_server_zshrc: "{{ ansible_user_dir }}/.zshrc"
 script_server_zprofile: "{{ ansible_user_dir }}/.zprofile"
 
-# ── IOS-XE image HTTP server (feeds campus stage 11 SWIM) ──────────────────
+# ── IOS-XE image HTTP server (feeds campus stage 09 SWIM) ──────────────────
 # Catalyst Center pulls software images from here instead of cisco.com. CCO
 # import is unusable in this pod: every image is rejected with NCSW10375 "not
 # the latest or suggested image from cisco" — even builds CatC's own catalogue

@@ -125,6 +125,6 @@ ap_provision_enabled: true
 ap_assign_confirm_retries: 30
 ap_assign_confirm_delay: 5
 
-# Deploy composite (stage 9)
+# Deploy composite (stage 10)
 force_push_template: true
 member_template_params: {}

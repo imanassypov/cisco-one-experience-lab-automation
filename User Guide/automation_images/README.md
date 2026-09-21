@@ -98,7 +98,7 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 |---|---|
 | `a2-stage01-sites.png` | Catalyst Center **Design > Network Hierarchy** after stage 01 |
 | `a2-stage06-templates-project.png` | **Template Hub** with CLI project `Site-105` populated |
-| `a2-stage09-composite-deploy.png` | Terminal summary table at the end of stage 09 |
+| `a2-stage09-composite-deploy.png` | Terminal summary table at the end of stage 10 (filename kept from the pre-renumber layout) |
 
 ### Card 3 — Verify Intent
 

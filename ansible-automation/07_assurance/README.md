@@ -20,7 +20,7 @@ rendered by the same Catalyst Center template pipeline that builds the fabric.
 01_campus/evpn  ──  Settings/settings.json  ──  telemetry.splunk.receiver_ip
                                                         │
                     stage 06 template_sync ─────────────┤
-                    stage 09 deploy_composite           │  pushes `telemetry ietf
+                    stage 10 deploy_composite           │  pushes `telemetry ietf
                                                         │  subscription` to the switches
                                                         ▼
 07_assurance/splunk_evpn  ──  collector + index + HEC + dashboards on 198.18.5.109

@@ -6,7 +6,7 @@
 #
 # The repo checkout is deliberately NOT read. Stage 06 seeds Catalyst Center
 # from either git or a local folder depending on template_source; stage 12 must
-# verify what Catalyst Center actually holds, because that is what stage 09
+# verify what Catalyst Center actually holds, because that is what stage 10
 # deployed. A DEFN file edited locally and never synced therefore cannot
 # produce a false pass, and this stage works from a checkout that has no
 # templates in it at all.

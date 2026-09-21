@@ -6,7 +6,7 @@
 # settings.json so the image is declared in the same place as everything else
 # the pipeline builds.
 #
-# Why "for assurance": the EVPN telemetry subscriptions stage 09 deploys, and
+# Why "for assurance": the EVPN telemetry subscriptions stage 10 deploys, and
 # the Splunk assurance collection in 07_assurance that consumes them, depend on
 # YANG models whose coverage moves between IOS-XE trains. Lifting the fabric to
 # a known image is therefore part of standing up assurance, not a side errand.

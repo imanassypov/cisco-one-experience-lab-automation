@@ -22,7 +22,7 @@ collections:
   # ansible.utils is NOT optional: cisco.catalystcenter action plugins import
   # AnsibleArgSpecValidator from it and fail with "ansible.utils is not
   # installed" without it. cisco.ios and ansible.netcommon were dropped when
-  # stage 10 moved from SSH to Catalyst Center Command Runner — no playbook in
+  # stage 12 moved from SSH to Catalyst Center Command Runner — no playbook in
   # this folder opens a network_cli connection any more.
   - name: ansible.utils
     version: "5.1.2"

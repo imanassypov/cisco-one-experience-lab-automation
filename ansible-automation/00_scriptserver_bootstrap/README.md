@@ -60,7 +60,7 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 
 ## The IOS-XE image server
 
-Campus stage 11 (SWIM) upgrades the fabric switches. Catalyst Center has to pull
+Campus stage 09 (SWIM) upgrades the fabric switches. Catalyst Center has to pull
 the `.bin` from somewhere, and in this pod that somewhere is the script server.
 
 > **Why not import from cisco.com.** Catalyst Center refuses every CCO image

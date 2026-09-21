@@ -2937,7 +2937,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <ul>
 <li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
 <li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
-<li><strong>The orchestrator stops at stage 10.</strong> Stages 10 and 11 are deliberately yours to run — one blocks on that hardware wait, and the other is the proof you keep.</li>
+<li><strong>The orchestrator stops at stage 10.</strong> Stages 11 and 12 are deliberately yours to run — one blocks on that hardware wait, and the other is the proof you keep.</li>
 </ul>
 <hr>
 <h4>One machine does the work</h4>

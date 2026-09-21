@@ -1,7 +1,7 @@
 ---
 # Static Ansible inventory — the only inventory source for this project.
 # Every stage talks to Catalyst Center over its API, so localhost is the only
-# host. Stage 10 used to SSH to the Site 105 switches; it now collects their
+# host. Stage 12 used to SSH to the Site 105 switches; it now collects their
 # CLI through Catalyst Center Command Runner, so no device credentials or
 # reachability to 198.18.128.x are needed from the control node.
 # MCP bastion/Splunk: utils/mcp-ssh-server/inventory/static_hosts.yml (not Ansible).

@@ -31,7 +31,7 @@
 #          "wlc_ips":    ["198.18.5.103"] }
 #
 # switch_ips comes from TemplateTarget rather than device_list: TemplateTarget is
-# what stage 09 actually deployed the fabric templates to, so it is the list
+# what stage 10 actually deployed the fabric templates to, so it is the list
 # whose configuration this stage can hold to the DEFN intent. device_list also
 # carries the controller, which gets no fabric config at all.
 - name: Derive the intent declared in settings.json
@@ -88,7 +88,7 @@
       settings.json declares {{ _ap_rows }} access point(s) but only
       {{ _intent_settings.access_points | length }} carry a real MAC; the rest
       still hold an unresolved APn_MAC token. Populate lab_ap_macs in
-      inventory/group_vars/all/lab.yml, which stage 10 does for you, or those
+      inventory/group_vars/all/lab.yml, which stage 11 does for you, or those
       access points cannot be verified.
 
 - name: Assert settings.json names devices to verify

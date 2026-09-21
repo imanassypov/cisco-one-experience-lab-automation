@@ -43,7 +43,7 @@
 #          "day_n_templates": ["BGP-EVPN-BUILD.j2"]
 #        }]
 #   Only TemplateName survives — TemplateTag/Project/TemplateTarget/DeployTemplate
-#   are consumed by stage 09 (deploy composite), not by profile binding.
+#   are consumed by stage 10 (deploy composite), not by profile binding.
 #   The Day0 placeholder row has TemplateName: null, so selectattr('ne', none)
 #   empties the list and onboarding_templates is omitted from the config
 #   entirely rather than sent as [].
@@ -357,7 +357,7 @@
 # additionalInterfaces — extra WLC interfaces, not the Flex vlan-name table.
 # ISE AAA-override names (Main/PROD/IOT) are PUT as flex_connect_aaa_override.
 # DayNTemplateNames keeps the PascalCase shape of its switching sibling so
-# stage 09 can consume TemplateTarget/DeployTemplate later; only TemplateName
+# stage 10 can consume TemplateTarget/DeployTemplate later; only TemplateName
 # survives into the profile binding.
 # Example - explicit site_names, as DC-Site-10 uses
 #   In : settings_data.project[0] = {

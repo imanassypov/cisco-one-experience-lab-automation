@@ -3,7 +3,7 @@
 # script_server_bootstrap / tasks/http_image_server.yml
 # =============================================================================
 # Serve IOS-XE software images over HTTP so Catalyst Center can pull them for
-# SWIM (campus stage 11).
+# SWIM (campus stage 09).
 #
 # Why this exists: CCO import does not work in this pod. Catalyst Center rejects
 # every image with NCSW10375 "not the latest or suggested image from cisco",
