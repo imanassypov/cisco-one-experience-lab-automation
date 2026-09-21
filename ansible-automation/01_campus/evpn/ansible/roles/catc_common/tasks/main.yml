@@ -14,6 +14,6 @@
 # in static roles: lists — use import_role in pre_tasks instead).
 # =============================================================================
 
-- name: catc_common | no default action
+- name: No default action for catc_common
   ansible.builtin.debug:
     msg: "Use import_role with tasks_from: load_settings, build_hierarchy_paths, build_site_id_map, or auth_token."

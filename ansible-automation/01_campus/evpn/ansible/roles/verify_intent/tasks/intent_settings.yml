@@ -13,7 +13,6 @@
 #                       switch_ips[]}
 # ============================================================================
 ---
-
 # Example
 #   In : settings_data.lab.wireless_ssid = "PSEUDOCO-POD12"
 #        project[].wireless_design.interfaces = [ {"vlan_id": 10}, {"vlan_id": 101} ]

@@ -77,14 +77,13 @@
 - name: Build per-site device map
   ansible.builtin.set_fact:
     _site_device_map: >-
-      {%- set ns = namespace(result={}) -%}
-      {%- for entry in settings_data.project -%}
+      {%- set ns = namespace(result={}) -%} {%- for entry in settings_data.project -%}
         {%- if entry.device_list is defined and entry.device_list -%}
           {%- set ips = entry.device_list.split(',') | map('trim') | reject('equalto', '') | list -%}
           {%- set parent = entry.HierarchyParent | default('Global') -%}
-          {%- set area   = entry.HierarchyArea   | default('') -%}
-          {%- set bldg   = entry.HierarchyBldg   | default('') -%}
-          {%- set floor  = entry.HierarchyFloor  | default('') -%}
+          {%- set area = entry.HierarchyArea | default('') -%}
+          {%- set bldg = entry.HierarchyBldg | default('') -%}
+          {%- set floor = entry.HierarchyFloor | default('') -%}
           {%- if floor -%}
             {%- set site_path = parent + '/' + area + '/' + bldg + '/' + floor -%}
           {%- elif bldg -%}
@@ -100,8 +99,7 @@
             {%- set ns.result = ns.result | combine({site_path: ips}) -%}
           {%- endif -%}
         {%- endif -%}
-      {%- endfor -%}
-      {{ ns.result }}
+      {%- endfor -%} {{ ns.result }}
 
 - name: --DEBUG-- Per-site device map
   when: catc_debug | default(false) | bool

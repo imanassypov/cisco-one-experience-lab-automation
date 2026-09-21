@@ -72,7 +72,7 @@
 # Without this reset the next project would inherit the previous project's templates,
 # because set_fact values persist for the whole play.
 - name: Reset per-subfolder accumulators
-  set_fact:
+  ansible.builtin.set_fact:
     enriched_template_files: []
     enriched_composite_files: []
     composite_referenced_templates: []
@@ -98,7 +98,7 @@
 # The empty prefix is deliberate: "^" matches every path, so a blank path scans
 # the whole repository instead of matching nothing.
 - name: Build subfolder prefix filter
-  set_fact:
+  ansible.builtin.set_fact:
     git_tree_prefix: "{{ (subfolder_item.path + '/') if (subfolder_item.path is defined and subfolder_item.path | length > 0) else '' }}"
 
 # Example - input tree trimmed to four blobs and one tree entry so the whole
@@ -135,13 +135,14 @@
 # The tree entry and the DMZ blob are both dropped: the first never reaches this
 # list (main.yml keeps blobs only), the second fails the prefix search.
 - name: Build template and composite file lists from repository tree
-  set_fact:
-    api_template_files: "{{ repo_tree_entries | selectattr('path', 'search', '^' + git_tree_prefix) | selectattr('path', 'search', '\\.' + template_extension + '$') | list }}"
+  ansible.builtin.set_fact:
+    api_template_files: "{{ repo_tree_entries | selectattr('path', 'search', '^' + git_tree_prefix) | selectattr('path', 'search', '\\.' + template_extension + '$')
+      | list }}"
     api_composite_files: "{{ repo_tree_entries | selectattr('path', 'search', '^' + git_tree_prefix) | selectattr('path', 'search', '\\.yml$') | list }}"
 
 - name: Warn and skip empty subfolder
   when: api_template_files | length == 0
-  debug:
+  ansible.builtin.debug:
     msg: "No '{{ template_extension }}' templates found under '{{ subfolder_item.path | default('(repo root)') }}' - skipping this subfolder."
 
 - name: Process subfolder (templates present)
@@ -176,7 +177,7 @@
     # project_name must match an existing Template Programmer project, or the
     # workflow manager creates one with that name.
     - name: Resolve Catalyst Center project name for this subfolder
-      set_fact:
+      ansible.builtin.set_fact:
         project_name: >-
           {{
             subfolder_item.project_name
@@ -188,7 +189,7 @@
 
     - name: --DEBUG-- Subfolder and project
       when: catc_debug | default(false) | bool
-      debug:
+      ansible.builtin.debug:
         msg: "Subfolder '{{ subfolder_item.path | default('(repo root)') }}' -> project '{{ project_name }}'"
 
     # Telemetry placeholders for DEFN/FABRIC-TELEMETRY-SPLUNK.j2. The settings.json
@@ -213,7 +214,7 @@
     #   Out: telemetry_receiver_ip   = ""
     #        telemetry_role_guard    = "DEVICE_HOSTNAME in []"
     - name: Resolve telemetry settings for project {{ project_name }}
-      set_fact:
+      ansible.builtin.set_fact:
         _telemetry_splunk: >-
           {{
             (settings_data.project | default([])
@@ -227,7 +228,7 @@
           }}
 
     - name: Build telemetry placeholder substitutions for project {{ project_name }}
-      set_fact:
+      ansible.builtin.set_fact:
         telemetry_receiver_ip: "{{ _telemetry_splunk.receiver_ip | default('') if (_telemetry_splunk.enabled | default(false) | bool) else '' }}"
         telemetry_receiver_port: "{{ _telemetry_splunk.receiver_port | default('57444') }}"
         telemetry_roles: "{{ _telemetry_splunk.roles | default([]) }}"
@@ -238,7 +239,7 @@
     # Built with join rather than regex_replace: YAML folded scalars do not process
     # escapes, so a \1 backreference would reach re.sub as a literal backslash-1.
     - name: Expand the telemetry role guard for project {{ project_name }}
-      set_fact:
+      ansible.builtin.set_fact:
         telemetry_roles_literal: "{{ telemetry_roles | to_json | replace('\"', \"'\") }}"
         telemetry_role_guard: >-
           {{
@@ -250,7 +251,7 @@
 
     - name: --DEBUG-- Telemetry substitutions
       when: catc_debug | default(false) | bool
-      debug:
+      ansible.builtin.debug:
         msg:
           - "telemetry_receiver_ip   : '{{ telemetry_receiver_ip }}'"
           - "telemetry_receiver_port : '{{ telemetry_receiver_port }}'"
@@ -259,7 +260,7 @@
 
     - name: Fetch template file contents from GitHub
       when: (template_source | default('git')) == 'git'
-      uri:
+      ansible.builtin.uri:
         url: "https://raw.githubusercontent.com/{{ git_repo_slug }}/{{ git_branch | default('HEAD') }}/{{ item.path | replace(' ', '%20') }}"
         method: GET
         headers: "{{ git_auth_header }}"
@@ -283,7 +284,7 @@
 
     - name: Fetch last commit info for each template file
       when: (template_source | default('git')) == 'git'
-      uri:
+      ansible.builtin.uri:
         url: "{{ git_api_base }}/repos/{{ git_repo_slug }}/commits?path={{ item.path | replace(' ', '%20') }}&per_page=1&sha={{ git_branch | default('HEAD') }}"
         method: GET
         headers: "{{ git_auth_header | combine({'Accept': 'application/vnd.github+json'}) }}"
@@ -297,7 +298,7 @@
       when:
         - (template_source | default('git')) == 'git'
         - include_diff_header and template_commit_results.results[diff_idx].json | length > 0
-      uri:
+      ansible.builtin.uri:
         url: "{{ git_api_base }}/repos/{{ git_repo_slug }}/commits/{{ template_commit_results.results[diff_idx].json[0].sha }}"
         method: GET
         headers: "{{ git_auth_header | combine({'Accept': 'application/vnd.github+json'}) }}"
@@ -359,20 +360,23 @@
     # commit_message becomes the Catalyst Center template version comment, so it
     # is truncated to catc_template_summary_maxchar to avoid an API rejection.
     - name: Build enriched template file objects
-      set_fact:
+      ansible.builtin.set_fact:
         enriched_template_files: "{{ enriched_template_files | default([]) + [enriched] }}"
       vars:
         _from_git: "{{ (template_source | default('git')) == 'git' }}"
         _commit_list: "{{ template_commit_results.results[tmpl_idx].json if (template_source | default('git')) == 'git' else [] }}"
         _commit: "{{ _commit_list[0] if _commit_list | length > 0 else {} }}"
         _local_message: "{{ 'Synced from local directory ' + start_timestamp.date + ' ' + start_timestamp.time }}"
-        _commit_message: "{{ (_commit.commit.author.date | default('') + ' | ' + _commit.commit.message | default('') + ' [' + _commit.commit.author.name | default('') + ']')[:catc_template_summary_maxchar] if _commit else (_local_message if not (_from_git | bool) else 'Synced from Git') }}"
-        _diff_files: "{{ template_diff_results.results[tmpl_idx].json.files | default([]) if ((template_source | default('git')) == 'git' and include_diff_header and template_diff_results is defined and not (template_diff_results.results[tmpl_idx].skipped | default(false))) else [] }}"
+        _commit_message: "{{ (_commit.commit.author.date | default('') + ' | ' + _commit.commit.message | default('') + ' [' + _commit.commit.author.name | default('')
+          + ']')[:catc_template_summary_maxchar] if _commit else (_local_message if not (_from_git | bool) else 'Synced from Git') }}"
+        _diff_files: "{{ template_diff_results.results[tmpl_idx].json.files | default([]) if ((template_source | default('git')) == 'git' and include_diff_header
+          and template_diff_results is defined and not (template_diff_results.results[tmpl_idx].skipped | default(false))) else [] }}"
         _file_patch: "{{ (_diff_files | selectattr('filename', 'eq', item.path) | list | first).patch | default('') if _diff_files | length > 0 else '' }}"
         enriched:
           name: "{{ item.path | basename }}"
           path: "{{ item.path }}"
-          content: "{{ template_content_results.results[tmpl_idx].content if (template_source | default('git')) == 'git' else (local_template_content_results.results[tmpl_idx].content | b64decode) }}"
+          content: "{{ template_content_results.results[tmpl_idx].content if (template_source | default('git')) == 'git' else (local_template_content_results.results[tmpl_idx].content
+            | b64decode) }}"
           commit_message: "{{ _commit_message }}"
           diff_content: "{{ _file_patch }}"
       loop: "{{ api_template_files }}"
@@ -384,7 +388,7 @@
       when:
         - (template_source | default('git')) == 'git'
         - api_composite_files | length > 0
-      uri:
+      ansible.builtin.uri:
         url: "https://raw.githubusercontent.com/{{ git_repo_slug }}/{{ git_branch | default('HEAD') }}/{{ item.path | replace(' ', '%20') }}"
         method: GET
         headers: "{{ git_auth_header }}"
@@ -426,13 +430,14 @@
     # taken from the member templates instead.
     - name: Build enriched composite file objects
       when: api_composite_files | length > 0
-      set_fact:
+      ansible.builtin.set_fact:
         enriched_composite_files: "{{ enriched_composite_files | default([]) + [enriched] }}"
       vars:
         enriched:
           name: "{{ item.path | basename }}"
           path: "{{ item.path }}"
-          content: "{{ composite_content_results.results[comp_idx].content if (template_source | default('git')) == 'git' else (local_composite_content_results.results[comp_idx].content | b64decode) }}"
+          content: "{{ composite_content_results.results[comp_idx].content if (template_source | default('git')) == 'git' else (local_composite_content_results.results[comp_idx].content
+            | b64decode) }}"
       loop: "{{ api_composite_files }}"
       loop_control:
         index_var: comp_idx
@@ -469,7 +474,7 @@
     # referenced by two composites appears twice - harmless, it is only used for
     # membership tests below.
     - name: Extract templates referenced in composite definitions
-      set_fact:
+      ansible.builtin.set_fact:
         composite_referenced_templates: "{{ composite_referenced_templates | default([]) + (item.content | from_yaml).templates | map(attribute='name') | list }}"
       loop: "{{ enriched_composite_files | default([]) }}"
       when: enriched_composite_files is defined and enriched_composite_files | length > 0
@@ -478,7 +483,7 @@
 
     - name: --DEBUG-- Templates referenced in composites
       when: (catc_debug | default(false) | bool) and composite_referenced_templates is defined
-      debug:
+      ansible.builtin.debug:
         msg: "{{ composite_referenced_templates }}"
 
     # Example - input trimmed to four templates so the split is visible
@@ -520,9 +525,11 @@
     # DEFN and FUNC templates are never composite members, so they always land in
     # regular_template_list and are therefore pushed first.
     - name: Build template lists based on composite references
-      set_fact:
-        priority_template_list: "{{ priority_template_list + [item] if (composite_referenced_templates is defined and item.name in composite_referenced_templates) else priority_template_list }}"
-        regular_template_list: "{{ regular_template_list + [item] if (composite_referenced_templates is not defined or item.name not in composite_referenced_templates) else regular_template_list }}"
+      ansible.builtin.set_fact:
+        priority_template_list: "{{ priority_template_list + [item] if (composite_referenced_templates is defined and item.name in composite_referenced_templates)
+          else priority_template_list }}"
+        regular_template_list: "{{ regular_template_list + [item] if (composite_referenced_templates is not defined or item.name not in composite_referenced_templates)
+          else regular_template_list }}"
       loop: "{{ enriched_template_files }}"
 
     # Example
@@ -553,12 +560,12 @@
     # Composite members are pushed last so that a composite created afterwards
     # can resolve every member by name to an existing template ID.
     - name: Set template processing order (regular first for dependencies, then priority)
-      set_fact:
+      ansible.builtin.set_fact:
         sorted_template_files: "{{ regular_template_list + priority_template_list }}"
 
     - name: --DEBUG-- show sorted template list
       when: catc_debug | default(false) | bool
-      debug:
+      ansible.builtin.debug:
         msg: "{{ sorted_template_files | map(attribute='name') | list }}"
 
     - name: Process regular templates in correct order
@@ -570,7 +577,7 @@
 
     - name: --DEBUG-- show template configurations
       when: catc_debug | default(false) | bool
-      debug:
+      ansible.builtin.debug:
         msg: "{{ template_workflow_configs }}"
 
     - name: Process composite templates
@@ -582,7 +589,7 @@
 
     - name: --DEBUG-- show composite configurations
       when: (catc_debug | default(false) | bool) and composite_workflow_configs is defined
-      debug:
+      ansible.builtin.debug:
         msg: "{{ composite_workflow_configs }}"
 
     - name: Synchronize all templates using template_workflow_manager
@@ -594,7 +601,7 @@
 
     - name: --DEBUG-- show template sync results
       when: catc_debug | default(false) | bool
-      debug:
+      ansible.builtin.debug:
         msg: "{{ template_sync_result }}"
 
     - name: Synchronize composite templates using template_workflow_manager
@@ -606,11 +613,11 @@
 
     - name: --DEBUG-- show composite sync results
       when: (catc_debug | default(false) | bool) and composite_sync_result is defined
-      debug:
+      ansible.builtin.debug:
         msg: "{{ composite_sync_result }}"
 
     - name: Record per-project sync summary
-      set_fact:
+      ansible.builtin.set_fact:
         sync_summary: "{{ sync_summary | default([]) + [project_summary] }}"
       vars:
         project_summary:
@@ -620,7 +627,7 @@
           composites_synced: "{{ composite_workflow_configs | default([]) | length }}"
 
     - name: Display per-project synchronization summary
-      debug:
+      ansible.builtin.debug:
         msg:
           - "Subfolder synced: {{ subfolder_item.path | default('(repo root)') }}"
           - "Project: {{ project_name }}"

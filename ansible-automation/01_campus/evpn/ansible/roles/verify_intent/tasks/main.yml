@@ -6,7 +6,6 @@
 # Center rather than from the repo.
 # ============================================================================
 ---
-
 # Only vars/main.yml is auto-loaded, and the check catalogue is deliberately in
 # its own file so it can be read without wading through the role's plumbing.
 - name: Load the check definitions

@@ -25,7 +25,6 @@
 #           _verify_blacklisted — [{device, command}] for the report
 # ============================================================================
 ---
-
 # Example - two roles, six switch commands, three WLC commands, batch size 5
 #   Out: _verify_batches = [
 #          {"role": "switch", "device_ids": ["7fc...","8ad...","9be..."],

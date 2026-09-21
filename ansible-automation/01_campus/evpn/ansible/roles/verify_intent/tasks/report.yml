@@ -16,7 +16,6 @@
 #           _defn_templates, _intent_settings, _verify_blacklisted
 # ============================================================================
 ---
-
 - name: Ensure the evidence directory exists
   ansible.builtin.file:
     path: "{{ verify_report_path | dirname }}"

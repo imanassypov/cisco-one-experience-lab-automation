@@ -21,7 +21,6 @@
 #                     passes back through Ansible's templar
 # ============================================================================
 ---
-
 # ── Step A: Which Template Programmer projects hold this site's intent ────
 #
 # settings.json names the project on every Day-N template entry, so the same

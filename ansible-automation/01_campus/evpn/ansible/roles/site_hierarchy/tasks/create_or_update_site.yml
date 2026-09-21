@@ -41,16 +41,16 @@
 #        _name   = "Building P0"
 #        _parent = "Global/PODS/POD 0"
 - name: "Extract type / name / parent  | {{ site_config.site_type }}"
-  set_fact:
-    _type:   "{{ site_config.site_type }}"
-    _name:   "{{ site_config.site[site_config.site_type].name }}"
+  ansible.builtin.set_fact:
+    _type: "{{ site_config.site_type }}"
+    _name: "{{ site_config.site[site_config.site_type].name }}"
     _parent: "{{ site_config.site[site_config.site_type].parent_name }}"
 
 - name: "DEBUG | Step 1 — type/name/parent derived"
-  debug:
+  ansible.builtin.debug:
     msg:
-      type:   "{{ _type }}"
-      name:   "{{ _name }}"
+      type: "{{ _type }}"
+      name: "{{ _name }}"
       parent: "{{ _parent }}"
   when: catc_debug | default(false) | bool
 
@@ -88,19 +88,19 @@
 #        _site_id   = "a1000000-0000-4000-8000-000000000004"
 #        → UPDATE tasks fire, CREATE tasks skip
 - name: "Derive path / IDs / exists  | {{ _parent ~ '/' ~ _name }}"
-  set_fact:
-    _path:      "{{ _parent + '/' + _name }}"
+  ansible.builtin.set_fact:
+    _path: "{{ _parent + '/' + _name }}"
     _parent_id: "{{ site_id_map.get(_parent, '') }}"
-    _exists:    "{{ (_parent + '/' + _name) in site_id_map }}"
-    _site_id:   "{{ site_id_map.get(_parent + '/' + _name, '') }}"
+    _exists: "{{ (_parent + '/' + _name) in site_id_map }}"
+    _site_id: "{{ site_id_map.get(_parent + '/' + _name, '') }}"
 
 - name: "DEBUG | Step 2 — path/parent_id/exists/site_id derived"
-  debug:
+  ansible.builtin.debug:
     msg:
-      path:      "{{ _path }}"
+      path: "{{ _path }}"
       parent_id: "{{ _parent_id }}"
-      exists:    "{{ _exists }}"
-      site_id:   "{{ _site_id }}"
+      exists: "{{ _exists }}"
+      site_id: "{{ _site_id }}"
   when: catc_debug | default(false) | bool
 
 # =============================================================================
@@ -113,8 +113,8 @@
 # No id: supplied → the action plugin's exists() returns False → POST fires.
 - name: "Area     | CREATE | {{ _path }}"
   cisco.catalystcenter.areas:
-    state:    present
-    name:     "{{ _name }}"
+    state: present
+    name: "{{ _name }}"
     parentId: "{{ _parent_id }}"
   register: _area_create
   when:
@@ -122,7 +122,7 @@
     - not _exists
 
 - name: "DEBUG | Area CREATE result"
-  debug:
+  ansible.builtin.debug:
     var: _area_create
   when:
     - catc_debug | default(false) | bool
@@ -135,9 +135,9 @@
 # Result is "Object already present" when name/parentId haven't changed.
 - name: "Area     | UPDATE | {{ _path }}"
   cisco.catalystcenter.areas:
-    state:    present
-    id:       "{{ _site_id }}"
-    name:     "{{ _name }}"
+    state: present
+    id: "{{ _site_id }}"
+    name: "{{ _name }}"
     parentId: "{{ _parent_id }}"
   register: _area_update
   when:
@@ -145,7 +145,7 @@
     - _exists
 
 - name: "DEBUG | Area UPDATE result"
-  debug:
+  ansible.builtin.debug:
     var: _area_update
   when:
     - catc_debug | default(false) | bool
@@ -160,12 +160,12 @@
 # POST /dna/intent/api/v2/buildings
 - name: "Building | CREATE | {{ _path }}"
   cisco.catalystcenter.buildings:
-    state:     present
-    name:      "{{ _name }}"
-    parentId:  "{{ _parent_id }}"
-    address:   "{{ site_config.site.building.address }}"
-    country:   "{{ site_config.site.building.country }}"
-    latitude:  "{{ site_config.site.building.latitude }}"
+    state: present
+    name: "{{ _name }}"
+    parentId: "{{ _parent_id }}"
+    address: "{{ site_config.site.building.address }}"
+    country: "{{ site_config.site.building.country }}"
+    latitude: "{{ site_config.site.building.latitude }}"
     longitude: "{{ site_config.site.building.longitude }}"
   register: _building_create
   when:
@@ -173,7 +173,7 @@
     - not _exists
 
 - name: "DEBUG | Building CREATE result"
-  debug:
+  ansible.builtin.debug:
     var: _building_create
   when:
     - catc_debug | default(false) | bool
@@ -185,13 +185,13 @@
 # Off by default: SDK 3.1.3.0.1 UnboundLocalError on variable 'func'.
 - name: "Building | UPDATE | {{ _path }}"
   cisco.catalystcenter.buildings:
-    state:     present
-    id:        "{{ _site_id }}"
-    name:      "{{ _name }}"
-    parentId:  "{{ _parent_id }}"
-    address:   "{{ site_config.site.building.address }}"
-    country:   "{{ site_config.site.building.country }}"
-    latitude:  "{{ site_config.site.building.latitude }}"
+    state: present
+    id: "{{ _site_id }}"
+    name: "{{ _name }}"
+    parentId: "{{ _parent_id }}"
+    address: "{{ site_config.site.building.address }}"
+    country: "{{ site_config.site.building.country }}"
+    latitude: "{{ site_config.site.building.latitude }}"
     longitude: "{{ site_config.site.building.longitude }}"
   register: _building_update
   when:
@@ -200,7 +200,7 @@
     - site_hierarchy_update_existing | default(false) | bool
 
 - name: "DEBUG | Building UPDATE result"
-  debug:
+  ansible.builtin.debug:
     var: _building_update
   when:
     - catc_debug | default(false) | bool
@@ -223,22 +223,22 @@
 # when nested dict values are rendered as strings by Ansible's templating.
 - name: "Floor    | CREATE | {{ _path }}"
   cisco.catalystcenter.floors:
-    state:          present
-    name:           "{{ _name }}"
-    parentId:       "{{ _parent_id }}"
-    rfModel:        "{{ site_config.site.floor.rf_model }}"
+    state: present
+    name: "{{ _name }}"
+    parentId: "{{ _parent_id }}"
+    rfModel: "{{ site_config.site.floor.rf_model }}"
     unitsOfMeasure: "{{ site_config.site.floor.units_of_measure }}"
-    floorNumber:    "{{ site_config.site.floor.floor_number | int }}"
-    width:          "{{ site_config.site.floor.width | float }}"
-    length:         "{{ site_config.site.floor.length | float }}"
-    height:         "{{ site_config.site.floor.height | float }}"
+    floorNumber: "{{ site_config.site.floor.floor_number | int }}"
+    width: "{{ site_config.site.floor.width | float }}"
+    length: "{{ site_config.site.floor.length | float }}"
+    height: "{{ site_config.site.floor.height | float }}"
   register: _floor_create
   when:
     - _type == 'floor'
     - not _exists
 
 - name: "DEBUG | Floor CREATE result"
-  debug:
+  ansible.builtin.debug:
     var: _floor_create
   when:
     - catc_debug | default(false) | bool
@@ -250,16 +250,16 @@
 # Both id: (floor UUID) and parentId: (building UUID) are required for updates.
 - name: "Floor    | UPDATE | {{ _path }}"
   cisco.catalystcenter.floors:
-    state:          present
-    id:             "{{ _site_id }}"
-    name:           "{{ _name }}"
-    parentId:       "{{ _parent_id }}"
-    rfModel:        "{{ site_config.site.floor.rf_model }}"
+    state: present
+    id: "{{ _site_id }}"
+    name: "{{ _name }}"
+    parentId: "{{ _parent_id }}"
+    rfModel: "{{ site_config.site.floor.rf_model }}"
     unitsOfMeasure: "{{ site_config.site.floor.units_of_measure }}"
-    floorNumber:    "{{ site_config.site.floor.floor_number }}"
-    width:          "{{ site_config.site.floor.width }}"
-    length:         "{{ site_config.site.floor.length }}"
-    height:         "{{ site_config.site.floor.height }}"
+    floorNumber: "{{ site_config.site.floor.floor_number }}"
+    width: "{{ site_config.site.floor.width }}"
+    length: "{{ site_config.site.floor.length }}"
+    height: "{{ site_config.site.floor.height }}"
   register: _floor_update
   when:
     - _type == 'floor'
@@ -267,7 +267,7 @@
     - site_hierarchy_update_existing | default(false) | bool
 
 - name: "DEBUG | Floor UPDATE result"
-  debug:
+  ansible.builtin.debug:
     var: _floor_update
   when:
     - catc_debug | default(false) | bool
@@ -300,7 +300,7 @@
   when: not _exists
 
 - name: "DEBUG | New site query response"
-  debug:
+  ansible.builtin.debug:
     var: _new_site_info
   when:
     - catc_debug | default(false) | bool
@@ -332,7 +332,7 @@
 #        now resolves _parent_id = "a1000000-0000-4000-8000-000000000004"
 #        instead of "".
 - name: "Add to site_id_map  | {{ _path }}"
-  set_fact:
+  ansible.builtin.set_fact:
     site_id_map: >-
       {{ site_id_map | combine(
            { _path: _new_site_info.catalystcenter_response.response[0].id }
@@ -340,7 +340,7 @@
   when: not _exists
 
 - name: "DEBUG | site_id_map after update"
-  debug:
+  ansible.builtin.debug:
     var: site_id_map
   when:
     - catc_debug | default(false) | bool
@@ -351,17 +351,9 @@
     site_hierarchy_results: "{{ site_hierarchy_results | default([]) + [_site_hierarchy_row] }}"
   vars:
     _site_hierarchy_action: >-
-      {%- if not (_exists | bool) -%}
-      created
-      {%- elif _type == 'area' and _area_update is defined and _area_update is changed -%}
-      updated
-      {%- elif _type == 'building' and _building_update is defined and _building_update is changed -%}
-      updated
-      {%- elif _type == 'floor' and _floor_update is defined and _floor_update is changed -%}
-      updated
-      {%- else -%}
-      skipped
-      {%- endif -%}
+      {%- if not (_exists | bool) -%} created{%- elif _type == 'area' and _area_update is defined and _area_update is changed -%} updated{%- elif _type == 'building'
+      and _building_update is defined and _building_update is changed -%} updated{%- elif _type == 'floor' and _floor_update is defined and _floor_update is changed
+      -%} updated{%- else -%} skipped{%- endif -%}
     _site_hierarchy_row:
       action: "{{ _site_hierarchy_action }}"
       line: "{{ _site_hierarchy_action }}  {{ _path }}"

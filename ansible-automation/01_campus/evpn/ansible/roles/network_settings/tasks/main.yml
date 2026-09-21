@@ -91,7 +91,7 @@
   ansible.builtin.debug:
     msg:
       response_count: "{{ _all_sites_info.catalystcenter_response.response | default([]) | length }}"
-      response:        "{{ _all_sites_info.catalystcenter_response.response | default([]) }}"
+      response: "{{ _all_sites_info.catalystcenter_response.response | default([]) }}"
   when: catc_debug | default(false) | bool
 
 - name: Build site name-to-ID map
@@ -210,11 +210,10 @@
 - name: Build v1 network settings payload list
   ansible.builtin.set_fact:
     network_settings_list: >-
-      {%- set ns = namespace(result=[]) -%}
-      {%- for i in range(settings_data.project | length) -%}
-        {%- set entry   = settings_data.project[i] -%}
-        {%- set sname   = site_names[i] -%}
-        {%- set raw     = entry.network_settings -%}
+      {%- set ns = namespace(result=[]) -%} {%- for i in range(settings_data.project | length) -%}
+        {%- set entry = settings_data.project[i] -%}
+        {%- set sname = site_names[i] -%}
+        {%- set raw = entry.network_settings -%}
         {%- set payload = {} -%}
         {%- if raw.dhcp_server -%}
           {%- set payload = payload | combine({'dhcpServer': raw.dhcp_server}) -%}
@@ -337,8 +336,7 @@
           {%- set sid = _site_id_map.get(sname, '') -%}
           {%- set ns.result = ns.result + [{'site_name': sname, 'site_id': sid, 'settings': payload}] -%}
         {%- endif -%}
-      {%- endfor -%}
-      {{ ns.result }}
+      {%- endfor -%} {{ ns.result }}
 
 - name: "DEBUG | v1 network settings payload list"
   ansible.builtin.debug:

@@ -59,7 +59,7 @@
 #        }
 # composite_name is absent here, so the next task derives it from the filename.
 - name: Load composite definition from {{ composite_file.name }}
-  set_fact:
+  ansible.builtin.set_fact:
     composite_def: "{{ composite_file.content | from_yaml }}"
 
 # Example - no composite_name override (how BGP-EVPN-BUILD.yml is written)
@@ -89,7 +89,7 @@
 # The .yml -> .j2 swap matters: Catalyst Center stores the composite as a JINJA
 # template, and stage 10 looks it up by the .j2 name.
 - name: Extract composite metadata
-  set_fact:
+  ansible.builtin.set_fact:
     composite_name: "{{ composite_def.composite_name | default((composite_file.name | regex_replace('\\.yml$', '.j2'))) }}"
     composite_template_names: "{{ composite_def.templates | map(attribute='name') | list }}"
 
@@ -158,8 +158,10 @@
 # already pushed by process-template.yml. Order is preserved, and it is the
 # order stage 10 deploys the members in.
 - name: Build containing templates list
-  set_fact:
-    containing_templates_list: "{{ containing_templates_list | default([]) + [{'name': item, 'composite': false, 'project_name': project_name, 'description': 'description','language': 'JINJA', 'device_types': default_device_types,'software_type': default_software_type, 'software_variant': default_software_variant, 'templateParams': [], 'tags': []}] }}"
+  ansible.builtin.set_fact:
+    containing_templates_list: "{{ containing_templates_list | default([]) + [{'name': item, 'composite': false, 'project_name': project_name, 'description': 'description',
+      'language': 'JINJA', 'device_types': default_device_types, 'software_type': default_software_type, 'software_variant': default_software_variant, 'templateParams':
+      [], 'tags': []}] }}"
   with_items: "{{ composite_template_names }}"
 
 # Example - containing_templates shown with a single member for brevity of the
@@ -236,7 +238,7 @@
 # template_content is intentionally empty - a composite has no body of its own,
 # only an ordered member list.
 - name: Build composite workflow configuration for {{ composite_name }}
-  set_fact:
+  ansible.builtin.set_fact:
     composite_workflow_configs: "{{ composite_workflow_configs | default([]) + [composite_config] }}"
   vars:
     composite_config:
@@ -250,7 +252,7 @@
         device_types: "{{ default_device_types }}"
         software_type: "{{ default_software_type }}"
         software_variant: "{{ default_software_variant }}"
-        software_version: null
+        software_version:
         template_params: []
         failure_policy: "ABORT_TARGET_ON_ERROR"
         version: "{{ default_template_version }}"
@@ -273,5 +275,5 @@
 # Cleared here, not at the top, so a subfolder with several composites does not
 # give the second composite the first one's members.
 - name: Reset containing templates list
-  set_fact:
+  ansible.builtin.set_fact:
     containing_templates_list: []

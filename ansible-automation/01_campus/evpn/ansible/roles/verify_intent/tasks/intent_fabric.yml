@@ -19,7 +19,6 @@
 #                             client_ports, overlay, l3out, bgp_asn, ...}
 # ============================================================================
 ---
-
 - name: Create a working directory for the intent extraction
   ansible.builtin.tempfile:
     state: directory

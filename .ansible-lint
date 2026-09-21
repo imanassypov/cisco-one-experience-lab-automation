@@ -1,0 +1,32 @@
+# ansible-lint configuration
+#
+# Applies to both collections (01_campus/evpn and 07_assurance/splunk_evpn).
+# Everything not listed here is enforced; the skips below are deliberate
+# deviations, each with a reason. Re-check them if the repo conventions change.
+
+exclude_paths:
+  - .venv/
+  - ansible-automation/.venv/
+  - "**/evidence/"
+  - ansible-automation/01_campus/evpn/ansible/docs/sample-reports/
+
+skip_list:
+  # Role variables are already namespaced by intent (verify_*, swim_*, ap_*) and
+  # several are documented as -e overrides in the README, GETTING_STARTED and the
+  # User Guide (e.g. -e verify_fail_on_mismatch=false, -e swim_activate=false).
+  # Renaming them to verify_intent_* would break every published instruction and
+  # the students' muscle memory for a naming preference, so the rule is off
+  # rather than the variables renamed.
+  - var-naming[no-role-prefix]
+
+  # False positive: connection arguments (catalystcenter_host, dnac_host, ...)
+  # are supplied by play-level module_defaults, which ansible-lint does not
+  # resolve when it validates a task in isolation. The playbooks do not run
+  # without them, so a real omission surfaces immediately at runtime.
+  - args[module]
+
+  # Long lines here are payload dicts, API URLs and operator-facing messages.
+  # Wrapping them either breaks the string or hurts readability, and the
+  # ansible-lint autofixer resolves long lines by folding Jinja expressions
+  # mid-expression, which is worse than the original.
+  - yaml[line-length]

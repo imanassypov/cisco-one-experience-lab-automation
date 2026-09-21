@@ -13,7 +13,6 @@
 #           role is 'switch' or 'wlc', which selects the command set
 # ============================================================================
 ---
-
 - name: Build the lookup target list
   ansible.builtin.set_fact:
     _verify_targets: >-

@@ -15,7 +15,6 @@
 #           status is PASS | FAIL | NOT_VERIFIED | SKIPPED
 # ============================================================================
 ---
-
 # VRF definitions are a list; the checks need them by id, because
 # DEFN_VRF_TO_NODE maps a device to VRF ids rather than to whole objects.
 #

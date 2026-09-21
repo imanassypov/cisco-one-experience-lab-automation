@@ -39,7 +39,7 @@
 # PUT to /dna/intent/api/v1/network/ (no trailing ID).
 #
 - name: "Validate site ID resolved  | {{ site_config.site_name }}"
-  assert:
+  ansible.builtin.assert:
     that: site_config.site_id | length > 0
     fail_msg: >-
       Site '{{ site_config.site_name }}' was not found in the Catalyst Center
@@ -48,11 +48,11 @@
     success_msg: "Site ID resolved: {{ site_config.site_id }}"
 
 - name: "DEBUG | site_config  | {{ site_config.site_name }}"
-  debug:
+  ansible.builtin.debug:
     msg:
       site_name: "{{ site_config.site_name }}"
-      site_id:   "{{ site_config.site_id }}"
-      settings:  "{{ site_config.settings }}"
+      site_id: "{{ site_config.site_id }}"
+      settings: "{{ site_config.settings }}"
   when: catc_debug | default(false) | bool
 
 # ── Step 2: Apply settings via composite-settings endpoint ────────────────────
@@ -81,7 +81,7 @@
   register: _settings_result
 
 - name: "DEBUG | Apply result  | {{ site_config.site_name }}"
-  debug:
+  ansible.builtin.debug:
     var: _settings_result
   when: catc_debug | default(false) | bool
 
@@ -110,11 +110,11 @@
 #   A 200 (synchronous) response carries no executionStatusUrl, so the fact is
 #   "" and the poll below is skipped rather than requesting a bare host URL.
 - name: "Extract execution status URL  | {{ site_config.site_name }}"
-  set_fact:
+  ansible.builtin.set_fact:
     _exec_status_url: "{{ _settings_result.json.executionStatusUrl | default('') }}"
 
 - name: "DEBUG | Execution status URL  | {{ site_config.site_name }}"
-  debug:
+  ansible.builtin.debug:
     var: _exec_status_url
   when: catc_debug | default(false) | bool
 
@@ -135,14 +135,14 @@
   when: _exec_status_url | length > 0
 
 - name: "DEBUG | Execution poll result  | {{ site_config.site_name }}"
-  debug:
+  ansible.builtin.debug:
     var: _exec_poll
   when:
     - catc_debug | default(false) | bool
     - _exec_status_url | length > 0
 
 - name: "Assert execution succeeded  | {{ site_config.site_name }}"
-  assert:
+  ansible.builtin.assert:
     that: _exec_poll.json.status == 'SUCCESS'
     fail_msg: >-
       Network settings task FAILED for '{{ site_config.site_name }}'.

@@ -23,7 +23,6 @@
 #                                 WLC. Defaults true (roles defaults/main.yml).
 # ============================================================================
 ---
-
 # ── Step A: Collect the rows that declare a controller ────────────────────
 #
 # A row qualifies when it has both a wireless_controller block and a

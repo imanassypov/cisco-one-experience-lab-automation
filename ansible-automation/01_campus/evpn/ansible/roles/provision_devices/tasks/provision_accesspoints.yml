@@ -61,7 +61,6 @@
 #   task_poll_retries / task_poll_delay
 # ============================================================================
 ---
-
 # ── Step A: Collect the declared access points ────────────────────────────
 #
 # Every access_points entry across all project rows, flattened.

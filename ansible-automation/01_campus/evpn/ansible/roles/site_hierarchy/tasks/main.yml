@@ -46,23 +46,22 @@
   #   same area emits only its own building/floor — ns.seen suppresses the
   #   duplicate area. address is omitted entirely when HierarchyBldgAddress is
   #   empty, so Step 4 falls back to default_building_address.
-  set_fact:
+  ansible.builtin.set_fact:
     site_data: >-
-      {%- set ns = namespace(entries=[], seen=[]) -%}
-      {%- for entry in settings_data.project -%}
+      {%- set ns = namespace(entries=[], seen=[]) -%} {%- for entry in settings_data.project -%}
         {%- set parent = entry.HierarchyParent | default('Global') -%}
-        {%- set area   = entry.HierarchyArea   | default('') -%}
-        {%- set bldg   = entry.HierarchyBldg   | default('') -%}
-        {%- set floor  = entry.HierarchyFloor  | default('') -%}
-        {%- set addr   = entry.HierarchyBldgAddress | default('') -%}
-        {%- set lat    = entry.HierarchyBldgLatitude | default(none) -%}
-        {%- set lon    = entry.HierarchyBldgLongitude | default(none) -%}
-        {%- set ctry   = entry.HierarchyBldgCountry | default('') -%}
+        {%- set area = entry.HierarchyArea | default('') -%}
+        {%- set bldg = entry.HierarchyBldg | default('') -%}
+        {%- set floor = entry.HierarchyFloor | default('') -%}
+        {%- set addr = entry.HierarchyBldgAddress | default('') -%}
+        {%- set lat = entry.HierarchyBldgLatitude | default(none) -%}
+        {%- set lon = entry.HierarchyBldgLongitude | default(none) -%}
+        {%- set ctry = entry.HierarchyBldgCountry | default('') -%}
 
         {%- if area -%}
           {%- set area_path = parent + '/' + area -%}
           {%- if area_path not in ns.seen -%}
-            {%- set ns.seen    = ns.seen    + [area_path] -%}
+            {%- set ns.seen = ns.seen + [area_path] -%}
             {%- set ns.entries = ns.entries + [{'HierarchyName': area_path, 'SiteType': 'area'}] -%}
           {%- endif -%}
         {%- endif -%}
@@ -91,61 +90,60 @@
         {%- if area and bldg and floor -%}
           {%- set floor_path = parent + '/' + area + '/' + bldg + '/' + floor -%}
           {%- if floor_path not in ns.seen -%}
-            {%- set ns.seen    = ns.seen    + [floor_path] -%}
+            {%- set ns.seen = ns.seen + [floor_path] -%}
             {%- set ns.entries = ns.entries + [{'HierarchyName': floor_path, 'SiteType': 'floor'}] -%}
           {%- endif -%}
         {%- endif -%}
-      {%- endfor -%}
-      {{ {'project': ns.entries} }}
+      {%- endfor -%} {{ {'project': ns.entries} }}
 
 - name: "DEBUG | site_data (synthesised from settings.json)"
-  debug:
+  ansible.builtin.debug:
     var: site_data
   when: catc_debug | default(false) | bool
 
-    # ── Step 2: Build lookup maps from the JSON entries ───────────────────────
-    #
-    # site_type_map    : { "Global/X/Y": "area" | "building" | "floor" }
-    # building_info_map: { "Global/X/Y": { address, country, latitude, longitude } }
-    # floor_info_map   : { "Global/X/Y": { rf_model, width, length, height, floor_number } }
-    #
-    # Sample (BGP_EVPN/Settings/settings.json synthesised):
-    #
-    # site_type_map:
-    #   {
-    #     "Global/PODS":                           "area",
-    #     "Global/PODS/POD 0":                     "area",
-    #     "Global/PODS/POD 0/Building P0":         "building",
-    #     "Global/PODS/POD 0/Building P0/Floor 1": "floor"
-    #   }
-    #
-    # building_info_map:
-    #   {
-    #     "Global/PODS/POD 0/Building P0": {
-    #       "address":   "300 E Tasman Dr, Bldg 10, San Jose, CA 95134",
-    #       "country":   "United States",
-    #       "latitude":  37.3382,
-    #       "longitude": -121.9694
-    #     }
-    #   }
-    #
-    # floor_info_map:
-    #   {
-    #     "Global/PODS/POD 0/Building P0/Floor 1": {
-    #       "rf_model":     "Cubes And Walled Offices",
-    #       "width":        100,
-    #       "length":       100,
-    #       "height":       10,
-    #       "floor_number": 1
-    #     }
-    #   }
-    #
+# ── Step 2: Build lookup maps from the JSON entries ───────────────────────
+#
+# site_type_map    : { "Global/X/Y": "area" | "building" | "floor" }
+# building_info_map: { "Global/X/Y": { address, country, latitude, longitude } }
+# floor_info_map   : { "Global/X/Y": { rf_model, width, length, height, floor_number } }
+#
+# Sample (BGP_EVPN/Settings/settings.json synthesised):
+#
+# site_type_map:
+#   {
+#     "Global/PODS":                           "area",
+#     "Global/PODS/POD 0":                     "area",
+#     "Global/PODS/POD 0/Building P0":         "building",
+#     "Global/PODS/POD 0/Building P0/Floor 1": "floor"
+#   }
+#
+# building_info_map:
+#   {
+#     "Global/PODS/POD 0/Building P0": {
+#       "address":   "300 E Tasman Dr, Bldg 10, San Jose, CA 95134",
+#       "country":   "United States",
+#       "latitude":  37.3382,
+#       "longitude": -121.9694
+#     }
+#   }
+#
+# floor_info_map:
+#   {
+#     "Global/PODS/POD 0/Building P0/Floor 1": {
+#       "rf_model":     "Cubes And Walled Offices",
+#       "width":        100,
+#       "length":       100,
+#       "height":       10,
+#       "floor_number": 1
+#     }
+#   }
+#
 - name: Build typed lookup maps from JSON entries
   # Three dicts are built in one set_fact to avoid three separate task round-trips.
   # Each iterates site_data.project and indexes only entries with a matching SiteType.
   # Inventory vars supply defaults for any optional fields absent from the JSON entry.
   # These maps are keyed by the full HierarchyName path for O(1) lookup in Step 4.
-  set_fact:
+  ansible.builtin.set_fact:
     site_type_map: >-
       {%- set m = {} -%}
       {%- for entry in site_data.project -%}
@@ -215,29 +213,29 @@
       {{ m }}
 
 - name: "DEBUG | site_type_map / building_info_map / floor_info_map"
-  debug:
+  ansible.builtin.debug:
     msg:
-      site_type_map:     "{{ site_type_map }}"
+      site_type_map: "{{ site_type_map }}"
       building_info_map: "{{ building_info_map }}"
-      floor_info_map:    "{{ floor_info_map }}"
+      floor_info_map: "{{ floor_info_map }}"
   when: catc_debug | default(false) | bool
 
-    # ── Step 3: Generate all unique paths (including intermediates) ───────────
-    #
-    # Walk every HierarchyName, emit all prefix subpaths (depth >= 2), dedupe,
-    # then sort by path depth so parent sites are always created before children.
-    # "Global" (depth 1) is skipped — it always pre-exists in CatC.
-    #
-    # Sample (BGP_EVPN/Settings/settings.json synthesised):
-    #
-    # all_site_paths:
-    #   [
-    #     "Global/PODS",                           # depth 2 — area
-    #     "Global/PODS/POD 0",                     # depth 3 — area
-    #     "Global/PODS/POD 0/Building P0",         # depth 4 — building
-    #     "Global/PODS/POD 0/Building P0/Floor 1"  # depth 5 — floor
-    #   ]
-    #
+# ── Step 3: Generate all unique paths (including intermediates) ───────────
+#
+# Walk every HierarchyName, emit all prefix subpaths (depth >= 2), dedupe,
+# then sort by path depth so parent sites are always created before children.
+# "Global" (depth 1) is skipped — it always pre-exists in CatC.
+#
+# Sample (BGP_EVPN/Settings/settings.json synthesised):
+#
+# all_site_paths:
+#   [
+#     "Global/PODS",                           # depth 2 — area
+#     "Global/PODS/POD 0",                     # depth 3 — area
+#     "Global/PODS/POD 0/Building P0",         # depth 4 — building
+#     "Global/PODS/POD 0/Building P0/Floor 1"  # depth 5 — floor
+#   ]
+#
 - name: Collect all unique hierarchy paths including intermediate nodes
   # The JSON only needs to list leaf paths; this task fills in any missing
   # parent levels automatically.  Example: a single entry
@@ -249,7 +247,7 @@
   #   Pass 2 (outer range) — bucket ns.paths by depth (2..19) into ns.result,
   #                          producing a list sorted shallow-first so CatC
   #                          never receives a child before its parent exists.
-  set_fact:
+  ansible.builtin.set_fact:
     all_site_paths: >-
       {%- set ns = namespace(paths=[], result=[]) -%}
       {%- for entry in site_data.project -%}
@@ -271,7 +269,7 @@
       {{ ns.result }}
 
 - name: "DEBUG | all_site_paths (ordered)"
-  debug:
+  ansible.builtin.debug:
     var: all_site_paths
   when: catc_debug | default(false) | bool
 
@@ -279,53 +277,53 @@
   # Informational — shows the ordered path list before any API calls are made.
   # For state=merged the list is shallow-first (parents created first).
   # For state=deleted it will be reversed below (children deleted first).
-  debug:
+  ansible.builtin.debug:
     msg: "{{ all_site_paths | length }} total: {{ all_site_paths }}"
 
-    # ── Step 4: Pre-compute site config payload list ───────────────────────────
-    #
-    # Build site_configs_list — the depth-sorted list of per-site config dicts
-    # consumed by Phases A–C.  Each entry carries the full metadata so the
-    # include_tasks files can call the correct typed module (areas / buildings /
-    # floors) without re-examining the raw path on each iteration.
-    #
-    # Each entry has the shape:
-    #   { site_type: "area"|"building"|"floor",
-    #     site: { <type>: { name, parent_name, ...type-specific fields } } }
-    #
-    # Sample (BGP_EVPN/Settings/settings.json synthesised, two entries shown):
-    #
-    # site_configs_list:
-    #   [
-    #     {
-    #       "site_type": "area",
-    #       "site": { "area": { "name": "PODS", "parent_name": "Global" } }
-    #     },
-    #     {
-    #       "site_type": "area",
-    #       "site": { "area": { "name": "POD 0", "parent_name": "Global/PODS" } }
-    #     },
-    #     {
-    #       "site_type": "building",
-    #       "site": { "building": { "name": "Building P0",
-    #                               "parent_name": "Global/PODS/POD 0",
-    #                               "address":   "300 E Tasman Dr, Bldg 10, San Jose, CA 95134",
-    #                               "country":   "United States",
-    #                               "latitude":  37.3382,
-    #                               "longitude": -121.8863 } }
-    #     },
-    #     {
-    #       "site_type": "floor",
-    #       "site": { "floor": { "name": "Floor 1",
-    #                            "parent_name": "Global/PODS/POD 0/Building P0",
-    #                            "rf_model":     "Cubes And Walled Offices",
-    #                            "width":        100,
-    #                            "length":       100,
-    #                            "height":       10,
-    #                            "floor_number": 1 } }
-    #     }
-    #   ]
-    #
+# ── Step 4: Pre-compute site config payload list ───────────────────────────
+#
+# Build site_configs_list — the depth-sorted list of per-site config dicts
+# consumed by Phases A–C.  Each entry carries the full metadata so the
+# include_tasks files can call the correct typed module (areas / buildings /
+# floors) without re-examining the raw path on each iteration.
+#
+# Each entry has the shape:
+#   { site_type: "area"|"building"|"floor",
+#     site: { <type>: { name, parent_name, ...type-specific fields } } }
+#
+# Sample (BGP_EVPN/Settings/settings.json synthesised, two entries shown):
+#
+# site_configs_list:
+#   [
+#     {
+#       "site_type": "area",
+#       "site": { "area": { "name": "PODS", "parent_name": "Global" } }
+#     },
+#     {
+#       "site_type": "area",
+#       "site": { "area": { "name": "POD 0", "parent_name": "Global/PODS" } }
+#     },
+#     {
+#       "site_type": "building",
+#       "site": { "building": { "name": "Building P0",
+#                               "parent_name": "Global/PODS/POD 0",
+#                               "address":   "300 E Tasman Dr, Bldg 10, San Jose, CA 95134",
+#                               "country":   "United States",
+#                               "latitude":  37.3382,
+#                               "longitude": -121.8863 } }
+#     },
+#     {
+#       "site_type": "floor",
+#       "site": { "floor": { "name": "Floor 1",
+#                            "parent_name": "Global/PODS/POD 0/Building P0",
+#                            "rf_model":     "Cubes And Walled Offices",
+#                            "width":        100,
+#                            "length":       100,
+#                            "height":       10,
+#                            "floor_number": 1 } }
+#     }
+#   ]
+#
 - name: Pre-compute site config payload list
   # Ansible evaluates all vars: entries in a task in a single pass, so
   # variables cannot reference siblings defined earlier in the same vars:
@@ -333,7 +331,7 @@
   # in one Jinja2 expression before the Phase B loop runs — every variable
   # (site_name, site_parent, site_type, metadata) is resolved sequentially
   # inside the template rather than across task-level vars: keys.
-  set_fact:
+  ansible.builtin.set_fact:
     site_configs_list: >-
       {%- set ns = namespace(result=[]) -%}
       {%- for path in all_site_paths -%}
@@ -355,16 +353,20 @@
           {%- if path in building_info_map -%}
             {%- set bld = building_info_map[path] -%}
           {%- else -%}
-            {%- set bld = {'address': default_building_address, 'country': default_building_country, 'latitude': default_building_latitude | float, 'longitude': default_building_longitude | float} -%}
+            {%- set bld = {'address': default_building_address, 'country': default_building_country, 'latitude': default_building_latitude | float, 'longitude': default_building_longitude
+      | float} -%}
           {%- endif -%}
-          {%- set payload = {'site_type': 'building', 'site': {'building': {'name': site_name, 'parent_name': site_parent, 'address': bld.address, 'country': bld.country, 'latitude': bld.latitude, 'longitude': bld.longitude}}} -%}
+          {%- set payload = {'site_type': 'building', 'site': {'building': {'name': site_name, 'parent_name': site_parent, 'address': bld.address, 'country': bld.country,
+      'latitude': bld.latitude, 'longitude': bld.longitude}}} -%}
         {%- elif site_type == 'floor' -%}
           {%- if path in floor_info_map -%}
             {%- set flr = floor_info_map[path] -%}
           {%- else -%}
-            {%- set flr = {'rf_model': default_floor_rf_model, 'units_of_measure': default_floor_units_of_measure, 'width': default_floor_width | int, 'length': default_floor_length | int, 'height': default_floor_height | int, 'floor_number': default_floor_number | int} -%}
+            {%- set flr = {'rf_model': default_floor_rf_model, 'units_of_measure': default_floor_units_of_measure, 'width': default_floor_width | int, 'length': default_floor_length
+      | int, 'height': default_floor_height | int, 'floor_number': default_floor_number | int} -%}
           {%- endif -%}
-          {%- set payload = {'site_type': 'floor', 'site': {'floor': {'name': site_name, 'parent_name': site_parent, 'rf_model': flr.rf_model, 'units_of_measure': flr.units_of_measure, 'width': flr.width, 'length': flr.length, 'height': flr.height, 'floor_number': flr.floor_number}}} -%}
+          {%- set payload = {'site_type': 'floor', 'site': {'floor': {'name': site_name, 'parent_name': site_parent, 'rf_model': flr.rf_model, 'units_of_measure':
+      flr.units_of_measure, 'width': flr.width, 'length': flr.length, 'height': flr.height, 'floor_number': flr.floor_number}}} -%}
         {%- else -%}
           {%- set payload = {'site_type': 'area', 'site': {'area': {'name': site_name, 'parent_name': site_parent}}} -%}
         {%- endif -%}
@@ -374,31 +376,31 @@
       {{ ns.result }}
 
 - name: "DEBUG | site_configs_list (full payload)"
-  debug:
+  ansible.builtin.debug:
     var: site_configs_list
   when: catc_debug | default(false) | bool
 
 - name: Display computed site payloads
   # Informational — shows the fully-resolved config dicts before any API
   # calls are made, making it easy to spot wrong types or missing fields.
-  debug:
+  ansible.builtin.debug:
     msg: "{{ site_configs_list }}"
 
-    # ── Phase A: Resolve all existing sites → build site_id_map ──────────────
-    #
-    # A single GET /dna/intent/api/v1/sites call retrieves all sites currently
-    # in Catalyst Center.  The response is indexed by nameHierarchy for O(1)
-    # parent-ID lookup in Phase B.
-    #
-    # Why this phase is mandatory:
-    #   Unlike cisco.dnac.site_workflow_manager, the individual cisco.catalystcenter
-    #   modules (areas, buildings, floors) have NO built-in idempotency by name.
-    #   The action plugin's get_object_by_name() always returns None — the module
-    #   can only detect an existing site if you supply its UUID via id:.
-    #   Without this lookup, every run would attempt to re-create every site.
-    #
-    # site_id_map  { "Global/PODS/POD 0/Building P0": "abc123-...", ... }
-    #
+# ── Phase A: Resolve all existing sites → build site_id_map ──────────────
+#
+# A single GET /dna/intent/api/v1/sites call retrieves all sites currently
+# in Catalyst Center.  The response is indexed by nameHierarchy for O(1)
+# parent-ID lookup in Phase B.
+#
+# Why this phase is mandatory:
+#   Unlike cisco.dnac.site_workflow_manager, the individual cisco.catalystcenter
+#   modules (areas, buildings, floors) have NO built-in idempotency by name.
+#   The action plugin's get_object_by_name() always returns None — the module
+#   can only detect an existing site if you supply its UUID via id:.
+#   Without this lookup, every run would attempt to re-create every site.
+#
+# site_id_map  { "Global/PODS/POD 0/Building P0": "abc123-...", ... }
+#
 - name: "Phase A — Fetch all existing sites from Catalyst Center"
   # GET /dna/intent/api/v1/sites (no filter → all existing sites)
   # Response key on the registered variable: catalystcenter_response.response
@@ -409,7 +411,7 @@
   register: catc_all_sites
 
 - name: "DEBUG | catc_all_sites raw response"
-  debug:
+  ansible.builtin.debug:
     var: catc_all_sites.catalystcenter_response
   when: catc_debug | default(false) | bool
 
@@ -423,43 +425,41 @@
   # explicitly under the key "Global" so parentId lookups work for
   # top-level areas (e.g. PODS whose parent_name is "Global").
   vars:
-    _all_sites:  "{{ catc_all_sites.catalystcenter_response.response | default([]) }}"
-    _named_map:  "{{ _all_sites | selectattr('nameHierarchy', 'defined') | list
-                     | items2dict(key_name='nameHierarchy', value_name='id') }}"
-    _global_id:  "{{ (_all_sites | selectattr('type', 'equalto', 'global')
-                      | map(attribute='id') | list | first) | default('') }}"
-  set_fact:
+    _all_sites: "{{ catc_all_sites.catalystcenter_response.response | default([]) }}"
+    _named_map: "{{ _all_sites | selectattr('nameHierarchy', 'defined') | list | items2dict(key_name='nameHierarchy', value_name='id') }}"
+    _global_id: "{{ (_all_sites | selectattr('type', 'equalto', 'global') | map(attribute='id') | list | first) | default('') }}"
+  ansible.builtin.set_fact:
     site_id_map: "{{ _named_map | combine({'Global': _global_id}) }}"
 
 - name: "Phase A — site_id_map summary"
-  debug:
+  ansible.builtin.debug:
     msg: "{{ site_id_map | length }} existing sites: {{ site_id_map }}"
 
-    # ── Phase B: Create / update sites (state=merged, default) ────────────────
-    #
-    # Processes each site in shallow-first (parent-before-child) order.
-    #
-    # include_tasks is used instead of a plain loop so that set_fact inside
-    # tasks/create_or_update_site.yml updates site_id_map BETWEEN iterations:
-    # after site N is created, its UUID is added to site_id_map before site N+1
-    # runs.  This satisfies the parentId requirement for any children at deeper
-    # levels — including the nested-area case where two consecutive entries are
-    # both areas but the second is a child of the first.
-    #
-    # A plain `loop:` on a single task cannot do this because set_fact inside a
-    # loop only takes effect after the ENTIRE loop completes.
-    #
-    # Per-site API calls (tasks/create_or_update_site.yml):
-    #   Site is NEW (not in site_id_map):
-    #     POST /dna/intent/api/v1/areas             (area)
-    #     POST /dna/intent/api/v2/buildings         (building)
-    #     POST /dna/intent/api/v2/floors            (floor)
-    #     GET  /dna/intent/api/v1/sites?nameHierarchy=<path>   ← ID resolution
-    #   Site EXISTS (in site_id_map):
-    #     PUT  /dna/intent/api/v1/areas/{id}        (area)
-    #     PUT  /dna/intent/api/v2/buildings/{id}    (building)
-    #     PUT  /dna/intent/api/v2/floors/{id}       (floor)
-    #
+# ── Phase B: Create / update sites (state=merged, default) ────────────────
+#
+# Processes each site in shallow-first (parent-before-child) order.
+#
+# include_tasks is used instead of a plain loop so that set_fact inside
+# tasks/create_or_update_site.yml updates site_id_map BETWEEN iterations:
+# after site N is created, its UUID is added to site_id_map before site N+1
+# runs.  This satisfies the parentId requirement for any children at deeper
+# levels — including the nested-area case where two consecutive entries are
+# both areas but the second is a child of the first.
+#
+# A plain `loop:` on a single task cannot do this because set_fact inside a
+# loop only takes effect after the ENTIRE loop completes.
+#
+# Per-site API calls (tasks/create_or_update_site.yml):
+#   Site is NEW (not in site_id_map):
+#     POST /dna/intent/api/v1/areas             (area)
+#     POST /dna/intent/api/v2/buildings         (building)
+#     POST /dna/intent/api/v2/floors            (floor)
+#     GET  /dna/intent/api/v1/sites?nameHierarchy=<path>   ← ID resolution
+#   Site EXISTS (in site_id_map):
+#     PUT  /dna/intent/api/v1/areas/{id}        (area)
+#     PUT  /dna/intent/api/v2/buildings/{id}    (building)
+#     PUT  /dna/intent/api/v2/floors/{id}       (floor)
+#
 - name: "Phase B — Reset per-run outcome log"
   ansible.builtin.set_fact:
     site_hierarchy_results: []
@@ -475,20 +475,20 @@
          }}/{{ site_config.site[site_config.site_type].name }}
   when: (state | default('merged')) == 'merged'
 
-    # ── Phase C: Delete sites (state=deleted) ─────────────────────────────────
-    #
-    # Processes sites in deep-first (child-before-parent) order.
-    # CatC rejects deletion of a site that still has children, so the reversed
-    # list (deepest paths first) prevents dependency errors.
-    #
-    # Sites absent from site_id_map (not in CatC) are silently skipped inside
-    # tasks/delete_site.yml via a `when: _exists` guard — safe to re-run.
-    #
-    # Per-site API calls (tasks/delete_site.yml):
-    #   DELETE /dna/intent/api/v1/areas/{id}      (area)
-    #   DELETE /dna/intent/api/v2/buildings/{id}  (building)
-    #   DELETE /dna/intent/api/v2/floors/{id}     (floor)
-    #
+# ── Phase C: Delete sites (state=deleted) ─────────────────────────────────
+#
+# Processes sites in deep-first (child-before-parent) order.
+# CatC rejects deletion of a site that still has children, so the reversed
+# list (deepest paths first) prevents dependency errors.
+#
+# Sites absent from site_id_map (not in CatC) are silently skipped inside
+# tasks/delete_site.yml via a `when: _exists` guard — safe to re-run.
+#
+# Per-site API calls (tasks/delete_site.yml):
+#   DELETE /dna/intent/api/v1/areas/{id}      (area)
+#   DELETE /dna/intent/api/v2/buildings/{id}  (building)
+#   DELETE /dna/intent/api/v2/floors/{id}     (floor)
+#
 - name: "Phase C — Delete sites (children first)"
   ansible.builtin.include_tasks: delete_site.yml
   loop: "{{ site_configs_list | reverse | list }}"

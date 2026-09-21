@@ -42,7 +42,6 @@
 #        → D build payloads → E deploy per device → F poll tasks → G summary
 # ============================================================================
 ---
-
 # ── Step A: Fetch all project templates (including versionsInfo) ────────────
 #
 # GET /dna/intent/api/v1/template-programmer/template?projectNames=<project>
@@ -122,19 +121,17 @@
   #   { 'TEMPLATE-NAME': { 'rootId': '<uuid>', 'versionId': '<uuid>' }, ... }
   # versionId = the versionsInfo entry with the highest versionTime (latest committed).
   # versionsInfo is returned in random order by CatC — sorting is required.
-  set_fact:
+  ansible.builtin.set_fact:
     _template_version_map: >-
-      {%- set ns = namespace(result={}) -%}
-      {%- for tpl in (_template_list_result.json | default([])) -%}
-        {%- set root_id    = tpl.templateId -%}
+      {%- set ns = namespace(result={}) -%} {%- for tpl in (_template_list_result.json | default([])) -%}
+        {%- set root_id = tpl.templateId -%}
         {%- set sorted_versions = tpl.versionsInfo | default([]) | sort(attribute='versionTime', reverse=true) -%}
         {%- set version_id = (sorted_versions | first | default({})).id | default(root_id) -%}
         {%- set ns.result = ns.result | combine({tpl.name: {'rootId': root_id, 'versionId': version_id}}) -%}
-      {%- endfor -%}
-      {{ ns.result }}
+      {%- endfor -%} {{ ns.result }}
 
 - name: "Assert composite template found | {{ deploy_entry.template_name }}"
-  assert:
+  ansible.builtin.assert:
     that: deploy_entry.template_name in _template_version_map
     fail_msg: >-
       Template '{{ deploy_entry.template_name }}' not found in project
@@ -159,14 +156,14 @@
 # templateId in the deploy body must be the latest version UUID while
 # mainTemplateId must be the root UUID - swapping them deploys a stale version.
 - name: "Extract composite template root and version IDs | {{ deploy_entry.template_name }}"
-  set_fact:
-    _composite_raw_id:        "{{ _template_version_map[deploy_entry.template_name].rootId }}"
-    _composite_template_id:   "{{ _template_version_map[deploy_entry.template_name].versionId }}"
-    _composite_main_id:       "{{ _template_version_map[deploy_entry.template_name].rootId }}"
+  ansible.builtin.set_fact:
+    _composite_raw_id: "{{ _template_version_map[deploy_entry.template_name].rootId }}"
+    _composite_template_id: "{{ _template_version_map[deploy_entry.template_name].versionId }}"
+    _composite_main_id: "{{ _template_version_map[deploy_entry.template_name].rootId }}"
 
 - name: "--DEBUG-- Composite template version/root IDs | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     msg:
       - "Composite root ID    : {{ _composite_raw_id }}"
       - "Composite templateId : {{ _composite_template_id }} (latest version by versionTime, used in deploy)"
@@ -218,11 +215,11 @@
 # containingTemplates is only returned by the detail endpoint, never by the
 # list endpoint used in Step A - hence the second API call.
 - name: "Extract member templates list | {{ deploy_entry.template_name }}"
-  set_fact:
+  ansible.builtin.set_fact:
     _member_templates: "{{ _template_detail_result.json.containingTemplates | default([]) }}"
 
 - name: "Assert member templates are defined | {{ deploy_entry.template_name }}"
-  assert:
+  ansible.builtin.assert:
     that: _member_templates | length > 0
     fail_msg: >-
       Composite template '{{ deploy_entry.template_name }}' has no
@@ -231,7 +228,7 @@
 
 - name: "--DEBUG-- Composite template IDs and members | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     msg:
       - "Composite templateId    : {{ _composite_template_id }} (version)"
       - "Composite mainTemplateId: {{ _composite_main_id }} (root)"
@@ -283,7 +280,7 @@
 # falls back to the IP when the device has none, so targetInfo.hostName is
 # never empty.
 - name: "Build IP → { uuid, hostname } map | {{ deploy_entry.template_name }}"
-  set_fact:
+  ansible.builtin.set_fact:
     _device_uuid_map: >-
       {%- set ns = namespace(result={}) -%}
       {%- for r in _device_results.results -%}
@@ -301,17 +298,16 @@
 
 - name: "--DEBUG-- Device UUID map | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     var: _device_uuid_map
 
 - name: "Validate all target IPs resolved to device UUIDs | {{ deploy_entry.template_name }}"
-  assert:
+  ansible.builtin.assert:
     that: item in _device_uuid_map
     fail_msg: >-
       Device with management IP '{{ item }}' was not found in Catalyst Center.
       Ensure the device is discovered and managed before deploying templates.
   loop: "{{ deploy_entry.template_target }}"
-
 
 # ── Step D: Build targetInfo and memberTemplateDeploymentInfo payloads ──────
 #
@@ -371,7 +367,7 @@
 # memberTemplateDeploymentInfo instead. An IP missing from _device_uuid_map is
 # silently dropped, which the preceding assert already prevents.
 - name: "Build top-level targetInfo | {{ deploy_entry.template_name }}"
-  set_fact:
+  ansible.builtin.set_fact:
     _target_info: >-
       {%- set tns = namespace(targets=[]) -%}
       {%- for ip in deploy_entry.template_target -%}
@@ -392,7 +388,7 @@
 
 - name: "--DEBUG-- targetInfo | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     var: _target_info
 
 # ── Step D2: Build memberTemplateDeploymentInfo ─────────────────────────────
@@ -456,7 +452,7 @@
 # which would deploy the uncommitted draft rather than the latest version.
 # A member absent from member_template_params gets params: {}.
 - name: "Build memberTemplateDeploymentInfo | {{ deploy_entry.template_name }}"
-  set_fact:
+  ansible.builtin.set_fact:
     _member_deployment_info: >-
       {%- set ns = namespace(result=[]) -%}
       {%- for member in _member_templates -%}
@@ -493,32 +489,18 @@
 
 - name: "--DEBUG-- memberTemplateDeploymentInfo | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     var: _member_deployment_info
 
 - name: "--DEBUG-- Full deploy payload (first device) | {{ deploy_entry.template_name }}"
   when: (catc_debug | default(false) | bool) and (_device_uuid_map | dict2items | length > 0)
   vars:
     _first_dev: "{{ (_device_uuid_map | dict2items | first).value }}"
-  debug:
+  ansible.builtin.debug:
     msg: >-
-      {{ {
-      'templateId': _composite_template_id,
-      'mainTemplateId': _composite_main_id,
-      'isComposite': true,
-      'forcePushTemplate': true,
-      'copyingConfig': true,
-      'targetInfo': [{
-      'id': _first_dev.uuid,
-      'hostName': _first_dev.hostname,
-      'type': 'MANAGED_DEVICE_UUID',
-      'params': {},
-      'resourceParams': [
-      {'type': 'MANAGED_DEVICE_UUID', 'scope': 'RUNTIME', 'value': _first_dev.uuid}
-      ]
-      }],
-      'memberTemplateDeploymentInfo': _member_deployment_info
-      } | to_nice_json }}
+      {{ {'templateId': _composite_template_id, 'mainTemplateId': _composite_main_id, 'isComposite': true, 'forcePushTemplate': true, 'copyingConfig': true, 'targetInfo':
+      [{'id': _first_dev.uuid, 'hostName': _first_dev.hostname, 'type': 'MANAGED_DEVICE_UUID', 'params': {}, 'resourceParams': [{'type': 'MANAGED_DEVICE_UUID', 'scope':
+      'RUNTIME', 'value': _first_dev.uuid}]}], 'memberTemplateDeploymentInfo': _member_deployment_info} | to_nice_json }}
 
 # ── Step E: Deploy composite template via direct REST API call ───────────────
 #
@@ -543,12 +525,12 @@
 - name: "Deploy composite template | {{ deploy_entry.template_name }}"
   vars:
     _single_target:
-      - id:       "{{ item.value.uuid }}"
+      - id: "{{ item.value.uuid }}"
         hostName: "{{ item.value.hostname }}"
-        type:     "MANAGED_DEVICE_UUID"
-        params:   {}
+        type: "MANAGED_DEVICE_UUID"
+        params: {}
         resourceParams:
-          - type:  "MANAGED_DEVICE_UUID"
+          - type: "MANAGED_DEVICE_UUID"
             scope: "RUNTIME"
             value: "{{ item.value.uuid }}"
     _single_member_info: >-
@@ -569,12 +551,12 @@
     validate_certs: "{{ dnac_verify }}"
     body_format: json
     body:
-      templateId:                   "{{ _composite_template_id }}"
-      mainTemplateId:               "{{ _composite_main_id }}"
-      isComposite:                  true
-      forcePushTemplate:            true
-      copyingConfig:                true
-      targetInfo:                   "{{ _single_target }}"
+      templateId: "{{ _composite_template_id }}"
+      mainTemplateId: "{{ _composite_main_id }}"
+      isComposite: true
+      forcePushTemplate: true
+      copyingConfig: true
+      targetInfo: "{{ _single_target }}"
       memberTemplateDeploymentInfo: "{{ _single_member_info }}"
     status_code: [200, 202]
   loop: "{{ _device_uuid_map | dict2items }}"
@@ -585,7 +567,7 @@
 
 - name: "--DEBUG-- Raw deploy module responses | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     var: _deploy_results
 
 # Example - two devices, one accepted and one rejected
@@ -617,7 +599,7 @@
 - name: "Extract async task IDs from deploy responses | {{ deploy_entry.template_name }}"
   # The v2 deploy API returns { "response": { "taskId": "...", "url": "..." } }.
   # With ansible.builtin.uri the response is under .json (not .dnac_response).
-  set_fact:
+  ansible.builtin.set_fact:
     _deploy_task_ids: >-
       {%- set ns = namespace(ids=[]) -%}
       {%- for r in (_deploy_results.results | default([])) -%}
@@ -630,7 +612,7 @@
 
 - name: "--DEBUG-- Deploy task IDs per device | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     var: _deploy_task_ids
 
 # ── Step F: Poll async task status per device ────────────────────────────────
@@ -656,12 +638,12 @@
     (_task_poll_results.json.response | default({})).endTime is defined
     or (_task_poll_results.json.response | default({})).isError | default(false) | bool
   retries: "{{ task_poll_retries | int }}"
-  delay:   "{{ task_poll_delay   | int }}"
+  delay: "{{ task_poll_delay | int }}"
   ignore_errors: true
 
 - name: "--DEBUG-- Task poll responses (progress/isError/endTime) | {{ deploy_entry.template_name }}"
   when: catc_debug | default(false) | bool
-  debug:
+  ansible.builtin.debug:
     msg: >-
       {%- set member_names = _member_templates | map(attribute='name') | list | join(', ') -%}
       {%- set ns = namespace(out=[]) -%}
@@ -744,7 +726,7 @@
   # NOTE: CatC returns deploymentId only for the parent composite template, not for each member template.
   # The member templates' deployment status must be inferred from the overall task success/failure and the presence of the
   # member template names in the task progress logs.
-  set_fact:
+  ansible.builtin.set_fact:
     _deployment_status_ids: >-
       {%- set ns = namespace(result=[]) -%}
       {%- for r in (_task_poll_results.results | default([])) -%}
@@ -762,7 +744,7 @@
       {{ ns.result }}
 
 - name: "Template Deployment IDs and push results | {{ deploy_entry.template_name }}"
-  debug:
+  ansible.builtin.debug:
     msg: >-
       {%- set ns = namespace(out=[]) -%}
       {%- for d in (_deployment_status_ids | default([])) -%}
@@ -818,35 +800,23 @@
 # a different condition from a per-device push failure - a device can be
 # accepted with 202 and still fail to receive config.
 - name: "Deployment summary - build table | {{ deploy_entry.template_name }}"
-  set_fact:
+  ansible.builtin.set_fact:
     _summary_lines: >-
-      {%- set SEP  = '─' -%}
-      {%- set rows = [] -%}
-      {%- set _ = rows.append(('Template',       deploy_entry.template_name)) -%}
-      {%- set _ = rows.append(('Project',         deploy_entry.project_name)) -%}
-      {%- set _ = rows.append(('Site',            deploy_entry.site)) -%}
-      {%- set _ = rows.append(('Target devices',  deploy_entry.template_target | join(', '))) -%}
-      {%- set any_err = _deploy_results.results | selectattr('failed','equalto',true) | list | length > 0 -%}
-      {%- set _ = rows.append(('API errors',      'YES ✗' if any_err else 'none ✓')) -%}
-      {%- for d in _deployment_status_ids | default([]) -%}
+      {%- set SEP = '─' -%} {%- set rows = [] -%} {%- set _ = rows.append(('Template', deploy_entry.template_name)) -%} {%- set _ = rows.append(('Project', deploy_entry.project_name))
+      -%} {%- set _ = rows.append(('Site', deploy_entry.site)) -%} {%- set _ = rows.append(('Target devices', deploy_entry.template_target | join(', '))) -%} {%-
+      set any_err = _deploy_results.results | selectattr('failed', 'equalto', true) | list | length > 0 -%} {%- set _ = rows.append(('API errors', 'YES ✗' if any_err
+      else 'none ✓')) -%} {%- for d in _deployment_status_ids | default([]) -%}
         {%- set result = '✓ SUCCESS' if d.failureReason | default('') | length == 0 else ('✗ FAILURE  ' + d.failureReason) -%}
         {%- set _ = rows.append((d.ip, result)) -%}
-      {%- endfor -%}
-      {%- set col0w = (rows | map(attribute=0) | map('length') | max) + 2 -%}
-      {%- set col1w = (rows | map(attribute=1) | map('length') | max) + 2 -%}
-      {%- set bar   = '┌' + SEP * (col0w + 2) + '┬' + SEP * (col1w + 2) + '┐' -%}
-      {%- set mid   = '├' + SEP * (col0w + 2) + '┼' + SEP * (col1w + 2) + '┤' -%}
-      {%- set bot   = '└' + SEP * (col0w + 2) + '┴' + SEP * (col1w + 2) + '┘' -%}
-      {%- set ns = namespace(lines=[bar]) -%}
-      {%- for label, value in rows -%}
+      {%- endfor -%} {%- set col0w = (rows | map(attribute=0) | map('length') | max) + 2 -%} {%- set col1w = (rows | map(attribute=1) | map('length') | max) + 2 -%}
+      {%- set bar = '┌' + SEP * (col0w + 2) + '┬' + SEP * (col1w + 2) + '┐' -%} {%- set mid = '├' + SEP * (col0w + 2) + '┼' + SEP * (col1w + 2) + '┤' -%} {%- set
+      bot = '└' + SEP * (col0w + 2) + '┴' + SEP * (col1w + 2) + '┘' -%} {%- set ns = namespace(lines=[bar]) -%} {%- for label, value in rows -%}
         {%- set lpad = label.ljust(col0w) -%}
         {%- set vpad = value.ljust(col1w) -%}
         {%- set _ = ns.lines.append('│ ' + lpad + ' │ ' + vpad + ' │') -%}
         {%- if not loop.last -%}{%- set _ = ns.lines.append(mid) -%}{%- endif -%}
-      {%- endfor -%}
-      {%- set _ = ns.lines.append(bot) -%}
-      {{ ns.lines }}
+      {%- endfor -%} {%- set _ = ns.lines.append(bot) -%} {{ ns.lines }}
 
 - name: "Deployment summary | {{ deploy_entry.template_name }}"
-  debug:
+  ansible.builtin.debug:
     msg: "{{ _summary_lines }}"

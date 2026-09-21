@@ -57,9 +57,10 @@
 # (CatC generates the Flex native VLAN from the AP site, not from Global).
 - name: "Decide whether native VLAN PUT is required  | {{ flex_native.site_name_hierarchy }}"
   ansible.builtin.set_fact:
-    _flex_native_needs_put: "{{ not (_flex_native_get.status == 200 and (_flex_native_body.nativeVlanId | default(-1) | int) == (flex_native.vlan_id | int) and (_flex_native_body.inheritedSiteNameHierarchy | default('')) == flex_native.site_name_hierarchy) }}"
+    _flex_native_needs_put: "{{ not (_flex_native_get.status == 200 and (_flex_native_body.nativeVlanId | default(-1) | int) == (flex_native.vlan_id | int) and (_flex_native_body.inheritedSiteNameHierarchy
+      | default('')) == flex_native.site_name_hierarchy) }}"
 
-- name: "PUT FlexConnect native VLAN {{ flex_native.vlan_id }}  | {{ flex_native.site_name_hierarchy }}"
+- name: "PUT FlexConnect native VLAN | {{ flex_native.site_name_hierarchy }}"
   when: _flex_native_needs_put | bool
   ansible.builtin.uri:
     url: >-
@@ -118,7 +119,7 @@
     status_code: 200
   register: _flex_native_verify
 
-- name: "Assert FlexConnect native VLAN is {{ flex_native.vlan_id }}  | {{ flex_native.site_name_hierarchy }}"
+- name: "Assert FlexConnect native VLAN applied | {{ flex_native.site_name_hierarchy }}"
   vars:
     _verified: "{{ (_flex_native_verify.json | default({})).response | default({}) }}"
   ansible.builtin.assert:

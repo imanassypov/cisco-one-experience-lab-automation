@@ -69,10 +69,8 @@
 - name: "Phase A — Build site_id_map (nameHierarchy → UUID)"
   vars:
     _all_sites: "{{ catc_all_sites.catalystcenter_response.response | default([]) }}"
-    _named_map: "{{ _all_sites | selectattr('nameHierarchy', 'defined') | list
-                     | items2dict(key_name='nameHierarchy', value_name='id') }}"
-    _global_id: "{{ (_all_sites | selectattr('type', 'equalto', 'global')
-                      | map(attribute='id') | list | first) | default('') }}"
+    _named_map: "{{ _all_sites | selectattr('nameHierarchy', 'defined') | list | items2dict(key_name='nameHierarchy', value_name='id') }}"
+    _global_id: "{{ (_all_sites | selectattr('type', 'equalto', 'global') | map(attribute='id') | list | first) | default('') }}"
   ansible.builtin.set_fact:
     site_id_map: "{{ _named_map | combine({'Global': _global_id}) }}"
     _site_id_map: "{{ _named_map | combine({'Global': _global_id}) }}"
