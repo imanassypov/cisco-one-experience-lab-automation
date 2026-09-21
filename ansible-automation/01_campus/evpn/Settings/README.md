@@ -6,6 +6,85 @@
 
 This document describes the structure and purpose of [`settings.json`](settings.json) — the single source of truth that drives the entire BGP EVPN automation lifecycle across Cisco Workflows, Ansible, and Python tooling paths.
 
+## Visual map of the file
+
+`settings.json` is long — roughly 600 lines — but it is **not complicated**. It is the same handful of blocks repeated once per site. This map shows the whole file on one page, so you can find the block you need without scrolling through it.
+
+![Map of settings.json: the file splits into a pod-wide lab block and a project array of four site entries; one entry expands into required, device, wireless and optional key groups, each annotated with the pipeline stage that reads it](images/settings-json-map.png)
+
+> Diagram source: [`images/settings-json-map.mmd`](images/settings-json-map.mmd)
+
+### How to read it
+
+**Left to right is containment.** `settings.json` holds two keys. `project[]` holds one entry per site. One entry — Site-105 is expanded, because it is the only one using every feature — holds the key groups on the right.
+
+**The colour tells you whether you need the block:**
+
+| Colour | Group | Meaning for you |
+| --- | --- | --- |
+| 🟩 Green | **REQUIRED** | Every site entry must have these four. A missing one fails the stage that reads it. |
+| 🟥 Red | **IF DEVICES** | Only for a site that actually has switches or a WLC. DC-Site-11 and Site-106 omit them and are skipped cleanly. |
+| 🟨 Amber | **IF WIRELESS** | Only for a site that owns wireless. In this lab that is DC-Site-10, which holds the WLC even though the APs live at Site-105. |
+| 🟪 Purple | **OPTIONAL** | Extra capabilities. Only Site-105 carries `telemetry` and `swim` today. A site without them simply does not get that feature — it is not an error. |
+
+**The bold number in each block is the pipeline stage that reads it.** That is the single most useful thing on the map: if a stage misbehaves, it tells you which block to inspect. `network_profile` carries two numbers because stage 07 binds the profile and stage 10 acts on `DeployTemplate` / `TemplateTarget`.
+
+**The brown box is not part of this file.** `{POD}`, `{AP1_MAC}` and `{AP2_MAC}` are literal tokens sitting in `settings.json`; they are replaced from the gitignored, per-student [`lab.yml`](../ansible/inventory/group_vars/all/lab.yml.example) when the file is loaded. Never paste a pod number or an AP MAC into `settings.json` — it is shared by every student.
+
+### The three rules that matter
+
+1. **Adding a site = appending one entry to `project[]`.** No tooling changes. The stages loop over the array.
+2. **A block you omit is a feature you do not get** — not a failure. That is how the two placeholder sites coexist with the live ones.
+3. **Order inside the array does not matter**, but the hierarchy path in each entry must already resolve. Stage 01 creates the area, building and floor under `HierarchyParent`; the state-level areas must pre-exist in Catalyst Center.
+
+### "I need to change X — which key?"
+
+| You want to change | Edit this block | Re-run |
+| --- | --- | --- |
+| DNS, DHCP, NTP, syslog, banner | `network_settings` | stage 02 |
+| A CLI or SNMP credential | `device_credentials` (+ `assign_credentials`) | stage 03 |
+| Which devices are discovered | `device_list` **and** `discovery.ip_address_list` | stages 04, 05 |
+| Which template is pushed to the fabric | `network_profile.DayNTemplateNames` | stages 07, 10 |
+| The SSID name | **three places must agree** — `wireless_design.ssids[].ssid_name`, `wireless_profile.ssid_details[].ssid_name` and `lab.wireless_ssid` | stage 07 pushes the first two; stage 12 verifies against `lab.wireless_ssid` |
+| Which APs are provisioned | `access_points` | stages 08, 11 |
+| Where telemetry is sent | `telemetry.splunk.receiver_ip` | stage 06, then 10 |
+| The IOS-XE image the fabric runs | `swim.image_file` / `image_version` | stage 09 |
+
+### Mistakes this file invites
+
+| Mistake | What you see | Why |
+| --- | --- | --- |
+| Making `device_list` a JSON array | Discovery targets nothing | It is a **comma-separated string**, unlike almost everything else here |
+| Editing `device_list` but not `discovery.ip_address_list` | Device discovered but never assigned, or vice versa | They are two independent keys that must agree |
+| Putting a real pod number in `wireless_ssid` | Another student's SSID is overwritten on the shared WLC | The `{POD}` token exists precisely to prevent this |
+| Changing the SSID in only one of its three places | Stage 07 pushes it, stage 12 then reports a mismatch | `lab.wireless_ssid` is the value stage 12 checks against; the wireless blocks are what stage 07 actually pushes |
+| Filling `access_points[].mac_address` by hand | `not found among the Unified AP devices` | Stage 11 writes the MACs into `lab.yml` for you, and it needs the **Ethernet** MAC, not the radio MAC |
+| Adding `telemetry` to a site with no fabric templates | Nothing renders | The block only has an effect where `DEFN-TELEMETRY-SPLUNK.j2` is synced |
+
+### Regenerating the diagram
+
+Edit the `.mmd` source, then re-export and enforce the GitHub image limits (≤ 4000 px on the longest side, ≤ 1.2 MB):
+
+```bash
+cd ansible-automation/01_campus/evpn/Settings/images
+mmdc -i settings-json-map.mmd -o settings-json-map.png --scale 2
+/usr/bin/sips -Z 4000 settings-json-map.png --out settings-json-map.png
+/usr/bin/sips -g pixelWidth -g pixelHeight settings-json-map.png
+ls -lh settings-json-map.png
+```
+
+If `mmdc` reports `Could not find Chrome`, install one and point puppeteer at it:
+
+```bash
+npx --yes puppeteer browsers install chrome
+printf '{"executablePath":"%s"}' "$HOME/.cache/puppeteer/chrome/<build>/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" > /tmp/puppeteer-config.json
+mmdc -i settings-json-map.mmd -o settings-json-map.png --scale 2 -p /tmp/puppeteer-config.json
+```
+
+> Mermaid under-measures short labels on filled nodes and clips the last character, which is why the four group headers are padded with `&nbsp;`. Keep the padding if you rename them.
+
+Commit the `.mmd` and the `.png` together.
+
 ## PseudoCo lab mapping
 
 This repo’s `settings.json` is mapped to the **live** Catalyst Center hierarchy (not the vendored CML `Global/PODS` fabric):
@@ -36,10 +115,11 @@ A project with no `telemetry` block renders no subscriptions, which is why only 
 
 ## Table of Contents
 
-1. [Purpose](#purpose)
-2. [Design Principle — Repeating Project Array](#design-principle--repeating-project-array)
-3. [Top-Level Structure](#top-level-structure)
-4. [Field Reference](#field-reference)
+1. [Visual map of the file](#visual-map-of-the-file)
+2. [Purpose](#purpose)
+3. [Design Principle — Repeating Project Array](#design-principle--repeating-project-array)
+4. [Top-Level Structure](#top-level-structure)
+5. [Field Reference](#field-reference)
    - [Lab](#lab)
    - [Site Hierarchy Fields](#site-hierarchy-fields)
    - [Network Settings](#network-settings)
@@ -51,10 +131,10 @@ A project with no `telemetry` block renders no subscriptions, which is why only 
    - [Wireless Controller](#wireless-controller)
    - [Wireless Design](#wireless-design)
    - [Access Points](#access-points)
-5. [How the Tooling Consumes This File](#how-the-tooling-consumes-this-file)
-6. [Adding a New Site](#adding-a-new-site)
-7. [Field Null Handling](#field-null-handling)
-8. [Full Example](#full-example)
+6. [How the Tooling Consumes This File](#how-the-tooling-consumes-this-file)
+7. [Adding a New Site](#adding-a-new-site)
+8. [Field Null Handling](#field-null-handling)
+9. [Full Example](#full-example)
 
 ---
 

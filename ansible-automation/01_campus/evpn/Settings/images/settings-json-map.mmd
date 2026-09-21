@@ -1,0 +1,89 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontSize: 16px
+    fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif"
+    lineColor: "#5f6368"
+  flowchart:
+    curve: linear
+    nodeSpacing: 26
+    rankSpacing: 60
+---
+flowchart LR
+
+  ROOT["<b>settings.json</b><br/><span style='font-size:13px'>the single source of truth<br/>for the whole pipeline</span>"]
+
+%% ── Top level ───────────────────────────────────────────────────────────────
+  LAB["<b>lab</b><br/><span style='font-size:13px'>pod-wide — applies to every site</span>"]
+  PROJ["<b>project[ ]</b><br/><span style='font-size:13px'>an ARRAY — one entry per site<br/>adding a site = appending an entry</span>"]
+
+  ROOT --> LAB
+  ROOT --> PROJ
+
+  LAB --> LAB1["wireless_ssid<br/><span style='font-size:13px'>carries the POD token</span>"]
+
+%% ── The four entries that exist today ──────────────────────────────────────
+  PROJ --> E1["<b>[0] DC-Site-10</b> · San Jose<br/><span style='font-size:13px'>WLC 198.18.5.103 — owns all wireless</span>"]
+  PROJ --> E2["<b>[1] DC-Site-11</b> · New York<br/><span style='font-size:13px'>placeholder — no devices</span>"]
+  PROJ --> E3["<b>[2] Site-105</b> · Durham<br/><span style='font-size:13px'>the EVPN fabric — 3 switches</span>"]
+  PROJ --> E4["<b>[3] Site-106</b> · Richardson<br/><span style='font-size:13px'>placeholder — no devices</span>"]
+
+%% ── Anatomy of one entry ───────────────────────────────────────────────────
+  E3 --> ANAT["<b>Keys inside ONE entry</b><br/><span style='font-size:13px'>the bold number is the stage that reads it</span>"]
+
+  ANAT --> GOPT["&nbsp;&nbsp;OPTIONAL&nbsp;&nbsp;"]
+  ANAT --> GWIFI["&nbsp;&nbsp;IF WIRELESS&nbsp;&nbsp;"]
+  ANAT --> GDEV["&nbsp;&nbsp;IF DEVICES&nbsp;&nbsp;"]
+  ANAT --> GREQ["&nbsp;&nbsp;REQUIRED&nbsp;&nbsp;"]
+
+  GOPT --> K11["<b>telemetry.splunk</b><br/><span style='font-size:13px'>enabled · receiver_ip · receiver_port · roles<br/>fills the TELEMETRY placeholders in the templates</span><br/><b>stage 06</b> + 07_assurance"]
+  GOPT --> K12["<b>swim</b><br/><span style='font-size:13px'>image_file · image_base_url · image_version<br/>golden-tag family + upgrade targets</span><br/><b>stage 09</b>"]
+
+  GWIFI --> K7["<b>wireless_design</b><br/><span style='font-size:13px'>interfaces · ssids · flex_connect</span><br/><b>stage 07</b>"]
+  GWIFI --> K8["<b>wireless_profile</b><br/><span style='font-size:13px'>profile_name · ssid_details · site_names</span><br/><b>stage 07</b>"]
+  GWIFI --> K9["<b>wireless_controller</b><br/><span style='font-size:13px'>managed_ap_locations · skip_ap_provision</span><br/><b>stage 08</b>"]
+  GWIFI --> K10["<b>access_points</b><br/><span style='font-size:13px'>mac_address carries AP1_MAC / AP2_MAC</span><br/><b>stages 08 · 11</b>"]
+
+  GDEV --> K5["<b>device_list</b><br/><span style='font-size:13px'>comma-separated mgmt IPs<br/>a STRING, not a list</span><br/><b>stages 04 · 05 · 08</b>"]
+  GDEV --> K6["<b>discovery</b><br/><span style='font-size:13px'>range · protocol_order · retry · timeout<br/>preferred_mgmt_ip_method</span><br/><b>stage 04</b>"]
+
+  GREQ --> K1["<b>Hierarchy*</b> — 8 keys<br/><span style='font-size:13px'>Parent · Area · Bldg · Floor<br/>Address · Lat · Long · Country</span><br/><b>stage 01</b>"]
+  GREQ --> K2["<b>network_settings</b><br/><span style='font-size:13px'>dhcp · dns · ntp · timezone · banner<br/>snmp · syslog · netflow · aaa</span><br/><b>stage 02</b>"]
+  GREQ --> K3["<b>device_credentials</b> + <b>assign_credentials</b><br/><span style='font-size:13px'>cli · snmp_v2c r/w · https r/w · netconf<br/>bound to a site_name list</span><br/><b>stage 03</b>"]
+  GREQ --> K4["<b>network_profile</b><br/><span style='font-size:13px'>profile_name<br/>DayNTemplateNames · Day0TemplateNames</span><br/><b>stage 07</b>, then <b>stage 10</b>"]
+
+%% ── Tokens are filled from outside the file ────────────────────────────────
+  POD["<b>lab.yml</b> — per-student, gitignored<br/><span style='font-size:13px'>lab_pod_id → POD<br/>lab_ap_macs → AP1_MAC · AP2_MAC</span><br/><i>substituted when settings.json is loaded</i>"]
+  POD -.-> LAB1
+  POD -.-> K10
+
+  classDef root fill:#0b5394,stroke:#073763,color:#ffffff,stroke-width:2px
+  classDef top fill:#1a73e8,stroke:#0b5394,color:#ffffff
+  classDef entry fill:#e8f0fe,stroke:#4285f4,color:#0b2a5b
+  classDef live fill:#cfe2ff,stroke:#1a73e8,color:#0b2a5b,stroke-width:3px
+  classDef anat fill:#ffffff,stroke:#202124,color:#202124,stroke-width:2px
+  classDef hreq fill:#137333,stroke:#0b3d1c,color:#ffffff,stroke-width:2px
+  classDef hdev fill:#b31412,stroke:#5c1410,color:#ffffff,stroke-width:2px
+  classDef hwifi fill:#b06000,stroke:#4d3800,color:#ffffff,stroke-width:2px
+  classDef hopt fill:#7627bb,stroke:#3d1a5c,color:#ffffff,stroke-width:2px
+  classDef req fill:#e6f4ea,stroke:#137333,color:#0b3d1c
+  classDef dev fill:#fce8e6,stroke:#d93025,color:#5c1410
+  classDef wifi fill:#fef7e0,stroke:#f9ab00,color:#4d3800
+  classDef opt fill:#f3e8fd,stroke:#a142f4,color:#3d1a5c
+  classDef pod fill:#7f6000,stroke:#5c4500,color:#ffffff
+
+  class ROOT root
+  class LAB,PROJ top
+  class LAB1,E1,E2,E4 entry
+  class E3 live
+  class ANAT anat
+  class GREQ hreq
+  class GDEV hdev
+  class GWIFI hwifi
+  class GOPT hopt
+  class K1,K2,K3,K4 req
+  class K5,K6 dev
+  class K7,K8,K9,K10 wifi
+  class K11,K12 opt
+  class POD pod
