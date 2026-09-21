@@ -1,67 +1,340 @@
 # Campus EVPN automation — student lab guide
 
 This Ansible project builds the PseudoCo campus EVPN/VXLAN lab through
-Catalyst Center. Ansible does not directly configure the switches during
-stages 01–08. Instead, it creates the design objects Catalyst Center needs,
-discovers and provisions the devices, and asks Catalyst Center to render the
-fabric configuration from Jinja templates.
+Catalyst Center. Ansible never configures a switch directly. Instead, it
+creates the design objects Catalyst Center needs, discovers and provisions the
+devices, and asks Catalyst Center to render the fabric configuration from Jinja
+templates.
 
-Run the playbooks in numerical order:
+**First time here?** Work through [Before you begin](#before-you-begin) in
+order — it takes about 25 minutes — then run the stages in
+[Pipeline order](#pipeline-order), one at a time.
 
-1. Create or confirm the site hierarchy.
-2. Apply site network settings.
-3. Create and assign device credentials.
-4. Discover the WLC and campus switches.
-5. Assign discovered devices to sites.
-6. Sync EVPN Jinja into a Catalyst Center CLI project (local folder or GitHub).
-7. Create switching and wireless network profiles.
-8. Provision the switches and WLC. Leave `lab_ap_macs` empty — no AP is in
-   Catalyst Center inventory yet.
-9. Deploy the EVPN composite. That programs the AP-facing leaf ports so an
-   AP can join the WLC and appear as a Unified AP in Inventory.
-10. SSH to the switches and collect read-only verification evidence.
-11. Wait for the AP to reach Catalyst Center, record its Ethernet MAC in
-    `lab_ap_macs`, then name it, assign it to Site-105 and provision it — all
-    in `11_await_access_points.yml`.
+## Contents
 
-Stages 01–09 use the Catalyst Center API. Stage 12 is the only playbook that
-logs in to the switches.
+| Section | What it covers |
+| --- | --- |
+| [Before you begin](#before-you-begin) | First-run setup, steps 1–7. Do this once per pod |
+| [Pipeline order](#pipeline-order) | What each stage does, and the order to run them |
+| [What supplies the data](#what-supplies-the-data) | Where the pipeline reads its intent from |
+| [Safety labels](#safety-labels) | How disruptive each stage is |
+| Stages [01](#stage-01--site-hierarchy) · [02](#stage-02--network-settings) · [03](#stage-03--device-credentials) · [04](#stage-04--device-discovery) · [05](#stage-05--assign-devices-to-sites) · [06](#stage-06--synchronize-evpn-templates) · [07](#stage-07--network-profiles-and-wireless-design) · [08](#stage-08--provision-devices) · [09](#stage-09--software-image-management-swim) · [10](#stage-10--deploy-the-evpn-composite) · [11](#stage-11--provision-the-access-points) · [12](#stage-12--verify-intent-against-the-fabric) | Per-stage reference: what it does, what it reads, expected output, where to verify |
+| [Full orchestrator](#full-orchestrator) | Running the stages back to back |
+| [Collections](#collections) | Pinned Cisco collections, and version traps |
+| [Troubleshooting](#troubleshooting) | Symptom → cause → fix |
+| [Reference — where everything lives](#reference--where-everything-lives) | The file tree on the script server |
+
+---
 
 ## Before you begin
 
-Complete [GETTING_STARTED.md](GETTING_STARTED.md) first. In particular:
+Do this once per pod. At the end you will be able to run stage 01.
 
-- Connect your laptop to the dCloud VPN, then `ssh cisco@198.18.134.12`.
-- Clone this repository onto the script server and run collection
-  `00_scriptserver_bootstrap` there. `stage-script-server.sh` installs the base
-  packages and `~/venv`; `01_bootstrap_script_server.yml` adds Cisco
-  collections, SDKs, Genie/pyATS, and lab DNS.
-- Create the repo-root `.vault` on the script server. Everything below runs on
-  that host, from that checkout.
-- Set `lab_pod_id` in `inventory/group_vars/all/lab.yml`. The bootstrap seeds
-  that file from `lab.yml.example` with `REPLACE_ME`; stages that load
-  `settings.json` stop until you replace it. The file is gitignored, so your
-  values survive later pulls. Leave `lab_ap_macs: []` until **after** stage 10. Stage 08
-  provision does not program AP ports. The composite does (`Gi1/0/2` trunk,
-  native VLAN 10). Until that CLI is on the leaves, the AP cannot DHCP or
-  CAPWAP-join, so Catalyst Center has no Unified AP to provision. You do not
-  fill `lab_ap_macs` by hand: run `11_await_access_points.yml` after stage 10
-  and it waits for the AP to reach Catalyst Center, writes the Ethernet MAC
-  into `lab.yml`, then names, site-assigns and provisions the AP.
-- Run every command from this directory so Ansible finds `ansible.cfg`:
+### Where things run
+
+| Machine | Role |
+|---------|------|
+| Your **laptop** | Runs the dCloud VPN client and an SSH session. **Nothing is installed on it.** |
+| The **Kali script server** at `198.18.134.12` | You clone the repo here and run everything here. It is the host with reachability to Catalyst Center (`cat-center.corp.pseudoco.com`) and to the Site-105 switches. |
+
+| Step | What it does | Time |
+|------|--------------|------|
+| [1](#step-1--connect-the-dcloud-vpn-and-ssh-in) | Connect the dCloud VPN and SSH to the script server | 2 min |
+| [2](#step-2--clone-the-repository-onto-the-script-server) | Clone the repo onto the script server | 2 min |
+| [3](#step-3--stage-the-box-and-create-vault) | Stage the box and create `.vault` | 5 min |
+| [4](#step-4--bootstrap-the-script-server) | Bootstrap the script server | ~10 min |
+| [5](#step-5--confirm-path-and-working-directory) | Confirm `PATH` and the working directory | 1 min |
+| [6](#step-6--confirm-your-pod-number) | Confirm your POD number | 2 min |
+| [7](#step-7--verify-the-inventory-then-run-stage-01) | Verify the inventory, then run stage 01 | 5 min |
+
+### What you need
+
+- An active dCloud session for the **PseudoCo / Cisco One** lab, powered on.
+- **Cisco Secure Client / AnyConnect** credentials for that session.
+- An SSH client. Nothing else is needed on your laptop.
+- The **lab vault password** — a single passphrase that decrypts every
+  credential in this repo. Ask a proctor if you do not have it.
+
+> **Never commit credentials.** All secrets live in one encrypted file,
+> `Lab Topology/lab_access.yml`, and the passphrase that opens it lives in
+> `.vault` at the repository root, which is gitignored. You never paste a
+> password into a playbook, an inventory file, or `settings.json`.
+
+### Step 1 — Connect the dCloud VPN and SSH in
+
+Nothing in this lab is reachable without the VPN. Connect Cisco Secure Client
+to the session, then confirm the script server answers:
+
+```bash
+nc -z -G 5 198.18.134.12 22 && echo reachable
+```
+
+If that hangs or fails, the VPN is down or the pod is still booting. Lab VMs can
+take several minutes after a session starts before SSH comes up.
+
+Then connect. **Everything from here happens in this SSH session:**
+
+```bash
+ssh cisco@198.18.134.12
+```
+
+### Step 2 — Clone the repository onto the script server
+
+```bash
+git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+cd cisco-one-experience-lab-automation
+```
+
+The rest of this guide assumes the checkout is at
+`~/cisco-one-experience-lab-automation`, but that is only a convention — every
+path is derived from where the playbooks live, so any directory works.
+
+### Step 3 — Stage the box and create `.vault`
+
+You cannot run `ansible-playbook` to install Ansible, so a small shell script
+does the minimum first: base packages and a virtualenv at `~/venv` holding the
+pinned `ansible-core`, `paramiko`, `netaddr`, and both Catalyst Center SDKs.
+
+```bash
+cd ansible-automation/00_scriptserver_bootstrap
+./stage-script-server.sh
+```
+
+`sudo` will prompt for the `cisco` account password. The script is idempotent,
+and it refuses to run anywhere other than Linux — if you run it on your laptop
+by mistake it tells you the SSH command you actually wanted.
+
+It also prompts once for your **dCloud POD number**, from your lab printout,
+and writes it into `lab.yml`. That is the only lab value you have to supply.
+Pod 7 becomes SSID `PSEUDOCO-POD07` — the zero padding matters, because the
+SSID must match a pre-configured group policy on the shared WLC. To skip the
+prompt on a re-run: `LAB_POD_ID=7 ./stage-script-server.sh`.
+
+The script writes `.vault` for you as well. It holds the **passphrase**, one
+bare line, no quotes, and it is gitignored so a fresh clone never has one.
+
+Creating it by hand instead: `cp .vault.example .vault`, then replace the single
+placeholder line with the passphrase. The file must contain nothing else —
+Ansible reads the whole file and strips it, so a stray comment line becomes part
+of the passphrase and every playbook fails with `Decryption failed`.
+
+Confirm it opens the credential map:
+
+```bash
+cd ~/cisco-one-experience-lab-automation
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
+# ---
+# # Vault-encrypted lab access lookup. Single credential source for all playbooks.
+# lab_access:
+#   "script_server":
+```
+
+If that prints YAML, every playbook in the repo can authenticate. The
+`--vault-password-file` flag is needed here only because the repository root has
+no `ansible.cfg`; inside a collection directory the config supplies it.
+
+> **Two files, two jobs.** `.vault` is the passphrase; `Lab Topology/lab_access.yml`
+> is the encrypted `lab_access` map of hosts, usernames, and passwords. A vars
+> plugin at `ansible-automation/plugins/vars/lab_access.py` decrypts the map and
+> injects `lab_access` into every play, which is why no playbook takes a
+> password prompt.
+
+> **Be clear-eyed about what this vault protects: nothing.** The encrypted map
+> is committed *and* the passphrase is in `stage-script-server.sh`, so anyone
+> with the repository can read every lab credential. That is a deliberate trade
+> for a disposable pod whose credentials are already public demo values. In a
+> real environment the passphrase never lives in the repository — use a unique
+> one per environment from a secret store, via `VAULT_PASSPHRASE=...`.
+
+### Step 4 — Bootstrap the script server
+
+Run the two bootstrap playbooks from `00_scriptserver_bootstrap/`. Both target
+this host over a **local** connection — there is no SSH hop and no remote
+credentials.
+
+Call them by full path. `~/venv/bin` is not on your `PATH` yet — putting it
+there is one of the things `01` does, which is the usual chicken-and-egg of
+bootstrapping.
+
+```bash
+cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
+```
+
+> If your shell says `ansible-playbook: command not found` and apt offers to
+> install `ansible-core`, answer **no**. That would install an unpinned Ansible
+> outside the venv, at a different version from every other student. Use the
+> full path above, or `source ~/venv/bin/activate` first.
+
+| Playbook | What it does |
+|----------|--------------|
+| `00_preflight.yml` | Read-only. Confirms you are on Linux, the checkout is complete, `.vault` decrypts, and `sudo` works |
+| `01_bootstrap_script_server.yml` | Lab DNS, OS packages, the `~/venv` pins including Genie/pyATS, venv binaries on `PATH`, pinned Cisco collections and SDKs, and seeds `lab.yml` |
+| `02_sync_from_git.yml` | Fast-forwards this checkout later, to pick up lab fixes published after you cloned |
+
+All three are safe to re-run. Preflight is worth running first every time: it
+proves the passphrase before anything is changed, so a wrong `.vault` fails with
+a readable message instead of an opaque decrypt error part-way through.
+
+Lab DNS matters: `01` puts `198.18.5.102` first in `/etc/resolv.conf` (dCloud
+`198.18.128.1` as fallback) so `cat-center.corp.pseudoco.com` resolves. Without
+it, every Catalyst Center stage fails on name resolution.
+
+> `02_sync_from_git.yml` fails if the tree has local modifications rather than
+> discarding them. Commit or revert your changes, then re-run it.
+
+### Step 5 — Confirm PATH and working directory
+
+Open a fresh shell (or log out and back in). `01` put the venv binaries on
+`PATH` for both bash and zsh, so Ansible works without activating anything:
+
+```bash
+ansible-playbook --version
+```
+
+If that fails, `source ~/venv/bin/activate` still works as a fallback.
+
+> **Working directory rule — read this once, remember it forever.**
+> Ansible only reads `ansible.cfg` from the **current** directory, and that file
+> is what points at the inventory, the roles, the vars plugin, and `.vault`. Every
+> `ansible`, `ansible-playbook`, `ansible-inventory`, and `ansible-vault` command
+> for this pipeline runs from:
+>
+> ```bash
+> cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+> ```
+>
+> Run them from anywhere else and you get a missing inventory, unresolved vault
+> passwords, and interactive password prompts.
+
+### Step 6 — Confirm your POD number
+
+Every student runs the same repo against a different pod, so the values that
+differ live in one file: `inventory/group_vars/all/lab.yml`. `settings.json`
+carries `{POD}` and `{APn_MAC}` placeholders that are filled in from it at run
+time.
+
+`stage-script-server.sh` already created this file and wrote the pod number it
+prompted you for in Step 3, so there is normally **nothing to do here**. Confirm
+it:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+grep lab_pod_id inventory/group_vars/all/lab.yml
 ```
 
-Confirm the inventory before making changes:
+Edit it only if you entered the wrong pod, or when you come back to add AP MACs:
+
+```bash
+vi inventory/group_vars/all/lab.yml
+```
+
+| Variable | Value |
+|----------|-------|
+| `lab_pod_id` | Your dCloud POD number from the lab printout (integer), set for you in Step 3. Stages 01–05 and 07–09 **fail** while it is `REPLACE_ME`, so a skipped value cannot push another student's SSID (`PSEUDOCO-PODnn`) onto the shared WLC. Zero-padded to two digits at run time, so pod 7 yields `PSEUDOCO-POD07`. The pod is **only** that SSID — not switch IPs or site paths. |
+| `lab_ap_macs` | Leave `[]` until **after** stage 10 — and then let the automation fill it. The composite programs the AP trunk (`Gi1/0/2`, native VLAN 10); until then the AP cannot join the WLC and Catalyst Center has no Unified AP. Once stage 10 is done, run `11_await_access_points.yml`: it waits for the AP to reach Catalyst Center, writes the **Ethernet** MAC into this file, then names the AP, assigns it to Site-105 and provisions it. Fill it by hand only if you prefer — colon-separated, Ethernet MAC not Base Radio MAC. |
+
+To try a different pod for one run without editing the file:
+
+```bash
+ansible-playbook playbooks/07_network_profile.yml -e lab_pod_id=7
+```
+
+> `lab.yml` is **gitignored**, so your pod values survive every later `git pull`
+> and the bootstrap can keep updating the checkout. It is seeded from the
+> tracked `lab.yml.example` and never overwritten after. It holds no secrets —
+> a pod number and AP MACs only.
+>
+> If `lab.yml` is missing, re-run `./stage-script-server.sh`, or copy it back:
+>
+> ```bash
+> cp inventory/group_vars/all/lab.yml.example inventory/group_vars/all/lab.yml
+> ```
+
+### Step 7 — Verify the inventory, then run stage 01
+
+Still on Kali, from the `ansible/` directory, check the inventory resolves.
+
+`ansible-inventory` is a **read-only** inspector. It does not SSH to switches
+or call Catalyst Center. It loads the same files `ansible-playbook` will use,
+then prints the host/group tree.
+
+That `ansible.cfg` points at:
+
+| Setting | File | What the student sees |
+|---------|------|------------------------|
+| `inventory` | `inventory/static_inventory.yml` | Groups and hostnames (`catalyst_center_api`, the three `Site_105-*` switches) and their `ansible_host` IPs |
+| `vault_password_file` | repo-root `.vault` | Unlocks `Lab Topology/lab_access.yml` |
+| `vars_plugins` | `ansible-automation/plugins/vars/lab_access.py` | Injects `lab_access` so each switch can resolve `ansible_user` / `ansible_password` |
+
+`--graph` prints **names and groups only**. It does not print IPs or passwords.
+Empty `@ungrouped` is normal — Ansible always creates that group.
 
 ```bash
 ansible-inventory --graph
 ```
 
-You should see `catalyst_center_api` and the three Site 105 switches. The empty
-`@ungrouped` group is normal.
+You should see:
+
+```
+@all:
+  |--@ungrouped:
+  |--@catalyst_center:
+  |  |--catalyst_center_api
+```
+
+`catalyst_center` is `localhost` driving the Catalyst Center REST API, and it is
+the target of every stage. There are no device hosts: even stage 12 collects
+switch and controller CLI through Catalyst Center Command Runner rather than
+over SSH, so the control node never needs to reach `198.18.128.22–24`.
+
+Then run the first stage:
+
+```bash
+ansible-playbook playbooks/01_site_hierarchy.yml
+```
+
+dCloud Catalyst Center already has this hierarchy, so a successful first run
+reports `Created 0, updated 0, skipped 16` and recap `changed=0`. That is the
+expected result, not a no-op failure — see
+[Stage 01 expected output](#important-expected-output).
+
+---
+
+## Pipeline order
+
+Run the playbooks in numerical order. The list number **is** the stage number:
+
+01. Create or confirm the site hierarchy.
+02. Apply site network settings.
+03. Create and assign device credentials.
+04. Discover the WLC and campus switches.
+05. Assign discovered devices to sites.
+06. Sync EVPN Jinja into a Catalyst Center CLI project (local folder or GitHub).
+07. Create switching and wireless network profiles.
+08. Provision the switches and WLC. Leave `lab_ap_macs` empty — no AP is in
+    Catalyst Center inventory yet.
+09. **Optional — SWIM.** Upgrade the Site-105 switches to the image named in
+    `settings.json`. It runs before the composite so the fabric is already on
+    its intended image when EVPN configuration lands. **It reloads the
+    switches.** Skip it with `-e swim_activate=false`, or leave the stage out
+    entirely. It requires the `.bin` files to be staged on the script server
+    first — see [Stage 09](#stage-09--software-image-management-swim).
+10. Deploy the EVPN composite. That programs the AP-facing leaf ports so an
+    AP can join the WLC and appear as a Unified AP in Inventory.
+11. Wait for the AP to reach Catalyst Center, record its Ethernet MAC in
+    `lab_ap_macs`, then name it, assign it to Site-105 and provision it — all
+    in `11_await_access_points.yml`.
+12. Collect read-only verification evidence and compare it against intent.
+
+**Run them one at a time the first time through**, reading each result before
+starting the next. A failure is far easier to diagnose when it belongs to a
+single stage.
+
+Every stage talks to the Catalyst Center API; none of them SSH to a switch.
+Stage 12 reads device CLI through Catalyst Center **Command Runner**, so the
+script server never needs reachability to `198.18.128.22–24`.
 
 ## What supplies the data
 
@@ -1140,8 +1413,9 @@ safety gates.
 | Field | Purpose |
 | --- | --- |
 | `enabled` | Projects without this set to `true` are skipped entirely |
-| `import_source` | `CCO` — Catalyst Center downloads from cisco.com |
-| `image_file` | Image name exactly as published on cisco.com |
+| `import_source` | `remote` — Catalyst Center pulls the `.bin` over HTTP from the script server. **This is the working path in this pod.** `CCO` (download from cisco.com) is supported by the role but is refused by this Catalyst Center — see the box below |
+| `image_base_url` | Where the `.bin` is served, e.g. `http://198.18.134.12:8080`. Used only when `import_source` is `remote` |
+| `image_file` | Image filename, matching the `.bin` staged on the script server |
 | `image_version` | Recorded in evidence; not sent to the API |
 | `rollback_image_file` | Recovery target, imported up front alongside the upgrade |
 | `site_name` | Full hierarchy path, e.g. `Global/NORTH CAROLINA/Durham/Site-105/MAIN` |
@@ -1164,16 +1438,16 @@ safety gates.
 
 | Phase | Tag | Effect |
 | --- | --- | --- |
-| 11.1 preflight | `swim_preflight` | Resync inventory, baseline IMAGE compliance — read-only |
-| 11.2 import_and_tag | `swim_import` | Pull from CCO, mark golden — Catalyst Center only |
-| 11.3 distribute | `swim_distribute` | Copy into device flash — **no reload** |
-| 11.4 activate | `swim_activate` | Reload onto the new image — **disruptive** |
-| 11.5 postcheck | `swim_postcheck` | IMAGE compliance after activation — read-only |
-| 11.6 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
+| 09.1 preflight | `swim_preflight` | Resync inventory, baseline IMAGE compliance — read-only |
+| 09.2 import_and_tag | `swim_import` | Pull the image into the repository, mark golden — Catalyst Center only |
+| 09.3 distribute | `swim_distribute` | Copy into device flash — **no reload** |
+| 09.4 activate | `swim_activate` | Reload onto the new image — **disruptive** |
+| 09.5 postcheck | `swim_postcheck` | IMAGE compliance after activation — read-only |
+| 09.6 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
 
-A default run executes 11.1–11.5, **including the reload in 11.4**, so a single
+A default run executes 09.1–09.5, **including the reload in 09.4**, so a single
 command performs the whole upgrade. Add `-e swim_activate=false` to stop after
-11.3: the image lands in flash, the devices keep running their current version,
+09.3: the image lands in flash, the devices keep running their current version,
 and the fabric is untouched — the safe business-hours run.
 
 > 🛑 **Stage 09 reloads the fabric by default.** Unlike stage 12, this stage is
@@ -1181,16 +1455,52 @@ and the fabric is untouched — the safe business-hours run.
 > overlay drops for the length of the reload. Use `-e swim_activate=false` when
 > you only mean to stage the image.
 
-The resync in 11.1 is not ceremony: every later phase targets devices by
+The resync in 09.1 is not ceremony: every later phase targets devices by
 `site_name` + family + series + role, and those fields come from the Catalyst
 Center inventory record. A stale record silently narrows the target set, which
 only surfaces as a failure much later in distribute.
 
 ### Prerequisites
 
-CCO import needs Cisco.com credentials configured in Catalyst Center under
-**System > Settings > Cisco.com Credentials**. Without them the import fails
-with a credentials error rather than a not-found.
+**The image files are not in git, so this stage does nothing until you stage
+them yourself.** They are hundreds of MB and GitHub rejects anything over
+100 MB, so they are provided the same way `.vault` and `lab.yml` are.
+
+1. Copy both `.bin` files into `iosxe_images/` at the **repository root** on the
+   script server — the upgrade image and the rollback image named in
+   `settings.json`:
+
+   ```text
+   iosxe_images/cat9k_iosxe.26.01.02.SPA.bin   # swim.image_file
+   iosxe_images/cat9k_iosxe.17.12.08.SPA.bin   # swim.rollback_image_file
+   ```
+
+2. Re-run the bootstrap image-server phase to publish them over HTTP:
+
+   ```bash
+   cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+   ansible-playbook playbooks/01_bootstrap_script_server.yml --tags image_server
+   ```
+
+3. Confirm Catalyst Center can fetch what it is about to be pointed at:
+
+   ```bash
+   curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
+   # HTTP/1.1 200 OK
+   ```
+
+The filenames must match `swim.image_file` and `swim.rollback_image_file` in
+`settings.json` exactly, and `swim.image_base_url` must match the URL above.
+
+> **Why the images are served locally rather than pulled from cisco.com.**
+> CCO import is broken in this pod. Catalyst Center refuses every image with
+> NCSW10375 *“not the latest or suggested image from cisco”* — including builds
+> its own catalogue flags `ciscoLatest` / `recommended=CISCO` — and
+> software.cisco.com answers HTTP 403 from here. Serving the `.bin` from the
+> script server bypasses the CCO catalogue entirely, which also means any image
+> can be used, not only the handful Cisco currently suggests. If you do switch
+> `import_source` back to `CCO`, it additionally needs Cisco.com credentials
+> under **System > Settings > Cisco.com Credentials**.
 
 ### Running it
 
@@ -1231,17 +1541,17 @@ ansible-playbook playbooks/09_swim.yml -e catc_debug=true
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `swim_run_preflight` | `true` | Run 11.1 |
-| `swim_run_import` | `true` | Run 11.2 |
-| `swim_run_distribute` | `true` | Run 11.3 |
-| `swim_activate` | `true` | Run 11.4. **Set `false` to stage without reloading** |
-| `swim_rollback` | `false` | Run 11.6 instead of the forward phases |
+| `swim_run_preflight` | `true` | Run 09.1 |
+| `swim_run_import` | `true` | Run 09.2 |
+| `swim_run_distribute` | `true` | Run 09.3 |
+| `swim_activate` | `true` | Run 09.4. **Set `false` to stage without reloading** |
+| `swim_rollback` | `false` | Run 09.6 instead of the forward phases |
 | `swim_rollback_confirm` | `""` | Must be `YES` to roll back |
 | `swim_reload_ack` | `""` | Must be `RELOAD_OK` to roll back |
-| `swim_run_postcheck` | `true` | Run 11.5 after activation |
+| `swim_run_postcheck` | `true` | Run 09.5 after activation |
 | `swim_task_timeout` | `7200` | Seconds; must outlast a reload |
 | `swim_task_poll_interval` | `60` | Seconds between task polls |
-| `swim_import_timeout` | `3600` | Seconds; a ~1.2 GB CCO download |
+| `swim_import_timeout` | `3600` | Seconds; a ~1.2 GB image import |
 
 > **The timeout must outlast the reload.** Timing out would not stop the
 > upgrade — it would only stop Ansible watching it, leaving the fabric
@@ -1252,12 +1562,12 @@ ansible-playbook playbooks/09_swim.yml -e catc_debug=true
 One JSON per phase in `evidence/`, gitignored:
 
 ```text
-evidence/<run_id>-11_swim-preflight.json
-evidence/<run_id>-11_swim-import_and_tag.json
-evidence/<run_id>-11_swim-distribute.json
-evidence/<run_id>-11_swim-activate.json
-evidence/<run_id>-11_swim-postcheck.json
-evidence/<run_id>-11_swim-rollback.json
+evidence/<run_id>-09_swim-preflight.json
+evidence/<run_id>-09_swim-import_and_tag.json
+evidence/<run_id>-09_swim-distribute.json
+evidence/<run_id>-09_swim-activate.json
+evidence/<run_id>-09_swim-postcheck.json
+evidence/<run_id>-09_swim-rollback.json
 ```
 
 Evidence is written **before** the phase asserts, so a failed activation still
@@ -1268,8 +1578,9 @@ leaves a record on disk to work from.
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
 | `No project in settings.json has swim.enabled` | No `swim` block, or `enabled: false` | Add the block to the project you want upgraded |
-| Import fails with a credentials error | Cisco.com credentials not set in Catalyst Center | System > Settings > Cisco.com Credentials |
-| Import fails “not found” | `image_file` does not match the published name | Check the exact filename on cisco.com |
+| Import fails 404 / “not found” | The `.bin` was never staged, or `image_file` does not match the staged filename | `ls iosxe_images/`, then `curl -sI <image_base_url>/<image_file>` |
+| Import fails NCSW10375 “not the latest or suggested image” | `import_source` is `CCO`, which this pod refuses | Set `import_source: remote` and stage the image locally |
+| Import fails with a credentials error | `import_source: CCO` without Cisco.com credentials | System > Settings > Cisco.com Credentials, or use `remote` |
 | Tagging fails | `device_image_family_name` holds an inventory family | Use the SWIM identifier — see the box above |
 | “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Re-run 09.1, confirm against the inventory record |
 | “No eligible devices” on a fabric that is already upgraded | Nothing to do — this is the idempotent case | Not a failure. 09.3/09.4 pass it once Catalyst Center reports every golden-tagged device `DEVICE_UP_TO_DATE` |
@@ -1502,7 +1813,37 @@ to drop a leftover primary WLC, `capwap ap erase all` (not classic-IOS
 An AP’s `siteHierarchy` can stay null even after a later assign. Read
 membership from the site, not only the Inventory Site column.
 
-### Next: put the Ethernet MAC in lab.yml and provision the AP
+### Disruption warning
+
+The deployment forces template application and can rewrite the switch running
+configuration even when there is no visible diff. Do not rerun stage 10 casually
+on a live lab.
+
+---
+
+## Stage 11 — Provision the access points
+
+**Playbook:** `playbooks/11_await_access_points.yml`
+**Safety:** Potentially disruptive — the AP reboots while its tags are applied.
+
+Stage 10 programmed the AP-facing leaf ports, so the access point can finally
+DHCP, CAPWAP-join the WLC, and appear in Catalyst Center as a Unified AP.
+Stage 11 waits for exactly that, then finishes the job:
+
+```bash
+ansible-playbook playbooks/11_await_access_points.yml
+```
+
+It polls Catalyst Center until the AP shows up, writes its **Ethernet** MAC into
+`inventory/group_vars/all/lab.yml`, then names the AP, assigns it to
+Site-105/MAIN and provisions it. **You do not edit `lab_ap_macs` by hand and you
+do not re-run stage 08.**
+
+The rest of this section explains what that automation is doing, and is the
+procedure to follow if you ever need to drive it manually — for example to
+re-assert an AP that has drifted back onto default tags.
+
+### Doing it by hand
 
 1. On the WLC, Ethernet MAC from `show ap summary` ([9800 Command
    Reference](https://www.cisco.com/c/en/us/td/docs/wireless/controller/9800/command-reference/b_wireless_cr/show-commands.html)).
@@ -1707,12 +2048,6 @@ column still looks empty (`siteHierarchy` can stay null for a Unified AP).
 Do not treat Configuring as a failed play, and do not re-run 08 to
 “finish” it.
 
-### Disruption warning
-
-The deployment forces template application and can rewrite the switch running
-configuration even when there is no visible diff. Do not rerun stage 10 casually
-on a live lab.
-
 ---
 
 
@@ -1887,18 +2222,75 @@ switch CLI is the actual verification evidence.
 
 ## Full orchestrator
 
-`playbooks/00_site_deploy.yml` imports stages 01–09 in order. It excludes stage
-10. For a beginner lab, running stages one at a time is safer because you can
-check CatC after each stage and stop before disruptive stages 08 and 09.
+`playbooks/00_site_deploy.yml` imports stages **01–10** in order. Stages 11 and
+12 are excluded by design: 11 blocks waiting for an access point to boot, and 12
+is read-only verification you run on demand.
 
 ```bash
 ansible-playbook playbooks/00_site_deploy.yml
 ```
 
-Use the orchestrator only after you understand the individual stages and have
-verified the student's pod and AP values.
+> 🛑 **A plain run upgrades and reloads the fabric.** Stage 09 is included and
+> activation is on by default, so the switches reboot between stages 08 and 10.
+> To build the site without an image change:
+>
+> ```bash
+> ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false
+> ```
+
+For a first pass, run the stages one at a time instead. You can check Catalyst
+Center after each one and stop before the disruptive stages (08, 09, 10). Use
+the orchestrator only once you understand the individual stages and have
+confirmed your pod values.
+
+## Collections
+
+`01_bootstrap_script_server.yml` installs the pinned Cisco collections into
+`~/venv`, so you normally never run `ansible-galaxy` by hand. If a stage reports
+a missing collection:
+
+```bash
+ansible-galaxy collection install -r collections/requirements.yml
+```
+
+| File | Target |
+|------|--------|
+| `collections/requirements.yml` | The script server — ansible-core 2.17 |
+| `collections/requirements-jumphost.yml` | A Python 3.9 host capped at ansible-core 2.15. Each pin is the newest release that still admits 2.15. |
+
+`cisco.catalystcenter` must stay at **2.4.0 or newer** on either file. Older
+releases return results under `dnac_response` while every role here reads
+`catalystcenter_response`, which silently produces an empty site map.
 
 ## Troubleshooting
+
+Add `-e catc_debug=true` (or `-e dnac_debug=true`) to any Catalyst Center stage
+to print the full HTTP request and response for each API call.
+
+> **Never share that output.** Debug mode also prints the `X-Auth-Token` bearer
+> JWT, which is a live credential for your Catalyst Center. Redact it before
+> pasting anywhere, and never commit a debug transcript.
+
+### Setup and environment
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Cannot reach 198.18.134.12:22` when connecting | VPN down, or the pod is still booting | Reconnect Cisco Secure Client and wait a few minutes |
+| Hang or `Connection timed out` on `cat-center.corp.pseudoco.com` or `198.18.128.22–24` | Same — the VPN dropped mid-run | Reconnect, then re-run the stage |
+| `Name or service not known` for `corp.pseudoco.com` names | Lab DNS not first in `/etc/resolv.conf` | Re-run `01_bootstrap_script_server.yml` |
+| `Lab access vault not found. Expected Lab Topology/lab_access.yml above …` | You ran from outside the repo tree | `cd` into `evpn/ansible` first |
+| `Decryption failed` on any playbook | `.vault` content ≠ the passphrase the file was encrypted with | Rewrite `.vault` ([Step 3](#step-3--stage-the-box-and-create-vault)) and re-run `00_preflight.yml` to confirm |
+| `Attempting to decrypt but no vault secrets found` | `.vault` missing at the repository root | Create it — [Step 3](#step-3--stage-the-box-and-create-vault). `00_preflight.yml` reports this before anything is changed |
+| `This collection now runs ON the script server` | You ran collection `00` on your laptop | SSH to `198.18.134.12` and run it from the checkout there |
+| `must decrypt to a mapping with a top-level lab_access key` | `lab_access.yml` was re-created without its `lab_access:` root key | Rebuild it from `lab_access.yml.example` and re-encrypt |
+| `ansible-playbook: not found` in a non-interactive SSH command | Non-login shells do not pick up `~/venv` from `.bashrc` | Use an interactive SSH session, or call `/home/cisco/venv/bin/ansible-playbook` |
+| `02_sync_from_git.yml` fails on local changes | The tree is dirty from ad-hoc file edits | Commit or revert them, then re-run |
+| `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | [Step 6](#step-6--confirm-your-pod-number) was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
+| Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
+| Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
+| `Collection <name> does not support Ansible version 2.15.x` | Collections from `requirements.yml` installed on a 2.15 host | Use `requirements-jumphost.yml` there |
+
+### Stage behaviour that looks like a failure but is not
 
 - **`lab_pod_id` is `REPLACE_ME`:** edit
   `inventory/group_vars/all/lab.yml`, or pass `-e lab_pod_id=<number>`.
@@ -1973,6 +2365,38 @@ verified the student's pod and AP values.
 Use `-e catc_debug=true` or `-e dnac_debug=true` only when troubleshooting.
 Debug output can include API payloads and live tokens; redact it before sharing
 and never commit it.
+
+## Reference — where everything lives
+
+One tree, on the script server. You clone it and create `.vault` inside it; the
+virtualenv lives outside the tree at `~/venv`.
+
+```
+~/cisco-one-experience-lab-automation/
+├── .vault                                  # passphrase (gitignored). You create it on this host.
+├── iosxe_images/                           # IOS-XE .bin files for stage 09 (gitignored, staged by hand)
+├── Lab Topology/
+│   ├── lab_access.yml                      # encrypted credential map (committed)
+│   └── PseudoCo_Lab_Access_Lookup.md       # host and URL index, no passwords
+└── ansible-automation/
+    ├── requirements.txt                    # pins used by stage-script-server.sh
+    ├── plugins/vars/lab_access.py          # injects lab_access into every play
+    ├── 00_scriptserver_bootstrap/          # runs locally: preflight / bootstrap / git sync
+    │   ├── stage-script-server.sh          # base packages + ~/venv (run this first)
+    │   └── playbooks/                      # 00_preflight, 01_bootstrap, 02_sync
+    └── 01_campus/evpn/
+        ├── Catalyst Center Templates/      # DEFN / FUNC / FABRIC .j2
+        ├── Settings/settings.json          # single source of truth for stages 01–12
+        └── ansible/                        # ← on Kali, run every pipeline command from here
+            ├── ansible.cfg
+            ├── inventory/
+            │   ├── static_inventory.yml
+            │   └── group_vars/all/lab.yml  # your POD number and AP MACs
+            ├── playbooks/                  # 00 orchestrator + stages 01–12
+            └── evidence/                   # stage 09 and 12 output (gitignored)
+
+~/venv/                                     # Kali Ansible venv (on PATH)
+```
 
 ## Security note
 

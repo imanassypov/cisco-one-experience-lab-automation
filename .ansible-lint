@@ -12,8 +12,8 @@ exclude_paths:
 
 skip_list:
   # Role variables are already namespaced by intent (verify_*, swim_*, ap_*) and
-  # several are documented as -e overrides in the README, GETTING_STARTED and the
-  # User Guide (e.g. -e verify_fail_on_mismatch=false, -e swim_activate=false).
+  # several are documented as -e overrides in the README and the User Guide
+  # (e.g. -e verify_fail_on_mismatch=false, -e swim_activate=false).
   # Renaming them to verify_intent_* would break every published instruction and
   # the students' muscle memory for a naming preference, so the rule is off
   # rather than the variables renamed.
