@@ -47,6 +47,7 @@ flowchart LR
 
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)
 - [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
+- [Release notes](release-notes/) — dated summary of what changed and what an operator should do differently. Read the newest file after a `02_sync_from_git.yml` pull.
 
 ## Collection layout
 
