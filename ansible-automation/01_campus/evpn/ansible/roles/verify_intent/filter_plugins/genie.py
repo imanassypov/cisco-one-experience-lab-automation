@@ -46,6 +46,13 @@ def genie_parse(output, command, os_name="iosxe"):
     # only known from a live connection, which this device will never have.
     device.custom.setdefault("abstraction", {})["order"] = ["os"]
 
+    # Command Runner hands back the command itself as the first line, the way a
+    # switch echoes what you typed. Most parsers skip past it, but the telemetry
+    # one reads it as the entire output and finds nothing, so drop it here.
+    lines = output.splitlines()
+    if lines and lines[0].strip() == command.strip():
+        output = "\n".join(lines[1:])
+
     # Genie signals "the command ran but there was nothing to parse" by raising
     # rather than returning {}. Imported defensively because the module path has
     # moved between Genie releases; the class-name check below is the fallback.
@@ -70,9 +77,9 @@ def genie_parse(output, command, os_name="iosxe"):
             )
         )
 
-    # Genie returns dict subclasses; round-tripping gives Ansible plain types.
-    # It also stringifies every key, because JSON object keys are always
-    # strings — look up numeric keys (VLAN, VNI, subscription id) with | string.
+    # Converting through JSON hands Ansible ordinary values it can use. Doing so
+    # turns every lookup name into text, so a VLAN, VNI or subscription number
+    # must be looked up as "40101", not 40101 — write `| string` in the check.
     return json.loads(json.dumps(parsed))
 
 
