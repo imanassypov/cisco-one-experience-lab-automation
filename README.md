@@ -159,8 +159,9 @@ Two things in the campus collection are worth knowing before you start:
   `.bin` files into `iosxe_images/` by hand — they are too large for git. See
   [Stage 09](ansible-automation/01_campus/evpn/ansible/README.md#stage-09--software-image-management-swim).
 - **Run the stages one at a time** the first time through, reading each result
-  before starting the next. `00_site_deploy.yml` chains 01–10 once you know the
-  pipeline.
+  before starting the next. `00_site_deploy.yml` chains all twelve stages once
+  you know the pipeline — note that stage 11 blocks for up to ten minutes
+  waiting for an access point, and stage 12 fails the run on any mismatch.
 
 The remaining collections in the table above are stubs.
 

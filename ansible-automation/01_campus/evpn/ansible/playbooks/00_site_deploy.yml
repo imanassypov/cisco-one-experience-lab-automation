@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# 00_site_deploy.yml  —  Full pipeline orchestrator (stages 01–10)
+# 00_site_deploy.yml  —  Full pipeline orchestrator (stages 01–12)
 # =============================================================================
 # Builds a Catalyst Center deployment end-to-end by importing each stage
 # playbook in dependency order. The orchestrator itself declares no vars and
@@ -14,11 +14,13 @@
 # Produced (cumulative state in Catalyst Center):
 #   site hierarchy → network settings → credentials → discovered devices →
 #   site assignments → synced templates → network profiles → provisioned
-#   devices → deployed Day-N composite templates
+#   devices → upgraded images → deployed Day-N composite templates →
+#   provisioned access points → verification evidence
 #
 # Order is significant — each stage consumes objects created by the previous:
 #   01 hierarchy → 02 settings → 03 credentials → 04 discovery → 05 assign
 #   → 06 templates → 07 profiles → 08 provision → 09 SWIM → 10 composite deploy
+#   → 11 access points → 12 verify
 #
 # Stage 09 sits before the composite deploy on purpose: the switches should be
 # running their intended image before EVPN and telemetry configuration is
@@ -29,9 +31,17 @@
 # To build the site without an image change:
 #   ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false
 #
-# Excluded by design:
-#   11_await_access_points.yml — blocks on an access point booting; on demand
-#   12_verify_intent.yml       — read-only intent verification via Command Runner; on demand
+# ⏳ Stage 11 BLOCKS. A physical access point cannot join until stage 10 turns
+# Gi1/0/2 into an AP trunk, so 11 polls Catalyst Center for up to 10 minutes
+# (ap_wait_retries × ap_wait_delay) waiting for one to appear, then asserts.
+# A pod with no access point cabled will therefore fail here, after the fabric
+# is already built. Skip the wait and provision the AP later with:
+#   ansible-playbook playbooks/00_site_deploy.yml -e ap_expected_count=0
+#
+# Stage 12 is read-only, but it fails the run on any mismatch
+# (verify_fail_on_mismatch defaults to true). To end with a report instead of
+# a failure:
+#   ansible-playbook playbooks/00_site_deploy.yml -e verify_fail_on_mismatch=false
 #
 # Run: ansible-playbook playbooks/00_site_deploy.yml
 # =============================================================================
@@ -64,3 +74,9 @@
 
 - name: Stage 10 - Deploy composite templates
   import_playbook: 10_deploy_composite.yml
+
+- name: Stage 11 - Await and provision access points
+  import_playbook: 11_await_access_points.yml
+
+- name: Stage 12 - Verify intent against the fabric
+  import_playbook: 12_verify_intent.yml
