@@ -377,6 +377,99 @@ Five checks, one per hop, so a failure localises the break:
 Writes `evidence/assurance-verification.md` and `.html` in the same shape as the campus
 stage 12 report, then fails the play if any check did not pass.
 
+#### 3/5 with the last two checks failing — look at the Splunk licence first
+
+> **This is a pod fault, not a pipeline fault.** Before chasing `cisco.node_id`
+> or a broken panel query, check whether Splunk will run *any* search at all.
+
+If stage 08 reports exactly this:
+
+```text
+3/5 checks passed.
+Failed: Nodes resolving through the device inventory lookup; Dashboard Studio validation.
+```
+
+…note which checks passed. The first three test the **write** path and never run
+SPL — `systemctl is-active`, the `ss` session count, and the collector's own
+`:8888/metrics` counter. The last two are the only ones that **search**. When
+those two fail together and the first three pass, the telemetry pipeline is
+healthy end to end and Splunk is refusing to search.
+
+Confirm it by running the verify role's own probe by hand. A licence stop looks
+like this, and has nothing to do with your data:
+
+```text
+[FATAL] Error in 'mstats' command: Your Splunk license expired or you have
+exceeded your license limit too many times.
+```
+
+The appliance-side detail is in two REST endpoints. Neither needs search, so
+both still answer when searching is dead:
+
+```bash
+curl -sk -u <admin> "https://198.18.5.109:8089/services/licenser/localslave?output_mode=json"
+curl -sk -u <admin> "https://198.18.5.109:8089/services/messages?output_mode=json"
+```
+
+Observed on a broken pod (2026-09-22):
+
+```text
+"LocalSearch": "DISABLED_DUE_TO_GRACE_PERIOD"
+manager_uri:                       https://dcloud-lm.splunk.show:8089
+last_manager_contact_success_time: 2026-05-09        # months ago
+last_manager_contact_attempt_time: now               # still retrying, still failing
+
+[warn] LM__FAILED_TO_CONECT_TO_MANAGER
+  Failed to contact license manager: reason='WARN: path=/masterlm/usage:
+  Signature mismatch between license slave=<pod NAT ip> and this License Master.
+  Please make sure that the pass4SymmKey setting in server.conf, under [general],
+  is the same for the License Master and all its slaves'
+```
+
+The lab's Splunk is a **licence peer of the shared dCloud licence manager**
+`dcloud-lm.splunk.show`. When the host is cloned or restored without its
+`[general] pass4SymmKey` being reconciled, it can never check in; once the
+72-hour grace period lapses, `LocalSearch` is disabled and splunkd refuses any
+search that reads a **non-internal** index. Connectivity is a red herring — DNS
+resolves and TCP 8089 connects even with the wrong key, so a reachability test
+proves nothing.
+
+Internal indexes stay searchable, which is why the instance looks alive:
+
+| Search | Under this fault |
+| --- | --- |
+| `index=_internal`, `index=_audit` | works — internal indexes are exempt |
+| `\| makeresults`, `\| inputlookup` | works — reads no index |
+| `index=main` or any other event index | `FATAL … litsearch … license expired` |
+| `\| mstats` / `\| msearch` on `evpn_assurance` | `FATAL … license expired` |
+
+> **Settings > Licensing will show no alerts, and that is expected.** Licence
+> *alerts* are daily-volume violations, and those are tracked on the licence
+> **manager**, not on a peer — the Alerts tab reads `/services/licenser/messages`,
+> which is empty on a healthy peer too. This fault is a peer-registration
+> failure, so it surfaces as a general splunkd message instead: look at the 🔔
+> **bell icon** in the top-right nav, not at the Licensing page.
+
+Prove your own pipeline is healthy without searching, straight off the index:
+
+```bash
+curl -sk -u <admin> "https://198.18.5.109:8089/services/data/indexes/evpn_assurance?output_mode=json"
+```
+
+`datatype: metric` with `totalEventCount` climbing and `maxTime` at the current
+minute means every hop through HEC works and only the read path is blocked.
+`| inputlookup evpn_device_inventory.csv` also still works, so you can confirm
+stage 05 produced correct domain-stripped hostnames while search is down.
+
+**Resolution.** The matching `pass4SymmKey` is a dCloud secret; it cannot be
+derived locally, and guessing at a shared host's `server.conf` is not a fix.
+Raise it with the proctor, or request a pod reset. Once the key matches and
+splunkd restarts, search returns immediately and a plain re-run of
+`playbooks/08_verify_assurance.yml` goes 5/5 with no change to this collection.
+Converting the instance to a standalone licence is possible, but the Free tier
+**disables authentication entirely**, which changes how every REST call in this
+collection authenticates — do not do it without the lab owner's decision.
+
 ## Relationship to the campus collection
 
 The switch-side configuration lives in `01_campus/evpn`, not here. Duplicating that
@@ -527,6 +620,8 @@ Credentials are wrapped in `no_log: true` throughout, so debug output stays safe
 | Telemetry gap after a deploy | Expected | The fabric's gRPC streams do not drain on `SIGTERM`, so systemd waits out `TimeoutStopSec` |
 | App installs but dashboards look old | Build number not bumped, or a cached browser | Bump `build` in `default/app.conf`; hard-refresh Splunk Web |
 | `validate_studio.py` reports 0-row panels | No data in the window, not an error | Only structural and SPL errors fail the stage |
+| Stage 08 is 3/5, failing **both** the lookup check and Dashboard Studio validation, while the collector / session / HEC checks pass | Splunk search is disabled — the host lost its licence-peer registration with `dcloud-lm.splunk.show` (`pass4SymmKey` mismatch) and the grace period lapsed | Pod fault, not yours. Confirm with `/services/licenser/localslave` (`LocalSearch: DISABLED_DUE_TO_GRACE_PERIOD`) and `/services/messages`, then escalate — [detail above](#35-with-the-last-two-checks-failing--look-at-the-splunk-licence-first) |
+| Any search returns `Your Splunk license expired or you have exceeded your license limit too many times` | Same as above | Same as above |
 
 ## Known gaps
 

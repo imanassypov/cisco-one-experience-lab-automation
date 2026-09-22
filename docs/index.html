@@ -3210,10 +3210,47 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <tr><td>A stage fails complaining about <code>REPLACE_ME</code></td><td><code>lab_pod_id</code> is still unset</td><td>Edit <code>inventory/group_vars/all/lab.yml</code></td></tr>
 <tr><td>Connection or DNS errors reaching Catalyst Center</td><td>VPN dropped, or DNS was not fixed</td><td>Reconnect the VPN, then re-run <code>01_bootstrap_script_server.yml</code></td></tr>
 <tr><td>A stage reports <code>changed=0</code> and you expected work</td><td>It is idempotent and already done</td><td>This is normal. Re-running a stage is always safe.</td></tr>
+<tr><td>Stage 08 fails with <code>AAA CLI(s) are already present on the device … Remove the CLIs, resync the device and retry</code></td><td>The pod was not reset cleanly — the switches still carry AAA config from a previous run</td><td>Manual clean-up is required. See <strong>Stage 08 fails: “AAA CLI(s) are already present”</strong> immediately below</td></tr>
 <tr><td><code>No module named 'rich'</code>, or any other missing Python module</td><td>Your <code>~/venv</code> predates a change to the pinned package list</td><td>Re-run <code>01_bootstrap_script_server.yml</code> — it tops up the environment in place</td></tr>
 </tbody>
 </table>
 <p>Every stage is idempotent: running it twice produces the same result as running it once. When in doubt, run it again.</p>
+<hr>
+<h4>Stage 08 fails: “AAA CLI(s) are already present”</h4>
+<p>This is the one failure in the whole pipeline that re-running will <strong>not</strong> fix. Catalyst Center reports it once per switch, and the stage ends with a <code>FAILURE</code> summary box:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">Service request processing has failed with error: AAA CLI(s) are already
+present on the device Site_105-Leaf1.corp.pseudoco.com: aaa server radius
+dynamic-author, aaa group server radius dnac-group, radius server groupName,
+aaa accounting settings. Remove the CLIs, resync the device and retry.</pre>
+<p><strong>What it is telling you.</strong> Your pod was not reset and cleaned up properly before it was handed to you. The three Site-105 switches still carry the AAA/RADIUS block that a <em>previous</em> student's run of this lab pushed, but Catalyst Center was rebuilt and no longer holds a provisioning record for them. Stage 02 puts ISE into the site's client/endpoint AAA intent, so provisioning wants to write that block — and Catalyst Center refuses to overwrite AAA commands it cannot prove are its own. Nothing you can pass on the command line changes that; the check runs on the appliance.</p>
+<p>Confirm it on any one of the three switches — <code>198.18.128.22</code> (Leaf1), <code>198.18.128.23</code> (Leaf2), <code>198.18.128.24</code> (Border-Spine):</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">show run | include ^aaa|^radius|^ip radius|dnac-client|dnac-radius</pre>
+<p>If you see <code>dnac-client-radius-group</code>, <code>dnac-radius_198.18.5.101</code>, <code>automate-tester</code> and a <code>pac key</code>, that is leftover Catalyst Center configuration — only Catalyst Center writes those lines.</p>
+<p><strong>Clean it up by hand on all three switches.</strong> The order below matters: the authentication, authorization and accounting lists that <em>reference</em> the RADIUS group must be removed before the group and the server themselves, or IOS-XE rejects the command.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">configure terminal
+ no aaa accounting identity default start-stop group dnac-client-radius-group
+ no aaa accounting update newinfo periodic 2880
+ no aaa authorization network dnac-cts-list group dnac-client-radius-group
+ no aaa authentication dot1x default group dnac-client-radius-group
+ no aaa authentication login dnac-cts-list group dnac-client-radius-group local
+ no aaa server radius dynamic-author
+ no aaa group server radius dnac-client-radius-group
+ no radius server dnac-radius_198.18.5.101
+ no radius-server attribute 6 on-for-login-auth
+ no radius-server attribute 6 support-multiple
+ no radius-server attribute 8 include-in-access-req
+ no radius-server attribute 25 access-request include
+ no radius-server attribute 31 mac format ietf upper-case
+ no radius-server attribute 31 send nas-port-detail mac-only
+ no radius-server dead-criteria time 5 tries 3
+ no radius-server deadtime 3
+ no ip radius source-interface Loopback0
+end
+write memory</pre>
+<p>🛑 <strong>Do not remove <code>aaa new-model</code>, <code>aaa authentication login default local</code> or <code>aaa authorization exec default local</code>.</strong> Those are the lab's own login configuration — deleting them locks you out of the switch. And do not skip <code>write memory</code>: stage 09 reloads the fabric, and an unsaved removal comes straight back from the startup config.</p>
+<p>Then resync, so Catalyst Center stops reading its cached copy of the old configuration. In <strong>Provision &gt; Inventory</strong>, tick the three switches and choose <strong>Actions &gt; Inventory &gt; Resync Device</strong>. Wait until all three show <code>Managed</code> again, then re-run the stage:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/08_provision_devices.yml</pre>
+<p>It now completes cleanly, and Catalyst Center puts its own AAA block back — this time attached to a real provisioning record, so every later run is idempotent again.</p>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
@@ -4403,6 +4440,17 @@ show ip dhcp relay information trusted-sources</pre>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ansible-automation/07_assurance/splunk_evpn/ansible
 ansible-playbook playbooks/00_assurance_deploy.yml</pre>
 <p>Eight stages: probe the Splunk host, create the metrics index and token, put the collector in place, start it, generate the lookups from fabric intent, publish the dashboards, confirm the fabric is pointed at the right collector, and verify the whole path end to end. The last stage writes an evidence report in the same shape stage 12 produces.</p>
+<div class="admonition">
+<p>⚠️ <strong>If the final stage reports <code>3/5 checks passed</code> and the two failures are “Nodes resolving through the device inventory lookup” and “Dashboard Studio validation”, check the Splunk licence before you debug anything else.</strong> Those are the only two checks that run a search; the three that passed test the write path — the service, the streaming sessions, and the HEC export counter. When those two fail together, your telemetry is arriving perfectly well and Splunk is simply refusing to search. Every query comes back with <code>Your Splunk license expired or you have exceeded your license limit too many times</code>.</p>
+<p>The lab's Splunk is a licence peer of the shared dCloud licence manager <code>dcloud-lm.splunk.show</code>. If the host was handed over without its <code>[general] pass4SymmKey</code> matching the manager's, it can never check in, and once the 72-hour grace period lapses splunkd refuses any search that reads a non-internal index. Internal indexes keep working, which is why the instance looks alive — <code>index=_internal</code> returns results while <code>index=main</code> and any <code>| mstats</code> against <code>evpn_assurance</code> come back <code>FATAL</code>.</p>
+<p><strong>Do not go by Settings &gt; Licensing — it will show no alerts, and that is expected.</strong> Licence alerts mean daily-volume violations, and those are tracked on the licence manager, not on a peer; that page is empty on a healthy pod too. This fault is a peer-registration failure, so it surfaces as a general splunkd message. Check the 🔔 <strong>bell icon</strong> in the top-right nav instead.</p>
+<p>Two REST calls prove it — neither needs search, so both still answer:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/licenser/localslave?output_mode=json"
+curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mode=json"</pre>
+<p>Look for <code>"LocalSearch": "DISABLED_DUE_TO_GRACE_PERIOD"</code> and an <code>LM__FAILED_TO_CONECT_TO_MANAGER</code> message reading <em>“Signature mismatch between license slave … pass4SymmKey”</em>. Reachability is a red herring here: DNS resolves and TCP 8089 connects even when the key is wrong.</p>
+<p>You can still prove your own pipeline is healthy without searching, by reading the index directly with <code>curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/data/indexes/evpn_assurance?output_mode=json"</code>. A <code>metric</code> index with <code>totalEventCount</code> climbing and <code>maxTime</code> at the current minute means every hop worked and only the read path is blocked.</p>
+<p><strong>This is a pod problem, not a lab-content problem.</strong> The matching key is a dCloud secret and cannot be worked out locally, so raise it in the <strong>XAR Proctor Space</strong> or ask for a pod reset. Once it is fixed, re-running <code>playbooks/08_verify_assurance.yml</code> goes to 5/5 with no changes on your side.</p>
+</div>
 <p>Full documentation lives in the repository at <code>ansible-automation/07_assurance/splunk_evpn/README.md</code>.</p>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>

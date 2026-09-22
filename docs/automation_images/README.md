@@ -1,14 +1,18 @@
 # automation_images
 
 Screenshots and diagrams for the **Automated (Infrastructure as Code)** path in
-`one_cisco_lab.html`. The HTML references these with a relative path, exactly like
-the existing `one_cisco_lab_images/` folder:
+`../index.html` — the lab guide, which lives at `docs/index.html` so GitHub Pages
+serves it from the repository root. The HTML references these with a relative path:
 
 ```html
 <img class="img-fluid" role="presentation" src="automation_images/a1-inventory-graph.png" alt="..." width="865" height="...">
 ```
 
-Upload this folder alongside the revised HTML so the references resolve.
+> **The other image folder is not in this repository.** `index.html` came out of the
+> course platform and still points 312 unique images at `one_cisco_lab_images/`, a
+> sibling folder that was never committed. Those render broken both locally and on
+> Pages. Everything under `automation_images/` resolves normally; nothing here depends
+> on the missing folder.
 
 ## Diagrams (already committed — do not replace)
 

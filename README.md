@@ -27,9 +27,16 @@ and run everything there. Start at [Getting started](#getting-started).
 
 ## Lab references
 
+- **[Lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-automation/)** — the full student walkthrough, published from [docs/](docs/) by GitHub Pages. The same file opens offline as [docs/index.html](docs/index.html)
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)
 - [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
 - [Release notes](release-notes/) — dated summary of what changed and what an operator should do differently. Read the newest file after a `02_sync_from_git.yml` pull.
+
+> **Guide images.** `docs/index.html` was exported from the course platform and
+> still points 312 images at a `one_cisco_lab_images/` folder that was never
+> committed, so those render broken. The diagrams and screenshots under
+> [docs/automation_images/](docs/automation_images/) — every visual in the
+> Infrastructure-as-Code sections — resolve normally.
 
 ## Collection layout
 
