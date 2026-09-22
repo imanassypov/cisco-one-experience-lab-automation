@@ -2927,8 +2927,22 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
   <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 8</h3>
 <p>This card gets you from a freshly connected VPN session to a script server that is ready to run the EVPN pipeline. You will SSH in, clone the repository onto that host, and let it bootstrap itself. Nothing here touches the fabric yet — every command in this card is safe to re-run.</p>
 <div class="admonition warning">
-<p>🛑 <strong>This is the Infrastructure as Code track.</strong> It provisions the EVPN fabric <em>and</em> the wireless service from one pipeline. If you already built the fabric by hand in <a href="#page-7583">1. EVPN Fabric Provisioning</a>, skip this entire track. Running both against the same pod will produce confusing results.</p>
+<p>🛑 <strong>This track is an alternative to the manual sections above, not an addition to them.</strong> Everything in <em>EVPN Fabric and WLC — Infrastructure as Code</em> builds the <strong>same fabric and the same wireless service</strong> as <em>EVPN Fabric and WLC — Manual Provisioning</em>. Same three Catalyst 9300 switches, same VRFs, VLANs and VNIs, same SSID on the same 9800 controller. Only the method differs: there you type the configuration, here you describe it once and let the pipeline apply it.</p>
+<p><strong>Do one or the other, never both.</strong> Both paths configure the same devices in the same pod. If you have already worked through <a href="#page-7583">1. EVPN Fabric Provisioning</a>, skip this entire track and carry on to Macro / Micro Segmentation. If you have not started either, <a href="#page-9001">EVPN: Choose Your Provisioning Path</a> compares them properly.</p>
 </div>
+<p>Card for card, this is what replaces what:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 46%;">Manual Provisioning card</th><th style="width: 54%;">Infrastructure as Code equivalent</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="#page-7583">1. EVPN Fabric Provisioning</a> — paste IOS-XE CLI into each switch over SSH</td><td><a href="#page-9003">2. Run the EVPN + Catalyst Center Pipeline</a> — stage 06 uploads the templates, stage 10 renders and deploys them per device</td></tr>
+<tr><td><a href="#page-7584">2. EVPN Catalyst Center Discovery / Templates</a> — discover devices and build templates in the GUI</td><td><a href="#page-9003">2. Run the EVPN + Catalyst Center Pipeline</a> — stages 01 to 08 create the sites, credentials, discovery jobs, profiles and provisioning through the REST API</td></tr>
+<tr><td><a href="#page-7585">4. Configure &amp; Test WLC</a> — build the SSID and policies on the 9800 by hand</td><td><a href="#page-9003">2. Run the pipeline</a> (stages 07 and 08) then <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a></td></tr>
+<tr><td><em>No manual equivalent</em></td><td><a href="#page-9004">3. Verify Intent &amp; Evidence Report</a> — machine-checked proof the fabric matches the design. The manual path has no comparable step</td></tr>
+</tbody>
+</table>
+<p>The remaining cards in this track — the template model, extending the fabric through Git, and intent verification — have no manual counterpart at all. They exist to show you <em>why</em> a network team would work this way, not just how.</p>
 <hr>
 <h4>The whole journey, at a glance</h4>
 <p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. This card is the grey line at the top — the other three come later.</p>
@@ -3181,6 +3195,9 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault</p
     <h3 id="page-9003" class="page-anchor">2. Run the EVPN + Catalyst Center Pipeline</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 2 of 8</h3>
+<div class="admonition warning">
+<p>🛑 <strong>This one card replaces two manual ones.</strong> The pipeline below reaches the same end state as <a href="#page-7583">1. EVPN Fabric Provisioning</a> and <a href="#page-7584">2. EVPN Catalyst Center Discovery / Templates</a> combined — the same configuration on the same three switches, arrived at by describing it rather than typing it. Do not run it against a pod where you already completed those cards by hand.</p>
+</div>
 <p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the working directory you set up in the previous card.</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
@@ -3851,7 +3868,7 @@ ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 6 of 8</h3>
 <h3>Wireless, when the pipeline built it for you</h3>
 <div class="admonition warning">
-<p>🛑 <strong>This card belongs to the Infrastructure as Code track.</strong> If you configured the wireless controller by hand in <a href="#page-7585">4. Configure &amp; Test WLC</a>, you are finished with that section — skip to Macro / Micro Segmentation.</p>
+<p>🛑 <strong>This card belongs to the Infrastructure as Code track.</strong> It reaches the same end state as <a href="#page-7585">4. Configure &amp; Test WLC</a> — the same SSID, policies and tags on the same 9800 controller — but by verifying what the pipeline already built rather than building it by hand. If you configured the controller yourself in that card, you are finished with that section; skip to Macro / Micro Segmentation.</p>
 </div>
 <p>Here is the thing that catches people out: <strong>by the time you reach this card, the wireless configuration already exists.</strong> Stage 07 built it and stage 08 provisioned it. There is no SSID to create and no policy tag to select.</p>
 <p>So this card is different from the manual one. Your job is to <strong>verify what the automation produced</strong>, then complete the one part that could not be done earlier — provisioning the access point.</p>
