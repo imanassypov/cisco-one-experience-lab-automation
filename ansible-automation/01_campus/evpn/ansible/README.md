@@ -2211,6 +2211,20 @@ brief` reports `protocol up`; a config line proves none of that.
 > such as a missing parser, aborts the run. Run stage 12 before stage 10 and you
 > will see those checks fail, which is the correct answer.
 
+> **Two traps when adding a check.** Both were live bugs, fixed 2026-09-22, and
+> both made a healthy fabric report as broken.
+>
+> Look a number up as text. `genie_parse` passes the parsed output through JSON
+> so Ansible can use it, and that turns every lookup name into text. A VLAN, VNI
+> or subscription number must be written `| string` — ask for `40101` and you
+> get nothing back, because the data holds `"40101"`.
+>
+> Command Runner echoes the command back as the first line of its output, just
+> as a switch does. `genie_parse` now removes that line, because the
+> `show telemetry ietf subscription all` parser read it as the whole output and
+> reported the device as empty. If you add a parser that suddenly sees nothing,
+> check what the first line of the collected text actually is.
+
 ### Run it
 
 ```bash
@@ -2367,6 +2381,7 @@ to print the full HTTP request and response for each API call.
 | Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
 | Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
 | Stage 08 fails with `AAA CLI(s) are already present on the device … Remove the CLIs, resync the device and retry` | The pod was not reset cleanly — the switches still carry the AAA/RADIUS block a previous run of this lab pushed, and Catalyst Center will not overwrite AAA it no longer owns | Remove the block by hand on all three switches, `write memory`, resync in Inventory, re-run stage 08 — full command list under [Stage 08](#if-provisioning-fails-with-aaa-clis-are-already-present) |
+| Stage 12 reports every telemetry subscription as `absent` and every receiver as `no receiver` | Fixed 2026-09-22. A stale checkout still looks up subscription numbers as numbers, and still parses the command Catalyst Center echoes back as if it were output | `git pull`. Confirm the fabric was never at fault with `show telemetry ietf subscription summary` on any switch — it should read all Valid, 0 Invalid |
 | `Collection <name> does not support Ansible version 2.15.x` | Collections from `requirements.yml` installed on a 2.15 host | Use `requirements-jumphost.yml` there |
 
 ### Stage behaviour that looks like a failure but is not
