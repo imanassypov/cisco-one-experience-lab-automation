@@ -410,7 +410,7 @@ verify_checks:
           {%- for s in section.subscriptions -%}
             {%- set ns.r = ns.r + [{'label': 'Sub ' ~ s.id ~ ' (' ~ section.section ~ ')',
                   'intended': 'Valid',
-                  'observed': subs.get(s.id | int, {}).get('state', 'absent')}] -%}
+                  'observed': subs.get(s.id | string, {}).get('state', 'absent')}] -%}
           {%- endfor -%}
         {%- endfor -%}
         {{ ns.r }}
@@ -434,7 +434,7 @@ verify_checks:
         {%- set ns = namespace(r=[]) -%}
         {%- for section in _intent_fabric.telemetry_subs | default([]) -%}
           {%- for s in section.subscriptions -%}
-            {%- set states = (p.get(s.id | int, {}).values()
+            {%- set states = (p.get(s.id | string, {}).values()
                               | map(attribute='state') | select('defined') | list) -%}
             {%- set ns.r = ns.r + [{'label': 'Sub ' ~ s.id ~ ' receiver',
                   'intended': 'Connected',

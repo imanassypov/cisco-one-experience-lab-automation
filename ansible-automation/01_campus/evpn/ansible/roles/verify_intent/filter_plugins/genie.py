@@ -71,6 +71,8 @@ def genie_parse(output, command, os_name="iosxe"):
         )
 
     # Genie returns dict subclasses; round-tripping gives Ansible plain types.
+    # It also stringifies every key, because JSON object keys are always
+    # strings — look up numeric keys (VLAN, VNI, subscription id) with | string.
     return json.loads(json.dumps(parsed))
 
 
