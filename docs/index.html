@@ -3016,7 +3016,7 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 <tr><td><code>dnacentersdk</code></td><td>2.10.6</td><td>Required by the <code>cisco.dnac</code> collection</td></tr>
 </tbody>
 </table>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a1-stage-script.png" alt="stage-script-server.sh completing successfully" width="865" height="380"></p>
+<p><img class="img-fluid" src="automation_images/a1-stage-script.png" alt="stage-script-server.sh on the script server: base packages present, virtualenv created at /home/cisco/venv, pinned packages installed, ansible core 2.17.14 staged, .vault created, and the dCloud POD number prompt answered with 5" width="865" height="530"></p>
 <p>The script also writes the <strong>vault password file</strong> for you, at <code>.vault</code> in the repository root. The lab stores its credentials in an encrypted file, <code>Lab Topology/lab_access.yml</code>, and <code>.vault</code> holds the passphrase that opens it. Confirm it works:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation
 ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
@@ -3045,8 +3045,9 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 <tr><td><code>02_sync_from_git.yml</code></td><td>Not needed today. Run it later if a proctor tells you a lab fix has been published — it fast-forwards your checkout. Re-run <code>01_bootstrap_script_server.yml</code> afterwards, since a published fix may also add a pinned Python package or collection.</td></tr>
 </tbody>
 </table>
-<p>Look for <code>failed=0</code> in the <code>PLAY RECAP</code> at the end of each run.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a1-bootstrap-complete.png" alt="PLAY RECAP showing the bootstrap completed with failed=0" width="865" height="300"></p>
+<p>Look for <code>failed=0</code> in the <code>PLAY RECAP</code> at the end of each run. Just above it, <code>01</code> prints an evidence block — proof of what it actually changed, rather than a claim that it worked:</p>
+<p><img class="img-fluid" src="automation_images/a1-bootstrap-complete.png" alt="The bootstrap evidence block: ansible core 2.17.14 running from /home/cisco/venv, the three PATH binaries, DNS resolving cat-center.corp.pseudoco.com to 198.18.5.100, the vault password file path, and the installed Cisco collection versions" width="865" height="462"></p>
+<p>Read it as a checklist. The <code>ansible</code> binaries resolve inside <code>~/venv</code> rather than a system copy; <code>cat-center.corp.pseudoco.com</code> resolves, so the DNS fix took; the vault password file exists where the playbooks expect it; and the pinned Cisco collections are installed at the versions the stages were written against.</p>
 <p>These playbooks target this same host over a <strong>local</strong> connection — there is no SSH hop and no remote password involved.</p>
 <hr>
 <h4>Step 5 — Move to the pipeline directory</h4>

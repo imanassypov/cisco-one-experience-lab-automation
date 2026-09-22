@@ -77,7 +77,15 @@ Commit the `.mmd` and its `.png` together.
 |---|---|---|
 | `a1-vpn-connected.png` | Cisco Secure Client with AnyConnect VPN connected to `dcloud-rtp-anyconnect.cisco.com`, Zero Trust Access enrolled, Umbrella active | Card **1**, Step 1 |
 | `a1-jumphost-web-rdp.png` | dCloud **Servers > Jumphost1** panel with the **Web RDP** and **VM Console** buttons — the browser-only way in for a laptop that cannot install Secure Client | Card **1**, Step 1 |
+| `a1-stage-script.png` | `./stage-script-server.sh` completing: venv at `/home/cisco/venv`, pinned packages, `.vault` created, POD number prompt answered | Card **1**, Step 3 |
+| `a1-bootstrap-complete.png` | The `Display bootstrap evidence` block from `01_bootstrap_script_server.yml` — ansible-core version, PATH binaries, DNS, vault path, collection versions | Card **1**, Step 4 |
 | `a4-template-hub-project.png` | **Design > CLI Templates** filtered to project `Site-105`, 25 templates, composite first | Card **4** |
+
+> **Name a screenshot for the placeholder it fills, not for what you called it
+> when you took it.** Both card 1 terminal shots arrived named the other way
+> round — the file called `bootstrap_complete.png` was the staging script, and
+> `staging_server_complete.png` was the bootstrap evidence block. Check the
+> content against the `data-missing` name before wiring it in.
 
 > **Why the jumphost shot is cropped.** It arrived showing the Remote Access
 > block — RDP address, domain username and password. Those are not secrets here:
@@ -98,10 +106,7 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 
 ### Card 1 — Prepare Workstation & Script Server
 
-| Filename | What to capture |
-|---|---|
-| `a1-stage-script.png` | Terminal on the script server after `./stage-script-server.sh` completes |
-| `a1-bootstrap-complete.png` | `PLAY RECAP` of `01_bootstrap_script_server.yml` |
+All four are captured. Nothing outstanding for this card.
 
 > Do not add a screenshot of output the guide already prints as text. The
 > `ansible-inventory --graph` shot was dropped for that reason: the expected
