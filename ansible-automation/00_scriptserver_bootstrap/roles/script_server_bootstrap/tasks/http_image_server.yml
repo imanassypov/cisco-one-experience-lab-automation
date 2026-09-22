@@ -56,6 +56,14 @@
     - ansible_os_family == "RedHat"
     - not script_server_nginx_bin.stat.exists
 
+# sync_repo git-pulls this very checkout earlier in the role, but defaults were
+# loaded once before that pull while include_tasks reads from disk afterwards.
+# On the run that first picks up a new default, this file is new and
+# defaults/main.yml is not, so fall back rather than fail on undefined.
+- name: Resolve the image web root owner
+  ansible.builtin.set_fact:
+    script_server_image_owner: "{{ script_server_image_owner | default(ansible_user_id, true) }}"
+
 - name: Create the image web root writable by the login user
   ansible.builtin.file:
     path: "{{ script_server_image_root }}"

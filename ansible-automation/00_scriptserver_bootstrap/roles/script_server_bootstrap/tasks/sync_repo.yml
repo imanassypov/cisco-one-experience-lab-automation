@@ -23,6 +23,18 @@
       is at {{ script_server_repo_dest }}
       ({{ script_server_git_sync.after | default('updated') }}).
 
+# The pull just rewrote the role that is running. Task files are re-read from
+# disk by include_tasks, but defaults/main.yml was loaded before the pull, so
+# the two can disagree for the rest of this play only.
+- name: Warn that the running checkout was updated mid-play
+  ansible.builtin.debug:
+    msg: >-
+      This checkout advanced to {{ script_server_git_sync.after | default('a new commit') }}
+      while the play was running, so role defaults are from the previous commit.
+      If a later task fails on an undefined variable, nothing is broken - just
+      re-run this playbook and it will pick the new values up.
+  when: script_server_git_sync.changed | default(false)
+
 # lab.yml is gitignored, so a fresh clone does not have one and the stages that
 # read lab_pod_id / lab_ap_macs would fail on an undefined variable. force: no
 # means an existing file — the student's pod values — is never overwritten, so
