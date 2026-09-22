@@ -1377,6 +1377,84 @@ not discover APs (the WLC RANGE job is `198.18.5.103` only). Stage 08 does
 not set the AP trunk. Do not expect the AP on the WLC or in CatC until
 stage 10 has deployed.
 
+### If provisioning fails with “AAA CLI(s) are already present”
+
+This is the one stage-08 failure that is **not** a bug and cannot be fixed by
+re-running the playbook. Catalyst Center reports it per device, and the stage
+ends with the summary box showing `Status : FAILURE` and
+`Batch Operation failed. Not all child operations succeeded.`:
+
+```text
+Service request processing has failed with error: AAA CLI(s) are already
+present on the device Site_105-Leaf1.corp.pseudoco.com: aaa server radius
+dynamic-author, aaa group server radius dnac-group, radius server groupName,
+aaa accounting settings. Remove the CLIs, resync the device and retry.
+```
+
+**What it means.** Your pod was not reset cleanly. The switches still carry the
+AAA/RADIUS block that a **previous** run of this lab pushed, while Catalyst
+Center holds no provisioning record for them any more (they were re-discovered
+into a rebuilt inventory). Because stage 02 puts ISE at `198.18.5.101` into the
+site's `client_and_endpoint_aaa` intent, provisioning wants to write that block
+— and Catalyst Center refuses to overwrite AAA CLI it cannot attribute to its
+own intent. The giveaway that it is *old CatC config* rather than lab base
+config is the `pac key`, `automate-tester` and `dynamic-author client
+198.18.5.101` lines, which only Catalyst Center writes.
+
+Confirm it on any one switch (`198.18.128.22` Leaf1, `.23` Leaf2, `.24`
+Border-Spine):
+
+```bash
+ssh <user>@198.18.128.22
+show run | include ^aaa|^radius|^ip radius|dnac-client|dnac-radius
+```
+
+**Manual clean-up is required.** Remove the block on **all three** switches.
+The order matters: the lists that reference the RADIUS group must go before the
+group and the server itself, or IOS-XE rejects the removal. Leave
+`aaa new-model`, `aaa authentication login default local` and
+`aaa authorization exec default local` alone — deleting those drops your own
+SSH login.
+
+```text
+configure terminal
+ no aaa accounting identity default start-stop group dnac-client-radius-group
+ no aaa accounting update newinfo periodic 2880
+ no aaa authorization network dnac-cts-list group dnac-client-radius-group
+ no aaa authentication dot1x default group dnac-client-radius-group
+ no aaa authentication login dnac-cts-list group dnac-client-radius-group local
+ no aaa server radius dynamic-author
+ no aaa group server radius dnac-client-radius-group
+ no radius server dnac-radius_198.18.5.101
+ no radius-server attribute 6 on-for-login-auth
+ no radius-server attribute 6 support-multiple
+ no radius-server attribute 8 include-in-access-req
+ no radius-server attribute 25 access-request include
+ no radius-server attribute 31 mac format ietf upper-case
+ no radius-server attribute 31 send nas-port-detail mac-only
+ no radius-server dead-criteria time 5 tries 3
+ no radius-server deadtime 3
+ no ip radius source-interface Loopback0
+end
+write memory
+```
+
+`write memory` is not optional. Stage 09 reloads the fabric, and an unsaved
+removal comes straight back from the startup config.
+
+Then, in **Provision > Inventory**, select the three switches and choose
+**Actions > Inventory > Resync Device**. Catalyst Center still has the old
+running config cached, so without a resync the same error repeats. Wait for all
+three to return to `Managed`, then re-run the stage:
+
+```bash
+ansible-playbook playbooks/08_provision_devices.yml
+```
+
+Recovery verified 2026-09-22: after the clean-up and resync, stage 08 completed
+`failed=0 changed=1`, and Catalyst Center re-pushed its own AAA block — this
+time owned by a real provisioning record, so subsequent runs are idempotent.
+
 ### Disruption warning
 
 Changing managed AP locations, assigning an AP to a new site, or reprovisioning
@@ -2288,6 +2366,7 @@ to print the full HTTP request and response for each API call.
 | `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | [Step 6](#step-6--confirm-your-pod-number) was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
 | Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
 | Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
+| Stage 08 fails with `AAA CLI(s) are already present on the device … Remove the CLIs, resync the device and retry` | The pod was not reset cleanly — the switches still carry the AAA/RADIUS block a previous run of this lab pushed, and Catalyst Center will not overwrite AAA it no longer owns | Remove the block by hand on all three switches, `write memory`, resync in Inventory, re-run stage 08 — full command list under [Stage 08](#if-provisioning-fails-with-aaa-clis-are-already-present) |
 | `Collection <name> does not support Ansible version 2.15.x` | Collections from `requirements.yml` installed on a 2.15 host | Use `requirements-jumphost.yml` there |
 
 ### Stage behaviour that looks like a failure but is not
