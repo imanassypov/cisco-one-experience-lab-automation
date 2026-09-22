@@ -75,7 +75,16 @@ Commit the `.mmd` and its `.png` together.
 
 | File | Shows | Used in |
 |---|---|---|
+| `a1-vpn-connected.png` | Cisco Secure Client with AnyConnect VPN connected to `dcloud-rtp-anyconnect.cisco.com`, Zero Trust Access enrolled, Umbrella active | Card **1**, Step 1 |
+| `a1-jumphost-web-rdp.png` | dCloud **Servers > Jumphost1** panel with the **Web RDP** and **VM Console** buttons — the browser-only way in for a laptop that cannot install Secure Client | Card **1**, Step 1 |
 | `a4-template-hub-project.png` | **Design > CLI Templates** filtered to project `Site-105`, 25 templates, composite first | Card **4** |
+
+> **Why the jumphost shot is cropped.** It arrived showing the Remote Access
+> block — RDP address, domain username and password. Those are not secrets here:
+> `C1sco12345` is the shared dCloud lab password and the guide prints it
+> throughout by design. The block was cut simply because it adds nothing to the
+> point being made, which is *where the Web RDP button is*. Credentials belong
+> in the Environment Access tables, not repeated in a screenshot.
 
 ## Screenshots still to capture
 
@@ -91,10 +100,13 @@ keep the old prefix so the `data-missing` placeholders already in the HTML stay 
 
 | Filename | What to capture |
 |---|---|
-| `a1-vpn-connected.png` | Cisco Secure Client showing the dCloud session connected |
 | `a1-stage-script.png` | Terminal on the script server after `./stage-script-server.sh` completes |
 | `a1-bootstrap-complete.png` | `PLAY RECAP` of `01_bootstrap_script_server.yml` |
-| `a1-inventory-graph.png` | `ansible-inventory --graph` output on the script server |
+
+> Do not add a screenshot of output the guide already prints as text. The
+> `ansible-inventory --graph` shot was dropped for that reason: the expected
+> output is in the guide as a code block, which a student can copy, search and
+> compare against — a picture of the same text can do none of that.
 
 ### Card 2 — Run the Pipeline
 

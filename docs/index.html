@@ -2978,9 +2978,17 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p>Everything downstream depends on this. Run it first, from your laptop:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">nc -z -G 5 198.18.134.12 22 &amp;&amp; echo reachable</pre>
 <p>If you do not see <code>reachable</code>, your VPN is not up. Reconnect Cisco Secure Client before continuing — no amount of retrying the later steps will help.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a1-vpn-connected.png" alt="Cisco Secure Client connected to the dCloud session" width="865" height="420"></p>
+<p><img class="img-fluid" src="automation_images/a1-vpn-connected.png" alt="Cisco Secure Client showing AnyConnect VPN connected to dcloud-rtp-anyconnect.cisco.com, with Zero Trust Access enrolled and Umbrella active" width="560" height="615"></p>
 <p>Now connect. <strong>Every remaining command in this track runs inside this SSH session.</strong></p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ssh cisco@198.18.134.12</pre>
+<div class="admonition">
+<p>👀 <strong>No Cisco Secure Client on your laptop? You can still do the whole lab.</strong> Some corporate builds will not let you install a VPN client. dCloud gives you a way in that needs nothing but a browser.</p>
+<p>In your dCloud session, open the <strong>Servers</strong> view, pick <strong>Jumphost1</strong>, and choose <strong>Web RDP</strong>. That opens a full Windows desktop inside a browser tab — the jump host is already inside the lab network, so no VPN is involved. The credentials for it are on the Jumphost1 panel itself, and also in <a href="#page-7940"><strong>Environment Access</strong></a>.</p>
+<p><img class="img-fluid" src="automation_images/a1-jumphost-web-rdp.png" alt="dCloud Servers view showing the Jumphost1 panel with the Web RDP and VM Console buttons" width="560" height="718"></p>
+<p>From that desktop, open a terminal and SSH to the script server exactly as above:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ssh cisco@198.18.134.12</pre>
+<p>Everything from Step 2 onward is identical — you are simply typing it in a browser tab instead of your own terminal. Two things to expect: copy and paste between your laptop and the remote desktop can be awkward, and the session will drop if you leave it idle for a long time, so reconnect and <code>cd</code> back to the pipeline directory if that happens.</p>
+</div>
 <hr>
 <h4>Step 2 — Clone the repository onto the script server</h4>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
@@ -3066,22 +3074,100 @@ ansible-playbook --version</pre>
 </table>
 <hr>
 <h4>Step 7 — Confirm the inventory loads</h4>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-inventory --graph</pre>
+<p>This check is worth doing: it proves Ansible can read the inventory and unlock the vault before you run a stage that talks to Catalyst Center. It changes nothing — <code>ansible-inventory</code> only reads files.</p>
+<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 5. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 5, go back first:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+ansible-inventory --graph</pre>
 <p>You should see a single host:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">@all:
+  |--@ungrouped:
   |--@catalyst_center:
   |  |--catalyst_center_api</pre>
+<p>The empty <code>@ungrouped</code> line is normal — Ansible always creates that group, and nothing in this lab belongs to it.</p>
+<div class="admonition">
+<p>🛑 <strong>If you get this instead, you are in the wrong directory:</strong></p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">[WARNING]: No inventory was parsed, only implicit localhost is available
+@all:
+  |--@ungrouped:</pre>
+<p>Nothing is broken and nothing needs reinstalling. Ansible simply did not find <code>ansible.cfg</code>, so it fell back to a default with no inventory. Check where you are with <code>pwd</code> — the prompt above the command shows the answer too. The <code>cd</code> above fixes it. The same applies to every <code>ansible-playbook</code> command in this track: they all run from that one directory.</p>
+</div>
 <p>That single host surprises people. It is correct — the playbooks do not SSH to the switches. Every action goes through the Catalyst Center REST API, including the verification stage, which uses Catalyst Center's Command Runner to collect <code>show</code> output. Catalyst Center is the only thing Ansible talks to.</p>
-<p><img class="img-fluid" role="presentation" src="" data-missing="a1-inventory-graph.png" alt="ansible-inventory --graph showing the single catalyst_center_api host" width="865" height="240"></p>
 <hr>
 <h4>How credentials reach the playbooks</h4>
-<p>You never type a device password, and no password appears in any playbook. Here is the chain:</p>
+<p>You never type a device password, and no password appears in any playbook. Nothing about this is magic — it is four small pieces, and it is worth understanding, because the same pattern solves the "where do I keep the passwords" problem in real work.</p>
+<p>The short version: <code>ansible.cfg</code> tells Ansible where the passphrase is and which extra code to run; that code finds one encrypted file, decrypts it, and hands its contents to every play as a single variable named <code>lab_access</code>; the inventory then picks individual fields out of that variable.</p>
+<h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
+<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 5. Three lines matter here:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">[defaults]
+inventory           = inventory/static_inventory.yml
+vault_password_file = ../../../../.vault
+vars_plugins        = ../../../plugins/vars</pre>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 26%;">Setting</th><th style="width: 74%;">What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>inventory</code></td><td>The host list — in this lab, the single <code>catalyst_center_api</code> host you just printed with <code>ansible-inventory --graph</code>.</td></tr>
+<tr><td><code>vault_password_file</code></td><td>Points four levels up, to <code>.vault</code> in the repository root. That file holds one line: the passphrase. Ansible reads it automatically, which is why you are never prompted.</td></tr>
+<tr><td><code>vars_plugins</code></td><td>A folder of extra code Ansible should run before any task, to supply variables. This lab ships exactly one piece, described next.</td></tr>
+</tbody>
+</table>
+<p>Those paths are <strong>relative</strong>. That is the real reason every command in this track runs from the pipeline directory — step outside it and Ansible finds none of the three.</p>
+<h5>2. <code>plugins/vars/lab_access.py</code> — the piece that fetches the secrets</h5>
+<p>A <em>vars plugin</em> is a small piece of Python whose only job is to hand variables to Ansible before the first task runs. You do not call it and it is not a playbook step; Ansible runs it on its own. This one is about fifty lines and does four things:</p>
 <ol>
-<li><code>ansible.cfg</code> points Ansible at your <code>.vault</code> passphrase file and at a custom <strong>vars plugin</strong>.</li>
-<li>That plugin, <code>plugins/vars/lab_access.py</code>, walks up the directory tree looking for <code>Lab Topology/lab_access.yml</code>, decrypts it, and injects the result as a variable called <code>lab_access</code>.</li>
-<li>The inventory then maps fields out of it, for example <code>catc_username: "{{ lab_access['Catalyst Center'].username }}"</code>.</li>
+<li>Starts in the directory you ran from and <strong>walks up</strong> the folder tree, up to twelve levels, looking for a folder called <code>Lab Topology</code> containing <code>lab_access.yml</code>.</li>
+<li>Asks Ansible to load that file. Because <code>ansible.cfg</code> already supplied the passphrase, Ansible decrypts it in memory. Nothing is ever written back to disk in the clear.</li>
+<li>Checks the decrypted result really is a list of entries under a top-level <code>lab_access:</code> key, and stops with a clear error if it is not.</li>
+<li>Returns it as one variable, <code>lab_access</code>, visible to every play in every collection.</li>
 </ol>
-<p>This is a pattern worth stealing for real work: secrets encrypted at rest, committed alongside the code, decrypted only at run time by whoever holds the passphrase.</p>
+<p>Why walk up the tree rather than use a fixed path? Because the encrypted file lives once, at the top of the repository, while playbooks run from several different collection folders — campus, assurance, bootstrap. Walking up means no collection has to know how deep it sits, and there is only ever one copy of the credentials to look after.</p>
+<div class="admonition">
+<p>👀 <strong>If a playbook stops with <code>Lab access vault not found</code></strong>, the plugin walked twelve levels up and never found the file. In practice that means you are running from outside the repository. <code>cd</code> back into <code>01_campus/evpn/ansible</code> and try again.</p>
+</div>
+<h5>3. <code>Lab Topology/lab_access.yml</code> — the encrypted answer key</h5>
+<p>Committed to git, this file is unreadable. The first line tells you why:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">$ANSIBLE_VAULT;1.1;AES256
+38396561366265623539346434333831316639383866623264363262323139...</pre>
+<p>Decrypted, it is ordinary YAML. Each entry is one system in this pod — the structure below is the tracked schema file, <code>lab_access.yml.example</code>, which carries the same keys with the passwords blanked out:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">lab_access:
+
+  # Kali box every playbook runs from
+  script_server:
+    access: "ssh: 198.18.134.12"
+    username: cisco
+    password: REPLACE_ME
+
+  # Operator jump hosts (RDP)
+  Jumphost1:
+    access: "RDP: 198.18.133.36"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # Drives every stage of the campus pipeline via the Intent API
+  "Catalyst Center":
+    access: "https://cat-center.corp.pseudoco.com"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # Campus EVPN fabric switches. enable_password is required here and
+  # nowhere else - IOS-XE privilege 15.
+  Site_105-Leaf1:
+    access: "ssh: 198.18.128.22"
+    username: REPLACE_ME
+    password: REPLACE_ME
+    enable_password: REPLACE_ME</pre>
+<p><strong>These entries are this guide, written down as data.</strong> Every key name and every <code>access</code> value comes straight from the access tables in <a href="#page-7940"><strong>Environment Access</strong></a> earlier in this guide — the same jump host addresses, the same management URLs, the same switch IPs. Only the username, password and <code>enable_password</code> fields are held back and encrypted. Read that section and this file side by side and you are looking at the same information twice: once for you, once for the automation.</p>
+<p>Keys are matched <strong>exactly as written</strong>, including spaces and capitals, which is why several are quoted. Rename one and the lookup quietly returns nothing rather than raising an error, so the mismatch shows up later as a puzzling authentication failure.</p>
+<h5>4. The inventory picks out the fields it needs</h5>
+<p>Finally, the inventory turns entries in that variable into the settings each stage uses. Nothing here is a secret — it is a reference to one:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">catc_username: "{{ lab_access['Catalyst Center'].username }}"
+catc_password: "{{ lab_access['Catalyst Center'].password }}"
+catc_host: cat-center.corp.pseudoco.com</pre>
+<p>You can read the decrypted file yourself at any time, without ever creating a plaintext copy:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault</pre>
+<p>This is a pattern worth stealing for real work: secrets encrypted at rest, committed alongside the code so they never drift apart from it, and decrypted only at run time by whoever holds the passphrase.</p>
 <div style="border: 2px solid #2ecc71; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #eafaf1; padding: 12px 16px; display: flex; align-items: center; color: #1e7f4f; font-weight: bold; font-size: 16px; border-bottom: 1px solid #2ecc71;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
