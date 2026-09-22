@@ -2314,21 +2314,35 @@ switch CLI is the actual verification evidence.
 
 ## Full orchestrator
 
-`playbooks/00_site_deploy.yml` imports stages **01–10** in order. Stages 11 and
-12 are excluded by design: 11 blocks waiting for an access point to boot, and 12
-is read-only verification you run on demand.
+`playbooks/00_site_deploy.yml` imports **every stage, 01–12**, in order — an
+empty Catalyst Center at one end, a verified fabric with wireless at the other.
 
 ```bash
 ansible-playbook playbooks/00_site_deploy.yml
 ```
 
-> 🛑 **A plain run upgrades and reloads the fabric.** Stage 09 is included and
-> activation is on by default, so the switches reboot between stages 08 and 10.
-> To build the site without an image change:
+Three stages behave differently from the rest inside a single run:
+
+> 🛑 **Stage 09 upgrades and reloads the fabric.** Activation is on by default,
+> so the switches reboot between stages 08 and 10. To build the site without an
+> image change:
 >
 > ```bash
 > ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false
 > ```
+
+> ⏳ **Stage 11 blocks for up to 10 minutes** (`ap_wait_retries` ×
+> `ap_wait_delay`) waiting for an access point to register, then asserts. A pod
+> with no AP cabled fails there, after the fabric is already built. To skip the
+> wait and handle wireless separately:
+>
+> ```bash
+> ansible-playbook playbooks/00_site_deploy.yml -e ap_expected_count=0
+> ```
+
+> **Stage 12 fails the run on any mismatch** — `verify_fail_on_mismatch`
+> defaults to `true`, which is the point of a verification stage. For a report
+> without a non-zero exit, add `-e verify_fail_on_mismatch=false`.
 
 For a first pass, run the stages one at a time instead. You can check Catalyst
 Center after each one and stop before the disruptive stages (08, 09, 10). Use
