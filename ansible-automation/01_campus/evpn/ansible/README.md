@@ -2180,8 +2180,8 @@ python -m rich.markdown evidence/stage12-verification.md | less -R
 
 Or plainly, with no renderer: `less evidence/stage12-verification.md`.
 
-> `No module named 'rich'` means the venv was built before `rich` joined the
-> pinned list in `script_server_python_packages`. Re-run
+> `No module named 'rich'` means the venv was built before `rich` joined
+> `ansible-automation/requirements.txt`. Re-run
 > `00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml`; its pip
 > task is unconditional, so it tops up an existing venv in place. Pulling a repo
 > fix with `02_sync_from_git.yml` does not install anything on its own.

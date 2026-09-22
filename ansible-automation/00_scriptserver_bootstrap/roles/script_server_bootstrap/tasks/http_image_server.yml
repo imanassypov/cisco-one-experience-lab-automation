@@ -56,14 +56,35 @@
     - ansible_os_family == "RedHat"
     - not script_server_nginx_bin.stat.exists
 
-- name: Create the image web root
+- name: Create the image web root writable by the login user
   ansible.builtin.file:
     path: "{{ script_server_image_root }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ script_server_image_owner }}"
+    group: "{{ script_server_image_owner }}"
     mode: "0755"
   become: true
+
+# Earlier runs published these as root:root. A writable directory is not enough
+# on its own - scp truncates an existing file in place, which needs write
+# permission on the FILE - so hand over anything already here.
+- name: Find images published by an earlier run
+  ansible.builtin.find:
+    paths: "{{ script_server_image_root }}"
+    patterns: "*.bin"
+    file_type: file
+  register: script_server_published_images
+
+- name: Hand existing images to the login user
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ script_server_image_owner }}"
+    group: "{{ script_server_image_owner }}"
+    mode: "0644"
+  become: true
+  loop: "{{ script_server_published_images.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
 
 # A dedicated server block on its own port, rather than editing the default
 # site, so re-running cannot clobber anything else the box serves.
@@ -125,8 +146,8 @@
     src: "{{ item.path }}"
     dest: "{{ script_server_image_root }}/{{ item.path | basename }}"
     remote_src: true
-    owner: root
-    group: root
+    owner: "{{ script_server_image_owner }}"
+    group: "{{ script_server_image_owner }}"
     mode: "0644"
   become: true
   loop: "{{ script_server_staged_images.files }}"

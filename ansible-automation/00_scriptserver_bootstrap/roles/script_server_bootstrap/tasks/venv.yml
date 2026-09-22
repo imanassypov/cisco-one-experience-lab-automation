@@ -4,7 +4,29 @@
     cmd: python3 -m venv {{ script_server_venv_path }}
     creates: "{{ script_server_venv_path }}/bin/python"
 
-- name: Install pinned Python packages into the virtualenv
+- name: Confirm the shared pin file is present
+  ansible.builtin.stat:
+    path: "{{ script_server_requirements_file }}"
+  register: script_server_requirements_stat
+
+- name: Fail when the shared pin file is missing
+  ansible.builtin.assert:
+    that:
+      - script_server_requirements_stat.stat.exists | default(false)
+    fail_msg: >-
+      {{ script_server_requirements_file }} is missing, so the venv would be
+      built without pinned versions. The checkout is incomplete - re-clone or
+      git pull, then re-run this playbook.
+
+# Same file stage-script-server.sh installs, so re-running is a no-op unless a
+# pin moved. Keeps one source of truth for the versions both of them share.
+- name: Install shared pinned Python packages into the virtualenv
+  ansible.builtin.pip:
+    requirements: "{{ script_server_requirements_file }}"
+    virtualenv: "{{ script_server_venv_path }}"
+    virtualenv_command: python3 -m venv
+
+- name: Install Genie and pyATS into the virtualenv
   ansible.builtin.pip:
     name: "{{ script_server_python_packages }}"
     virtualenv: "{{ script_server_venv_path }}"

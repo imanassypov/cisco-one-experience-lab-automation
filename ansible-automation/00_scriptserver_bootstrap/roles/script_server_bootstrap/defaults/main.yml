@@ -31,6 +31,10 @@ script_server_image_http_enabled: true
 # Own port rather than 80, so the default nginx site is left alone.
 script_server_image_http_port: 8080
 script_server_image_root: /var/www/iosxe-images
+# Owned by the login user, not root, so a student can scp a .bin straight into
+# the web root instead of only via the checkout. nginx reads as www-data and
+# only needs 0755/0644 to serve.
+script_server_image_owner: "{{ ansible_user_id }}"
 # Staged by hand in the checkout and gitignored, exactly like .vault and
 # lab.yml — these are hundreds of MB and GitHub rejects anything over 100 MB.
 script_server_image_source_dir: "{{ script_server_repo_dest }}/iosxe_images"
@@ -48,36 +52,21 @@ script_server_resolv_conf_path: /etc/resolv.conf
 script_server_lab_dns_check_hosts:
   - cat-center.corp.pseudoco.com
 
-# Pinned for supply-chain consistency. Bump deliberately when upgrading.
-script_server_ansible_core_version: "2.17.14"
-script_server_paramiko_version: "3.5.1"
-script_server_netaddr_version: "1.3.0"
-# Official SDKs for CatC 3.1.3.0 API (3.1.5 appliance; no 3.1.5 SDK profile).
-script_server_catalystcentersdk_version: "3.1.3.0.1"
-script_server_dnacentersdk_version: "2.10.6"
+# Shared pins live in ansible-automation/requirements.txt - the same file
+# stage-script-server.sh installs - so a bump cannot land in only one of them.
+script_server_requirements_file: "{{ script_server_repo_dest }}/ansible-automation/requirements.txt"
+
 # Genie parsers back every stage 12 check. Pinned together because a parser
 # schema change renames keys and would silently break checks — the same class of
-# drift as an unpinned collection.
+# drift as an unpinned collection. Kept out of requirements.txt on purpose:
+# roughly 700 MB that is not needed to run ansible-playbook, so staging stays
+# fast and only the bootstrap pays for it.
 script_server_genie_version: "26.8"
 script_server_pyats_version: "26.8"
-# Terminal renderer for the stage 12 markdown report. Pure Python, so it comes
-# from pip rather than apt, which on this image cannot install glow without
-# upgrading libc6.
-script_server_rich_version: "15.0.0"
 
 script_server_python_packages:
-  - "ansible-core=={{ script_server_ansible_core_version }}"
-  - "paramiko=={{ script_server_paramiko_version }}"
-  - "netaddr=={{ script_server_netaddr_version }}"
-  - "catalystcentersdk=={{ script_server_catalystcentersdk_version }}"
-  - "dnacentersdk=={{ script_server_dnacentersdk_version }}"
-  # Stage 12 parses every CLI response with Genie instead of matching text, so
-  # pyATS is required. Both packages are needed: genie alone does not pull
-  # pyats, and the import fails with "No module named 'pyats'". Adds roughly
-  # 700 MB to the venv.
   - "genie=={{ script_server_genie_version }}"
   - "pyats=={{ script_server_pyats_version }}"
-  - "rich=={{ script_server_rich_version }}"
 
 script_server_cli_binaries:
   - ansible

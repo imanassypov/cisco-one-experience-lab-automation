@@ -222,8 +222,10 @@ activate first:
   ${VENV}/bin/ansible-playbook playbooks/00_preflight.yml
   ${VENV}/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml
 
-After that, 01 puts ${VENV}/bin on your PATH, so a new shell can just run
-'ansible-playbook'. If apt ever offers to install ansible-core, say no - that
-would be an unpinned copy outside the venv.
+After that, 01 puts ${VENV}/bin on your PATH. The shell you are in now will not
+see it - an already-open shell never re-reads its rc file - so run
+'exec \$SHELL -l' or open a new SSH session, then 'ansible-playbook --version'.
+If apt ever offers to install ansible-core, say no - that would be an unpinned
+copy outside the venv.
 
 EOF

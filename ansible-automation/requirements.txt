@@ -1,6 +1,8 @@
-# Script server pins. Installed into ~/venv by
-# 00_scriptserver_bootstrap/stage-script-server.sh, then topped up by the
-# bootstrap role (which adds genie and pyats).
+# Script server pins - the single source of truth for these versions.
+# Installed into ~/venv twice: first by 00_scriptserver_bootstrap/
+# stage-script-server.sh (to get ansible-playbook running at all), then again
+# by the bootstrap role's venv.yml, which reads this same file and adds genie
+# and pyats on top. Bump a version here and both paths follow.
 ansible-core==2.17.14
 paramiko==3.5.1
 netaddr==1.3.0

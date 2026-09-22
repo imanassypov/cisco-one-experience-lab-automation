@@ -30,7 +30,7 @@ You can clone anywhere — `~/cisco-one-experience-lab-automation` is only a con
 
 The staging script also writes the repo-root `.vault` for you and seeds `lab.yml` with the pod number you entered, so there is nothing to create by hand. To skip the prompt on an unattended re-run: `LAB_POD_ID=7 ./stage-script-server.sh`.
 
-> Call `ansible-playbook` by its full path until `01` has run — that is the playbook that puts `~/venv/bin` on `PATH`. After it completes, a new shell can just run `ansible-playbook`. If apt offers to install `ansible-core`, say no: that would be an unpinned copy outside the venv.
+> Call `ansible-playbook` by its full path until `01` has run — that is the playbook that puts `~/venv/bin` on `PATH`. `01` writes that export to `~/.zshrc`, `~/.bashrc`, `~/.profile` and `~/.zprofile`, but a **shell that is already open never re-reads those files**, so the session you ran the bootstrap from still answers `Command 'ansible-playbook' not found`. Reload it with `exec $SHELL -l`, or open a new SSH session, then confirm with `ansible-playbook --version`. If apt offers to install `ansible-core`, say no: that would be an unpinned copy outside the venv.
 
 ## Why a staging script before Ansible
 
@@ -39,7 +39,7 @@ The staging script also writes the repo-root `.vault` for you and seeds `lab.yml
 | Step | Done by | What |
 | --- | --- | --- |
 | Base packages | `stage-script-server.sh` | `git`, `python3`, `pip`, `venv`, `python3-dev`, `gcc`, `libffi-dev`, `libssl-dev` |
-| Virtualenv at `~/venv` | `stage-script-server.sh` | Pins from [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `netaddr`, both CatC SDKs |
+| Virtualenv at `~/venv` | `stage-script-server.sh` | Pins from [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `netaddr`, both CatC SDKs, `rich`. The bootstrap role reads that same file, so the shared pins are defined once |
 | `.vault` and `lab.yml` | `stage-script-server.sh` | Writes the vault passphrase and the POD number it prompted for |
 | Everything else | `01_bootstrap_script_server.yml` | DNS, PATH, Galaxy collections, Genie/pyATS |
 
@@ -50,7 +50,8 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 - Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
 - OS packages, kept deliberately minimal: `git`, `pip`, and the versioned `pythonX.Y-venv`. No compiler and no `-dev` headers — every pinned wheel is prebuilt for this interpreter, and on the dCloud image `libffi-dev` / `libssl-dev` cannot install without dragging `libc6` forward
 - The user virtualenv at `~/venv` (Ansible is **not** installed with apt/yum)
-- Pinned `ansible-core`, `paramiko`, `netaddr`, plus `genie` and `pyats` — stage 12 parses every CLI response with Genie, which adds roughly 700 MB — and `rich`, which renders the stage 12 markdown report in the terminal
+- Everything pinned in [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `netaddr`, both CatC SDKs, and `rich`, which renders the stage 12 markdown report in the terminal. The role installs from that file rather than repeating the versions, so `stage-script-server.sh` and the bootstrap can never disagree
+- `genie` and `pyats`, pinned in the role's `script_server_python_packages` — stage 12 parses every CLI response with Genie, which adds roughly 700 MB. Deliberately not in `requirements.txt`: none of it is needed to run `ansible-playbook`, so staging stays fast
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali's default shell is zsh) and symlinked into `~/bin`
 - Pinned Cisco Galaxy collections — see [`files/requirements.yml`](roles/script_server_bootstrap/files/requirements.yml) for the authoritative versions
@@ -90,11 +91,28 @@ curl -I http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin   # expect 200
 Browse `http://198.18.134.12:8080/` for a directory listing of what Catalyst
 Center can see.
 
+> **Copying straight into the web root also works.** The bootstrap gives
+> `/var/www/iosxe-images` to the login user (`cisco`), so you can skip the
+> checkout and `scp` a `.bin` directly to it — useful when the file is already
+> on the box or you do not want a second copy eating disk:
+>
+> ```bash
+> scp cat9k_iosxe.26.01.02.SPA.bin cisco@198.18.134.12:/var/www/iosxe-images/
+> ```
+>
+> nginx serves it immediately; no re-run needed. Note the bootstrap only
+> *publishes* from the checkout, so a file placed here directly is not
+> re-created if you ever delete it. If you hit `Permission denied`, the web
+> root predates this change — re-run
+> `01_bootstrap_script_server.yml --tags image_server` once to take ownership
+> of the directory and everything already in it.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `script_server_image_http_enabled` | `true` | Set false to skip the image server entirely |
 | `script_server_image_http_port` | `8080` | Own port, so nginx's default site is left alone |
 | `script_server_image_root` | `/var/www/iosxe-images` | Where the published images live |
+| `script_server_image_owner` | `{{ ansible_user_id }}` | Owns the web root and its images, so the student can `scp` into it without `sudo` |
 | `script_server_image_source_dir` | `<repo>/iosxe_images` | Where you stage the `.bin` files |
 
 The matching consumer is `swim.import_source: remote` plus `swim.image_base_url`

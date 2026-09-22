@@ -17,6 +17,8 @@
   register: script_server_galaxy_list
   changed_when: false
 
+# Exports PATH first on purpose: this proves the binaries resolve once the rc
+# file is in effect, NOT that the student's already-open shell can see them.
 - name: Confirm ansible-playbook is on PATH via venv and ~/bin
   ansible.builtin.shell: |
     set -euo pipefail
@@ -57,7 +59,13 @@
     msg:
       - "{{ script_server_git_version.stdout }}"
       - "{{ script_server_ansible_version.stdout_lines }}"
-      - "PATH binaries: {{ script_server_path_check.stdout_lines }}"
+      - "PATH binaries (resolved with the new PATH applied): {{ script_server_path_check.stdout_lines }}"
       - "DNS: {{ script_server_dns_verify.stdout }}"
       - "Vault password file: {{ script_server_vault }}"
       - "{{ script_server_galaxy_list.stdout_lines }}"
+      - >-
+        NEXT: this shell started before PATH was updated, so `ansible-playbook`
+        is still not found in it. Run `exec $SHELL -l` here, or open a new SSH
+        session, then confirm with `ansible-playbook --version`. If apt offers
+        to install ansible-core, say no - that is an unpinned copy outside the
+        venv.

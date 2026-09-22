@@ -85,10 +85,12 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 | `01_bootstrap_script_server.yml` | Lab DNS, OS packages, pinned Cisco collections and SDKs, Genie/pyATS, and `~/venv/bin` on your `PATH` |
 
 Call `ansible-playbook` by **full path** until `01` has finished — putting the
-venv on `PATH` is one of the things `01` does. Then open a fresh shell and
-confirm:
+venv on `PATH` is one of the things `01` does. `01` writes that export to your
+shell rc files, but the shell you ran it from will not pick it up, because an
+already-open shell never re-reads them. Reload it, then confirm:
 
 ```bash
+exec $SHELL -l
 ansible-playbook --version
 ```
 
