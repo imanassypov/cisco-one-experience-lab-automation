@@ -3857,7 +3857,7 @@ ansible-playbook playbooks/12_verify_intent.yml     # prove it landed</pre>
 <tbody>
 <tr>
 <td><strong>06</strong></td>
-<td>Uploads all 25 files. There is no create-versus-update logic — the same idempotent call handles both, and Catalyst Center commits a new version of anything that changed. Unchanged files are left alone.</td>
+<td>Uploads all 25 files. There is no create-versus-update logic — one call handles both, and running it again is always safe. Catalyst Center commits a new version of anything that changed and leaves unchanged files alone.</td>
 <td><span class="safety design">Design change</span></td>
 </tr>
 <tr>
