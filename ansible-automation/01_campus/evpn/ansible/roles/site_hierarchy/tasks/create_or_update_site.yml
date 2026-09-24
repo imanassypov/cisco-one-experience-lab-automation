@@ -129,24 +129,25 @@
     - _type == 'area'
     - not _exists
 
-# ── UPDATE existing area ──────────────────────────────────────────────────────
-# PUT /dna/intent/api/v1/areas/{id}
-# Supplying id: makes the action plugin call get_object_by_id → issues PUT.
-# Result is "Object already present" when name/parentId haven't changed.
-- name: "Area     | UPDATE | {{ _path }}"
-  cisco.catalystcenter.areas:
-    state: present
-    id: "{{ _site_id }}"
-    name: "{{ _name }}"
-    parentId: "{{ _parent_id }}"
-  register: _area_update
-  when:
-    - _type == 'area'
-    - _exists
+# ── EXISTING area — deliberately not updated ─────────────────────────────────
+# An area carries only a name and a parent, and site_id_map is keyed by the full
+# nameHierarchy. Finding _path in that map therefore already proves both fields
+# match what a PUT /dna/intent/api/v1/areas/{id} would send — it can never
+# change anything. The old update task said as much itself: "Object already
+# present when name/parentId haven't changed".
+#
+# It was not free, though. Catalyst Center runs each PUT as an asynchronous
+# workflow, and on a busy or recovering appliance those calls can exceed the
+# SDK's 60-second per-request timeout and fail the whole stage. Every area
+# already exists on a stock dCloud pod, so this cost eight pointless writes on
+# every run. Existing areas are now left alone; a genuinely new one still goes
+# through the CREATE above.
 
-- name: "DEBUG | Area UPDATE result"
+- name: "DEBUG | Area exists, no update needed | {{ _path }}"
   ansible.builtin.debug:
-    var: _area_update
+    msg: >-
+      {{ _path }} already exists as an area ({{ _site_id }}); name and parent
+      match by definition, so no write is issued.
   when:
     - catc_debug | default(false) | bool
     - _type == 'area'
@@ -351,7 +352,7 @@
     site_hierarchy_results: "{{ site_hierarchy_results | default([]) + [_site_hierarchy_row] }}"
   vars:
     _site_hierarchy_action: >-
-      {%- if not (_exists | bool) -%} created{%- elif _type == 'area' and _area_update is defined and _area_update is changed -%} updated{%- elif _type == 'building'
+      {%- if not (_exists | bool) -%} created{%- elif _type == 'building'
       and _building_update is defined and _building_update is changed -%} updated{%- elif _type == 'floor' and _floor_update is defined and _floor_update is changed
       -%} updated{%- else -%} skipped{%- endif -%}
     _site_hierarchy_row:
