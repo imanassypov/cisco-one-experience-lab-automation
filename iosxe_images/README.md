@@ -82,20 +82,33 @@ curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
 ## Where each path is defined
 
 The folder you copy into, the folder nginx serves, and the URL Catalyst Center
-is given are three separate settings that have to agree:
+is given are three separate settings that have to agree. Both files below are
+given relative to the root of the checkout, `~/cisco-one-experience-lab-automation/`:
 
 | Setting | Value | Defined in |
 | --- | --- | --- |
-| `script_server_image_source_dir` | `<checkout>/iosxe_images` | [`00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml`](../ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml) |
+| `script_server_image_source_dir` | `<checkout>/iosxe_images` | [`ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml`](../ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml) |
 | `script_server_image_root` | `/var/www/iosxe-images` | same file |
 | `script_server_image_http_port` | `8080` | same file |
 | `script_server_image_owner` | the login user | same file |
 | `script_server_image_http_enabled` | `true` | same file — set `false` to skip the web server entirely |
-| `swim.image_base_url` | `http://198.18.134.12:8080` | [`01_campus/evpn/Settings/settings.json`](../ansible-automation/01_campus/evpn/Settings/settings.json) |
-| `swim.image_file`<br>`swim.rollback_image_file` | the two `.bin` names | same `settings.json` block |
+| `swim.image_base_url` | `http://198.18.134.12:8080` | [`ansible-automation/01_campus/evpn/Settings/settings.json`](../ansible-automation/01_campus/evpn/Settings/settings.json), in the `swim` block of the `Site-105` project |
+| `swim.image_file`<br>`swim.rollback_image_file` | the two `.bin` names | same `swim` block |
+
+Print the live values from your own checkout rather than trusting the table:
+
+```bash
+cd ~/cisco-one-experience-lab-automation
+
+grep -nE 'script_server_image_(source_dir|root|http_port)' \
+  ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml
+
+grep -nE '"(image_base_url|image_file|rollback_image_file)"' \
+  ansible-automation/01_campus/evpn/Settings/settings.json
+```
 
 Stage 09 joins the last two into the download URL. In
-[`roles/swim/tasks/import_and_tag.yml`](../ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml)
+[`ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml`](../ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml)
 it is literally:
 
 ```jinja

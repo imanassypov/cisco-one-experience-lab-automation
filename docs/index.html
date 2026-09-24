@@ -3086,20 +3086,28 @@ ansible-playbook playbooks/01_bootstrap_script_server.yml --tags image_server</p
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
 # HTTP/1.1 200 OK</pre>
 <h5>Where each of those paths is defined</h5>
-<p>Nothing here is hard-coded in one place — the folder you drop files into, the folder nginx serves, and the URL Catalyst Center is given are three different settings that have to agree. This is where each one lives:</p>
+<p>Nothing here is hard-coded in one place — the folder you drop files into, the folder nginx serves, and the URL Catalyst Center is given are three different settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
-<tr><th style="width: 30%;">Setting</th><th style="width: 30%;">Value</th><th style="width: 40%;">Defined in</th></tr>
+<tr><th style="width: 26%;">Setting</th><th style="width: 26%;">Value</th><th style="width: 48%;">File, and what it controls</th></tr>
 </thead>
 <tbody>
-<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td><code>00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code> — the folder you copy into</td></tr>
-<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td>Same file — where the bootstrap copies them so nginx can serve them</td></tr>
-<tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on</td></tr>
-<tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>01_campus/evpn/Settings/settings.json</code> — what Catalyst Center is told to download from</td></tr>
-<tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>settings.json</code> block — these must match your filenames character for character</td></tr>
+<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td><code>ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code><br>The folder you copy into.</td></tr>
+<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td>Same file — where the bootstrap copies them so nginx can serve them.</td></tr>
+<tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on.</td></tr>
+<tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>ansible-automation/01_campus/evpn/Settings/settings.json</code>, in the <code>swim</code> block of the <code>Site-105</code> project.<br>What Catalyst Center is told to download from.</td></tr>
+<tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>swim</code> block — these must match your filenames character for character.</td></tr>
 </tbody>
 </table>
-<p>Stage 09 joins the last two together to build the download URL. In <code>roles/swim/tasks/import_and_tag.yml</code> it is literally:</p>
+<p>Rather than take the table's word for it, print the live values from your own checkout:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation
+
+grep -nE 'script_server_image_(source_dir|root|http_port)' \
+  ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml
+
+grep -nE '"(image_base_url|image_file|rollback_image_file)"' \
+  ansible-automation/01_campus/evpn/Settings/settings.json</pre>
+<p>Stage 09 joins the last two together to build the download URL. In <code>ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml</code> it is literally:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{{ item.image_base_url }}/{{ item.image_file }}</pre>
 <p>So a typo in either half produces the same symptom — Catalyst Center reports that it could not import the image — and the <code>curl</code> above is the quickest way to tell which half is wrong.</p>
 <div class="admonition">
