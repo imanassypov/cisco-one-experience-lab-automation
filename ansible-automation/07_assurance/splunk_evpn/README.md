@@ -533,16 +533,50 @@ expiry predates all of them. On 2026-09-24 the pod showed two starts and six
 failures, against a certificate that had expired on 2026-07-22 — the fault was
 waiting for any restart, and the playbook happened to be the first one.
 
-**Fix.** Replace the expired certificate, or point Splunk back at its own
-generated one. Both need root on the Splunk host and a restart, and the
+**Fix.** Replace the expired certificate. Splunk's own generated certificate is
+still on the host and still valid, so repointing at it looks tempting — but read
+the warning below first. Either route needs root and a restart, and the
 certificate belongs to the pod build rather than to this repo, so treat it as an
 escalation. There is no setting that makes mongod overlook its own expired
 certificate.
+
+> **Do not simply repoint `[sslConfig] serverCert` at the default certificate.**
+> The two files differ in a way that matters. The pod's certificate carries an
+> unencrypted `BEGIN PRIVATE KEY`, so `sslPassword` is irrelevant today. Splunk's
+> default carries a `BEGIN ENCRYPTED PRIVATE KEY`, so the moment you point at it
+> `sslPassword` has to be right — and if it is wrong **splunkd will not start at
+> all**. That turns a degraded KV Store into a dead Splunk.
+>
+> If you must try it, change only the KV Store, which is absent from
+> `server.conf` and is why it inherits the broken certificate in the first place:
+>
+> ```ini
+> [kvstore]
+> sslKeysPath = /opt/splunk/etc/auth/server.pem
+> sslKeysPassword = <passphrase for that key>
+> ```
+>
+> Get that wrong and KV Store stays down, but the management port and these
+> playbooks keep working.
+
+Worth checking both files before deciding — the dates explain the situation:
+
+| File | Subject | Valid until |
+| --- | --- | --- |
+| `auth/mycerts/server.pem` (in use) | `CN=splunk.corp.pseudoco.com` | 2026-07-22 — **expired** |
+| `auth/server.pem` (Splunk's own) | `CN=SplunkServerDefaultCert` | 2028-06-17 |
+
+The default certificate's 2028 date shows the intended lifetime of the build; the
+custom one lapsing after a year is the anomaly.
 
 **Impact on this collection is small.** Telemetry, indexing and the dashboards
 are unaffected, and the lookup is a CSV file. The Ansible here connects with
 certificate validation turned off, so an expired certificate does not break the
 playbooks either. Report it as pod health rather than a pipeline failure.
+
+> **On a pod that also has the licence fault, fixing KV Store buys nothing.**
+> Splunk still refuses to search, so stage 08 stays at 3/5 either way. Escalate
+> the two together rather than risking splunkd for no gain in pipeline health.
 
 Internal indexes stay searchable, which is why the instance looks alive:
 
