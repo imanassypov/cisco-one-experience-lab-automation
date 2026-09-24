@@ -155,9 +155,13 @@ consumes are pushed by EVPN stage 10, so run the campus collection first.
 Two things in the campus collection are worth knowing before you start:
 
 - **Stage 09 (SWIM) is optional and disruptive.** It upgrades the switches and a
-  plain run **reloads them**. It also does nothing until you stage the IOS-XE
-  `.bin` files into `iosxe_images/` by hand — they are too large for git. See
-  [Stage 09](ansible-automation/01_campus/evpn/ansible/README.md#stage-09--software-image-management-swim).
+  plain run **reloads them**. It also does nothing until you copy the IOS-XE
+  `.bin` files onto the script server by hand — they are too large for git.
+  After the bootstrap has run, copy them straight into `/var/www/iosxe-images/`,
+  which nginx is already serving; before it has, stage them in `iosxe_images/`
+  and the bootstrap publishes them for you. See
+  [Stage 09](ansible-automation/01_campus/evpn/ansible/README.md#stage-09--software-image-management-swim)
+  and [iosxe_images/](iosxe_images/README.md).
 - **Run the stages one at a time** the first time through, reading each result
   before starting the next. `00_site_deploy.yml` chains all twelve stages once
   you know the pipeline — note that stage 11 blocks for up to ten minutes

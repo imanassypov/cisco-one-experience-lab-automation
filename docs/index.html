@@ -3072,28 +3072,32 @@ ansible-playbook --version</pre>
 <hr>
 <h4>Step 5 — Stage the IOS-XE software images</h4>
 <p>Stage 09 upgrades the switches, and it has nothing to install until you put the image files on the script server yourself. They are not in the repository: each <code>.bin</code> is well over a gigabyte and GitHub refuses anything above 100 MB, so they are supplied by hand, the same way <code>.vault</code> and <code>lab.yml</code> are.</p>
-<p>Copy both files — the upgrade image <em>and</em> the rollback image — into <code>iosxe_images/</code> at the <strong>root of the checkout</strong> on the script server. From your laptop:</p>
+<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. Step 4 has already done the work for that: nginx is installed, it is listening on port <strong>8080</strong>, and it is serving <code>/var/www/iosxe-images</code> — a folder the bootstrap deliberately created owned by <em>your</em> login account, not root, so that you can copy into it without <code>sudo</code>.</p>
+<p>So copy the two files — the upgrade image <em>and</em> the rollback image — straight into that folder. From your laptop:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
-    cisco@198.18.134.12:~/cisco-one-experience-lab-automation/iosxe_images/</pre>
-<p>They must end up here, and the filenames must match exactly:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">~/cisco-one-experience-lab-automation/iosxe_images/
+    cisco@198.18.134.12:/var/www/iosxe-images/</pre>
+<p>Expect this to take a while — that is roughly 2.6 GB over the VPN. When it finishes, they are already being served. <strong>There is no publish step and no playbook to re-run</strong>; nginx serves whatever is in that folder.</p>
+<p>The filenames must match <code>settings.json</code> character for character:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">/var/www/iosxe-images/
 ├── cat9k_iosxe.26.01.02.SPA.bin   ← the upgrade image
 └── cat9k_iosxe.17.12.08.SPA.bin   ← the rollback image</pre>
-<p>Now publish them. Catalyst Center cannot read a folder on the script server, so the bootstrap serves it over HTTP with nginx. If you staged the files <em>before</em> running Step 4, this already happened and you can skip it; otherwise re-run just that phase:</p>
-<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
-ansible-playbook playbooks/01_bootstrap_script_server.yml --tags image_server</pre>
-<p>Then prove Catalyst Center will be able to fetch what it is about to be pointed at:</p>
+<p>Now prove Catalyst Center will be able to fetch what it is about to be pointed at. Run this on the script server:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
 # HTTP/1.1 200 OK</pre>
+<p><code>200 OK</code> means stage 09 will work. <code>404</code> means the filename does not match what you copied. Connection refused means nginx is not running — re-run Step 4.</p>
+<div class="admonition">
+<p>👀 <strong>There is a second way, and you may have already used it.</strong> The bootstrap also copies any <code>.bin</code> it finds in <code>iosxe_images/</code> at the root of the checkout into that same web root. That exists so you can stage the images <em>before</em> the first bootstrap run and have everything ready in one pass. If you did that, they are already published and this step is done.</p>
+<p>Coming at it after Step 4, as you are here, copying straight to <code>/var/www/iosxe-images</code> is simpler: one transfer instead of two, and it does not leave a second 2.6 GB copy sitting in the checkout. The two routes do not conflict — the bootstrap only ever adds files to the web root, it never clears it, so re-running it later will not remove anything you copied by hand.</p>
+</div>
 <h5>Where each of those paths is defined</h5>
-<p>Nothing here is hard-coded in one place — the folder you drop files into, the folder nginx serves, and the URL Catalyst Center is given are three different settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
+<p>Nothing here is hard-coded in one place — the folder nginx serves, the optional staging folder in the checkout, and the URL Catalyst Center is given are separate settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
 <tr><th style="width: 26%;">Setting</th><th style="width: 26%;">Value</th><th style="width: 48%;">File, and what it controls</th></tr>
 </thead>
 <tbody>
-<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td><code>ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code><br>The folder you copy into.</td></tr>
-<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td>Same file — where the bootstrap copies them so nginx can serve them.</td></tr>
+<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td><code>ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code><br>The folder you copied into, and the one nginx serves.</td></tr>
+<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td>Same file — the optional pre-bootstrap staging folder. Anything here is copied to the web root when the bootstrap runs.</td></tr>
 <tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on.</td></tr>
 <tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>ansible-automation/01_campus/evpn/Settings/settings.json</code>, in the <code>swim</code> block of the <code>Site-105</code> project.<br>What Catalyst Center is told to download from.</td></tr>
 <tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>swim</code> block — these must match your filenames character for character.</td></tr>
