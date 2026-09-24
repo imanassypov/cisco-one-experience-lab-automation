@@ -3046,8 +3046,14 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 
 ~/venv/bin/ansible-playbook playbooks/00_preflight.yml
 ~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml</pre>
+<div class="admonition">
+<p>👀 <strong>Now reload your shell — this step catches nearly everyone.</strong> The second playbook adds <code>~/venv/bin</code> to your <code>PATH</code>, but it does that by writing to your shell startup files. A shell that is already open never re-reads those files, so in <em>this</em> session <code>ansible-playbook</code> is still not found. The bootstrap worked; your shell simply has not caught up.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">exec $SHELL -l
+ansible-playbook --version</pre>
+<p>Opening a new SSH session does the same thing. Once <code>ansible-playbook --version</code> answers, you can drop the <code>~/venv/bin/</code> prefix for the rest of the lab — every later command in this guide assumes you have done this.</p>
+</div>
 <div class="admonition warning">
-<p>🛑 <strong>If your shell says <code>ansible-playbook: command not found</code></strong> and offers to install <code>ansible-core</code> with apt, answer <strong>no</strong>. That installs an unpinned Ansible outside the virtual environment, at a different version from every other student. Use the full path above instead.</p>
+<p>🛑 <strong>If your shell says <code>ansible-playbook: command not found</code></strong> and offers to install <code>ansible-core</code> with apt, answer <strong>no</strong>. That installs an unpinned Ansible outside the virtual environment, at a different version from every other student. Reload your shell as above, or use the full <code>~/venv/bin/</code> path.</p>
 </div>
 <table style="border-collapse: collapse; width: 100%;" border="1">
 <thead>
@@ -3064,7 +3070,46 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 <p>Read it as a checklist. The <code>ansible</code> binaries resolve inside <code>~/venv</code> rather than a system copy; <code>cat-center.corp.pseudoco.com</code> resolves, so the DNS fix took; the vault password file exists where the playbooks expect it; and the pinned Cisco collections are installed at the versions the stages were written against.</p>
 <p>These playbooks target this same host over a <strong>local</strong> connection — there is no SSH hop and no remote password involved.</p>
 <hr>
-<h4>Step 5 — Move to the pipeline directory</h4>
+<h4>Step 5 — Stage the IOS-XE software images</h4>
+<p>Stage 09 upgrades the switches, and it has nothing to install until you put the image files on the script server yourself. They are not in the repository: each <code>.bin</code> is well over a gigabyte and GitHub refuses anything above 100 MB, so they are supplied by hand, the same way <code>.vault</code> and <code>lab.yml</code> are.</p>
+<p>Copy both files — the upgrade image <em>and</em> the rollback image — into <code>iosxe_images/</code> at the <strong>root of the checkout</strong> on the script server. From your laptop:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+    cisco@198.18.134.12:~/cisco-one-experience-lab-automation/iosxe_images/</pre>
+<p>They must end up here, and the filenames must match exactly:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">~/cisco-one-experience-lab-automation/iosxe_images/
+├── cat9k_iosxe.26.01.02.SPA.bin   ← the upgrade image
+└── cat9k_iosxe.17.12.08.SPA.bin   ← the rollback image</pre>
+<p>Now publish them. Catalyst Center cannot read a folder on the script server, so the bootstrap serves it over HTTP with nginx. If you staged the files <em>before</em> running Step 4, this already happened and you can skip it; otherwise re-run just that phase:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+ansible-playbook playbooks/01_bootstrap_script_server.yml --tags image_server</pre>
+<p>Then prove Catalyst Center will be able to fetch what it is about to be pointed at:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
+# HTTP/1.1 200 OK</pre>
+<h5>Where each of those paths is defined</h5>
+<p>Nothing here is hard-coded in one place — the folder you drop files into, the folder nginx serves, and the URL Catalyst Center is given are three different settings that have to agree. This is where each one lives:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 30%;">Setting</th><th style="width: 30%;">Value</th><th style="width: 40%;">Defined in</th></tr>
+</thead>
+<tbody>
+<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td><code>00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code> — the folder you copy into</td></tr>
+<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td>Same file — where the bootstrap copies them so nginx can serve them</td></tr>
+<tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on</td></tr>
+<tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>01_campus/evpn/Settings/settings.json</code> — what Catalyst Center is told to download from</td></tr>
+<tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>settings.json</code> block — these must match your filenames character for character</td></tr>
+</tbody>
+</table>
+<p>Stage 09 joins the last two together to build the download URL. In <code>roles/swim/tasks/import_and_tag.yml</code> it is literally:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">{{ item.image_base_url }}/{{ item.image_file }}</pre>
+<p>So a typo in either half produces the same symptom — Catalyst Center reports that it could not import the image — and the <code>curl</code> above is the quickest way to tell which half is wrong.</p>
+<div class="admonition">
+<p>🔎 <strong>Why the images are served from the script server rather than downloaded from cisco.com.</strong> Catalyst Center would normally import software straight from Cisco's catalogue, and in this pod that does not work: every image is rejected with <code>NCSW10375 "not the latest or suggested image from cisco"</code> — including builds Cisco's own catalogue flags as recommended — and <code>software.cisco.com</code> answers HTTP 403 from inside the lab. Serving the file locally sidesteps the catalogue completely, which has a useful side effect: <em>any</em> image can be used, not only the handful Cisco currently suggests.</p>
+</div>
+<div class="admonition warning">
+<p>🛑 <strong>Skipping this has a delayed cost.</strong> Nothing fails now. Stage 09 fails later, part-way through a pipeline run, after the fabric is already built. If you have no images to hand, decide now: either stage them, or plan to run the pipeline with <code>-e swim_activate=false</code>.</p>
+</div>
+<hr>
+<h4>Step 6 — Move to the pipeline directory</h4>
 <p>Open a fresh shell so the new <code>PATH</code> takes effect, then change into the pipeline folder:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 ansible-playbook --version</pre>
@@ -3073,7 +3118,7 @@ ansible-playbook --version</pre>
 <p>🛑 <strong>The working-directory rule.</strong> Every pipeline command from here on must be run from that exact directory. Ansible only reads <code>ansible.cfg</code> from the current directory, and <em>that</em> file is what supplies the inventory, the roles path, the vault password file, and the credential plugin. Run a playbook from anywhere else and you will get <code>Lab access vault not found</code> — that error almost always means you are in the wrong folder, not that anything is broken.</p>
 </div>
 <hr>
-<h4>Step 6 — Confirm your pod number</h4>
+<h4>Step 7 — Confirm your pod number</h4>
 <p>Every student runs the same repository against a different pod, so the values that differ live in exactly <strong>one</strong> file. The staging script already wrote your pod number into it, so this is a check rather than an edit:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">grep lab_pod_id inventory/group_vars/all/lab.yml</pre>
 <p>Edit it only if you entered the wrong pod, or later when you come back to add access point MACs:</p>
@@ -3088,9 +3133,9 @@ ansible-playbook --version</pre>
 </tbody>
 </table>
 <hr>
-<h4>Step 7 — Confirm the inventory loads</h4>
+<h4>Step 8 — Confirm the inventory loads</h4>
 <p>This check is worth doing: it proves Ansible can read the inventory and unlock the vault before you run a stage that talks to Catalyst Center. It changes nothing — <code>ansible-inventory</code> only reads files.</p>
-<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 5. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 5, go back first:</p>
+<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 6. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 5, go back first:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 ansible-inventory --graph</pre>
 <p>You should see a single host:</p>
@@ -3112,7 +3157,7 @@ ansible-inventory --graph</pre>
 <p>You never type a device password, and no password appears in any playbook. Nothing about this is magic — it is four small pieces, and it is worth understanding, because the same pattern solves the "where do I keep the passwords" problem in real work.</p>
 <p>The short version: <code>ansible.cfg</code> tells Ansible where the passphrase is and which extra code to run; that code finds one encrypted file, decrypts it, and hands its contents to every play as a single variable named <code>lab_access</code>; the inventory then picks individual fields out of that variable.</p>
 <h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
-<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 5. Three lines matter here:</p>
+<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 6. Three lines matter here:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">[defaults]
 inventory           = inventory/static_inventory.yml
 vault_password_file = ../../../../.vault
