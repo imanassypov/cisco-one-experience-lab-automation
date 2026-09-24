@@ -434,6 +434,23 @@ search that reads a **non-internal** index. Connectivity is a red herring — DN
 resolves and TCP 8089 connects even with the wrong key, so a reachability test
 proves nothing.
 
+The most convincing detail is that **the licence manager answers**. It receives
+the request, checks the signature, rejects it, and sends that sentence back. So
+the pod's path out to `dcloud-lm.splunk.show` is healthy and this is a refused
+login, not a network problem. Two more readings confirm the host has no
+entitlement of its own: `licenser/licenses` returns zero installed licences and
+`licenser/groups` shows no active group.
+
+Read the timestamps carefully, because they say different things:
+
+| Field | What it tells you |
+| --- | --- |
+| `last_manager_contact_success_time` | When the licence actually last worked. This dates the outage. |
+| `first failure time=` in the message | Only the current run of failures. splunkd rebuilds this message periodically and the date restarts, so a fault that has run for months can show today's date here. |
+
+Treat a today's date in `first failure time=` as meaningless on its own — it
+does not mean the problem just started.
+
 Internal indexes stay searchable, which is why the instance looks alive:
 
 | Search | Under this fault |
