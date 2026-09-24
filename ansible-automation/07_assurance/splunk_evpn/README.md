@@ -446,10 +446,31 @@ Read the timestamps carefully, because they say different things:
 | Field | What it tells you |
 | --- | --- |
 | `last_manager_contact_success_time` | When the licence actually last worked. This dates the outage. |
-| `first failure time=` in the message | Only the current run of failures. splunkd rebuilds this message periodically and the date restarts, so a fault that has run for months can show today's date here. |
+| `first failure time=` in the message | Only the failures since the last splunkd restart. The message is posted fresh at every startup, so a fault running for months shows today's date here. |
 
 Treat a today's date in `first failure time=` as meaningless on its own — it
-does not mean the problem just started.
+does not mean the problem just started. To tell whether splunkd restarted, list
+the messages and compare the `timeCreated_iso` values: if they all land within a
+few seconds of each other, that is a startup sequence, not several faults
+appearing at once. `NoAllowedDomainsList` only ever appears at startup, so its
+presence alongside the others confirms it.
+
+To date the fault properly, count the retries in the log instead — this survives
+restarts because it reads the indexed history:
+
+```spl
+index=_internal component=LMTracker "Signature mismatch" | timechart span=1h count
+```
+
+A steady count every hour (roughly 60, as it retries once a minute) is a
+continuous fault. That, with `last_manager_contact_success_time`, is what to put
+in an escalation.
+
+Often seen alongside it on a degraded pod: `KVSTORE_FAILED` /
+`KVSTORE_PROCESS_TERMINATED` (mongod exiting with code 1). That is a separate
+fault and worth reporting, but it does **not** cause the lookup check to fail —
+`evpn_device_inventory.csv` is a file lookup, so `| inputlookup` keeps working
+with KV Store down.
 
 Internal indexes stay searchable, which is why the instance looks alive:
 
