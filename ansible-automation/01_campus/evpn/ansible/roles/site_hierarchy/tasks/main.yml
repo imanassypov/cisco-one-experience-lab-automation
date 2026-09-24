@@ -380,12 +380,6 @@
     var: site_configs_list
   when: catc_debug | default(false) | bool
 
-- name: Display computed site payloads
-  # Informational — shows the fully-resolved config dicts before any API
-  # calls are made, making it easy to spot wrong types or missing fields.
-  ansible.builtin.debug:
-    msg: "{{ site_configs_list }}"
-
 # ── Phase A: Resolve all existing sites → build site_id_map ──────────────
 #
 # A single GET /dna/intent/api/v1/sites call retrieves all sites currently
