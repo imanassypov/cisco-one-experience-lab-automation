@@ -23,6 +23,22 @@ iosxe_images/*
 An empty folder is **not** an error. It only means SWIM has nothing to pull yet,
 so stage 09 has nothing to install.
 
+## Which folder should you copy into?
+
+There are two, and the right answer depends on whether the script server has
+been bootstrapped yet.
+
+| Situation | Copy to | Then |
+| --- | --- | --- |
+| **Bootstrap already run** (the usual case) | `/var/www/iosxe-images/` | Nothing. nginx is already serving that folder |
+| **Before the first bootstrap run** | this folder, `iosxe_images/` | The bootstrap copies them to the web root for you |
+
+After the bootstrap, copying straight to the web root is simpler: one transfer
+instead of two, and it avoids leaving a second multi-gigabyte copy in the
+checkout. The two routes do not conflict — the bootstrap only ever *adds* files
+to the web root, it never clears it, so a later run will not remove anything you
+copied by hand.
+
 ## What to put here
 
 Two files, and the names must match `settings.json` character for character:
@@ -35,36 +51,45 @@ iosxe_images/
 └── README.md
 ```
 
-Copy them from your laptop:
+Copy them from your laptop — into this folder if you are staging ahead of the
+bootstrap:
 
 ```bash
 scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
     cisco@198.18.134.12:~/cisco-one-experience-lab-automation/iosxe_images/
 ```
 
-`scp` works without `sudo` because the bootstrap hands this folder and the web
-root to the login user (`script_server_image_owner`, which defaults to whoever
-ran the bootstrap).
+…or straight to the web root if the bootstrap has already run:
+
+```bash
+scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+    cisco@198.18.134.12:/var/www/iosxe-images/
+```
+
+Either way `scp` works without `sudo`: the bootstrap creates the web root owned
+by the login user (`script_server_image_owner`, defaulting to whoever ran it),
+and hands over any `.bin` an earlier run had published as root.
 
 ## How they reach Catalyst Center
 
-Catalyst Center cannot read a folder on the script server, so the bootstrap
-serves this folder over HTTP with nginx:
+Catalyst Center cannot read a folder on the script server, so nginx serves the
+web root over HTTP:
 
 ```text
-iosxe_images/                       you copy the .bin here
+iosxe_images/                       optional: stage here before bootstrapping
         │
         │  01_bootstrap_script_server.yml  (tasks/http_image_server.yml)
         ▼
-/var/www/iosxe-images/              nginx document root
+/var/www/iosxe-images/              nginx document root — or scp straight here
         │
         │  http://198.18.134.12:8080/<file>.bin
         ▼
 Catalyst Center                     imports, distributes, activates (stage 09)
 ```
 
-If you staged the files **before** running the bootstrap, this already happened.
-Otherwise re-run only that phase — it is tagged, so nothing else is touched:
+If you copied into the web root, there is nothing to publish and no playbook to
+re-run. If you staged into this folder *after* the bootstrap had already run,
+publish them with the tagged phase — nothing else is touched:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap

@@ -1544,21 +1544,33 @@ only surfaces as a failure much later in distribute.
 them yourself.** They are hundreds of MB and GitHub rejects anything over
 100 MB, so they are provided the same way `.vault` and `lab.yml` are.
 
-1. Copy both `.bin` files into `iosxe_images/` at the **repository root** on the
-   script server — the upgrade image and the rollback image named in
-   `settings.json`:
+Where you put them depends on whether `00_scriptserver_bootstrap` has run yet.
+It creates `/var/www/iosxe-images` owned by the login user and points nginx at
+it, so once that has happened you can copy straight in and skip the publish
+step entirely.
 
-   ```text
-   iosxe_images/cat9k_iosxe.26.01.02.SPA.bin   # swim.image_file
-   iosxe_images/cat9k_iosxe.17.12.08.SPA.bin   # swim.rollback_image_file
+1. Copy both `.bin` files — the upgrade image and the rollback image named in
+   `settings.json` — onto the script server:
+
+   ```bash
+   # bootstrap already run (usual case) - nginx serves this immediately
+   scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+       cisco@198.18.134.12:/var/www/iosxe-images/
+
+   # or, staging before the first bootstrap run - it publishes them for you
+   scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+       cisco@198.18.134.12:~/cisco-one-experience-lab-automation/iosxe_images/
    ```
 
-2. Re-run the bootstrap image-server phase to publish them over HTTP:
+2. Only if you staged into the checkout *after* bootstrapping, publish them:
 
    ```bash
    cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
    ansible-playbook playbooks/01_bootstrap_script_server.yml --tags image_server
    ```
+
+   The publish step only ever **adds** to the web root — it never clears it — so
+   it will not remove images you copied there by hand.
 
 3. Confirm Catalyst Center can fetch what it is about to be pointed at:
 
