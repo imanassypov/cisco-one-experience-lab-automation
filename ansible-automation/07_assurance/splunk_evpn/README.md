@@ -470,7 +470,79 @@ Often seen alongside it on a degraded pod: `KVSTORE_FAILED` /
 `KVSTORE_PROCESS_TERMINATED` (mongod exiting with code 1). That is a separate
 fault and worth reporting, but it does **not** cause the lookup check to fail —
 `evpn_device_inventory.csv` is a file lookup, so `| inputlookup` keeps working
-with KV Store down.
+with KV Store down. It has its own section below, because it looks like the
+deploy playbook broke it.
+
+#### KV Store fails right after the deploy playbook runs — the certificate expired
+
+The deploy role ends with `splunk restart`, so the KV Store errors appear
+moments after the playbook finishes and it looks like the app install broke
+something. It did not. The restart is the trigger, not the cause.
+
+mongod checks its certificate only when it starts. Once running it never looks
+again, so an expired certificate goes unnoticed until something restarts
+splunkd — and on a lab pod that is usually this playbook, weeks after the
+certificate lapsed.
+
+Confirm it with mongod's own reason:
+
+```spl
+index=_internal source=*mongod.log* id=20574 | head 1 | table _raw
+```
+
+```json
+{
+  "code": 140,
+  "codeName": "InvalidSSLConfiguration",
+  "errmsg": "ssl client initialization problem for certificate:
+             /opt/splunk/etc/auth/mycerts/server.pem :: caused by ::
+             The provided SSL certificate is expired or not yet valid.
+             notBefore 2025-07-17 ... notAfter 2026-07-22 ..."
+}
+```
+
+The same certificate is on the management port, so you can read its dates
+without logging into the host:
+
+```bash
+echo | openssl s_client -connect 198.18.5.109:8089 2>/dev/null \
+  | openssl x509 -noout -subject -dates
+```
+
+It is set once in `server.conf` and inherited:
+
+| Stanza | Setting | Value on the lab pod |
+| --- | --- | --- |
+| `[sslConfig]` | `serverCert` | `/opt/splunk/etc/auth/mycerts/server.pem` |
+| `[sslConfig]` | `sslRootCAPath` | `/opt/splunk/etc/auth/mycerts/chain.pem` |
+| `[kvstore]` | `sslKeysPath` | not set — so KV Store uses the `[sslConfig]` certificate |
+
+Read those over REST rather than hunting through files:
+`GET /services/properties/server/sslConfig` and `.../server/kvstore`.
+
+**To prove the playbook is not responsible**, compare when splunkd started with
+when KV Store failed:
+
+```spl
+index=_internal sourcetype=splunkd "Splunkd starting" | timechart span=1d count
+index=_internal sourcetype=splunkd ("KV Store changed status to failed" OR "KVStore process terminated") | timechart span=1d count
+```
+
+Every KV Store failure lands on a day splunkd started, and the certificate
+expiry predates all of them. On 2026-09-24 the pod showed two starts and six
+failures, against a certificate that had expired on 2026-07-22 — the fault was
+waiting for any restart, and the playbook happened to be the first one.
+
+**Fix.** Replace the expired certificate, or point Splunk back at its own
+generated one. Both need root on the Splunk host and a restart, and the
+certificate belongs to the pod build rather than to this repo, so treat it as an
+escalation. There is no setting that makes mongod overlook its own expired
+certificate.
+
+**Impact on this collection is small.** Telemetry, indexing and the dashboards
+are unaffected, and the lookup is a CSV file. The Ansible here connects with
+certificate validation turned off, so an expired certificate does not break the
+playbooks either. Report it as pod health rather than a pipeline failure.
 
 Internal indexes stay searchable, which is why the instance looks alive:
 
