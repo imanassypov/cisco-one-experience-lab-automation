@@ -8,7 +8,7 @@
 # --force is required: without it ansible-galaxy skips a collection that is
 # already present at any version, so a bumped pin is silently never applied.
 # Retries because the dCloud VPN path to galaxy.ansible.com drops
-# intermittently, the same reason sync_repo.yml retries its clone.
+# intermittently, the same reason sync_repo.yml retries its pull.
 - name: Install pinned Ansible collections with the venv ansible-galaxy
   ansible.builtin.command:
     cmd: >-

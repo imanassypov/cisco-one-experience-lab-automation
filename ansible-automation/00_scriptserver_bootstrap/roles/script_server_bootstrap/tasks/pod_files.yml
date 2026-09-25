@@ -1,0 +1,48 @@
+---
+# The two files that are pod-local and gitignored, so no git operation ever
+# creates, updates or protects them. Split out of sync_repo.yml when the pull
+# moved to 02_sync_from_git.yml — the bootstrap still needs these, and they
+# have nothing to do with git beyond both being invisible to it.
+
+# lab.yml is gitignored, so a fresh clone does not have one and the stages that
+# read lab_pod_id / lab_ap_macs would fail on an undefined variable. force: no
+# means an existing file — the student's pod values — is never overwritten, so
+# this is safe on every re-run.
+- name: Seed pod-local lab.yml from the tracked example
+  ansible.builtin.copy:
+    src: "{{ script_server_lab_vars_example }}"
+    dest: "{{ script_server_lab_vars }}"
+    remote_src: true
+    force: false
+    mode: "0644"
+  register: script_server_lab_seeded
+
+- name: Remind the student to fill in the pod values
+  when: script_server_lab_seeded.changed
+  ansible.builtin.debug:
+    msg:
+      - "Created {{ script_server_lab_vars }} from the example."
+      - "Set lab_pod_id to your dCloud pod number before running stage 07."
+      - "Add each access point's Ethernet MAC to lab_ap_macs before stage 08."
+      - "The file is gitignored, so your values survive every later git pull."
+
+# The vault is created by hand on this host and is never copied anywhere, so
+# all this does is confirm it is there and still private.
+- name: Confirm the vault password file is present
+  ansible.builtin.stat:
+    path: "{{ script_server_vault }}"
+  register: script_server_vault_stat
+
+- name: Fail when the vault password file is missing
+  ansible.builtin.assert:
+    that:
+      - script_server_vault_stat.stat.exists | default(false)
+      - script_server_vault_stat.stat.isreg | default(false)
+    fail_msg: >-
+      {{ script_server_vault }} is missing. Create it on this host with the lab
+      passphrase from your proctor, then chmod 600 it.
+
+- name: Keep the vault password file private
+  ansible.builtin.file:
+    path: "{{ script_server_vault }}"
+    mode: "0600"
