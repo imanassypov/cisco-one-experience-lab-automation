@@ -33,9 +33,19 @@ point of that stage. `00_dc_deploy.yml` erases the running configuration of
 all five switches as it imports them, with no confirmation prompt and no way
 to turn it off. And VRF-Lite to the IOS-XE edge router is still manual.
 
-## Out of scope
+## Where the automation stops
 
-The IOS-XE edge router `DC-SITE11-CEDGE8Kv` (`198.18.133.14`) is not managed by
-this pipeline. `07_external_fabric.yml` creates the External fabric object it
-belongs in, but adding the router and extending the VRFs to it over VRF-Lite
-stay manual.
+The pipeline carries everything `cisco.nac_dc_vxlan` 0.9.0 can express, which
+is all of guide sections 4, 5 and 6. External connectivity — sections 7 and 8
+— is outside the data model and stays manual for now.
+
+In this lab the External fabric and the IOS-XE edge router
+`DC-SITE11-CEDGE8Kv` (`198.18.133.14`) are a **prerequisite**, built in Nexus
+Dashboard before the pipeline runs: the fabric in Monitor Mode, the router
+discovered into it as an Edge Router. `07_external_fabric.yml` can create the
+fabric object if it is genuinely missing, but it cannot set Monitor Mode or
+add a non-NX-OS device, so it refuses to touch a fabric that already exists.
+
+Extending MAIN, PROD and IOT out of DC-Service-Leaf over VRF-Lite is also
+manual. The collection README's TODO records what that would take, and why
+the Nexus as Code model cannot express it today.

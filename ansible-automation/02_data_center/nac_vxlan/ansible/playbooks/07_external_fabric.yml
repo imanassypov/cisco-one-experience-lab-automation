@@ -1,27 +1,67 @@
 ---
-# Stage 07 — create the External connectivity fabric.
+# Stage 07 — create the External connectivity fabric, if it does not exist.
 #
 # Guide section 7, "Create an External Fabric": a second fabric, ASN 65531,
-# Fabric Monitor Mode on, holding the IOS-XE edge router.
+# Fabric Monitor Mode checked, holding the IOS-XE edge router
+# DC-SITE11-CEDGE8Kv (198.18.133.14).
 #
-# Standalone on purpose and NOT imported by 00_dc_deploy.yml. It targets a
+# Standalone on purpose, and NOT imported by 00_dc_deploy.yml. It targets a
 # different inventory host (External, whose data model is
-# playbooks/host_vars/External/), it creates an empty fabric because the edge router is
-# out of scope for this pipeline, and it therefore delivers no connectivity on
-# its own. Run it when you want the fabric object in place ready for the
-# manual steps:
+# playbooks/host_vars/External/) and it only ever gets you part of the way.
+#
+# READ THIS BEFORE RUNNING IT. Nexus as Code 0.9.0 cannot express Fabric
+# Monitor Mode, and it does not fail safe: dc_external_fabric_general.j2
+# emits IS_READ_ONLY: false, and the create role applies the fabric with
+# dcnm_fabric state: merged. Against a fabric that is already in Monitor Mode
+# and already holds the edge router, that would hand Nexus Dashboard write
+# access to a device it is supposed to be observing. The pre_task below
+# therefore refuses to touch an External fabric that already exists.
+#
+# Nor can this stage add the router: the External inventory template has no
+# device-type concept and cisco.dcnm's dcnm_inventory has no device_type
+# parameter, so neither layer can ask Nexus Dashboard to discover a non-NX-OS
+# device.
+#
+# In this lab the External fabric and its router are a manual prerequisite,
+# built as the guide describes, before the DC pipeline runs at all. This
+# playbook exists for the case where the fabric object is genuinely missing —
+# and even then, check Monitor Mode in the UI afterwards.
 #
 #   ansible-playbook playbooks/07_external_fabric.yml
-#
-# Then, in Nexus Dashboard: add DC-SITE11-CEDGE8Kv (198.18.133.14) to the
-# External fabric, and extend the MAIN, PROD and IOT VRFs out of
-# DC-Service-Leaf over VRF-Lite. Both are unautomated today — see the
-# collection README for why.
 
 - name: Stage 07 — create the External connectivity fabric
   hosts: External
   gather_facts: false
   any_errors_fatal: true
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
+  pre_tasks:
+    - name: Look for an existing External fabric
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ inventory_hostname }}"
+      register: dc_external_existing
+      changed_when: false
+      failed_when: false
+      tags: [always]
+
+    - name: Refuse to overwrite a fabric that already exists
+      ansible.builtin.fail:
+        msg: >-
+          Nexus Dashboard already has a fabric named '{{ inventory_hostname }}',
+          so this stage is stopping rather than reapplying its model to it.
+          cisco.nac_dc_vxlan 0.9.0 has no key for Fabric Monitor Mode and
+          emits IS_READ_ONLY: false, so a merge here would take the fabric out
+          of Monitor Mode and let Nexus Dashboard write to the IOS-XE edge
+          router it holds. If you genuinely need to change this fabric, do it
+          in the UI. Nothing else in this pipeline depends on this stage
+          having run.
+      when: >-
+        ((dc_external_existing.response | default({})).RETURN_CODE
+           | default(0) | int) == 200
+      tags: [always]
 
   roles:
     - role: cisco.nac_dc_vxlan.validate

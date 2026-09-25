@@ -37,7 +37,7 @@ it goes end to end.
 | `playbooks/04_deploy.yml` | Pushes that intent to the switches |
 | `playbooks/05_remove.yml` | Destructive prune. Not in `00`. Needs `-e dc_remove_confirm=REMOVE_OK` |
 | `playbooks/06_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
-| `playbooks/07_external_fabric.yml` | Creates the External fabric. Not in `00` — different inventory host |
+| `playbooks/07_external_fabric.yml` | Creates the External fabric **only if it is absent**. Not in `00` — different inventory host, and in this lab the fabric is a manual prerequisite |
 
 Useful overrides:
 
@@ -175,31 +175,93 @@ decides whether the cleanup needs a switch reload. It is set to `Enable`
 because the guide's Advanced tab says to, and because Cisco recommends it for
 Nexus 9000v fabrics like this pod.
 
-## Not automated
+## Coverage, and what is left — TODO
 
-**VRF-Lite to the edge router.** The guide extends MAIN, PROD and IOT out of
-DC-Service-Leaf to DC-SITE11-CEDGE8Kv over VRF-Lite. Two reasons it is not
-here:
+**This pipeline already carries everything `cisco.nac_dc_vxlan` 0.9.0 can
+express for this guide.** That is a deliberate boundary, not a stopping point
+chosen at random. Guide sections 4, 5 and 6 are covered end to end: the
+fabric, the switch import and roles, the vPC pair, the three vPC interfaces,
+and the VRFs and networks with their names, descriptions, gateways and
+attachments. Everything below is outside the model, verified by reading the
+collection rather than inferred.
 
-1. The IOS-XE edge router is out of scope for this pipeline, so nothing puts it
-   in the External fabric, and without it Nexus Dashboard has no far-end to
-   compute the inter-fabric connection against.
-2. Nexus as Code's `overlay_extensions.vrf_lites` is not the same feature. It
-   models per-switch BGP/OSPF routing policy for an already-established
-   extension (it renders `ndfc_vrf_lite_ebgp.j2`, and its rules live under
-   `roles/validate/files/rules/external/`). The guide's step is the
-   `EXTEND: VRF_LITE` attachment with auto-allocated dot1q tags and IFC
-   addressing. No shipped example pairs the two, so this needs a spike against
-   the live appliance before it can be written down as automation.
+The way to re-check any of this on a new release is to dump the settings the
+fabric templates can emit and look for the nvPair you want:
 
-**The guide's VRF-Lite fabric settings.** `Back2BackAndToExternal`, the
-`192.168.252.0/24` DCI subnet, Auto Deploy for Peer and Auto Allocation of
-Unique IP are all on the fabric's Resources tab in the UI and have no key in
-the 0.9.0 data model. Set them by hand if the spike above needs them.
+```bash
+ansible-galaxy collection download cisco.nac_dc_vxlan:<ver> -p /tmp/x
+tar xzf /tmp/x/cisco-nac_dc_vxlan-<ver>.tar.gz -C /tmp/nac
+cd /tmp/nac/roles/dtc/common/templates/ndfc_fabric
+cat dc_vxlan_fabric/*/*.j2 | grep -oE "^\s+[A-Z][A-Z0-9_]+:" | sort -u
+```
 
-**Fabric Monitor Mode on the External fabric.** No key in the data model.
-`cisco.dcnm`'s `dcnm_fabric` exposes it as `IS_READ_ONLY` if it turns out to
-matter.
+On 0.9.0 that is 134 nvPairs for a VXLAN EVPN fabric and 30 for an External
+one. What follows is what is *not* in those lists.
+
+### 1. VRF-Lite to the edge router — the one that matters
+
+Guide section 8 extends MAIN, PROD and IOT out of DC-Service-Leaf to
+DC-SITE11-CEDGE8Kv: `EXTEND: VRF_LITE` on the VRF attachment, with
+Ethernet1/8, dot1q 2/3/4 and `192.168.252.5|9|13/30` against neighbours
+`.6/.10/.14`.
+
+The data model cannot say that. `dc_vxlan_fabric_vrfs.j2` emits exactly one
+key per attachment, `- ip_address: <ip>`, and there is no `vrf_lite` key
+anywhere in the VRF templates. `overlay_extensions.vrf_lites` is a different
+feature despite the name: it renders `ndfc_vrf_lite_ebgp.j2`, which is
+`router bgp` / `neighbor` CLI pushed as a switch policy. It creates no
+sub-interface and no attachment, so on its own it would configure a BGP
+neighbour that has no interface to reach.
+
+`cisco.dcnm` underneath can do it — `dcnm_vrf` supports `attach[].vrf_lite[]`
+with `interface`, `dot1q`, `ipv4_addr`, `neighbor_ipv4` and `peer_vrf`. Two
+things to design around when this gets written:
+
+- The create role runs `dcnm_vrf` with `state: replaced`, and DC-Service-Leaf
+  is not in `vrf_attach_groups`. A create run will therefore detach whatever a
+  VRF-Lite stage attached, so that stage has to run after create on every
+  pass, not once.
+- The fabric settings below have to be in place first.
+
+### 2. The fabric's VRF-Lite Resources settings
+
+`VRF_LITE_AUTOCONFIG` (the UI's **VRF Lite Deployment**, value
+`Back2Back&ToExternal`), `DCI_SUBNET_RANGE` (`192.168.252.0/24`),
+`AUTO_SYMMETRIC_VRF_LITE` (**Auto Deploy for Peer**) and
+`AUTO_UNIQUE_VRF_LITE_IP_PREFIX` are none of them in the 134. Without them
+the fabric sits at the NDFC default of `Manual` and the address staging
+section 8 depends on never happens.
+
+These are reachable with a supplementary `dcnm_fabric` call, and safely so:
+the create role applies the fabric with `state: merged`, so extra nvPairs set
+alongside it survive its re-runs. Set them in stage 01, before stage 04
+deploys, not afterwards.
+
+### 3. Fabric Monitor Mode on the External fabric
+
+No key, and it does not fail safe. `dc_external_fabric_general.j2` emits
+`IS_READ_ONLY: false`, the opposite of the guide. Stage 07 guards against
+this by refusing to run when the fabric already exists — see its header.
+
+### 4. Importing the IOS-XE edge router
+
+The External inventory template has no device-type concept, and
+`dcnm_inventory` has no `device_type` parameter at all, only
+`role: edge_router`. Neither layer can ask Nexus Dashboard to discover a
+CSR/CAT8K. This would need a raw REST call against the discovery API.
+
+### 5. Fabric cosmetics
+
+Location, License Tier and the Telemetry feature checkbox have no nvPairs in
+the templates. They do not affect the EVPN fabric, and are noted only so the
+next person does not go looking.
+
+### 6. Verification of the above
+
+Stage 06 checks switches, roles, VRFs, networks and attachments. When items 1
+and 2 land, extend it to assert the `VRF_LITE` extension on DC-Service-Leaf,
+so that a create-without-VRF-Lite run is caught rather than silently
+reverting external connectivity.
 
 ## Version pinning
 

@@ -34,10 +34,15 @@ vxlan:
 
     vrf_attach_groups:
       # Only the two server-facing leaves. DC-Service-Leaf is intentionally
-      # absent: the guide attaches the VRFs to the border leaf later, as part
-      # of the VRF-Lite step, and that step is still an open spike. Adding it
-      # here would attach the VRFs without the extension and diverge from the
-      # guide's sequence.
+      # absent: the guide attaches the VRFs to it as part of the VRF-Lite
+      # step, which this model cannot express — an attachment here can name a
+      # switch but never the EXTEND: VRF_LITE extension, the sub-interface or
+      # the dot1q tag that go with it. Attaching it here anyway would give the
+      # border leaf the VRFs without the extension.
+      #
+      # Note for whoever automates VRF-Lite: the create role runs dcnm_vrf
+      # with state: replaced, so it will strip any attachment not listed here.
+      # A VRF-Lite stage has to run after create on every pass, not once.
       - name: dc_leaves
         switches:
           - hostname: DC-Leaf1
