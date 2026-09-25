@@ -1,0 +1,83 @@
+---
+description: Four-agent pipeline for automation changes — build, then docs in parallel, then a documentation accuracy review
+alwaysApply: true
+---
+
+# Change pipeline: build → docs in parallel → review
+
+Any change to a playbook, role, inventory or data model under
+`ansible-automation/` runs through four `generalPurpose` subagents in three
+waves. Skip the pipeline only for changes that touch no `.yml`/`.py` under
+`ansible-automation/` — a typo fix in prose does not need four agents.
+
+| Wave | Agent | Owns these files, and nothing else |
+|---|---|---|
+| 1 | **Build** | `ansible-automation/**` except `**/README.md` |
+| 2 (parallel) | **README** | `**/README.md` **and** `release-notes/YYYY-MM-DD.md` |
+| 2 (parallel) | **Guide** | `docs/index.html` |
+| 3 | **Review** | may edit any file in waves 1–2 to correct an error |
+
+Wave 2 launches only after wave 1 is **verified** done. A truncated or
+mid-sentence agent report is not completion — the agent is still running, and
+launching wave 2 on it puts two agents on the same file. Confirm against the
+tree (`git status`, the renamed paths, a syntax check) before proceeding.
+Both wave-2 agents launch in the **same** tool block so they run
+concurrently. Wave 3 launches only after both have returned.
+
+If a subagent cannot be launched, do that wave's work directly rather than
+dropping it. The review wave is the one most likely to be skipped under
+pressure and the one whose absence costs most.
+
+## Rules that make the parallelism safe
+
+- **The release note belongs to the README agent alone.** It is one file per
+  date with bullets appended, so two agents writing it would clobber each
+  other. The Guide agent must not touch `release-notes/`.
+- **Never give two agents the same path.** The table above is the whole
+  contract; if a change needs a file not listed, assign it explicitly in the
+  prompt rather than letting two agents infer ownership.
+- Nothing commits. Commit and push only when the user asks (see
+  `dev-workflow.mdc`).
+
+## Briefing each agent
+
+Subagents do not share this session's context. Every prompt must carry:
+
+1. The repo path and the exact files wave 1 changed, with a one-line
+   *what and why* per file.
+2. The user's original request, verbatim — not a paraphrase.
+3. The relevant constraints from `dev-workflow.mdc`, quoted, not referenced.
+   A subagent cannot see that this is a dCloud lab, that credentials come
+   only from the vault, or that `docs/index.html` is served by GitHub Pages.
+4. Its file ownership from the table, stated as a hard boundary.
+
+## What the Review agent checks, and fixes directly
+
+It reads the README output, the guide output and the actual wave-1 code, and
+corrects any documentation that disagrees with the code. Specifically:
+
+- Every filename, stage number, playbook name, variable and CLI flag named in
+  the docs exists in the code, and every renamed identifier is gone
+  repo-wide: `grep -rn '<old-name>' --exclude-dir=.git .`
+- Commands are runnable as written from the stated working directory. In the
+  Ansible collections that means the directory holding `ansible.cfg`, not
+  `playbooks/`.
+- README and guide agree with each other. They describe the same pipeline to
+  two audiences; a contradiction is a bug in one of them.
+- `docs/index.html` tag balance is unchanged, since it is hand-edited HTML:
+
+  ```bash
+  python3 -c "
+  import re; s=open('docs/index.html').read()
+  for t in ['div','pre','ul','li','p','tr','td','table']:
+      o,c=len(re.findall(r'<%s\b'%t,s)),len(re.findall(r'</%s>'%t,s))
+      print(t,o,c,'OK' if o==c else 'MISMATCH')"
+  ```
+
+- Markdown anchor links resolve. GitHub lowercases a heading, drops
+  punctuation and hyphenates spaces — an em dash in a heading yields a
+  double hyphen and a dead link.
+- Playbooks still parse: `ansible-playbook --syntax-check` on each one.
+
+It then reports every fix it made, and every disagreement it found but chose
+not to resolve, so nothing silently changes meaning.
