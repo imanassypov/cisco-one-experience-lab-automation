@@ -1,6 +1,14 @@
 ---
 # Updates the checkout this playbook is running from. Use it to pull lab
 # changes published after you first cloned; it never re-clones.
+#
+# This is the ONLY playbook that runs a git pull. 01_bootstrap_script_server
+# deliberately does not: it runs from the checkout it would be rewriting, and
+# it reads requirements.txt and the Galaxy pins off disk before that point, so
+# a pull there could not inform the work that followed it.
+#
+# The order that follows from that: run this first, then the bootstrap, so the
+# bootstrap applies whatever pins the pull brought in.
 - name: Update the local checkout from GitHub
   hosts: script_servers
   gather_facts: true
@@ -18,3 +26,11 @@
       ansible.builtin.include_role:
         name: script_server_bootstrap
         tasks_from: sync_repo.yml
+
+    # A pull can add a new tracked example — lab.yml.example is how lab.yml
+    # first appears — so seeding runs here too. force: no, so the student's
+    # existing pod values are never touched.
+    - name: Seed pod-local files and check the vault
+      ansible.builtin.include_role:
+        name: script_server_bootstrap
+        tasks_from: pod_files.yml

@@ -130,10 +130,42 @@ described below.
 | Playbook | Purpose | Re-runnable |
 | --- | --- | --- |
 | `00_preflight.yml` | Confirm you are on Linux, the checkout is complete, `.vault` decrypts, and `sudo` works | Yes, read-only |
-| `01_bootstrap_script_server.yml` | DNS, packages, venv, PATH, collections, `lab.yml` seed, verification | Yes |
-| `02_sync_from_git.yml` | Fast-forward this checkout to pick up lab changes published later | Yes |
+| `01_bootstrap_script_server.yml` | DNS, packages, venv, PATH, collections, `lab.yml` seed, verification. **Does not pull** | Yes |
+| `02_sync_from_git.yml` | Fast-forward this checkout to pick up lab changes published later. The only playbook that pulls | Yes |
 
 `02_sync_from_git.yml` updates the checkout **in place** — it never re-clones, and it fails rather than discarding uncommitted work. Run it when told a lab fix has been published.
+
+### Pull first, then bootstrap
+
+**`02` is the only playbook that runs a git pull.** `01` deliberately does not, for two reasons:
+
+- It runs from the very checkout it would be rewriting. Worse, it reads `requirements.txt`, the Galaxy pins and its own `defaults/main.yml` off disk *before* the point where the pull used to sit, so a pull there could never inform the work that followed it — it only made `defaults/main.yml` and the task files disagree for the rest of the play.
+- A dirty tree aborted the whole bootstrap. Packages, the venv, PATH and the collections had all already succeeded, and the run failed anyway over uncommitted edits, which have nothing to do with bootstrapping.
+
+So the order is `02` then `01`, and the pull-and-bootstrap sequence to pick up a published fix is:
+
+```bash
+cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+ansible-playbook playbooks/02_sync_from_git.yml
+ansible-playbook playbooks/01_bootstrap_script_server.yml
+```
+
+The second command is only needed if the update changed pinned collections or Python packages; `02` says so when the checkout moves.
+
+Both playbooks still seed `lab.yml` from the tracked example and check `.vault`, which is `tasks/pod_files.yml`. Those two files are gitignored, so no git operation creates or protects them — that is why they are their own task file rather than part of the pull.
+
+### "Local modifications exist in the destination … (force=no)"
+
+`02` refuses to discard your work. It now names the files and the fix instead of leaving you with the module's bare message, and it fails immediately rather than retrying: the retry loop exists for the dCloud VPN dropping `github.com`, and a dirty tree is deterministic, so retrying it only made a config problem look like a network flake.
+
+```bash
+cd ~/cisco-one-experience-lab-automation
+git status                 # see what changed
+git stash                  # keep the changes for later
+git checkout -- .          # or discard them
+```
+
+Only **tracked** files count. `.vault`, `lab.yml` and `iosxe_images/` are gitignored, and untracked files never block a pull — `ansible.builtin.git` filters `??` lines out of its own check (`has_local_mods`, `git.py:650`), and the check here passes `--untracked-files=no` to match it exactly.
 
 Later collections (`01_campus` and onward) use the same `00_`, `01_`, … naming inside their own `playbooks/` folders.
 

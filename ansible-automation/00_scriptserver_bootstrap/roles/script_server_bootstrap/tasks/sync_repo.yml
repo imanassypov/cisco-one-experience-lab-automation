@@ -1,7 +1,47 @@
 ---
-# The student already cloned this checkout, so this only fast-forwards it to
-# pick up lab changes published since. update: true with a clean tree is a
-# pull; a dirty tree fails loudly rather than discarding their work.
+# Fast-forwards the checkout to pick up lab changes published since the
+# student cloned it. Never re-clones, never discards local work.
+#
+# ONLY 02_sync_from_git.yml includes this. The bootstrap deliberately does not
+# pull: it runs from the very checkout it would be rewriting mid-play, and
+# everything it reads off disk — requirements.txt in venv.yml, the Galaxy
+# requirements, the role's own defaults — is loaded before this point anyway,
+# so the pull could never have informed the work it followed. Worse, a dirty
+# tree aborted the whole bootstrap over something unrelated to bootstrapping.
+# Pull first with 02, then bootstrap.
+#
+# The dirty-tree case is checked here rather than left to ansible.builtin.git
+# because the module's own behaviour is unhelpful twice over. Its message,
+# "Local modifications exist in the destination (force=no)", names no files
+# and suggests no fix. And the failure is deterministic, so the retry loop
+# below — which exists for the dCloud VPN dropping github.com — burns three
+# attempts making a config problem look like a network flake.
+#
+# --untracked-files=no is required for this check to agree with the module.
+# ansible.builtin.git runs plain `git status --porcelain` and then filters out
+# every `??` line (has_local_mods, git.py:650), so untracked files do not
+# block a pull. Without the flag here, a stray scratch file in the checkout
+# would fail a pull that git would have been happy to do.
+- name: Check whether the checkout has local modifications
+  ansible.builtin.command:
+    cmd: git status --porcelain --untracked-files=no
+    chdir: "{{ script_server_repo_dest }}"
+  register: script_server_git_dirty
+  changed_when: false
+  failed_when: false
+
+- name: Fail on a dirty checkout, naming the files and the fix
+  ansible.builtin.fail:
+    msg: >-
+      {{ script_server_repo_dest }} has uncommitted changes, so it cannot be
+      fast-forwarded without discarding them:
+      {{ script_server_git_dirty.stdout_lines | join(' | ') }}.
+      Keep them with `git -C {{ script_server_repo_dest }} stash`, discard them
+      with `git -C {{ script_server_repo_dest }} checkout -- .`, or commit them.
+      Only tracked files are listed - .vault, lab.yml and iosxe_images/ are
+      gitignored and never block a pull.
+  when: script_server_git_dirty.stdout | default('') | trim | length > 0
+
 - name: Update the lab automation checkout
   ansible.builtin.git:
     repo: "{{ script_server_git_repo }}"
@@ -10,8 +50,8 @@
     update: true
     accept_hostkey: true
   register: script_server_git_sync
-  # The dCloud VPN path to github.com drops intermittently; a pull failure
-  # here aborts the whole bootstrap.
+  # The dCloud VPN path to github.com drops intermittently, and by this point
+  # a failure can only be that, because the dirty-tree case failed above.
   until: script_server_git_sync is succeeded
   retries: 3
   delay: 5
@@ -21,59 +61,12 @@
     msg: >-
       {{ script_server_git_repo }} ({{ script_server_git_version }})
       is at {{ script_server_repo_dest }}
-      ({{ script_server_git_sync.after | default('updated') }}).
+      ({{ script_server_git_sync.after | default('unchanged') }}).
 
-# The pull just rewrote the role that is running. Task files are re-read from
-# disk by include_tasks, but defaults/main.yml was loaded before the pull, so
-# the two can disagree for the rest of this play only.
-- name: Warn that the running checkout was updated mid-play
+- name: Point at the bootstrap when the checkout moved
   ansible.builtin.debug:
     msg: >-
-      This checkout advanced to {{ script_server_git_sync.after | default('a new commit') }}
-      while the play was running, so role defaults are from the previous commit.
-      If a later task fails on an undefined variable, nothing is broken - just
-      re-run this playbook and it will pick the new values up.
+      This checkout advanced to {{ script_server_git_sync.after }}. If the
+      update touched pinned collections or Python packages, run
+      playbooks/01_bootstrap_script_server.yml to apply them to ~/venv.
   when: script_server_git_sync.changed | default(false)
-
-# lab.yml is gitignored, so a fresh clone does not have one and the stages that
-# read lab_pod_id / lab_ap_macs would fail on an undefined variable. force: no
-# means an existing file — the student's pod values — is never overwritten, so
-# this is safe on every re-run.
-- name: Seed pod-local lab.yml from the tracked example
-  ansible.builtin.copy:
-    src: "{{ script_server_lab_vars_example }}"
-    dest: "{{ script_server_lab_vars }}"
-    remote_src: true
-    force: false
-    mode: "0644"
-  register: script_server_lab_seeded
-
-- name: Remind the student to fill in the pod values
-  when: script_server_lab_seeded.changed
-  ansible.builtin.debug:
-    msg:
-      - "Created {{ script_server_lab_vars }} from the example."
-      - "Set lab_pod_id to your dCloud pod number before running stage 07."
-      - "Add each access point's Ethernet MAC to lab_ap_macs before stage 08."
-      - "The file is gitignored, so your values survive every later git pull."
-
-# The vault is created by hand on this host and is never copied anywhere, so
-# all this does is confirm it survived the pull and is still private.
-- name: Confirm the vault password file is present
-  ansible.builtin.stat:
-    path: "{{ script_server_vault }}"
-  register: script_server_vault_stat
-
-- name: Fail when the vault password file is missing
-  ansible.builtin.assert:
-    that:
-      - script_server_vault_stat.stat.exists | default(false)
-      - script_server_vault_stat.stat.isreg | default(false)
-    fail_msg: >-
-      {{ script_server_vault }} is missing. Create it on this host with the lab
-      passphrase from your proctor, then chmod 600 it.
-
-- name: Keep the vault password file private
-  ansible.builtin.file:
-    path: "{{ script_server_vault }}"
-    mode: "0600"
