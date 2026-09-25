@@ -1,8 +1,12 @@
 ---
+# Named ..._binary_version, not ..._git_version: the latter used to be a role
+# default holding the branch to check out, and this register silently shadowed
+# it. The default is gone now that the role never runs git, but the two names
+# are worth keeping distinct.
 - name: Collect git version
   ansible.builtin.command:
     cmd: git --version
-  register: script_server_git_version
+  register: script_server_git_binary_version
   changed_when: false
 
 - name: Collect ansible-core version from the virtualenv
@@ -57,7 +61,7 @@
 - name: Display bootstrap evidence
   ansible.builtin.debug:
     msg:
-      - "{{ script_server_git_version.stdout }}"
+      - "{{ script_server_git_binary_version.stdout }}"
       - "{{ script_server_ansible_version.stdout_lines }}"
       - "PATH binaries (resolved with the new PATH applied): {{ script_server_path_check.stdout_lines }}"
       - "DNS: {{ script_server_dns_verify.stdout }}"

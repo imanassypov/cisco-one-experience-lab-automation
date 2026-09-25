@@ -14,13 +14,13 @@
 - name: Install Galaxy collections
   ansible.builtin.include_tasks: collections.yml
 
-# Deliberately NOT a git pull. This role runs from the checkout it would be
-# rewriting, and everything it reads off disk — requirements.txt in venv.yml,
-# the Galaxy requirements, this role's own defaults — is already loaded by
-# now, so a pull here could not inform the work it follows. It also used to
-# abort the entire bootstrap over uncommitted edits, discarding the apt, venv
-# and collection work that had already succeeded. Pull with
-# playbooks/02_sync_from_git.yml first, then run this.
+# This role does not touch git, by design. It runs from the checkout it would
+# be rewriting, and everything it reads off disk — requirements.txt in
+# venv.yml, the Galaxy requirements, this role's own defaults — is already
+# loaded by now, so a pull here could not inform the work it follows. It only
+# ever made defaults/main.yml disagree with the task files, and aborted the
+# whole bootstrap when the tree was dirty. Refreshing the checkout is a plain
+# `git pull` the student runs first.
 - name: Seed pod-local files and check the vault
   ansible.builtin.include_tasks: pod_files.yml
 

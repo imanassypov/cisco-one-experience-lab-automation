@@ -171,9 +171,8 @@ cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_boot
 |----------|--------------|
 | `00_preflight.yml` | Read-only. Confirms you are on Linux, the checkout is complete, `.vault` decrypts, and `sudo` works |
 | `01_bootstrap_script_server.yml` | Lab DNS, OS packages, the `~/venv` pins including Genie/pyATS, venv binaries on `PATH`, pinned Cisco collections and SDKs, and seeds `lab.yml` |
-| `02_sync_from_git.yml` | Fast-forwards this checkout later, to pick up lab fixes published after you cloned |
 
-All three are safe to re-run. Preflight is worth running first every time: it
+Both are safe to re-run. Preflight is worth running first every time: it
 proves the passphrase before anything is changed, so a wrong `.vault` fails with
 a readable message instead of an opaque decrypt error part-way through.
 
@@ -181,8 +180,10 @@ Lab DNS matters: `01` puts `198.18.5.102` first in `/etc/resolv.conf` (dCloud
 `198.18.128.1` as fallback) so `cat-center.corp.pseudoco.com` resolves. Without
 it, every Catalyst Center stage fails on name resolution.
 
-> `02_sync_from_git.yml` fails if the tree has local modifications rather than
-> discarding them. Commit or revert your changes, then re-run it.
+> To pick up lab fixes published after you cloned, run `git pull` in the
+> checkout. There is no playbook for it. It fails if you have edited tracked
+> files rather than discarding them, so commit or revert first. Re-run `01`
+> afterwards only if the update moved a pinned collection or Python package.
 
 ### Step 5 — Confirm PATH and working directory
 
@@ -2287,8 +2288,8 @@ Or plainly, with no renderer: `less evidence/stage12-verification.md`.
 > `No module named 'rich'` means the venv was built before `rich` joined
 > `ansible-automation/requirements.txt`. Re-run
 > `00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml`; its pip
-> task is unconditional, so it tops up an existing venv in place. Pulling a repo
-> fix with `02_sync_from_git.yml` does not install anything on its own.
+> task is unconditional, so it tops up an existing venv in place. A `git pull`
+> does not install anything on its own.
 
 Or pull either file back:
 
@@ -2402,7 +2403,7 @@ to print the full HTTP request and response for each API call.
 | `This collection now runs ON the script server` | You ran collection `00` on your laptop | SSH to `198.18.134.12` and run it from the checkout there |
 | `must decrypt to a mapping with a top-level lab_access key` | `lab_access.yml` was re-created without its `lab_access:` root key | Rebuild it from `lab_access.yml.example` and re-encrypt |
 | `ansible-playbook: not found` in a non-interactive SSH command | Non-login shells do not pick up `~/venv` from `.bashrc` | Use an interactive SSH session, or call `/home/cisco/venv/bin/ansible-playbook` |
-| `02_sync_from_git.yml` fails on local changes | The tree is dirty from ad-hoc file edits | Commit or revert them, then re-run |
+| `git pull` fails on local changes | The tree is dirty from ad-hoc file edits | Commit or revert them, then pull again |
 | `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | [Step 6](#step-6--confirm-your-pod-number) was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
 | `ansible-inventory --graph` prints `[WARNING]: No inventory was parsed, only implicit localhost is available` and an empty `@all` | You are not in the `evpn/ansible` directory, so Ansible never found `ansible.cfg` and fell back to a default with no inventory | `cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible` and re-run. Every `ansible-playbook` command in this collection runs from there too |
 | Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |

@@ -4,7 +4,7 @@ Site 105 campus EVPN/VXLAN is built by **Catalyst Center**, not by Ansible pushi
 
 Independent of the [SDA track](../sda/).
 
-Author on the Mac in this repo. Run on the Kali script server after `git pull` (or Mac `02_sync_from_git.yml`). Ansible on Kali is on PATH from `~/venv`. All playbooks run from `ansible/`.
+Author on the Mac in this repo. Run on the Kali script server after `git pull`. Ansible on Kali is on PATH from `~/venv`. All playbooks run from `ansible/`.
 
 ## Vendored trees
 
