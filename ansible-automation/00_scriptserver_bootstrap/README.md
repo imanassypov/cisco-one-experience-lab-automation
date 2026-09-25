@@ -39,7 +39,7 @@ The staging script also writes the repo-root `.vault` for you and seeds `lab.yml
 | Step | Done by | What |
 | --- | --- | --- |
 | Base packages | `stage-script-server.sh` | `git`, `python3`, `pip`, `venv`, `python3-dev`, `gcc`, `libffi-dev`, `libssl-dev` |
-| Virtualenv at `~/venv` | `stage-script-server.sh` | Pins from [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `netaddr`, both CatC SDKs, `rich`. The bootstrap role reads that same file, so the shared pins are defined once |
+| Virtualenv at `~/venv` | `stage-script-server.sh` | Pins from [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `ansible-pylibssh`, `netaddr`, both CatC SDKs, `rich`. The bootstrap role reads that same file, so the shared pins are defined once |
 | `.vault` and `lab.yml` | `stage-script-server.sh` | Writes the vault passphrase and the POD number it prompted for |
 | Everything else | `01_bootstrap_script_server.yml` | DNS, PATH, Galaxy collections, Genie/pyATS |
 
@@ -50,7 +50,7 @@ The script is idempotent — re-running it is harmless. It refuses to run on any
 - Lab DNS `198.18.5.102` first (then dCloud `198.18.128.1`) in `/etc/network/interfaces` and `/etc/resolv.conf` so `cat-center.corp.pseudoco.com` resolves
 - OS packages, kept deliberately minimal: `git`, `pip`, and the versioned `pythonX.Y-venv`. No compiler and no `-dev` headers — every pinned wheel is prebuilt for this interpreter, and on the dCloud image `libffi-dev` / `libssl-dev` cannot install without dragging `libc6` forward
 - The user virtualenv at `~/venv` (Ansible is **not** installed with apt/yum)
-- Everything pinned in [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `netaddr`, both CatC SDKs, and `rich`, which renders the stage 12 markdown report in the terminal. The role installs from that file rather than repeating the versions, so `stage-script-server.sh` and the bootstrap can never disagree
+- Everything pinned in [`requirements.txt`](../requirements.txt) — `ansible-core`, `paramiko`, `ansible-pylibssh`, `netaddr`, both CatC SDKs, and `rich`, which renders the stage 12 markdown report in the terminal. The role installs from that file rather than repeating the versions, so `stage-script-server.sh` and the bootstrap can never disagree
 - `genie` and `pyats`, pinned in the role's `script_server_python_packages` — stage 12 parses every CLI response with Genie, which adds roughly 700 MB. Deliberately not in `requirements.txt`: none of it is needed to run `ansible-playbook`, so staging stays fast
 - Pinned CatC Python SDKs (`catalystcentersdk` 3.1.3.0.1, `dnacentersdk` 2.10.6) for appliance 3.1.5 / API profile 3.1.3.0
 - Venv CLI binaries on PATH (`~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zprofile` — Kali's default shell is zsh) and symlinked into `~/bin`

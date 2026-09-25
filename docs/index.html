@@ -3026,6 +3026,7 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 <tbody>
 <tr><td><code>ansible-core</code></td><td>2.17.14</td><td>The automation engine</td></tr>
 <tr><td><code>paramiko</code></td><td>3.5.1</td><td>SSH transport used by other collections</td></tr>
+<tr><td><code>ansible-pylibssh</code></td><td>1.4.0</td><td>SSH transport for <code>network_cli</code>, used to read the DC switch serials</td></tr>
 <tr><td><code>netaddr</code></td><td>1.3.0</td><td>IP address maths inside templates</td></tr>
 <tr><td><code>catalystcentersdk</code></td><td>3.1.3.0.1</td><td>Catalyst Center API client</td></tr>
 <tr><td><code>dnacentersdk</code></td><td>2.10.6</td><td>Required by the <code>cisco.dnac</code> collection</td></tr>
@@ -9992,14 +9993,18 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <hr>
 <h4>The part that cannot be declared: serial numbers</h4>
 <p>Nexus as Code identifies a switch by its <strong>serial number</strong>, not by hostname or management IP. That is the right choice for a fabric — a serial is the one identifier that cannot be reassigned by a typo — but it creates a problem for a lab: serial numbers are specific to your pod. Committing them to git would tie the repository to one dCloud instance and make everyone else's checkout wrong.</p>
-<p>So the pipeline has a discovery stage, and it asks the switches rather than the controller. <code>00_discover_dc_switch_serials.yml</code> SSHes to each management address and runs <code>cisco.nxos.nxos_facts</code>, which reads <code>show version</code> and parses the Processor Board ID. Then it prints a table of switch, management IP, role and serial number — <strong>and stops</strong>.</p>
-<p>Copying those serials into <code>topology_switches.nac.yaml</code> is yours to do by hand. That is deliberate. Generating the file would hide the one thing this stage is here to teach you, which is what the data model is actually keyed on, and you would never look at it again. Copy the tracked <code>.example</code> file alongside it and replace each <code>REPLACE_ME</code> with the serial printed for that management IP.</p>
-<p>Run it once, before anything else, then fill in the file. If you forget, <code>01_dc_deploy.yml</code> stops at stage 03 and tells you so.</p>
-<p>Three details here are worth calling out, because each is the kind of thing that only becomes obvious after it breaks:</p>
+<p>So the pipeline has a discovery stage, and it asks the switches rather than the controller. <code>00_discover_dc_switch_serials.yml</code> SSHes to each management address and runs <code>cisco.nxos.nxos_facts</code>, which reads <code>show version</code> and parses the Processor Board ID. It prints a table of switch, management IP, role and serial number, and then writes the data model for you.</p>
+<p>It builds <code>topology_switches.nac.yaml</code> by copying the tracked <code>.example</code> beside it and substituting two values per switch: the serial it just read, and the role declared for that switch in <code>dc_switches.yml</code>. Everything else in the example — the comments, the port-channels, the vPC IDs — is carried through untouched. The substitution is anchored on each switch's name rather than on its position in the list, so the two cannot be matched up wrongly.</p>
+<p>Run it once before anything else. If you skip it, <code>01_dc_deploy.yml</code> stops at stage 03 and tells you so.</p>
+<div class="admonition">
+<p>💡 <strong>The generated file is build output, and every run overwrites it without asking.</strong> If you hand-edit <code>topology_switches.nac.yaml</code> and then re-run stage 00, your edits are gone. Change <code>dc_switches.yml</code> or the <code>.example</code> instead — those are the inputs, and they are the things that survive.</p>
+</div>
+<p>Four details here are worth calling out, because each is the kind of thing that only becomes obvious after it breaks:</p>
 <ul>
 <li>Going to the switches rather than to Nexus Dashboard is what makes this stage <em>first</em>. The obvious alternative is the controller's own CDP crawl, the one behind the Add Switches dialog you used in section 4 — but that API is scoped to a fabric, so the fabric would have to exist before any switch could be discovered, while the switches are what the rest of the model needs. Reading <code>show version</code> over SSH has no such ordering problem. The cost is that this is the only stage in the collection that needs SSH to <code>198.18.128.x</code>; everything else talks to the controller.</li>
-<li>Match each serial to its switch <strong>by management IP, not by position in the list</strong>. Nexus as Code only checks that the serial field is non-empty, so a wrong or duplicated serial passes validation cleanly and then fails much later, deep inside the create role, with a message that will not point you back here.</li>
-<li>Write the serials as <strong>literal text</strong>, never as a template lookup. Nexus as Code reads its data model off disk in Python, bypassing Ansible's variable substitution entirely, so a Jinja expression written into the model would reach the validator verbatim and fail.</li>
+<li>A serial matched to the wrong switch is the expensive mistake, which is why the stage checks its own work. Nexus as Code only validates that the field is <em>non-empty</em>, so a wrong or duplicated serial passes cleanly and then fails much later, deep inside the create role, with a message that will not point you back here. After writing the file the stage re-reads it and confirms no <code>REPLACE_ME</code> survived and every serial it discovered is present — a substitution that quietly matched nothing fails the run rather than reaching stage 03.</li>
+<li>The serials are written as <strong>literal text</strong>, never as a template lookup, and that is a constraint rather than a preference. Nexus as Code reads its data model off disk in Python, bypassing Ansible's variable substitution entirely, so a Jinja expression written into the model would reach the validator verbatim and fail. Keep that in mind if you ever edit the <code>.example</code>.</li>
+<li>If any switch does not answer, the stage fails and writes <strong>nothing</strong>. A half-populated model is worse than no model, because stage 03's guard only catches a leftover <code>REPLACE_ME</code> — it cannot know that a serial you supplied belongs to a different box.</li>
 </ul>
 <hr>
 <h4>Running it</h4>
@@ -10012,9 +10017,8 @@ ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm|nxos'</pre>
 <div class="admonition">
 <p>💡 <strong>If you skip this you get a confusing error.</strong> Ansible reports a missing <em>collection</em> as a missing <em>role</em>: <code>ERROR! the role 'cisco.nac_dc_vxlan.validate' was not found</code>, followed by a list of role search paths. Nothing is wrong with the playbook it points at — the collection simply is not installed.</p>
 </div>
-<p>Then read the serials off the switches, fill them into the data model as described above, and run the pipeline:</p>
+<p>Then read the serials off the switches, which also writes the data model, and run the pipeline:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/00_discover_dc_switch_serials.yml
-# transcribe the serials, then:
 ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <p>The orchestrator runs four stages in order: <code>02_fabric.yml</code> ensures the fabric exists, <code>03_create.yml</code> builds the full intent on the controller, <code>04_deploy.yml</code> pushes it to the switches, and <code>05_verify_fabric.yml</code> checks the result. Credentials come from the same vault-encrypted <code>lab_access.yml</code> every other collection in this repository uses.</p>
 <p>The numbering is worth a second of your attention, because it answers a question you would otherwise have to open each file to settle: <strong>stages 02 to 05 are exactly what <code>01_dc_deploy.yml</code> runs, and anything numbered outside that range is something you invoke by name.</strong> Three playbooks sit outside it deliberately. <code>00_discover_dc_switch_serials.yml</code> comes first because it is the only stage that reaches a switch directly, and it only needs running again if the pod hardware changes. <code>06_remove.yml</code> is a destructive prune that the orchestrator must never trigger by accident. <code>07_external_fabric.yml</code> targets a different inventory host, and in this lab the External fabric is something you built by hand earlier.</p>

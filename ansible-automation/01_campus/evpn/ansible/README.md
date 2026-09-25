@@ -93,7 +93,8 @@ path is derived from where the playbooks live, so any directory works.
 
 You cannot run `ansible-playbook` to install Ansible, so a small shell script
 does the minimum first: base packages and a virtualenv at `~/venv` holding the
-pinned `ansible-core`, `paramiko`, `netaddr`, and both Catalyst Center SDKs.
+pinned `ansible-core`, `paramiko`, `ansible-pylibssh`, `netaddr`, and both
+Catalyst Center SDKs.
 
 ```bash
 cd ansible-automation/00_scriptserver_bootstrap
