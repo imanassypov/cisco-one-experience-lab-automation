@@ -269,7 +269,37 @@ reverting external connectivity.
 `00_scriptserver_bootstrap/roles/script_server_bootstrap/files/requirements.yml`
 must stay identical — the bootstrap file is the one that actually gets
 installed, so a higher pin here alone is never applied. Same trap the campus
-collection hit.
+collection hit. All six pins are in both files, including the four supporting
+collections; without them there they would be installed as dependencies at
+whatever the Galaxy resolver picked, which is not what this file claims is
+running.
+
+### "the role 'cisco.nac_dc_vxlan.validate' was not found"
+
+The collection is not installed. Ansible reports a missing collection as a
+missing **role** and prints the role search path, which sends you looking in
+the wrong place — nothing is wrong with the playbook.
+
+The fix is to re-run the bootstrap, which is what installs:
+
+```bash
+cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+ansible-playbook playbooks/02_sync_from_git.yml
+ansible-playbook playbooks/01_bootstrap_script_server.yml
+```
+
+To install only what this collection needs, without the apt and venv work:
+
+```bash
+ansible-galaxy collection install -r collections/requirements.yml --force
+ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'
+```
+
+`--force` is not cosmetic. Without it `ansible-galaxy` silently skips any
+collection already present at any version, which is how the campus
+`cisco.catalystcenter` bump went unapplied for weeks. Expect the install to be
+slow or to need a retry; the path to `galaxy.ansible.com` over the dCloud VPN
+drops intermittently.
 
 ND 4.2.1 support landed in `cisco.dcnm` 3.12.1, and `cisco.nac_dc_vxlan` 0.9.0
 itself requires `cisco.dcnm >= 3.13.0`, `ansible.netcommon >= 4.1.0` and
