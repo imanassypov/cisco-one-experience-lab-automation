@@ -1,0 +1,96 @@
+---
+# Copy this file to topology_switches.nac.yaml and fill in the serials:
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   ansible-playbook playbooks/01_fabric.yml            # fabric must exist first
+#   ansible-playbook playbooks/02_discover_serials.yml  # prints the serials
+#   cp playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example \
+#      playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml
+#
+# Then replace every REPLACE_ME below with the serial stage 02 printed for
+# that switch. Match on the management IP rather than on position in the list.
+#
+# Stage 02 is fabric-scoped (POST .../fabrics/{fabric}/inventory/test-
+# reachability), which is why the fabric is created before the serials can be
+# read.
+#
+# Take care over the transcription. A wrong serial is accepted by the schema —
+# rule 301 only checks that the field is non-empty — so it passes validation
+# and fails much later, deep inside the create role.
+#
+# Your copy is gitignored because serials belong to one dCloud pod. This
+# .example stays tracked, so editing the copy never leaves the checkout dirty
+# and never blocks a git pull.
+vxlan:
+  topology:
+    switches:
+      - name: DC-Leaf1
+        serial_number: REPLACE_ME
+        role: leaf
+        management:
+          management_ipv4_address: 198.18.128.101
+        interfaces:
+          - name: Port-channel3
+            mode: access
+            vpc_id: 3
+            description: "MAIN server — vPC3"
+            members:
+              - Ethernet1/3
+          - name: Port-channel4
+            mode: access
+            vpc_id: 4
+            description: "PROD server — vPC4"
+            members:
+              - Ethernet1/4
+          - name: Port-channel5
+            mode: access
+            vpc_id: 5
+            description: "IOT server — vPC5"
+            members:
+              - Ethernet1/5
+
+      - name: DC-Leaf2
+        serial_number: REPLACE_ME
+        role: leaf
+        management:
+          management_ipv4_address: 198.18.128.102
+        interfaces:
+          - name: Port-channel3
+            mode: access
+            vpc_id: 3
+            description: "MAIN server — vPC3"
+            members:
+              - Ethernet1/3
+          - name: Port-channel4
+            mode: access
+            vpc_id: 4
+            description: "PROD server — vPC4"
+            members:
+              - Ethernet1/4
+          - name: Port-channel5
+            mode: access
+            vpc_id: 5
+            description: "IOT server — vPC5"
+            members:
+              - Ethernet1/5
+
+      - name: DC-SPINE-1
+        serial_number: REPLACE_ME
+        role: spine
+        management:
+          management_ipv4_address: 198.18.128.11
+        interfaces: []
+
+      - name: DC-SPINE-2
+        serial_number: REPLACE_ME
+        role: spine
+        management:
+          management_ipv4_address: 198.18.128.12
+        interfaces: []
+
+      - name: DC-Service-Leaf
+        serial_number: REPLACE_ME
+        role: border
+        management:
+          management_ipv4_address: 198.18.128.13
+        interfaces: []

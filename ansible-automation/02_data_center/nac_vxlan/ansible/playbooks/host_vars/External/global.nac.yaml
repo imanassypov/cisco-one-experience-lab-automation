@@ -1,0 +1,27 @@
+---
+# External connectivity fabric. Guide section 7, "Create an External Fabric".
+#
+# Deliberately switchless. The guide adds DC-SITE11-CEDGE8Kv (198.18.133.14,
+# an IOS-XE CSR/CAT8K) to this fabric, but that router is out of scope for this
+# pipeline, so adding it stays a manual step in Nexus Dashboard.
+#
+# Consequence to be aware of: without the edge router in inventory, Nexus
+# Dashboard has nothing to CDP-discover on the far side of DC-Service-Leaf's
+# Ethernet1/8, so it cannot compute the VRF-Lite inter-fabric connection. This
+# fabric on its own does not deliver external connectivity.
+#
+# Fabric Monitor Mode (the guide checks it, so Nexus Dashboard never writes to
+# the external device) is not expressible in the cisco.nac_dc_vxlan 0.9.0 data
+# model — vxlan.global.external has no read-only key. Verify the fabric comes
+# up in monitor mode and, if it does not, set it in the UI and record that
+# here. The equivalent knob at the module layer is IS_READ_ONLY in
+# cisco.dcnm's dcnm_fabric.
+vxlan:
+  fabric:
+    name: External
+    type: External
+
+  global:
+    external:
+      # Guide: BGP ASN 65531. Quoted — the schema types it as a string.
+      bgp_asn: "65531"

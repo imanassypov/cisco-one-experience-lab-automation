@@ -1,0 +1,174 @@
+---
+# Stage 02 — report the DC switch serial numbers so they can be entered into
+# the data model.
+#
+# Guide section 4, "Add Switches to the Fabric": the student types one seed IP
+# (198.18.128.101), lets Nexus Dashboard CDP-crawl two hops, and ticks the five
+# switches it finds. The serial numbers on that screen are what the rest of
+# the pipeline is keyed on, because cisco.nac_dc_vxlan identifies a switch by
+# serial_number rather than by hostname or IP, and rule 301 in the validate
+# role fails the run outright if any switch in the model lacks one.
+#
+# This stage only reads and prints. Transcribing the serials into
+# host_vars/<fabric>/topology_switches.nac.yaml is a deliberate manual step:
+# it is the moment the student sees what the data model is actually keyed on,
+# and the file is pod-specific, so generating it would only hide that.
+#
+# Nothing here writes to a switch or to the controller. test-reachability
+# reports what is discoverable; the import that actually changes a switch is
+# done by the create role in stage 03. Safe to re-run at any time.
+
+- name: Stage 02 — report DC switch serial numbers
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+    dc_switch_model_dir: "playbooks/host_vars/{{ inventory_hostname }}"
+    # Echoed into the crawl request so it reports what the stage 03 import
+    # will actually find. cisco.nac_dc_vxlan hardcodes preserve_config: false
+    # in its inventory template, so the import is greenfield regardless.
+    dc_preserve_config: false
+
+  tasks:
+    - name: Assert the declared switch table is usable
+      ansible.builtin.assert:
+        that:
+          - dc_switches is defined
+          - dc_switches | length > 0
+          - dc_switches | selectattr('management_ipv4_address', 'undefined') | list | length == 0
+          - dc_switches | selectattr('role', 'undefined') | list | length == 0
+        fail_msg: >-
+          inventory/group_vars/all/dc_switches.yml must declare a non-empty dc_switches
+          list where every entry has a name, management_ipv4_address and role.
+
+    # ---------------------------------------------------------------- pass 1
+    # Switches already imported into the fabric. Once stage 03 has run this
+    # alone resolves everything and the crawl below is skipped.
+    - name: Read the switches Nexus Dashboard already has in the fabric
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/inventory/switchesByFabric"
+      register: dc_fabric_inventory
+      changed_when: false
+      failed_when: false
+
+    - name: Fail with a pointer to stage 01 when the fabric is missing
+      ansible.builtin.fail:
+        msg: >-
+          Nexus Dashboard has no fabric named '{{ dc_fabric_name }}'
+          (HTTP {{ dc_fabric_inventory.response.RETURN_CODE | default('unknown') }}).
+          Discovery is fabric-scoped, so run playbooks/01_fabric.yml first.
+      when: >-
+        (dc_fabric_inventory.response.RETURN_CODE | default(0) | int) >= 400
+
+    # Key names differ between the two APIs and there is no pattern to it:
+    # switchesByFabric returns ipAddress, test-reachability returns ipaddr.
+    - name: Collect the serials of switches already in the fabric
+      ansible.builtin.set_fact:
+        dc_serials_by_ip: >-
+          {{ dict(imported | map(attribute='ipAddress')
+                  | zip(imported | map(attribute='serialNumber'))) }}
+      vars:
+        imported: >-
+          {{ (dc_fabric_inventory.response | default({})).DATA | default([])
+             | selectattr('ipAddress', 'defined')
+             | selectattr('serialNumber', 'defined') | list }}
+
+    - name: Work out which declared switches still need a serial
+      ansible.builtin.set_fact:
+        dc_switches_missing_serial: >-
+          {{ dc_switches
+             | rejectattr('management_ipv4_address', 'in', dc_serials_by_ip.keys() | list)
+             | map(attribute='name') | list }}
+
+    # ---------------------------------------------------------------- pass 2
+    # CDP crawl from the seed, which is what the guide's Add Switches dialog
+    # does. no_log hides the switch credentials in the request body; the
+    # registered result is still available to the tasks below.
+    - name: Crawl the fabric from the seed switch
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/inventory/test-reachability"
+        json_data: >-
+          {{ {
+               'seedIP': dc_discovery_seed_ip,
+               'snmpV3AuthProtocol': dc_discovery_snmp_auth_protocol | int,
+               'username': ndfc_switch_username,
+               'password': ndfc_switch_password,
+               'maxHops': dc_discovery_max_hops | int,
+               'cdpSecondTimeout': dc_discovery_cdp_second_timeout | int,
+               'preserveConfig': dc_preserve_config | bool
+             } | to_json }}
+      register: dc_reachability
+      changed_when: false
+      no_log: true
+      when: dc_switches_missing_serial | length > 0
+
+    - name: Merge the crawl results into the serial map
+      ansible.builtin.set_fact:
+        dc_serials_by_ip: "{{ dc_serials_by_ip | combine(discovered) }}"
+      vars:
+        reachable: >-
+          {{ (dc_reachability.response | default({})).DATA | default([])
+             | selectattr('ipaddr', 'defined')
+             | selectattr('serialNumber', 'defined') | list }}
+        discovered: >-
+          {{ dict(reachable | map(attribute='ipaddr')
+                  | zip(reachable | map(attribute='serialNumber'))) }}
+      when: dc_switches_missing_serial | length > 0
+
+    # ---------------------------------------------------------------- report
+    - name: Lay out one row per declared switch
+      ansible.builtin.set_fact:
+        dc_serial_rows: >-
+          {%- set rows = [] -%}
+          {%- for sw in dc_switches -%}
+          {{- rows.append('%-18s %-16s %-8s %s' | format(
+                sw.name,
+                sw.management_ipv4_address,
+                sw.role,
+                dc_serials_by_ip.get(sw.management_ipv4_address, 'NOT DISCOVERED'))) or '' -}}
+          {%- endfor -%}
+          {{ rows }}
+
+    - name: Show the serial numbers
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['%-18s %-16s %-8s %s' | format('SWITCH', 'MANAGEMENT IP', 'ROLE', 'SERIAL NUMBER')]
+             + dc_serial_rows }}
+
+    - name: Explain how to get them into the data model
+      ansible.builtin.debug:
+        msg:
+          - "Put these into the data model by hand, then run stage 03."
+          - ""
+          - "  cd ansible-automation/02_data_center/nac_vxlan/ansible"
+          - "  cp {{ dc_switch_model_dir }}/topology_switches.nac.yaml.example \\"
+          - "     {{ dc_switch_model_dir }}/topology_switches.nac.yaml"
+          - ""
+          - "Then edit that copy and replace every REPLACE_ME with the matching"
+          - "serial number above. Match on the management IP, not on position."
+          - ""
+          - "The copy is gitignored because serials are specific to one pod. The"
+          - ".example file stays tracked, so your edits never make the checkout"
+          - "dirty and never block a git pull."
+
+    - name: Require a serial for every declared switch
+      ansible.builtin.assert:
+        that:
+          - dc_serial_rows | select('search', 'NOT DISCOVERED') | list | length == 0
+        fail_msg: >-
+          Nexus Dashboard returned no serial number for at least one declared
+          switch — see the NOT DISCOVERED rows above. Check that the VPN is up,
+          that the seed {{ dc_discovery_seed_ip }} is reachable from Nexus
+          Dashboard, that dc_discovery_max_hops ({{ dc_discovery_max_hops }}) is
+          enough to reach the rest over CDP, and that the switch credentials in
+          the vault are correct. Entering a placeholder for a switch you could
+          not discover will not fail validation — rule 301 only checks that the
+          field is non-empty — and will instead fail much later inside the
+          create role.
+        success_msg: >-
+          Nexus Dashboard resolved a serial number for all
+          {{ dc_switches | length }} declared switch(es).

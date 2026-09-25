@@ -1,0 +1,26 @@
+---
+# Nexus as Code inventory. Every host here is a FABRIC, not a device — the
+# collection is 1 host = 1 fabric, and the host name must equal
+# vxlan.fabric.name in that fabric's host_vars directory.
+#
+# The data model is resolved by the validate role as
+#   {{ playbook_dir }}/host_vars/{{ inventory_hostname }}
+# which is hardcoded in the role and has no override. So the data model lives
+# at playbooks/host_vars/, beside the playbooks — NOT next to this file, where
+# Ansible's own host_vars convention would put it. group_vars does sit here,
+# because that is plain Ansible and the collection has no say in it.
+#
+# ansible_host is the Nexus Dashboard appliance in both cases; the switches
+# themselves are never SSHed to by this collection.
+all:
+  children:
+    nd:
+      hosts:
+        # Data Center VXLAN EVPN fabric — the one the guide builds.
+        Pseudoco-DC1:
+          ansible_host: ndfc.corp.pseudoco.com
+        # External connectivity fabric, monitor mode, no switches. Built by
+        # 07_external_fabric.yml only; deliberately absent from 00_dc_deploy.yml
+        # because the IOS-XE edge router is out of scope for this pipeline.
+        External:
+          ansible_host: ndfc.corp.pseudoco.com

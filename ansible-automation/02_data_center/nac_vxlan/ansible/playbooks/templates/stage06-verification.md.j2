@@ -1,0 +1,81 @@
+{# Evidence report for 06_verify_fabric.yml. Generated — do not edit by hand. #}
+# DC fabric verification — {{ dc_fabric_name }}
+
+Generated {{ dc_verify_timestamp }} by `06_verify_fabric.yml`.
+
+Declared intent comes from `group_vars/all/dc_switches.yml`,
+`host_vars/{{ inventory_hostname }}/vrfs.nac.yaml` and
+`host_vars/{{ inventory_hostname }}/networks.nac.yaml`. Observed state comes
+from the Nexus Dashboard API only — no device SSH — so this report is valid
+even when the switch management addresses are unreachable from here.
+
+**{{ dc_total_checks | int - dc_failed_rows | length }} of {{ dc_total_checks }} check(s) match intent.**
+
+## Switches
+
+| Switch | Mgmt IP | Serial | Role declared | Role observed | Mode | Config compliance | Match |
+|---|---|---|---|---|---|---|---|
+{% for row in dc_switch_rows | default([]) %}
+| {{ row.name }} | {{ row.ip }} | {{ row.serial }} | {{ row.declared_role }} | {{ row.observed_role }} | {{ row.mode }} | {{ row.cc_status }} | {{ 'yes' if row.ok else 'NO' }} |
+{% endfor %}
+
+A switch fails this table when Nexus Dashboard has no inventory record at its
+management IP, or when the role it holds is not the role declared for it.
+
+## VRFs
+
+| VRF | ID declared | ID observed | Attachment states | Match |
+|---|---|---|---|---|
+{% for row in dc_vrf_rows | default([]) %}
+| {{ row.name }} | {{ row.declared_id }} | {{ row.observed_id }} | {{ row.attach_states | join(', ') if row.attach_states else 'none' }} | {{ 'yes' if row.ok else 'NO' }} |
+{% endfor %}
+
+A VRF must exist with the declared VNI, be attached to at least one switch,
+and have every attachment in `DEPLOYED`. An attachment stuck in `PENDING`
+means the intent was created but never pushed — re-run `04_deploy.yml`.
+
+## Networks
+
+| Network | VRF declared | VRF observed | Gateway declared | Gateway observed | Attachments declared | Attachments missing | Attachment states | Match |
+|---|---|---|---|---|---|---|---|---|
+{% for row in dc_network_rows | default([]) %}
+| {{ row.name }} | {{ row.declared_vrf }} | {{ row.observed_vrf }} | {{ row.declared_gateway }} | {{ row.observed_gateway }} | {{ row.declared_attachments | map('replace', '|', ' ') | join(', ') }} | {{ row.missing_attachments | map('replace', '|', ' ') | join(', ') if row.missing_attachments else 'none' }} | {{ row.attach_states | join(', ') if row.attach_states else 'none' }} | {{ 'yes' if row.ok else 'NO' }} |
+{% endfor %}
+
+A network must exist in the declared VRF with the declared anycast gateway,
+and each declared port-channel must be attached **on every switch it was
+declared on**, with every attachment in `DEPLOYED`. Attachments are listed as
+`switch port-channel` pairs, so a network that reached one leaf but not its
+vPC peer shows up here rather than passing.
+
+## Failures
+
+{% if dc_failed_rows | length > 0 %}
+The row for each of these in the tables above holds the declared and observed
+values side by side.
+
+{% for row in dc_failed_rows %}
+{% if row.observed_role is defined %}
+- **{{ row.name }}** ({{ row.ip }}) — {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
+{% elif row.declared_id is defined %}
+- **{{ row.name }}** (VRF) — {% if row.observed_id == 'absent' %}does not exist on the controller{% elif row.observed_id | string != row.declared_id | string %}has VNI {{ row.observed_id }}, declared as {{ row.declared_id }}{% elif not row.attach_states %}exists but is attached to nothing{% else %}attachments are {{ row.attach_states | join(', ') }}, all of which must be DEPLOYED{% endif %}
+
+{% else %}
+- **{{ row.name }}** (network) — {% if row.observed_vrf == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_vrf != row.declared_vrf %}{{ faults.append('is in VRF ' ~ row.observed_vrf ~ ', declared in ' ~ row.declared_vrf) or '' }}{% endif %}{% if row.observed_gateway != row.declared_gateway %}{{ faults.append('gateway is ' ~ row.observed_gateway ~ ', declared as ' ~ row.declared_gateway) or '' }}{% endif %}{% if row.missing_attachments %}{{ faults.append('not attached on ' ~ row.missing_attachments | map('replace', '|', ' ') | join(', ')) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attachments are ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
+
+{% endif %}
+{% endfor %}
+{% else %}
+None.
+{% endif %}
+
+## Not covered by this report
+
+- **VRF-Lite / external connectivity.** The guide extends MAIN, PROD and IOT
+  out of DC-Service-Leaf to the edge router over VRF-Lite. That step is not
+  automated (see the collection README), so nothing here checks it.
+- **The External fabric.** Verified separately, and it is switchless by design
+  because the IOS-XE edge router is out of scope for this pipeline.
+- **Data plane.** This is an intent-versus-controller comparison. It proves
+  Nexus Dashboard deployed what was declared; it does not prove a server on
+  MainNetwork1 can reach one on ProdNetwork1.
