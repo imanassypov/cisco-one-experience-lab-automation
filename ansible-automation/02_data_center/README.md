@@ -18,8 +18,9 @@ collections: the WLC and Catalyst Center from `01_campus/evpn`, Splunk from
 
 ## Quick start
 
-This track needs `cisco.nac_dc_vxlan` and `cisco.dcnm`, which are newer than
-the campus collections. A `~/venv` built before the DC track was added does
+This track needs `cisco.nac_dc_vxlan`, `cisco.dcnm` and `cisco.nxos`, which
+are newer than the campus collections. A `~/venv` built before the DC track
+was added does
 not have them, and the symptom is misleading — Ansible reports a missing
 collection as `the role 'cisco.nac_dc_vxlan.validate' was not found`. Install
 them once:
@@ -27,7 +28,7 @@ them once:
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
 ansible-galaxy collection install -r collections/requirements.yml --force
-ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'
+ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm|nxos'
 ```
 
 `--force` matters: without it `ansible-galaxy` silently skips a collection
@@ -38,18 +39,27 @@ same thing and is the durable fix, since that is what installs on a fresh pod.
 Then:
 
 ```bash
-ansible-playbook playbooks/00_dc_deploy.yml
+ansible-playbook playbooks/00_discover_dc_switch_serials.yml   # once, first
+ansible-playbook playbooks/01_dc_deploy.yml
 ```
 
 Run from the directory holding `ansible.cfg`, not from `playbooks/` — the same
 convention as `01_campus/evpn`.
 
+The numbers carry information. `01_dc_deploy.yml` imports stages 02 through
+05 and nothing else, so a playbook numbered inside that range runs as part of
+the orchestrated build, while `00_discover_dc_switch_serials.yml` below it and
+`06_remove.yml` / `07_external_fabric.yml` above it are ones you run
+deliberately, by hand.
+
 Read `nac_vxlan/ansible/README.md` first. Three things in particular. The
-first run stops at stage 03 by design: stage 02 prints the switch serial
-numbers and you transcribe them into the data model yourself, which is the
-point of that stage. `00_dc_deploy.yml` erases the running configuration of
-all five switches as it imports them, with no confirmation prompt and no way
-to turn it off. And VRF-Lite to the IOS-XE edge router is still manual.
+discovery stage is not part of the orchestrator: it SSHes to the switches,
+prints a serial for each, and you transcribe them into the data model
+yourself, which is the point of that stage — `01_dc_deploy.yml` stops at
+stage 03 until you have. `01_dc_deploy.yml` then erases the running
+configuration of all five switches as it imports them, with no confirmation
+prompt and no way to turn it off. And VRF-Lite to the IOS-XE edge router is
+still manual.
 
 ## Where the automation stops
 

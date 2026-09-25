@@ -1,0 +1,52 @@
+---
+# Build the PseudoCo data center fabric end to end.
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   ansible-playbook playbooks/01_dc_deploy.yml
+#
+# Stages, in apply order:
+#   02  ensure the VXLAN EVPN fabric exists
+#   03  create the full intent: switches, roles, vPC, port-channels, VRFs,
+#       networks and their attachments
+#   04  deploy that intent to the switches
+#   05  verify the result against intent over the Nexus Dashboard API
+#
+# The numbering carries meaning: 02 through 05 are contiguous because they are
+# exactly the stages this orchestrator imports. Everything outside that range —
+# the 00 prerequisite described below, and 06 and 07 — is something you run by
+# hand. So the number on a playbook already tells you whether a plain run of
+# this file will touch it.
+#
+# BEFORE THE FIRST RUN, get the serial numbers into the data model. This
+# orchestrator will not do it for you and stage 03 stops until you have:
+#
+#   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
+#
+# That stage prints a serial per switch; copy the tracked
+# host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example beside itself and
+# transcribe them in. It is a manual step on purpose — it is where you see
+# what cisco.nac_dc_vxlan actually keys a switch on. It is not imported here
+# because it SSHes to the switches rather than driving Nexus Dashboard, and
+# because it only needs running again when the pod hardware changes.
+#
+# Three other playbooks are deliberately absent:
+#   00_discover_dc_switch_serials.yml  prerequisite, see above
+#   06_remove.yml           destructive prune, run by hand with a confirm flag
+#   07_external_fabric.yml  different inventory host, and in this lab the
+#                           External fabric is a manual prerequisite
+#
+# Three things worth knowing before a plain run:
+#   - This is a greenfield build and there is no confirmation prompt. Stage 03
+#     imports the five switches with preserveConfig false — hardcoded in
+#     cisco.nac_dc_vxlan's inventory template, not something the data model or
+#     a flag can change — so each switch has its running configuration erased
+#     as it joins the fabric. Point this at a pod you are willing to lose.
+#   - Stage 04 changes running configuration and takes several minutes.
+#   - Stage 05 fails the run on any mismatch. Use
+#     -e dc_verify_fail_on_mismatch=false to get the report without the
+#     failure.
+
+- import_playbook: 02_fabric.yml
+- import_playbook: 03_create.yml
+- import_playbook: 04_deploy.yml
+- import_playbook: 05_verify_fabric.yml

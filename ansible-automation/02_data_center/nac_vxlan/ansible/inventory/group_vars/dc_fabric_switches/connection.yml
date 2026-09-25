@@ -1,0 +1,25 @@
+---
+# SSH connection parameters for the DC switches themselves.
+#
+# Used by 00_discover_dc_switch_serials.yml only. Every other stage in this
+# collection talks to Nexus Dashboard over httpapi and never opens a session
+# to a switch — see group_vars/nd/connection.yml for that.
+ansible_connection: ansible.netcommon.network_cli
+ansible_network_os: cisco.nxos.nxos
+
+# Credentials come from the vault-encrypted Lab Topology/lab_access.yml,
+# injected as lab_access by ansible-automation/plugins/vars/lab_access.py.
+# Every DC switch in this pod shares one account, so the DC-Leaf1 entry is
+# representative. Do not put passwords in this file.
+ansible_user: "{{ lab_access['DC-Leaf1'].username }}"
+ansible_password: "{{ lab_access['DC-Leaf1'].password }}"
+
+# NX-OS has no enable mode to escalate into, and the lab account is already
+# network-admin, so nothing here becomes.
+ansible_become: false
+
+# Reading `show version` off five switches over the dCloud VPN. The default
+# 30s is tight when the tunnel is loaded and produces a timeout that reads
+# like an auth failure.
+ansible_command_timeout: 60
+ansible_connect_timeout: 60

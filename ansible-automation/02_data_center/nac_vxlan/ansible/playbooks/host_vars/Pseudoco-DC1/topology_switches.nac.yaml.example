@@ -2,17 +2,16 @@
 # Copy this file to topology_switches.nac.yaml and fill in the serials:
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
-#   ansible-playbook playbooks/01_fabric.yml            # fabric must exist first
-#   ansible-playbook playbooks/02_discover_serials.yml  # prints the serials
+#   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 #   cp playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example \
 #      playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml
 #
-# Then replace every REPLACE_ME below with the serial stage 02 printed for
+# Then replace every REPLACE_ME below with the serial stage 00 printed for
 # that switch. Match on the management IP rather than on position in the list.
 #
-# Stage 02 is fabric-scoped (POST .../fabrics/{fabric}/inventory/test-
-# reachability), which is why the fabric is created before the serials can be
-# read.
+# Stage 00 SSHes to the switches and reads ansible_net_serialnum from
+# cisco.nxos.nxos_facts, so nothing has to exist in Nexus Dashboard first —
+# run it before anything else in this collection.
 #
 # Take care over the transcription. A wrong serial is accepted by the schema —
 # rule 301 only checks that the field is non-empty — so it passes validation

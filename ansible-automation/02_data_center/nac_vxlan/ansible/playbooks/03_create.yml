@@ -30,14 +30,14 @@
       delegate_to: localhost
       tags: [always]
 
-    - name: Fail with a pointer to stage 02 when the switch model is absent
+    - name: Fail with a pointer to stage 00 when the switch model is absent
       ansible.builtin.fail:
         msg: >-
           playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml does
           not exist. It is gitignored because the serial numbers belong to one
-          pod, so you create it yourself: run playbooks/02_discover_serials.yml
-          to print the serials, copy topology_switches.nac.yaml.example beside
-          it, and fill them in.
+          pod, so you create it yourself: run
+          playbooks/00_discover_dc_switch_serials.yml to print the serials,
+          copy topology_switches.nac.yaml.example beside it, and fill them in.
       when: not dc_switch_model.stat.exists
       tags: [always]
 
@@ -55,8 +55,8 @@
       ansible.builtin.fail:
         msg: >-
           playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml still
-          contains REPLACE_ME. Run playbooks/02_discover_serials.yml and
-          transcribe each serial onto the switch with the matching management
+          contains REPLACE_ME. Run playbooks/00_discover_dc_switch_serials.yml
+          and transcribe each serial onto the switch with the matching management
           IP. A placeholder passes validation and then fails deep inside the
           create role, which is a much harder failure to read.
       when: "'REPLACE_ME' in (dc_switch_model_content.content | b64decode)"
