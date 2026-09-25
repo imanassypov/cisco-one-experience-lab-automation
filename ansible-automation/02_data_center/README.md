@@ -57,13 +57,12 @@ discovery stage is not part of the orchestrator: it SSHes to the switches,
 reads a serial number off each one, and generates the switch half of the data
 model from them, so you have to run it once yourself before anything else —
 `01_dc_deploy.yml` stops at stage 03 until you have. What it generates is
-build output rather than something you maintain: every run overwrites
-`topology_switches.nac.yaml` silently, so changes belong in the tracked
-`.example` beside it or in the switch table it reads.
-`01_dc_deploy.yml` then erases the running
-configuration of all five switches as it imports them, with no confirmation
-prompt and no way to turn it off. And VRF-Lite to the IOS-XE edge router is
-still manual.
+build output rather than something you maintain, so every run overwrites
+`topology_switches.nac.yaml` silently and changes belong in the tracked
+`.example` beside it or in the switch table it reads. `01_dc_deploy.yml` then
+erases the running configuration of all five switches as it imports them, with
+no confirmation prompt and no way to turn it off. And VRF-Lite to the IOS-XE
+edge router is still manual.
 
 ## Where the automation stops
 
