@@ -22,8 +22,8 @@
 #
 # Two stages are deliberately absent:
 #   05_remove.yml         destructive prune, run by hand with a confirm flag
-#   07_external_fabric.yml  different inventory host, and the edge router it
-#                           exists for is out of scope for this pipeline
+#   07_external_fabric.yml  different inventory host, and in this lab the
+#                           External fabric is a manual prerequisite
 #
 # Three things worth knowing before a plain run:
 #   - This is a greenfield build and there is no confirmation prompt. Stage 03

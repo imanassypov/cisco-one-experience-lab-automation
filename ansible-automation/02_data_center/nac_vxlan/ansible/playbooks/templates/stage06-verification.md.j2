@@ -72,10 +72,12 @@ None.
 ## Not covered by this report
 
 - **VRF-Lite / external connectivity.** The guide extends MAIN, PROD and IOT
-  out of DC-Service-Leaf to the edge router over VRF-Lite. That step is not
-  automated (see the collection README), so nothing here checks it.
-- **The External fabric.** Verified separately, and it is switchless by design
-  because the IOS-XE edge router is out of scope for this pipeline.
+  out of DC-Service-Leaf to the edge router over VRF-Lite. The Nexus as Code
+  data model has no key for that attachment, so the pipeline does not do it
+  and nothing here checks it. See the collection README's TODO.
+- **The External fabric and its edge router.** Both are a manual prerequisite
+  in this lab, created before the pipeline runs, so neither is this report's
+  to verify.
 - **Data plane.** This is an intent-versus-controller comparison. It proves
   Nexus Dashboard deployed what was declared; it does not prove a server on
   MainNetwork1 can reach one on ProdNetwork1.
