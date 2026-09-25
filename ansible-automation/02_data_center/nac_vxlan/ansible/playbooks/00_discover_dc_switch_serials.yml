@@ -1,0 +1,139 @@
+---
+# Stage 00 — read the DC switch serial numbers off the switches and print them.
+#
+# cisco.nac_dc_vxlan identifies a switch by serial_number, not by hostname or
+# management IP, and rule 301 in its validate role fails the run outright if
+# any switch in the model lacks one. Serials are pod-specific hardware, so
+# they cannot be tracked in git. This stage reads them; you transcribe them
+# into host_vars/<fabric>/topology_switches.nac.yaml yourself.
+#
+# Transcribing by hand is deliberate. It is the moment you see what the data
+# model is actually keyed on, and generating the file would hide exactly that.
+#
+# THIS TALKS TO THE SWITCHES, NOT TO NEXUS DASHBOARD. It SSHes to each
+# management address in dc_switches and runs cisco.nxos.nxos_facts, whose
+# default gather_subset of 'min' reads `show version` and parses the Processor
+# Board ID into ansible_net_serialnum. That has two consequences worth
+# knowing:
+#
+#   - It needs the VPN up and SSH reachability to 198.18.128.x. Everything
+#     else in this collection goes through the Nexus Dashboard API, so this
+#     is the only stage that will fail when the switch path is down.
+#   - It does NOT need the fabric to exist. The earlier version of this stage
+#     asked Nexus Dashboard to CDP-crawl from a seed, and that API is
+#     fabric-scoped, which is why the fabric had to be created first. Reading
+#     the switches directly removes that ordering constraint entirely, which
+#     is why this is stage 00 and runs ahead of the fabric stage rather than
+#     after it.
+#
+# Read-only end to end. nxos_facts issues show commands and nothing else.
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
+
+- name: Stage 00a — build the switch group from the declared table
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  any_errors_fatal: true
+
+  tasks:
+    - name: Assert the declared switch table is usable
+      ansible.builtin.assert:
+        that:
+          - dc_switches is defined
+          - dc_switches | length > 0
+          - dc_switches | selectattr('name', 'undefined') | list | length == 0
+          - dc_switches | selectattr('management_ipv4_address', 'undefined') | list | length == 0
+          - dc_switches | selectattr('role', 'undefined') | list | length == 0
+        fail_msg: >-
+          inventory/group_vars/all/dc_switches.yml must declare a non-empty
+          dc_switches list where every entry has a name,
+          management_ipv4_address and role.
+
+    # The switch table is the single source of truth, so the group is built
+    # from it rather than repeated in static_inventory.yml, where the two
+    # could drift. dc_fabric_switches is declared empty there so that
+    # inventory/group_vars/dc_fabric_switches/ binds to these hosts.
+    - name: Add each declared switch to the SSH group
+      ansible.builtin.add_host:
+        name: "{{ item.name }}"
+        groups: dc_fabric_switches
+        ansible_host: "{{ item.management_ipv4_address }}"
+        dc_switch_role: "{{ item.role }}"
+      loop: "{{ dc_switches }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.management_ipv4_address }})"
+      changed_when: false
+
+- name: Stage 00b — read the serial number off each switch
+  hosts: dc_fabric_switches
+  gather_facts: false
+  # Keep going when one switch is unreachable, so the report can show which.
+  ignore_unreachable: true
+
+  tasks:
+    - name: Gather minimal facts
+      cisco.nxos.nxos_facts:
+        gather_subset: min
+      register: dc_switch_facts
+      ignore_errors: true
+
+- name: Stage 00c — report the serial numbers
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  any_errors_fatal: true
+
+  vars:
+    dc_switch_model_dir: "playbooks/host_vars/{{ dc_fabric_name }}"
+    dc_serial_rows: >-
+      {%- set rows = [] -%}
+      {%- for sw in dc_switches -%}
+      {{- rows.append('%-18s %-16s %-8s %s' | format(
+            sw.name,
+            sw.management_ipv4_address,
+            sw.role,
+            hostvars[sw.name].ansible_net_serialnum | default('UNREACHABLE'))) or '' -}}
+      {%- endfor -%}
+      {{ rows }}
+
+  tasks:
+    - name: Show the serial numbers
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['%-18s %-16s %-8s %s' | format('SWITCH', 'MANAGEMENT IP', 'ROLE', 'SERIAL NUMBER')]
+             + dc_serial_rows }}
+
+    - name: Explain how to get them into the data model
+      ansible.builtin.debug:
+        msg:
+          - "Put these into the data model by hand, then run the pipeline."
+          - ""
+          - "  cd ansible-automation/02_data_center/nac_vxlan/ansible"
+          - "  cp {{ dc_switch_model_dir }}/topology_switches.nac.yaml.example \\"
+          - "     {{ dc_switch_model_dir }}/topology_switches.nac.yaml"
+          - ""
+          - "Then edit that copy and replace every REPLACE_ME with the matching"
+          - "serial number above. Match on the management IP, not on position."
+          - ""
+          - "The copy is gitignored because serials are specific to one pod. The"
+          - ".example file stays tracked, so your edits never make the checkout"
+          - "dirty and never block a git pull."
+
+    - name: Require a serial for every declared switch
+      ansible.builtin.assert:
+        that:
+          - dc_serial_rows | select('search', 'UNREACHABLE') | list | length == 0
+        fail_msg: >-
+          At least one declared switch did not return a serial number — see the
+          UNREACHABLE rows above. This stage SSHes to the switches directly, so
+          check that the VPN is up and that you can reach 198.18.128.x, that
+          the management address in dc_switches.yml is right, and that the
+          switch credentials in the vault are correct. Do not enter a
+          placeholder for a switch you could not read: rule 301 only checks
+          that the field is non-empty, so a made-up serial passes validation
+          and fails much later inside the create role.
+        success_msg: >-
+          Read a serial number from all {{ dc_switches | length }} declared
+          switch(es).

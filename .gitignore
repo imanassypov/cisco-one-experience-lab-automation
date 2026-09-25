@@ -12,11 +12,11 @@
 **/group_vars/all/lab.yml
 !**/group_vars/all/lab.yml.example
 
-# Generated DC switch model. 02_discover_serials.yml renders this from the
-# serial numbers Nexus Dashboard reports, and serials are specific to one
-# dCloud pod — tracking it would both leak pod detail into git and make every
-# student checkout dirty the first time they run the pipeline. The .example
-# alongside it is the tracked shape reference.
+# Pod-local DC switch model. The student copies this from the .example and
+# fills in the serials 00_discover_dc_switch_serials.yml printed. Serials are
+# specific to one dCloud pod — tracking the copy would both leak pod detail
+# into git and make every student checkout dirty the first time they edit it.
+# The .example alongside it is the tracked shape reference.
 **/host_vars/*/topology_switches.nac.yaml
 !**/host_vars/*/topology_switches.nac.yaml.example
 

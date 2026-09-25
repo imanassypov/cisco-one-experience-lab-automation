@@ -1,0 +1,36 @@
+---
+# Stage 02 — make sure the VXLAN EVPN fabric object exists on Nexus Dashboard.
+#
+# Guide section 4, "Create a VXLAN Fabric".
+#
+# This originally existed to break a chicken-and-egg problem: serial discovery
+# used to call .../fabrics/{fabric}/inventory/test-reachability, which is
+# fabric-scoped, so the fabric had to exist before any switch could be
+# discovered — while the rest of the model could not be created until the
+# serials were known. Discovery now reads the switches over SSH instead
+# (00_discover_dc_switch_serials.yml), so that constraint is gone and stage 03
+# would create the fabric on its own. This stage is kept as an explicit,
+# cheap first step that maps to the guide's "Create a VXLAN Fabric", and as a
+# way to land the fabric object alone.
+#
+# It runs the same create role as stage 03. On a fresh checkout
+# playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml does not exist
+# yet, so the role has no switches to act on and naturally lands only the
+# fabric. On a re-run the file is present and this stage converges the whole
+# model, which is harmless because create is idempotent. To force fabric-only
+# behaviour regardless:
+#
+#   ansible-playbook playbooks/02_fabric.yml --tags cr_manage_fabric
+#
+# Run from the collection root (the directory holding ansible.cfg), not from
+# playbooks/ — ansible.cfg's relative paths to the vault and the vars plugin
+# are resolved against the working directory.
+
+- name: Stage 02 — ensure the DC VXLAN fabric exists
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+    - role: cisco.nac_dc_vxlan.dtc.create

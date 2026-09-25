@@ -3,25 +3,21 @@
 #
 # Hostnames, management addresses, fabric roles and endpoint port-channels are
 # identical in every pod (see Lab Topology/PseudoCo_Lab_Access_Lookup.md), so
-# they live in git. Serial numbers are pod-specific hardware and are NOT here;
-# 02_discover_serials.yml asks Nexus Dashboard for them and renders
-# playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml from this table plus the
-# discovered serials.
+# they live in git. Serial numbers are pod-specific hardware and are NOT here:
+# 00_discover_dc_switch_serials.yml reads them off the switches and prints
+# them, and you transcribe them into
+# playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml by hand.
+#
+# This table is the single source of truth for the switch list. Stage 00 turns
+# it into an SSH inventory group at run time with add_host, rather than the
+# names and addresses being repeated in static_inventory.yml where the two
+# copies could drift.
 #
 # Roles come from the guide: Nexus 9300s default to leaf and 9500s to spine on
 # import, but DC-Service-Leaf must be set to border and the two spines must be
 # set explicitly rather than trusted to the model-based default.
 
 dc_fabric_name: Pseudoco-DC1
-
-# Seed for the NDFC discovery call. Two hops reaches the spines and the service
-# leaf from DC-Leaf1, matching the guide's Add Switches dialog.
-dc_discovery_seed_ip: 198.18.128.101
-dc_discovery_max_hops: 2
-# SNMPv3 auth protocol for discovery. NDFC encodes MD5 as 0; see
-# update_create_params() in cisco.dcnm's dcnm_inventory.
-dc_discovery_snmp_auth_protocol: 0
-dc_discovery_cdp_second_timeout: 5
 
 # Management default gateway for the switch mgmt0 interfaces. Left undefined on
 # purpose: NDFC will push whatever is declared here, and the correct value for

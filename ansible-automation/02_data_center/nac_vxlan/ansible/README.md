@@ -15,8 +15,8 @@ out the API calls.
 Everything runs on the Kali script server, inside the `~/venv` that
 `00_scriptserver_bootstrap` builds. Two things have to be in place first.
 
-**1. The collections.** This pipeline needs `cisco.nac_dc_vxlan` and
-`cisco.dcnm`, which are newer than the campus ones — if your `~/venv` was
+**1. The collections.** This pipeline needs `cisco.nac_dc_vxlan`, `cisco.dcnm`
+and `cisco.nxos`, which are newer than the campus ones — if your `~/venv` was
 built before the DC track was added, they are not there. Bring the checkout
 forward and re-run the bootstrap, which is what installs them:
 
@@ -44,10 +44,11 @@ path to `galaxy.ansible.com` over the dCloud VPN drops intermittently.
 Confirm before moving on:
 
 ```bash
-ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'
+ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm|nxos'
 ```
 
-You want `cisco.dcnm 3.13.0` and `cisco.nac_dc_vxlan 0.9.0`.
+You want `cisco.dcnm 3.13.0`, `cisco.nac_dc_vxlan 0.9.0` and
+`cisco.nxos 10.2.0`.
 
 **2. The External fabric.** In this lab it is a manual prerequisite, built in
 Nexus Dashboard with Monitor Mode on and the IOS-XE edge router discovered
@@ -64,29 +65,38 @@ anywhere else breaks authentication:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
-ansible-playbook playbooks/00_dc_deploy.yml
+ansible-playbook playbooks/00_discover_dc_switch_serials.yml   # once, first
+ansible-playbook playbooks/01_dc_deploy.yml
 ```
 
-**The first run stops part way, on purpose.** Stage 02 prints the switch
-serial numbers, and you transcribe them into the data model yourself, so
-stage 03 halts until you have. Copy the serials in as described under
-"Why serial discovery is its own stage", then run the same command again and
-it goes end to end.
+**Run the discovery stage first and transcribe what it prints.** It is not
+part of the orchestrator, because it reads the switches over SSH rather than
+driving Nexus Dashboard, and because it only needs running again when the pod
+hardware changes. Stage 03 refuses to start until the serials are in the data
+model — see "Why serial discovery is its own stage" below.
 
 | Playbook | What it does |
 |---|---|
-| `playbooks/00_dc_deploy.yml` | Imports 01, 02, 03, 04, 06 |
-| `playbooks/01_fabric.yml` | Ensures the fabric object exists |
-| `playbooks/02_discover_serials.yml` | Read-only. Prints the switch serials for you to transcribe |
+| `playbooks/00_discover_dc_switch_serials.yml` | Read-only. SSHes to each switch and prints its serial for you to transcribe. **Run this first.** Not in the orchestrator |
+| `playbooks/01_dc_deploy.yml` | Orchestrator. Imports 02, 03, 04 and 05, in that order |
+| `playbooks/02_fabric.yml` | Ensures the fabric object exists |
 | `playbooks/03_create.yml` | Creates the full intent on the controller |
 | `playbooks/04_deploy.yml` | Pushes that intent to the switches |
-| `playbooks/05_remove.yml` | Destructive prune. Not in `00`. Needs `-e dc_remove_confirm=REMOVE_OK` |
-| `playbooks/06_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
-| `playbooks/07_external_fabric.yml` | Creates the External fabric **only if it is absent**. Not in `00` — different inventory host, and in this lab the fabric is a manual prerequisite |
+| `playbooks/05_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
+| `playbooks/06_remove.yml` | Destructive prune. Not in `01`. Needs `-e dc_remove_confirm=REMOVE_OK` |
+| `playbooks/07_external_fabric.yml` | Creates the External fabric **only if it is absent**. Not in `01` — different inventory host, and in this lab the fabric is a manual prerequisite |
+
+The numbers are not just an ordering, they tell you who runs the playbook.
+Stages 02 to 05 are contiguous because they are exactly what
+`01_dc_deploy.yml` imports, in the order it imports them; 06 and 07 sit above
+that range because they are deliberately outside the orchestrated run, and 00
+sits below it because it is the prerequisite you run once by hand before the
+pipeline. So a plain `ansible-playbook playbooks/01_dc_deploy.yml` touches
+everything numbered 02 to 05 and nothing else.
 
 Useful overrides:
 
-- `-e dc_verify_fail_on_mismatch=false` — stage 06 reports without failing
+- `-e dc_verify_fail_on_mismatch=false` — stage 05 reports without failing
 - `--tags cr_manage_fabric` — narrows a create run to the fabric object only
 
 ## Layout
@@ -95,16 +105,18 @@ Useful overrides:
 ansible.cfg
 collections/requirements.yml
 inventory/
-  static_inventory.yml            one host per FABRIC, not per device
-  group_vars/all/dc_switches.yml  switches, IPs, roles, port-channels, seed
+  static_inventory.yml            one host per FABRIC, plus the switch group
+  group_vars/all/dc_switches.yml  switches, IPs, roles, port-channels
   group_vars/nd/connection.yml    httpapi transport, vault-sourced credentials
   group_vars/nd/nd.yml            remove-role delete-mode flags, all false
+  group_vars/dc_fabric_switches/connection.yml
+                                  SSH to the switches; stage 00 only
 playbooks/
-  00_dc_deploy.yml … 07_external_fabric.yml
+  00_discover_dc_switch_serials.yml … 07_external_fabric.yml
   host_vars/Pseudoco-DC1/*.nac.yaml   the Nexus as Code data model
   host_vars/External/global.nac.yaml
   templates/
-evidence/                         written by stage 06, gitignored
+evidence/                         written by stage 05, gitignored
 ```
 
 This mirrors `01_campus/evpn/ansible` with one forced exception: **`host_vars/`
@@ -141,16 +153,30 @@ There is an awkwardness underneath that. The import itself does not use the
 serial — `fabric_inventory.j2` imports each switch by `seed_ip` with
 `max_hops: 0`, and `serial_number` appears there only in the POAP blocks. So
 the collection insists on a value it does not need for the one operation that
-could discover it, and you cannot read a serial out of the fabric until the
+could discover it, and Nexus Dashboard cannot tell you a serial until the
 switch is already in the fabric.
 
-`playbooks/02_discover_serials.yml` breaks that. It reads
-`.../inventory/switchesByFabric` for switches already imported, and for
-anything still missing it runs the same CDP crawl the guide's Add Switches
-dialog performs (`.../inventory/test-reachability`, seeded at
-`198.18.128.101`, two hops), which reports serials without importing
-anything. It runs after `playbooks/01_fabric.yml` because both endpoints are
-fabric-scoped.
+`playbooks/00_discover_dc_switch_serials.yml` sidesteps that by not asking
+Nexus Dashboard at all. It SSHes to each management address in the
+`dc_switches` table and runs `cisco.nxos.nxos_facts`, whose default
+`gather_subset: min` reads `show version` and parses the Processor Board ID
+into `ansible_net_serialnum`.
+
+Two things follow from that, and they are the reason this is stage 00:
+
+- **No ordering constraint.** Nothing has to exist in Nexus Dashboard first.
+  An earlier version of this stage used the controller's CDP crawl
+  (`.../inventory/test-reachability`), which is fabric-scoped, and that is
+  the only reason `02_fabric.yml` had to run before it.
+- **It needs the switch path up.** Every other stage here reaches only the
+  Nexus Dashboard API, so this is the one that will fail when SSH to
+  `198.18.128.x` is unavailable.
+
+The switch list is not repeated in `static_inventory.yml`. The group
+`dc_fabric_switches` is declared there empty and populated at run time with
+`add_host` from `dc_switches`, so there is one source of truth for names and
+addresses. Its connection settings live in
+`inventory/group_vars/dc_fabric_switches/connection.yml`.
 
 **It prints the serials and stops there.** Putting them into
 `topology_switches.nac.yaml` is yours to do:
@@ -171,9 +197,8 @@ passes validation and fails much later inside the create role. Stage 03 at
 least catches the obvious case: it refuses to start if the file is missing, or
 if any `REPLACE_ME` is still in it.
 
-The stage is read-only against the switches: `test-reachability` reports what
-is discoverable, it does not import anything. The import that writes to a
-switch happens in stage 03.
+The stage is read-only. `nxos_facts` issues show commands and nothing else.
+The first thing that writes to a switch is the import in stage 03.
 
 ## Things that will bite you
 
@@ -189,7 +214,7 @@ not the examples.
 **Jinja in a `.nac.yaml` file is never rendered.** The validate role reads
 those files off disk through the `nac_dc_validate` action plugin, bypassing
 Ansible templating. An expression written into the model reaches the validator
-as literal text. That is the whole reason stage 02 writes serials out as
+as literal text. That is the whole reason the serials go into the model as
 literal strings instead of the model looking them up.
 
 **There is no JSON schema by default.** `schema_path` defaults to empty, and
@@ -279,7 +304,7 @@ section 8 depends on never happens.
 
 These are reachable with a supplementary `dcnm_fabric` call, and safely so:
 the create role applies the fabric with `state: merged`, so extra nvPairs set
-alongside it survive its re-runs. Set them in stage 01, before stage 04
+alongside it survive its re-runs. Set them in stage 02, before stage 04
 deploys, not afterwards.
 
 ### 3. Fabric Monitor Mode on the External fabric
@@ -303,7 +328,7 @@ next person does not go looking.
 
 ### 6. Verification of the above
 
-Stage 06 checks switches, roles, VRFs, networks and attachments. When items 1
+Stage 05 checks switches, roles, VRFs, networks and attachments. When items 1
 and 2 land, extend it to assert the `VRF_LITE` extension on DC-Service-Leaf,
 so that a create-without-VRF-Lite run is caught rather than silently
 reverting external connectivity.
@@ -333,6 +358,6 @@ because the collection reads and validates the model in Python, not in Jinja.
 | `ERROR! the role 'cisco.nac_dc_vxlan.validate' was not found`, followed by a list of role search paths | The **collection** is not installed. Ansible reports a missing collection as a missing role and prints the role search path, which points at the playbook rather than at what is installed. Nothing is wrong with the playbook | [Before you run anything](#before-you-run-anything), step 1 |
 | `Collection cisco.nac_dc_vxlan does not support Ansible version …` | You are not in the bootstrap's `~/venv`. 0.9.0 declares `requires_ansible ">=2.15.0,<2.19.0"` and this repo pins `ansible-core` 2.17.14 | `which ansible-playbook` — it should be under `~/venv/bin`. If apt offers to install `ansible-core`, decline; that is an unpinned copy outside the venv |
 | `No inventory was parsed, only implicit localhost is available` | You ran from `playbooks/` instead of the directory holding `ansible.cfg` | `cd` up one level and re-run |
-| Stage 02 reports `NOT DISCOVERED` against a switch | The CDP crawl did not reach it, or its management IP in `dc_switches.yml` does not match what Nexus Dashboard returned | Check the switch is up and its IP is right. The crawl seeds at `dc_discovery_seed_ip` (`198.18.128.101`) and walks two hops |
-| Stage 03 fails pointing at `topology_switches.nac.yaml` | The file is missing, or a serial is still `REPLACE_ME` | Run stage 02 and transcribe the serials — see [Why serial discovery is its own stage](#why-serial-discovery-is-its-own-stage-and-why-you-transcribe-by-hand) |
+| Stage 00 reports `UNREACHABLE` against a switch | SSH to that management address failed. This is the only stage that talks to a switch rather than to Nexus Dashboard | Check the VPN is up and you can reach `198.18.128.x`, that the address in `dc_switches.yml` is right, and that the vault credentials are current |
+| Stage 03 fails pointing at `topology_switches.nac.yaml` | The file is missing, or a serial is still `REPLACE_ME` | Run stage 00 and transcribe the serials — see [Why serial discovery is its own stage](#why-serial-discovery-is-its-own-stage-and-why-you-transcribe-by-hand) |
 | Stage 07 refuses to run, saying the fabric already exists | Working as intended | See [Coverage, and what is left to do](#coverage-and-what-is-left-to-do), item 3 |

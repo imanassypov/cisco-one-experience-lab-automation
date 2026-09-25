@@ -23,6 +23,18 @@ all:
         # prerequisite, created in Monitor Mode with the IOS-XE edge router
         # already in it. 07_external_fabric.yml can create the object if it
         # is missing, but it cannot set Monitor Mode or add the router, so it
-        # is deliberately absent from 00_dc_deploy.yml.
+        # is deliberately absent from 01_dc_deploy.yml.
         External:
           ansible_host: ndfc.corp.pseudoco.com
+
+    # The one group that is NOT a fabric. These are the switches themselves,
+    # reached over SSH, and only 00_discover_dc_switch_serials.yml uses them —
+    # every other stage drives Nexus Dashboard.
+    #
+    # Deliberately empty. The hosts are added at run time from the dc_switches
+    # table in group_vars/all/dc_switches.yml, which is the single source of
+    # truth for names and management addresses; repeating them here is how the
+    # two would drift. The group is declared anyway so that
+    # group_vars/dc_fabric_switches/ binds to the hosts add_host creates.
+    dc_fabric_switches:
+      hosts: {}

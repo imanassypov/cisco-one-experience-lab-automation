@@ -5,7 +5,7 @@
 # Fabric Monitor Mode checked, holding the IOS-XE edge router
 # DC-SITE11-CEDGE8Kv (198.18.133.14).
 #
-# Standalone on purpose, and NOT imported by 00_dc_deploy.yml. It targets a
+# Standalone on purpose, and NOT imported by 01_dc_deploy.yml. It targets a
 # different inventory host (External, whose data model is
 # playbooks/host_vars/External/) and it only ever gets you part of the way.
 #

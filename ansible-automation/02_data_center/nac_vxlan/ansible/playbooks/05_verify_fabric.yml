@@ -1,5 +1,5 @@
 ---
-# Stage 06 — verify the deployed fabric against the declared intent.
+# Stage 05 — verify the deployed fabric against the declared intent.
 #
 # Nexus Dashboard API only. No SSH to 198.18.128.x, so this stage works even
 # when the VPN cannot reach the switches directly, and it is read-only, so it
@@ -13,11 +13,11 @@
 #     and is attached to the declared port-channels
 #   - every attachment reports lanAttachState: DEPLOYED
 #
-# Writes evidence/stage06-verification.md and fails at the end on any mismatch.
+# Writes evidence/stage05-verification.md and fails at the end on any mismatch.
 # Override with -e dc_verify_fail_on_mismatch=false to get the report without
 # the failure.
 
-- name: Stage 06 — verify the DC fabric against intent
+- name: Stage 05 — verify the DC fabric against intent
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -28,7 +28,7 @@
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
-    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage06-verification.md') | realpath }}"
+    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage05-verification.md') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
@@ -262,7 +262,7 @@
 
     - name: Write the verification report
       ansible.builtin.template:
-        src: templates/stage06-verification.md.j2
+        src: templates/stage05-verification.md.j2
         dest: "{{ dc_evidence_path }}"
         mode: "0644"
       delegate_to: localhost
