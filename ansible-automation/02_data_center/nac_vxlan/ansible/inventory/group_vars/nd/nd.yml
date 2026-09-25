@@ -1,0 +1,23 @@
+---
+# Control parameters for the cisco.nac_dc_vxlan 'remove' role.
+#
+# Every one of these stays false. The remove role only deletes state from
+# Nexus Dashboard when the matching flag is true, and upstream defaults them
+# false precisely so that dropping a stanza from the data model cannot silently
+# tear down live fabric config. Flip one only for a deliberate, gated teardown
+# via 05_remove.yml, never in a normal run.
+edge_connections_delete_mode: false
+interface_delete_mode: false
+inventory_delete_mode: false
+link_fabric_delete_mode: false
+link_vpc_delete_mode: false
+network_delete_mode: false
+policy_delete_mode: false
+tor_pairing_delete_mode: false
+vpc_delete_mode: false
+vrf_delete_mode: false
+
+# Multisite is not used in this lab, but the flags must exist for the role.
+multisite_child_fabric_delete_mode: false
+multisite_network_delete_mode: false
+multisite_vrf_delete_mode: false

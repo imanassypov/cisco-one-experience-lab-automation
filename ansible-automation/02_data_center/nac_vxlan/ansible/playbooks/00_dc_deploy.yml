@@ -1,0 +1,43 @@
+---
+# Build the PseudoCo data center fabric end to end.
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   ansible-playbook playbooks/00_dc_deploy.yml
+#
+# Stages, in apply order:
+#   01  ensure the VXLAN EVPN fabric exists (discovery is fabric-scoped)
+#   02  print the switch serial numbers — read-only, writes nothing
+#   03  create the full intent: switches, roles, vPC, port-channels, VRFs,
+#       networks and their attachments
+#   04  deploy that intent to the switches
+#   06  verify the result against intent over the Nexus Dashboard API
+#
+# THIS DOES NOT RUN UNATTENDED THE FIRST TIME, and that is by design. Stage 02
+# prints the serials but does not write them anywhere; putting them into
+# host_vars/Pseudoco-DC1/topology_switches.nac.yaml is a manual step, because
+# it is where the student sees what cisco.nac_dc_vxlan actually keys a switch
+# on. So a first run stops at stage 03 asking for that file. Copy the
+# .example beside it, transcribe the serials stage 02 printed, and run this
+# again — from then on it goes end to end.
+#
+# Two stages are deliberately absent:
+#   05_remove.yml         destructive prune, run by hand with a confirm flag
+#   07_external_fabric.yml  different inventory host, and the edge router it
+#                           exists for is out of scope for this pipeline
+#
+# Three things worth knowing before a plain run:
+#   - This is a greenfield build and there is no confirmation prompt. Stage 03
+#     imports the five switches with preserveConfig false — hardcoded in
+#     cisco.nac_dc_vxlan's inventory template, not something the data model or
+#     a flag can change — so each switch has its running configuration erased
+#     as it joins the fabric. Point this at a pod you are willing to lose.
+#   - Stage 04 changes running configuration and takes several minutes.
+#   - Stage 06 fails the run on any mismatch. Use
+#     -e dc_verify_fail_on_mismatch=false to get the report without the
+#     failure.
+
+- import_playbook: 01_fabric.yml
+- import_playbook: 02_discover_serials.yml
+- import_playbook: 03_create.yml
+- import_playbook: 04_deploy.yml
+- import_playbook: 06_verify_fabric.yml

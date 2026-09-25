@@ -1,0 +1,7 @@
+---
+# Underlay settings. Guide section 4, Advanced Settings > General Parameters.
+vxlan:
+  underlay:
+    ipv4:
+      # Guide: "Underlay Subnet IP Mask: select 31". Upstream default is 30.
+      subnet_mask: 31

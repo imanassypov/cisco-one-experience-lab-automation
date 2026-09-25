@@ -17,3 +17,12 @@ collections:
     version: 10.2.0
   - name: cisco.meraki
     version: 2.21.0
+  # Data center (02_data_center/nac_vxlan). cisco.nac_dc_vxlan is the
+  # declarative layer; cisco.dcnm is what actually talks to Nexus Dashboard.
+  # ND 4.2.1 support landed in cisco.dcnm 3.12.1, and nac_dc_vxlan 0.9.0
+  # itself requires >=3.13.0. Keep in step with
+  # 02_data_center/nac_vxlan/ansible/collections/requirements.yml.
+  - name: cisco.nac_dc_vxlan
+    version: 0.9.0
+  - name: cisco.dcnm
+    version: 3.13.0

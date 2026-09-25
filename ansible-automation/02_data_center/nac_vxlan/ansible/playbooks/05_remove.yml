@@ -1,0 +1,65 @@
+---
+# Stage 05 — tear down fabric state that is no longer in the data model.
+#
+# DESTRUCTIVE AND NOT PART OF 00_dc_deploy.yml. Run it by hand, deliberately:
+#
+#   ansible-playbook playbooks/05_remove.yml -e dc_remove_confirm=REMOVE_OK
+#
+# The remove role deletes whatever exists on Nexus Dashboard but is absent from
+# playbooks/host_vars/Pseudoco-DC1/. That is how you decommission a network or a VRF: drop
+# its stanza from the model, then run this. It also means a run against a
+# half-written model deletes real fabric config, which is why every
+# *_delete_mode flag in inventory/group_vars/nd/nd.yml is false and this playbook has to
+# turn them on explicitly.
+#
+# Two flags stay off even here. inventory_delete_mode would evict switches from
+# the fabric, and link_vpc_delete_mode would break the vPC pair — neither is
+# something a routine prune should do, and a vPC pair cannot be edited back
+# into place, only recreated. Pass them as extra vars if you genuinely want a
+# full teardown.
+
+- name: Stage 05 — remove fabric state absent from the data model
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    edge_connections_delete_mode: true
+    interface_delete_mode: true
+    link_fabric_delete_mode: true
+    network_delete_mode: true
+    policy_delete_mode: true
+    vrf_delete_mode: true
+
+  pre_tasks:
+    - name: Require an explicit confirmation
+      ansible.builtin.assert:
+        that:
+          - dc_remove_confirm | default('') == 'REMOVE_OK'
+        fail_msg: >-
+          05_remove.yml deletes VRFs, networks, interfaces and policies from
+          {{ dc_fabric_name }} that are not in the data model. Re-run with
+          -e dc_remove_confirm=REMOVE_OK once you are sure the model in
+          playbooks/host_vars/{{ inventory_hostname }}/ is complete and current.
+        success_msg: "Removal confirmed. Deleting fabric state not present in the data model."
+      tags: [always]
+
+    - name: Require the generated switch model
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml"
+      register: dc_switch_model
+      delegate_to: localhost
+      tags: [always]
+
+    - name: Refuse to prune against an incomplete model
+      ansible.builtin.fail:
+        msg: >-
+          topology_switches.nac.yaml is missing, so the model Nexus Dashboard
+          would be compared against has no switches in it. Run
+          02_discover_serials.yml before pruning.
+      when: not dc_switch_model.stat.exists
+      tags: [always]
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+    - role: cisco.nac_dc_vxlan.dtc.remove

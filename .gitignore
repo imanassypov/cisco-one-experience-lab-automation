@@ -12,6 +12,14 @@
 **/group_vars/all/lab.yml
 !**/group_vars/all/lab.yml.example
 
+# Generated DC switch model. 02_discover_serials.yml renders this from the
+# serial numbers Nexus Dashboard reports, and serials are specific to one
+# dCloud pod — tracking it would both leak pod detail into git and make every
+# student checkout dirty the first time they run the pipeline. The .example
+# alongside it is the tracked shape reference.
+**/host_vars/*/topology_switches.nac.yaml
+!**/host_vars/*/topology_switches.nac.yaml.example
+
 # Splunk assurance build output. The .spl is rebuilt from splunk-app/ on every
 # deploy. The collector config is only ever rendered onto the Splunk host, where
 # it carries a live HEC token, so a copy here would be a leak.

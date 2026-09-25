@@ -1,0 +1,44 @@
+---
+# Overlay VRFs. Guide section 6, "Create VRF".
+#
+# These are the data center half of PseudoCo's MAIN / PROD / IOT segmentation,
+# matching the campus and SD-WAN VRFs of the same names.
+#
+# vlan_id is deliberately omitted on every VRF. The guide clicks "Propose
+# VLAN", which pulls from the fabric's L3 VLAN pool; omitting the key here
+# leaves that allocation to Nexus Dashboard rather than pinning a VLAN that
+# might collide.
+vxlan:
+  overlay:
+    vrfs:
+      - name: MAIN
+        vrf_id: 50000
+        vrf_vlan_name: MAIN
+        vrf_intf_desc: MAIN
+        vrf_description: MAIN
+        vrf_attach_group: dc_leaves
+
+      - name: PROD
+        vrf_id: 50001
+        vrf_vlan_name: PROD
+        vrf_intf_desc: PROD
+        vrf_description: PROD
+        vrf_attach_group: dc_leaves
+
+      - name: IOT
+        vrf_id: 50002
+        vrf_vlan_name: IOT
+        vrf_intf_desc: IOT
+        vrf_description: IOT
+        vrf_attach_group: dc_leaves
+
+    vrf_attach_groups:
+      # Only the two server-facing leaves. DC-Service-Leaf is intentionally
+      # absent: the guide attaches the VRFs to the border leaf later, as part
+      # of the VRF-Lite step, and that step is still an open spike. Adding it
+      # here would attach the VRFs without the extension and diverge from the
+      # guide's sequence.
+      - name: dc_leaves
+        switches:
+          - hostname: DC-Leaf1
+          - hostname: DC-Leaf2

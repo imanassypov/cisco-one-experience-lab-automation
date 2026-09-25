@@ -219,6 +219,7 @@ body{margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#1a1a
 <li><a href="#page-8257">7. Create an External Fabric</a></li>
 <li><a href="#page-8258">8. Create VRF-Lite Connections to External</a></li>
 <li><a href="#page-8259">9. Test End to End Connectivity</a></li>
+<li><a href="#page-dc-automation">10. Automating the DC Fabric</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title"><span class="arrow">▾</span>Lab Prep Steps</div>
@@ -9967,6 +9968,53 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
   <!-- Body (Add your content here) -->  
 <div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;"> Congratulations! 🎉 You have verified end-to-end connectivity from your Data Center into your Campus   network. Good Work!!</div>
 </div></div>
+</div>
+<div class="page-card">
+  <div class="page-card-header"><span>📄</span>
+    <h3 id="page-dc-automation" class="page-anchor">10. Automating the DC Fabric</h3>
+  </div>
+  <div class="page-card-body"><h4>Automating the DC Fabric</h4>
+<p>You have just built the <strong>Pseudoco-DC1</strong> fabric by hand: a fabric object, five switches discovered from a seed IP, a vPC pair, three server port-channels, three VRFs, three networks, and an attachment for each. Roughly two hundred clicks, and every one of them a chance to mistype a VNI.</p>
+<p>The same fabric is described in this repository as about a hundred and fifty lines of YAML, and built by one command. This card is optional — the manual walkthrough above is what teaches you the fabric — but it is worth reading, because the way the automation is structured says something about what makes a data center fabric automatable at all.</p>
+<hr>
+<h4>Nexus as Code</h4>
+<p>The automation uses <a href="https://netascode.cisco.com/docs/data_models/vxlan/overview/"><strong>Cisco Nexus as Code</strong></a> (<code>cisco.nac_dc_vxlan</code>), which sits on top of the <code>cisco.dcnm</code> module collection. The distinction matters. <code>cisco.dcnm</code> gives you one module per Nexus Dashboard object — create a fabric, add inventory, pair a vPC, attach a network — so automating this section with it directly would mean writing out the same sequence of steps you just clicked, in the same order, with the same dependencies to get right.</p>
+<p>Nexus as Code inverts that. You declare the fabric you want and it works out the calls. There is no "add switch" step in the data model; there is a list of switches:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">vxlan:
+  overlay:
+    networks:
+      - name: MainNetwork1
+        vrf_name: MAIN
+        net_id: 30000
+        gw_ip_address: "10.10.252.1/24"
+        network_attach_group: main_vpc3</pre>
+<p>That single stanza is the network, its Layer 3 mode, its anycast gateway and its attachment to <code>Port-channel3</code> on both leaves — the three separate screens you worked through in sections 6 and 7.</p>
+<hr>
+<h4>The part that cannot be declared: serial numbers</h4>
+<p>Nexus as Code identifies a switch by its <strong>serial number</strong>, not by hostname or management IP. That is the right choice for a fabric — a serial is the one identifier that cannot be reassigned by a typo — but it creates a problem for a lab: serial numbers are specific to your pod. Committing them to git would tie the repository to one dCloud instance and make everyone else's checkout wrong.</p>
+<p>So the pipeline has a discovery stage that does exactly what you did in section 4, over the API. It seeds a CDP crawl at <code>198.18.128.101</code>, walks two hops, and joins what Nexus Dashboard reports back against the declared switch list, matching on management IP. Then it prints a table of switch, management IP, role and serial number — <strong>and stops</strong>.</p>
+<p>Copying those serials into <code>topology_switches.nac.yaml</code> is yours to do by hand. That is deliberate. Generating the file would hide the one thing this stage is here to teach you, which is what the data model is actually keyed on, and you would never look at it again. Copy the tracked <code>.example</code> file alongside it and replace each <code>REPLACE_ME</code> with the serial printed for that management IP.</p>
+<p>The practical effect is that your <em>first</em> <code>00_dc_deploy.yml</code> run stops at stage 03 asking for that file. Fill it in and run the same command again; from then on it goes end to end.</p>
+<p>Three details here are worth calling out, because each is the kind of thing that only becomes obvious after it breaks:</p>
+<ul>
+<li>The discovery endpoint is <em>scoped to a fabric</em> — <code>.../fabrics/{fabric}/inventory/test-reachability</code> — so the fabric has to exist before any switch can be discovered, but the switches are what the rest of the model needs. The pipeline breaks that circle by creating the fabric on its own first, which is why there is a stage <code>01</code> that does nothing but that.</li>
+<li>Match each serial to its switch <strong>by management IP, not by position in the list</strong>. Nexus as Code only checks that the serial field is non-empty, so a wrong or duplicated serial passes validation cleanly and then fails much later, deep inside the create role, with a message that will not point you back here.</li>
+<li>Write the serials as <strong>literal text</strong>, never as a template lookup. Nexus as Code reads its data model off disk in Python, bypassing Ansible's variable substitution entirely, so a Jinja expression written into the model would reach the validator verbatim and fail.</li>
+</ul>
+<hr>
+<h4>Running it</h4>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+ansible-playbook playbooks/00_dc_deploy.yml</pre>
+<p>Five stages: ensure the fabric exists, report the serials for you to enter, create the full intent on the controller, deploy it to the switches, then verify the result. Credentials come from the same vault-encrypted <code>lab_access.yml</code> every other collection in this repository uses.</p>
+<p>The verification stage reads only the Nexus Dashboard API — no SSH to the switches — so it works even when your VPN cannot reach <code>198.18.128.x</code> directly, and it writes the same style of evidence report as the campus pipeline's stage 12. It compares every switch, VRF and network against what was declared, and checks that each attachment reports <code>DEPLOYED</code> rather than <code>PENDING</code>, which is the distinction between "intent exists on the controller" and "configuration reached the switch".</p>
+<div class="admonition">
+<p>⚠️ <strong>This pipeline wipes the switches, and it will not ask you first.</strong> The guide builds this fabric greenfield, with <strong>Preserve Config</strong> unchecked, so Nexus Dashboard erases each switch's running configuration as it imports it. The automation does exactly the same thing, and there is no confirmation flag: <code>preserve_config: false</code> is hardcoded inside the Nexus as Code collection, so no setting in the data model changes it. Run it against a lab pod you are happy to rebuild, and expect all five switches to come back empty before the fabric is laid down on top.</p>
+</div>
+<div class="admonition">
+<p>🔎 <strong>Sections 8 and 9 stay manual.</strong> The VRF-Lite connections to the external fabric are not automated, for a reason that is about the lab rather than about Ansible: the IOS-XE edge router on the far side is out of scope for this pipeline, and without it in the External fabric Nexus Dashboard has no far end to compute the inter-fabric connection against. Stage <code>07</code> creates the External fabric object; adding the router and extending the VRFs to it are the clicks you did above.</p>
+</div>
+<p>Full documentation, including every deviation from upstream and the traps found while building it, lives in the repository at <code>ansible-automation/02_data_center/nac_vxlan/ansible/README.md</code>.</p>
+</div>
 </div>
 </div><div class="section-anchor" id="section-2426">
   <div class="section-header"><h2>Lab Prep Steps</h2></div>

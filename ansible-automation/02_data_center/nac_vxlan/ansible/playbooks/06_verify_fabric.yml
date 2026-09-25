@@ -1,0 +1,289 @@
+---
+# Stage 06 — verify the deployed fabric against the declared intent.
+#
+# Nexus Dashboard API only. No SSH to 198.18.128.x, so this stage works even
+# when the VPN cannot reach the switches directly, and it is read-only, so it
+# is safe to re-run as often as you like while debugging.
+#
+# What it compares:
+#   - every switch in inventory/group_vars/all/dc_switches.yml is in the fabric, with the
+#     role that was declared for it
+#   - every VRF in vrfs.nac.yaml exists and is attached
+#   - every network in networks.nac.yaml exists with the declared gateway,
+#     and is attached to the declared port-channels
+#   - every attachment reports lanAttachState: DEPLOYED
+#
+# Writes evidence/stage06-verification.md and fails at the end on any mismatch.
+# Override with -e dc_verify_fail_on_mismatch=false to get the report without
+# the failure.
+
+- name: Stage 06 — verify the DC fabric against intent
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+    dc_verify_fail_on_mismatch: true
+    # Same convention as the campus collection: evidence/ sits beside
+    # playbooks/, and realpath collapses the ../ hop so the closing summary
+    # prints a path worth copying.
+    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage06-verification.md') | realpath }}"
+
+  tasks:
+    # ------------------------------------------------------- declared intent
+    # Read from the same .nac.yaml files the create role consumes, so the
+    # report can never drift from what was deployed.
+    - name: Read the declared VRFs
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/vrfs.nac.yaml"
+        name: dc_declared_vrf_model
+      delegate_to: localhost
+
+    - name: Read the declared networks
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/networks.nac.yaml"
+        name: dc_declared_network_model
+      delegate_to: localhost
+
+    - name: Flatten the declared intent
+      ansible.builtin.set_fact:
+        dc_declared_vrfs: "{{ dc_declared_vrf_model.vxlan.overlay.vrfs | default([]) }}"
+        dc_declared_networks: "{{ dc_declared_network_model.vxlan.overlay.networks | default([]) }}"
+        dc_declared_network_attach_groups: >-
+          {{ dc_declared_network_model.vxlan.overlay.network_attach_groups | default([]) }}
+
+    # ------------------------------------------------------- observed state
+    - name: Read the fabric inventory
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/inventory/switchesByFabric"
+      register: dc_observed_inventory
+      changed_when: false
+
+    - name: Read the fabric VRFs
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs"
+      register: dc_observed_vrf_response
+      changed_when: false
+
+    - name: Read the fabric networks
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/networks"
+      register: dc_observed_network_response
+      changed_when: false
+
+    - name: Read the VRF attachments
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/attachments?vrf-names={{
+          dc_declared_vrfs | map(attribute='name') | join(',') }}
+      register: dc_observed_vrf_attachments
+      changed_when: false
+      when: dc_declared_vrfs | length > 0
+
+    - name: Read the network attachments
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/networks/attachments?network-names={{
+          dc_declared_networks | map(attribute='name') | join(',') }}
+      register: dc_observed_network_attachments
+      changed_when: false
+      when: dc_declared_networks | length > 0
+
+    - name: Normalise the controller responses
+      ansible.builtin.set_fact:
+        dc_switches_observed: "{{ (dc_observed_inventory.response | default({})).DATA | default([]) }}"
+        dc_vrfs_observed: "{{ (dc_observed_vrf_response.response | default({})).DATA | default([]) }}"
+        dc_networks_observed: "{{ (dc_observed_network_response.response | default({})).DATA | default([]) }}"
+        dc_vrf_attach_observed: "{{ (dc_observed_vrf_attachments.response | default({})).DATA | default([]) }}"
+        dc_net_attach_observed: "{{ (dc_observed_network_attachments.response | default({})).DATA | default([]) }}"
+
+    # ---------------------------------------------------------- comparisons
+    # Each comparison needs both sides of one object in scope at once, which
+    # is clearer as an explicit loop than as a chain of Jinja filters.
+    - name: Compare each switch against intent
+      ansible.builtin.set_fact:
+        dc_switch_rows: "{{ dc_switch_rows | default([]) + [row] }}"
+      loop: "{{ dc_switches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      vars:
+        observed: >-
+          {{ (dc_switches_observed
+              | selectattr('ipAddress', 'defined')
+              | selectattr('ipAddress', 'eq', item.management_ipv4_address)
+              | list | first) | default({}) }}
+        row:
+          name: "{{ item.name }}"
+          ip: "{{ item.management_ipv4_address }}"
+          declared_role: "{{ item.role }}"
+          observed_role: "{{ observed.switchRole | default('absent') }}"
+          serial: "{{ observed.serialNumber | default('absent') }}"
+          mode: "{{ observed.mode | default('unknown') }}"
+          # ccStatus is reported when Nexus Dashboard supplies it and left as
+          # 'not reported' otherwise. It is informational: the authoritative
+          # deployment signal in this report is lanAttachState below.
+          cc_status: "{{ observed.ccStatus | default('not reported') }}"
+          ok: >-
+            {{ (observed | length > 0)
+               and (observed.switchRole | default('') | lower | replace(' ', '_')
+                    == item.role | lower | replace(' ', '_')) }}
+
+    - name: Compare VRFs
+      ansible.builtin.set_fact:
+        dc_vrf_rows: "{{ dc_vrf_rows | default([]) + [row] }}"
+      loop: "{{ dc_declared_vrfs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      vars:
+        observed: >-
+          {{ (dc_vrfs_observed
+              | selectattr('vrfName', 'defined')
+              | selectattr('vrfName', 'eq', item.name)
+              | list | first) | default({}) }}
+        attach_states: >-
+          {{ (dc_vrf_attach_observed
+              | selectattr('vrfName', 'defined')
+              | selectattr('vrfName', 'eq', item.name)
+              | map(attribute='lanAttachList') | flatten
+              | selectattr('lanAttachState', 'defined')
+              | map(attribute='lanAttachState') | list) }}
+        row:
+          name: "{{ item.name }}"
+          declared_id: "{{ item.vrf_id }}"
+          observed_id: "{{ observed.vrfId | default('absent') }}"
+          attach_states: "{{ attach_states }}"
+          ok: >-
+            {{ (observed | length > 0)
+               and (observed.vrfId | default(0) | int == item.vrf_id | int)
+               and (attach_states | length > 0)
+               and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0) }}
+
+    - name: Compare networks
+      ansible.builtin.set_fact:
+        dc_network_rows: "{{ dc_network_rows | default([]) + [row] }}"
+      loop: "{{ dc_declared_networks }}"
+      loop_control:
+        label: "{{ item.name }}"
+      vars:
+        observed: >-
+          {{ (dc_networks_observed
+              | selectattr('networkName', 'defined')
+              | selectattr('networkName', 'eq', item.name)
+              | list | first) | default({}) }}
+        # The gateway lives inside networkTemplateConfig, which Nexus Dashboard
+        # returns as a JSON *string*, not as a nested object.
+        observed_config: >-
+          {{ (observed.networkTemplateConfig | default('{}') | from_json)
+             if (observed.networkTemplateConfig | default('')) is string
+             else (observed.networkTemplateConfig | default({})) }}
+        attachments: >-
+          {{ (dc_net_attach_observed
+              | selectattr('networkName', 'defined')
+              | selectattr('networkName', 'eq', item.name)
+              | map(attribute='lanAttachList') | flatten | list) }}
+        attach_group_switches: >-
+          {{ (dc_declared_network_attach_groups
+              | selectattr('name', 'eq', item.network_attach_group)
+              | map(attribute='switches') | flatten | list) }}
+        # Attachments are compared as switch-and-port pairs, not as a flat list
+        # of port names. The guide attaches each port-channel on *both* leaves,
+        # and a network that landed on only one of them is a real fault that a
+        # fabric-wide "is this port named anywhere" check waves through.
+        # Declared pairs keep their original casing so the report reads the way
+        # the model is written; the comparison is done case-insensitively
+        # because Nexus Dashboard is inconsistent about it.
+        declared_attachments: >-
+          {%- set pairs = [] -%}
+          {%- for sw in attach_group_switches -%}
+          {%- for port in sw.ports | default([]) -%}
+          {{- pairs.append(sw.hostname ~ '|' ~ port) or '' -}}
+          {%- endfor -%}
+          {%- endfor -%}
+          {{ pairs }}
+        observed_attachments: >-
+          {%- set pairs = [] -%}
+          {%- for a in attachments -%}
+          {%- for port in (a.portNames | default('')).split(',') if port | trim -%}
+          {{- pairs.append((a.switchName | default('') ~ '|' ~ port | trim) | lower) or '' -}}
+          {%- endfor -%}
+          {%- endfor -%}
+          {{ pairs }}
+        missing_attachments: >-
+          {%- set missing = [] -%}
+          {%- for pair in declared_attachments if pair | lower not in observed_attachments -%}
+          {{- missing.append(pair) or '' -}}
+          {%- endfor -%}
+          {{ missing }}
+        row:
+          name: "{{ item.name }}"
+          declared_vrf: "{{ item.vrf_name }}"
+          observed_vrf: "{{ observed.vrf | default('absent') }}"
+          declared_gateway: "{{ item.gw_ip_address }}"
+          observed_gateway: "{{ observed_config.gatewayIpAddress | default('absent') }}"
+          declared_attachments: "{{ declared_attachments }}"
+          missing_attachments: "{{ missing_attachments }}"
+          attach_states: >-
+            {{ attachments | selectattr('lanAttachState', 'defined')
+               | map(attribute='lanAttachState') | list }}
+          ok: >-
+            {{ (observed | length > 0)
+               and (observed.vrf | default('') == item.vrf_name)
+               and (observed_config.gatewayIpAddress | default('') == item.gw_ip_address)
+               and (attachments | length > 0)
+               and (attachments | selectattr('lanAttachState', 'defined')
+                    | map(attribute='lanAttachState') | reject('eq', 'DEPLOYED')
+                    | list | length == 0)
+               and (missing_attachments | length == 0) }}
+
+    - name: Collect the failures
+      ansible.builtin.set_fact:
+        dc_failed_rows: >-
+          {{ (dc_switch_rows | default([]) | rejectattr('ok') | list)
+             + (dc_vrf_rows | default([]) | rejectattr('ok') | list)
+             + (dc_network_rows | default([]) | rejectattr('ok') | list) }}
+        dc_total_checks: >-
+          {{ (dc_switch_rows | default([]) | length)
+             + (dc_vrf_rows | default([]) | length)
+             + (dc_network_rows | default([]) | length) }}
+
+    # ------------------------------------------------------------- evidence
+    - name: Make sure the evidence directory exists
+      ansible.builtin.file:
+        path: "{{ dc_evidence_path | dirname }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Write the verification report
+      ansible.builtin.template:
+        src: templates/stage06-verification.md.j2
+        dest: "{{ dc_evidence_path }}"
+        mode: "0644"
+      delegate_to: localhost
+      vars:
+        dc_verify_timestamp: "{{ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Report the outcome
+      ansible.builtin.debug:
+        msg: >-
+          {{ dc_total_checks | int - dc_failed_rows | length }} of
+          {{ dc_total_checks }} check(s) match the declared intent.
+          Report: {{ dc_evidence_path }}
+
+    - name: Fail on any mismatch
+      ansible.builtin.assert:
+        that:
+          - dc_failed_rows | length == 0
+        fail_msg: >-
+          {{ dc_failed_rows | length }} check(s) do not match intent:
+          {{ dc_failed_rows | map(attribute='name') | join(', ') }}.
+          See {{ dc_evidence_path }}.
+        success_msg: >-
+          All {{ dc_total_checks }} evaluated check(s) match the declared intent.
+      when: dc_verify_fail_on_mismatch | bool

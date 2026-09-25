@@ -1,0 +1,26 @@
+---
+# Connection parameters for the 'nd' inventory group.
+#
+# DEVIATION FROM UPSTREAM: the netascode example repo reads these from the
+# ND_HOST / ND_USERNAME / ND_PASSWORD / NDFC_SW_USERNAME / NDFC_SW_PASSWORD
+# environment variables. This repo has exactly one credential source — the
+# vault-encrypted Lab Topology/lab_access.yml, injected as lab_access by
+# ansible-automation/plugins/vars/lab_access.py — so the env lookups are
+# replaced with vault lookups. Do not reintroduce environment variables and do
+# not put passwords in this file.
+ansible_connection: ansible.netcommon.httpapi
+ansible_network_os: cisco.dcnm.dcnm
+ansible_httpapi_port: 443
+ansible_httpapi_use_ssl: true
+ansible_httpapi_validate_certs: false
+ansible_httpapi_login_domain: local
+
+# Nexus Dashboard 4.2.1.10 API account.
+ansible_user: "{{ lab_access['Cisco Nexus Dashboard'].username }}"
+ansible_password: "{{ lab_access['Cisco Nexus Dashboard'].password }}"
+
+# Credentials Nexus Dashboard uses to reach the switches themselves, both for
+# discovery and for ongoing management. Every DC switch in this pod shares one
+# account, so DC-Leaf1 is representative; see Lab Topology/lab_access.yml.
+ndfc_switch_username: "{{ lab_access['DC-Leaf1'].username }}"
+ndfc_switch_password: "{{ lab_access['DC-Leaf1'].password }}"

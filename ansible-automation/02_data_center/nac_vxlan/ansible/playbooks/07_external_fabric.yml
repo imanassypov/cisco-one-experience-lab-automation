@@ -1,0 +1,28 @@
+---
+# Stage 07 — create the External connectivity fabric.
+#
+# Guide section 7, "Create an External Fabric": a second fabric, ASN 65531,
+# Fabric Monitor Mode on, holding the IOS-XE edge router.
+#
+# Standalone on purpose and NOT imported by 00_dc_deploy.yml. It targets a
+# different inventory host (External, whose data model is
+# playbooks/host_vars/External/), it creates an empty fabric because the edge router is
+# out of scope for this pipeline, and it therefore delivers no connectivity on
+# its own. Run it when you want the fabric object in place ready for the
+# manual steps:
+#
+#   ansible-playbook playbooks/07_external_fabric.yml
+#
+# Then, in Nexus Dashboard: add DC-SITE11-CEDGE8Kv (198.18.133.14) to the
+# External fabric, and extend the MAIN, PROD and IOT VRFs out of
+# DC-Service-Leaf over VRF-Lite. Both are unautomated today — see the
+# collection README for why.
+
+- name: Stage 07 — create the External connectivity fabric
+  hosts: External
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+    - role: cisco.nac_dc_vxlan.dtc.create

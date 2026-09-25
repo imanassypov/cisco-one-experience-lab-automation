@@ -1,0 +1,54 @@
+---
+# Fabric-wide settings for the Data Center VXLAN EVPN fabric.
+# Guide section 4, "Deploy DC VXLAN EVPN Fabric".
+#
+# NO JINJA IN THIS FILE. The validate role reads it off disk through the
+# nac_dc_validate action plugin, which bypasses Ansible templating, so any
+# "{{ ... }}" would reach the schema validator as a literal string.
+vxlan:
+  fabric:
+    name: Pseudoco-DC1
+    type: VXLAN_EVPN
+
+  global:
+    ibgp:
+      # Guide: BGP ASN 65000. Must be quoted — the schema types it as a string.
+      bgp_asn: "65000"
+      # Two spines, so two route reflectors.
+      route_reflectors: 2
+      # Guide's Add Switches dialog uses MD5 for discovery.
+      auth_proto: MD5
+
+      # Renders GRFIELD_DEBUG_FLAG, the fabric's "Greenfield Cleanup Option" —
+      # the Advanced-tab dropdown the guide labels "Add Switches without
+      # Reload" and tells you to set to enable. It does NOT control whether
+      # the import is greenfield; that is preserveConfig, which
+      # cisco.nac_dc_vxlan hardcodes to false. All this decides is whether the
+      # cleanup needs a switch reload to happen.
+      #
+      # Enable is right here for the same reason the guide says so: Cisco
+      # recommends it specifically for fabrics built on Nexus 9000v, which is
+      # what this pod runs, and it removes five reloads from the import.
+      # "Greenfield Cleanup Option - Enable to clean switch configuration
+      # without reload when PreserveConfig=no", Cisco NDFC Fabric Controller
+      # Configuration Guide, "Managing a Greenfield VXLAN BGP EVPN Fabric":
+      # https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/121x/configuration/fabric-controller/cisco-ndfc-fabric-controller-configuration-guide-121x/managing-greenfield-vxlan-fabric.html
+      greenfield_cleanup: Enable
+
+      # VNI pools the guide relies on implicitly. VRF IDs 50000-50002 come from
+      # the L3 pool and network IDs 30000-30002 from the L2 pool; these are the
+      # upstream defaults, stated explicitly so the overlay IDs are traceable.
+      layer2_vni_range:
+        from: 30000
+        to: 49000
+      layer3_vni_range:
+        from: 50000
+        to: 59000
+
+# NOT MODELLED HERE — the guide's Resources tab also sets VRF Lite Deployment
+# to Back2BackAndToExternal, VRF Lite Subnet IP Range to 192.168.252.0/24, Auto
+# Deploy for Peer, and Auto Allocation of Unique IP on VRF Extension. None of
+# those keys exist in the cisco.nac_dc_vxlan 0.9.0 data model (checked against
+# both vxlan.global.ibgp and vxlan.global.external), so they cannot be declared
+# from here. They are part of the VRF-Lite work that is still an open spike —
+# see the README section "VRF-Lite is unresolved".

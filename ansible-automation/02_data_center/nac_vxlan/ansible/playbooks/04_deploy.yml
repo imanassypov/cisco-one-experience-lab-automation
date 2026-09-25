@@ -1,0 +1,18 @@
+---
+# Stage 04 — push the staged intent down to the switches.
+#
+# Guide: every "Recalculate and Deploy" click. Stage 03 builds intent on the
+# controller; this is the stage that changes running configuration on
+# DC-Leaf1, DC-Leaf2, DC-SPINE-1, DC-SPINE-2 and DC-Service-Leaf.
+#
+# Expect this to take several minutes and expect switches to show as
+# out-of-sync while it runs.
+
+- name: Stage 04 — deploy the DC fabric
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+    - role: cisco.nac_dc_vxlan.dtc.deploy

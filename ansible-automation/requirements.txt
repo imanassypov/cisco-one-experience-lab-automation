@@ -14,3 +14,14 @@ dnacentersdk==2.10.6
 # Pure Python, so it installs from pip on an image whose apt cannot supply a
 # renderer like glow without upgrading libc6.
 rich==15.0.0
+# cisco.nac_dc_vxlan 0.9.0 (02_data_center) reads and schema-validates the
+# .nac.yaml data model in Python, not in Jinja, so these are hard runtime
+# dependencies of the collection rather than optional extras. The two pinned
+# versions are the ones the collection's own requirements.txt pins; the rest
+# it leaves unpinned. netaddr is already above and is shared.
+nac-yaml==1.0.0
+nac-validate==1.0.0
+macaddress==2.0.2
+packaging==24.2
+jmespath==1.0.1
+requests==2.32.3

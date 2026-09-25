@@ -1,0 +1,67 @@
+---
+# Stage 03 — build the whole fabric intent on Nexus Dashboard.
+#
+# Guide sections 4, 5 and 6: add the switches, set their roles, pair the vPC,
+# create the port-channels, create the VRFs and the networks, and attach the
+# networks to the port-channels. The create role turns the declarative model
+# in playbooks/host_vars/Pseudoco-DC1/ into all of that.
+#
+# Create only *stages* the configuration on the controller. Nothing reaches a
+# switch until stage 04 deploys it — with one exception: importing a switch
+# into the fabric is itself a write, and the import is greenfield. The create
+# role's inventory template hardcodes preserve_config: false, so every switch
+# has its running configuration erased as it is imported. That matches the
+# guide, which has you uncheck Preserve Config, and there is no flag to
+# change it.
+
+- name: Stage 03 — create the DC fabric intent
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    dc_switch_model_path: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml"
+
+  pre_tasks:
+    - name: Look for the hand-populated switch model
+      ansible.builtin.stat:
+        path: "{{ dc_switch_model_path }}"
+      register: dc_switch_model
+      delegate_to: localhost
+      tags: [always]
+
+    - name: Fail with a pointer to stage 02 when the switch model is absent
+      ansible.builtin.fail:
+        msg: >-
+          playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml does
+          not exist. It is gitignored because the serial numbers belong to one
+          pod, so you create it yourself: run playbooks/02_discover_serials.yml
+          to print the serials, copy topology_switches.nac.yaml.example beside
+          it, and fill them in.
+      when: not dc_switch_model.stat.exists
+      tags: [always]
+
+    # Rule 301 in the validate role only checks that serial_number is
+    # non-empty, so REPLACE_ME sails through it and fails much later inside
+    # the create role. Catch it here instead, where the message can say why.
+    - name: Read the switch model back to check the serials were filled in
+      ansible.builtin.slurp:
+        src: "{{ dc_switch_model_path }}"
+      register: dc_switch_model_content
+      delegate_to: localhost
+      tags: [always]
+
+    - name: Fail when a placeholder serial number is still in place
+      ansible.builtin.fail:
+        msg: >-
+          playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml still
+          contains REPLACE_ME. Run playbooks/02_discover_serials.yml and
+          transcribe each serial onto the switch with the matching management
+          IP. A placeholder passes validation and then fails deep inside the
+          create role, which is a much harder failure to read.
+      when: "'REPLACE_ME' in (dc_switch_model_content.content | b64decode)"
+      tags: [always]
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+    - role: cisco.nac_dc_vxlan.dtc.create

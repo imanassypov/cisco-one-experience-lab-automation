@@ -1,0 +1,74 @@
+---
+# Overlay networks and their attachments. Guide section 6, "Create Networks"
+# and "Create Attachments - Assign Switch Interfaces to Networks".
+#
+# One network per business segment, each anycast-gatewayed and bound to the
+# vPC that its Linux workload hangs off. The guide does this in two passes —
+# create the network, then edit its Network Attachments tab and add the
+# port-channel — and the data model collapses both into one declaration.
+#
+# is_l2_only stays false, which is the data model's spelling of the guide's
+# "Network Mode: Layer 3".
+#
+# vlan_id is omitted throughout: the guide clicks "Propose VLAN".
+vxlan:
+  overlay:
+    networks:
+      - name: MainNetwork1
+        vrf_name: MAIN
+        net_id: 30000
+        is_l2_only: false
+        vlan_name: MainNetwork1
+        int_desc: MainNetwork1
+        gw_ip_address: "10.10.252.1/24"
+        network_attach_group: main_vpc3
+
+      - name: ProdNetwork1
+        vrf_name: PROD
+        net_id: 30001
+        is_l2_only: false
+        vlan_name: ProdNetwork1
+        int_desc: ProdNetwork1
+        gw_ip_address: "10.101.252.1/24"
+        network_attach_group: prod_vpc4
+
+      - name: IOTNetwork1
+        vrf_name: IOT
+        net_id: 30002
+        is_l2_only: false
+        vlan_name: IOTNetwork1
+        int_desc: IOTNetwork1
+        gw_ip_address: "10.102.252.1/24"
+        network_attach_group: iot_vpc5
+
+    # Each group attaches one port-channel on BOTH leaves, matching the guide's
+    # "select port-channel3 in the DC-Leaf1 and in the DC-Leaf2 switches".
+    # The port-channels themselves are declared in the generated
+    # topology_switches.nac.yaml, sourced from inventory/group_vars/all/dc_switches.yml.
+    network_attach_groups:
+      - name: main_vpc3
+        switches:
+          - hostname: DC-Leaf1
+            ports:
+              - Port-channel3
+          - hostname: DC-Leaf2
+            ports:
+              - Port-channel3
+
+      - name: prod_vpc4
+        switches:
+          - hostname: DC-Leaf1
+            ports:
+              - Port-channel4
+          - hostname: DC-Leaf2
+            ports:
+              - Port-channel4
+
+      - name: iot_vpc5
+        switches:
+          - hostname: DC-Leaf1
+            ports:
+              - Port-channel5
+          - hostname: DC-Leaf2
+            ports:
+              - Port-channel5
