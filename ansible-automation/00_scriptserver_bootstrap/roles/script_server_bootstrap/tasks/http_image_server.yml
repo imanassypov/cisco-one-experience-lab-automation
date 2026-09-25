@@ -56,12 +56,12 @@
     - ansible_os_family == "RedHat"
     - not script_server_nginx_bin.stat.exists
 
-# Kept defensive after the git pull moved out of this role. It used to be
-# load-bearing: sync_repo rewrote this checkout mid-play, so defaults/main.yml
-# was from the previous commit while include_tasks read this file from disk
-# afterwards, and a newly added default was undefined on exactly the run that
-# introduced it. The bootstrap no longer pulls, so that window is closed, but
-# falling back costs nothing and the failure mode it guarded was obscure.
+# Kept defensive, though no longer load-bearing. The role used to git-pull
+# this very checkout mid-play, so defaults/main.yml was from the previous
+# commit while include_tasks read this file from disk afterwards, and a newly
+# added default was undefined on exactly the run that introduced it. The role
+# does not run git any more, so that window is closed — but falling back costs
+# nothing and the failure mode it guarded against was obscure.
 - name: Resolve the image web root owner
   ansible.builtin.set_fact:
     script_server_image_owner: "{{ script_server_image_owner | default(ansible_user_id, true) }}"

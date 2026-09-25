@@ -3063,7 +3063,7 @@ ansible-playbook --version</pre>
 <tbody>
 <tr><td><code>00_preflight.yml</code></td><td>Read-only. Confirms you are on the Linux script server, the checkout is complete, the vault passphrase actually decrypts, and <code>sudo</code> works — so a mistake is caught before anything is changed.</td></tr>
 <tr><td><code>01_bootstrap_script_server.yml</code></td><td>Fixes DNS so <code>cat-center.corp.pseudoco.com</code> resolves, installs system packages, completes the <code>~/venv</code> environment, puts the Ansible binaries on <code>PATH</code>, and installs the Cisco collections.</td></tr>
-<tr><td><code>02_sync_from_git.yml</code></td><td>Not needed today. Run it later if a proctor tells you a lab fix has been published — it fast-forwards your checkout. Re-run <code>01_bootstrap_script_server.yml</code> afterwards, since a published fix may also add a pinned Python package or collection.</td></tr>
+<tr><td><code>git pull</code></td><td>Not a playbook, and not needed today. Run it in the checkout later if a proctor tells you a lab fix has been published. Re-run <code>01_bootstrap_script_server.yml</code> afterwards, since a published fix may also add a pinned Python package or collection.</td></tr>
 </tbody>
 </table>
 <p>Look for <code>failed=0</code> in the <code>PLAY RECAP</code> at the end of each run. Just above it, <code>01</code> prints an evidence block — proof of what it actually changed, rather than a claim that it worked:</p>
@@ -10005,6 +10005,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <h4>Running it</h4>
 <p>First, install the collections. This track needs <code>cisco.nac_dc_vxlan</code> and <code>cisco.dcnm</code>, which are newer than the campus ones, so a script server staged before the DC track existed will not have them. Pull the latest checkout, then:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+git -C ~/cisco-one-experience-lab-automation pull
 ansible-galaxy collection install -r collections/requirements.yml --force
 ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'</pre>
 <p>You want <code>cisco.dcnm 3.13.0</code> and <code>cisco.nac_dc_vxlan 0.9.0</code>. The <code>--force</code> is not optional: without it <code>ansible-galaxy</code> silently skips any collection already present at <em>any</em> version, so an upgrade appears to succeed and never happens. Expect it to be slow, or to need a second attempt — the path out to <code>galaxy.ansible.com</code> over the dCloud VPN drops intermittently. Re-running the bootstrap playbook <code>01_bootstrap_script_server.yml</code> installs the same pins and is the better habit on a fresh pod.</p>

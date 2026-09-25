@@ -21,8 +21,9 @@ built before the DC track was added, they are not there. Bring the checkout
 forward and re-run the bootstrap, which is what installs them:
 
 ```bash
-cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
-ansible-playbook playbooks/02_sync_from_git.yml
+cd ~/cisco-one-experience-lab-automation
+git pull
+cd ansible-automation/00_scriptserver_bootstrap
 ansible-playbook playbooks/01_bootstrap_script_server.yml
 ```
 

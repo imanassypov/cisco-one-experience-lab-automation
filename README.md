@@ -30,7 +30,7 @@ and run everything there. Start at [Getting started](#getting-started).
 - **[Lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-automation/)** — the full student walkthrough, published from [docs/](docs/) by GitHub Pages. The same file opens offline as [docs/index.html](docs/index.html)
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)
 - [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
-- [Release notes](release-notes/) — dated summary of what changed and what an operator should do differently. Read the newest file after a `02_sync_from_git.yml` pull.
+- [Release notes](release-notes/) — dated summary of what changed and what an operator should do differently. Read the newest file after a `git pull`.
 
 > **Guide images.** `docs/index.html` was exported from the course platform and
 > still points 312 images at a `one_cisco_lab_images/` folder that was never
@@ -179,11 +179,13 @@ The remaining collections in the table above are stubs.
 ## Picking up later lab fixes
 
 ```bash
-cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
-ansible-playbook playbooks/02_sync_from_git.yml
+cd ~/cisco-one-experience-lab-automation
+git pull
 ```
 
-It fast-forwards the checkout and fails rather than discarding local edits, so
-commit or revert first. Your `lab.yml`, `.vault` and `iosxe_images/` are
-gitignored and survive. Check [release-notes/](release-notes/) afterwards for
-what changed.
+Plain git, no playbook. It fails rather than discarding local edits, so commit
+or revert first. Your `lab.yml`, `.vault` and `iosxe_images/` are gitignored
+and survive. Check [release-notes/](release-notes/) afterwards for what
+changed — if the update moved a pinned collection or Python package, re-run
+`00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml` to apply
+it to `~/venv`.

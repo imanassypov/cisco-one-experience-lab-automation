@@ -1,8 +1,8 @@
 ---
 # The two files that are pod-local and gitignored, so no git operation ever
-# creates, updates or protects them. Split out of sync_repo.yml when the pull
-# moved to 02_sync_from_git.yml — the bootstrap still needs these, and they
-# have nothing to do with git beyond both being invisible to it.
+# creates, updates or protects them. They used to live alongside a git pull in
+# the role; the pull is gone (students run `git pull` themselves) and these
+# stayed, because a fresh clone still needs them seeded and checked.
 
 # lab.yml is gitignored, so a fresh clone does not have one and the stages that
 # read lab_pod_id / lab_ap_macs would fail on an undefined variable. force: no

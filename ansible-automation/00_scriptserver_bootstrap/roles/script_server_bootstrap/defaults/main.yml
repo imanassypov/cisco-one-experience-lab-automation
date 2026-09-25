@@ -1,18 +1,20 @@
 ---
 script_server_venv_path: "{{ ansible_user_dir }}/venv"
 script_server_bin_path: "{{ ansible_user_dir }}/bin"
-script_server_git_repo: https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 # The student clones this themselves before running collection 00, so the
 # checkout is wherever this playbook lives - not a hardcoded path. Walking up
 # from playbooks/ gives the repo root and lets them clone anywhere.
+#
+# This role never runs git. Keeping the checkout current is a plain `git pull`
+# the student runs when a fix is published; the repo URL and branch are not
+# role settings because nothing here reads them.
 script_server_repo_dest: "{{ playbook_dir | dirname | dirname | dirname }}"
-script_server_git_version: main
 # Repo-root vault password file. Gitignored, created on this host by the
 # student. Never put the vault password in this file.
 script_server_vault: "{{ script_server_repo_dest }}/.vault"
 # Pod-local values (lab_pod_id, lab_ap_macs). Gitignored so the working tree
-# stays clean and ansible.builtin.git can keep updating the checkout; seeded
-# from the tracked example on first bootstrap and never overwritten after.
+# stays clean and a plain `git pull` keeps working; seeded from the tracked
+# example on first bootstrap and never overwritten after.
 script_server_lab_vars: "{{ script_server_repo_dest }}/ansible-automation/01_campus/evpn/ansible/inventory/group_vars/all/lab.yml"
 script_server_lab_vars_example: "{{ script_server_lab_vars }}.example"
 script_server_bashrc: "{{ ansible_user_dir }}/.bashrc"
