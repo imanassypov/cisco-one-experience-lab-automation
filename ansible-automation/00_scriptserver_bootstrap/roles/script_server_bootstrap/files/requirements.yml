@@ -26,3 +26,21 @@ collections:
     version: 0.9.0
   - name: cisco.dcnm
     version: 3.13.0
+  # The four below are pinned because 02_data_center pins them, to the
+  # versions in the upstream netascode/ansible-dc-vxlan-example. They are
+  # dependencies of cisco.dcnm and would otherwise be installed at whatever
+  # the Galaxy resolver picked, which is not what the DC file claims is
+  # running. Both values chosen here also satisfy the campus ranges in
+  # 01_campus/evpn/ansible/collections/requirements.yml (ansible.posix
+  # >=1.5.0, community.general >=8.0.0,<11.0.0), so pinning them does not
+  # constrain campus into a version it rejects. All four declare
+  # requires_ansible >=2.15.0 and so admit the ansible-core 2.17.14 in
+  # ansible-automation/requirements.txt.
+  - name: ansible.netcommon
+    version: 7.1.0
+  - name: ansible.utils
+    version: 5.1.2
+  - name: ansible.posix
+    version: 2.0.0
+  - name: community.general
+    version: 10.1.0
