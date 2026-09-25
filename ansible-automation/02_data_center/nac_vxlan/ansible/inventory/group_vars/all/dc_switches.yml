@@ -36,23 +36,27 @@ dc_switches:
     # one per business segment. Access VLAN is deliberately left unset: the
     # network attachment in networks.nac.yaml is what binds each port-channel
     # to its overlay VLAN, exactly as the guide's Network Attachments step does.
+    #
+    # Descriptions stay ASCII-only and must match the .example, which is the
+    # copy that reaches Nexus Dashboard — see the note on the interfaces in
+    # playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example.
     interfaces:
       - name: Port-channel3
         mode: access
         vpc_id: 3
-        description: "MAIN server — vPC3"
+        description: "MAIN server - vPC3"
         members:
           - Ethernet1/3
       - name: Port-channel4
         mode: access
         vpc_id: 4
-        description: "PROD server — vPC4"
+        description: "PROD server - vPC4"
         members:
           - Ethernet1/4
       - name: Port-channel5
         mode: access
         vpc_id: 5
-        description: "IOT server — vPC5"
+        description: "IOT server - vPC5"
         members:
           - Ethernet1/5
 
@@ -63,19 +67,19 @@ dc_switches:
       - name: Port-channel3
         mode: access
         vpc_id: 3
-        description: "MAIN server — vPC3"
+        description: "MAIN server - vPC3"
         members:
           - Ethernet1/3
       - name: Port-channel4
         mode: access
         vpc_id: 4
-        description: "PROD server — vPC4"
+        description: "PROD server - vPC4"
         members:
           - Ethernet1/4
       - name: Port-channel5
         mode: access
         vpc_id: 5
-        description: "IOT server — vPC5"
+        description: "IOT server - vPC5"
         members:
           - Ethernet1/5
 

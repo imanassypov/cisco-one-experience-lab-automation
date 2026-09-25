@@ -24,3 +24,29 @@ ansible_password: "{{ lab_access['Cisco Nexus Dashboard'].password }}"
 # account, so DC-Leaf1 is representative; see Lab Topology/lab_access.yml.
 ndfc_switch_username: "{{ lab_access['DC-Leaf1'].username }}"
 ndfc_switch_password: "{{ lab_access['DC-Leaf1'].password }}"
+
+# The inventory step of the create pipeline POSTs to
+# fabrics/{fabric}/inventory/discover — once per switch role, since
+# dcnm_inventory groups the switches into one payload per role — and Nexus
+# Dashboard holds each request open while it SSHes to those switches,
+# discovers them and imports them: minutes, not seconds. The httpapi
+# persistent connection defaults to 30s, so it tore the call down
+# mid-discovery and surfaced a bare "command timeout triggered, timeout value
+# is 30 secs" ConnectionError that reads like a credential or fabric error.
+# (It reads that way because cisco.dcnm's httpapi plugin appends "Please
+# verify your login credentials..." to every transport exception.)
+#
+# In practice this bites stage 02, not stage 03: 02_fabric.yml runs the same
+# dtc.create role unfiltered, so it does the import as soon as stage 00 has
+# generated topology_switches.nac.yaml.
+#
+# 1000 is not a comfort margin: cisco.dcnm's own
+# plugins/action/dcnm_inventory.py hard-fails unless both timeouts are >= 1000,
+# and its README sets exactly these two. That guard never fired here because
+# cisco.nac_dc_vxlan's dtc.manage_resources drives the dcnm modules itself
+# through plugins/plugin_utils/ndfc_executor.py, and only dcnm_vrf and
+# dcnm_network are routed via their action plugins — everything else goes
+# straight to _execute_module. So dcnm_inventory never sees its own check and
+# nothing upstream will tell a future reader these lines are load-bearing.
+ansible_command_timeout: 1000
+ansible_connect_timeout: 1000

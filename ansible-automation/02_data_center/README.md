@@ -52,17 +52,37 @@ the orchestrated build, while `00_discover_dc_switch_serials.yml` below it and
 `06_remove.yml` / `07_external_fabric.yml` above it are ones you run
 deliberately, by name.
 
-Read `nac_vxlan/ansible/README.md` first. Three things in particular. The
+Read `nac_vxlan/ansible/README.md` first. Four things in particular. The
 discovery stage is not part of the orchestrator: it SSHes to the switches,
 reads a serial number off each one, and generates the switch half of the data
 model from them, so you have to run it once yourself before anything else —
 `01_dc_deploy.yml` stops at stage 03 until you have. What it generates is
 build output rather than something you maintain, so every run overwrites
 `topology_switches.nac.yaml` silently and changes belong in the tracked
-`.example` beside it or in the switch table it reads. `01_dc_deploy.yml` then
-erases the running configuration of all five switches as it imports them, with
-no confirmation prompt and no way to turn it off. And VRF-Lite to the IOS-XE
-edge router is still manual.
+`.example` beside it or in the switch table it reads — which also means a
+`git pull` that changes either source does not reach Nexus Dashboard until
+you re-run the discovery stage. `01_dc_deploy.yml` then erases the running
+configuration of all five switches as it imports them, with no confirmation
+prompt and no way to turn it off. That import is also the one
+place the pipeline appears to hang: its inventory step sits with no output for
+several minutes while Nexus Dashboard discovers the five switches behind a
+blocking HTTP request, so let it run — on a checkout older than the
+1000-second timeouts in `inventory/group_vars/nd/connection.yml` it fails there
+instead, with `command timeout triggered, timeout value is 30 secs`. Expect
+that in **stage 02**, not stage 03: 02 runs the same create role and the
+generated switch model is already on disk by the time it runs. And VRF-Lite to
+the IOS-XE edge router is still manual.
+
+One further symptom is worth knowing by name, because the fix is not the
+obvious one. If the build fails at step `interface_all` with an HTTP 500 on
+`globalInterface` and the words `template execution` in the message, the
+suspect is a non-ASCII character in a port-channel description — the em
+dashes that were in the data model until 2026-09-25. They are plain hyphens
+in the tracked files now, but pulling that change does not on its own fix a
+script server: what Nexus Dashboard reads is the *generated*
+`topology_switches.nac.yaml`, so re-run the discovery stage after the pull,
+with the VPN up. The collection README carries the evidence, and the reasons
+this is a suspicion rather than a proven cause.
 
 ## Where the automation stops
 

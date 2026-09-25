@@ -31,23 +31,44 @@ vxlan:
         role: leaf
         management:
           management_ipv4_address: 198.18.128.101
+        # Keep every description below ASCII-only. These strings are the only
+        # free text in this file that reaches Nexus Dashboard: the create role
+        # sends them as PEER1_PO_DESC/PEER2_PO_DESC in the globalInterface
+        # payload, and NDFC renders them through a Velocity template.
+        #
+        # They read "MAIN server — vPC3" with an em dash until 2026-09-25, and
+        # step 13/21 (interface_all, dcnm_interface) failed with HTTP 500 on
+        # POST .../lan-fabric/rest/globalInterface — "An unexpected error
+        # occurred during template execution" — against the three vPCs
+        # DC-Leaf2:DC-Leaf1:vPC3, vPC4 and vPC5. Every other nvPair in that
+        # payload was the collection's own default from
+        # roles/validate/files/defaults.yml (MTU jumbo, SPEED Auto, PC_MODE
+        # active, PEER1_ACCESS_VLAN 1 and so on), and the em dash was the only
+        # non-ASCII byte in the entire request, in a field NDFC feeds to a
+        # template renderer.
+        #
+        # That is suspicion, not a proven root cause: Cisco documents no
+        # character restriction on interface descriptions, and NDFC returns
+        # that same generic message for unrelated faults. But it is the one
+        # variable we control, and dropping it costs nothing. The rest of this
+        # repo uses em dashes freely in prose, so the reflex here is wrong.
         interfaces:
           - name: Port-channel3
             mode: access
             vpc_id: 3
-            description: "MAIN server — vPC3"
+            description: "MAIN server - vPC3"
             members:
               - Ethernet1/3
           - name: Port-channel4
             mode: access
             vpc_id: 4
-            description: "PROD server — vPC4"
+            description: "PROD server - vPC4"
             members:
               - Ethernet1/4
           - name: Port-channel5
             mode: access
             vpc_id: 5
-            description: "IOT server — vPC5"
+            description: "IOT server - vPC5"
             members:
               - Ethernet1/5
 
@@ -60,19 +81,19 @@ vxlan:
           - name: Port-channel3
             mode: access
             vpc_id: 3
-            description: "MAIN server — vPC3"
+            description: "MAIN server - vPC3"
             members:
               - Ethernet1/3
           - name: Port-channel4
             mode: access
             vpc_id: 4
-            description: "PROD server — vPC4"
+            description: "PROD server - vPC4"
             members:
               - Ethernet1/4
           - name: Port-channel5
             mode: access
             vpc_id: 5
-            description: "IOT server — vPC5"
+            description: "IOT server - vPC5"
             members:
               - Ethernet1/5
 

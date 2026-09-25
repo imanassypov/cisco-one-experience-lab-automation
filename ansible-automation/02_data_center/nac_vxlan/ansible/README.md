@@ -81,8 +81,8 @@ model — see "Why serial discovery is its own stage" below.
 |---|---|
 | `playbooks/00_discover_dc_switch_serials.yml` | SSHes to each switch, reads its serial, and generates `playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml` from the tracked `.example`. Read-only against the switches. **Run this first.** Not in the orchestrator |
 | `playbooks/01_dc_deploy.yml` | Orchestrator. Imports 02, 03, 04 and 05, in that order |
-| `playbooks/02_fabric.yml` | Ensures the fabric object exists |
-| `playbooks/03_create.yml` | Creates the full intent on the controller |
+| `playbooks/02_fabric.yml` | Ensures the fabric object exists. It runs the same create role as 03, so once stage 00 has generated the switch model this stage imports the switches too — its inventory step sits with no output for several minutes while Nexus Dashboard discovers them. `--tags cr_manage_fabric` holds it to the fabric object |
+| `playbooks/03_create.yml` | Creates the full intent on the controller. Converges whatever 02 left, and does the switch import itself if you run it on its own |
 | `playbooks/04_deploy.yml` | Pushes that intent to the switches |
 | `playbooks/05_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
 | `playbooks/06_remove.yml` | Destructive prune. Not in `01`. Needs `-e dc_remove_confirm=REMOVE_OK` |
@@ -109,7 +109,8 @@ collections/requirements.yml
 inventory/
   static_inventory.yml            one host per FABRIC, plus the switch group
   group_vars/all/dc_switches.yml  switches, IPs, roles, port-channels
-  group_vars/nd/connection.yml    httpapi transport, vault-sourced credentials
+  group_vars/nd/connection.yml    httpapi transport, vault-sourced credentials,
+                                  and the 1000s persistent-connection timeouts
   group_vars/nd/nd.yml            remove-role delete-mode flags, all false
   group_vars/dc_fabric_switches/connection.yml
                                   SSH to the switches; stage 00 only
@@ -283,6 +284,121 @@ decides whether the cleanup needs a switch reload. It is set to `Enable`
 because the guide's Advanced tab says to, and because Cisco recommends it for
 Nexus 9000v fabrics like this pod.
 
+**The import runs for minutes with no output, and a 30-second connection
+timeout used to kill it. It happens in stage 02, not stage 03.** Stage 02 runs
+the same `dtc.create` role as stage 03 and filters nothing, so as soon as
+stage 00 has generated `topology_switches.nac.yaml` — which it must have
+before either stage can build anything — the switch import lands in stage 02.
+Stage 03 only does the import itself if you run it on its own, or if you held
+02 to the fabric object with `--tags cr_manage_fabric`.
+
+The import is a blocking HTTP call: `dcnm_inventory` POSTs to
+`fabrics/{fabric}/inventory/discover?setAndUseDiscoveryCredForLan=true` and
+Nexus Dashboard holds that request open while it SSHes to the switches in it,
+discovers them and imports them. There is one such POST per switch **role**,
+because `group_diff_create_by_role()` collapses the switches into one payload
+per role with a comma-joined `seedIP` — three for this pod, one each for the
+leaves, the spines and the border. Each one is minutes of work behind a single
+response, so **the step looks frozen and is not. Do not interrupt it.**
+
+The httpapi connection defaults to a 30-second `persistent_command_timeout`,
+which tore the call down mid-discovery and produced a `MODULE FAILURE` ending
+in `command timeout triggered, timeout value is 30 secs`. What made that hard
+to place is the text wrapped around it — "Please verify your login
+credentials, access permissions and fabric details" — so a timeout reads as a
+credential or fabric problem, which it is not. That sentence is appended by
+`cisco.dcnm`'s httpapi connection plugin (`plugins/httpapi/dcnm.py`) to every
+exception the transport raises, so it says nothing about what actually failed.
+
+`inventory/group_vars/nd/connection.yml` now sets `ansible_command_timeout:
+1000` and `ansible_connect_timeout: 1000` for the whole `nd` group, so it
+covers both `Pseudoco-DC1` and `External`. 1000 is not padding: `cisco.dcnm`'s
+own `plugins/action/dcnm_inventory.py` refuses to run unless both timeouts are
+at least 1000, and its README sets exactly these two keys.
+
+That guard never fires here, which is why the raw 30-second error was all you
+got. `cisco.nac_dc_vxlan` drives the dcnm modules itself from
+`dtc.manage_resources` through `plugins/plugin_utils/ndfc_executor.py`, and
+only `dcnm_vrf` and `dcnm_network` are routed via their own action plugins —
+everything else, `dcnm_inventory` included, goes straight to `_execute_module`
+and never sees its own timeout check. Treat those two lines as load-bearing:
+nothing upstream will tell the next reader they are.
+
+If you are on a checkout that predates them, you can set them for one run
+without editing anything. The same two flags work on any single stage:
+
+```bash
+ansible-playbook playbooks/01_dc_deploy.yml \
+  -e ansible_command_timeout=1000 -e ansible_connect_timeout=1000
+```
+
+A run that died this way is safe to repeat. It will have created the fabric
+object before it failed, and `dcnm_inventory` runs `state: merged`, so a
+re-run converges whether or not Nexus Dashboard finished the discovery on its
+own after Ansible walked away.
+
+**Keep the data model ASCII-only. A non-ASCII character in a port-channel
+description is the prime suspect for an HTTP 500 during interface creation.**
+Once the timeout above let the switch import through, the next run died at
+step 13 of 21, `interface_all` (`dcnm_interface`), with `RETURN_CODE: 500` on
+`POST .../lan-fabric/rest/globalInterface` and one entry per interface reading
+`An unexpected error occurred during template execution. Please retry after
+some time.` against `DC-Leaf2:DC-Leaf1:vPC3`, `vPC4` and `vPC5`.
+
+The outgoing `nvPairs` were compared field by field against the collection's
+own `roles/validate/files/defaults.yml`. **Every one of them was the upstream
+default** — `MTU: jumbo`, `SPEED: Auto`, `PC_MODE: active`,
+`LACP_PORT_PRIO: 32768` and `PEER1_ACCESS_VLAN: '1'`. That last one looks
+wrong beside this fabric's 2300–2999 network VLANs and is not: it is
+upstream's `access_vlan: 1`, and it is not the fault. The only fields in the
+request that were ours rather than upstream's were the three descriptions,
+which read `MAIN server — vPC3` and so on, and the em dash in them was the
+**only non-ASCII byte in the entire HTTP request** — in a field NDFC feeds to
+a Velocity template to render CLI, in a call that failed with a *template
+execution* exception.
+
+**That is a strong suspect, not a proven root cause, and worth stating as
+such.** Cisco documents no character restriction on an interface description.
+The article for this controller's release —
+[Working with Connectivity in Your Nexus Dashboard LAN Fabrics, Release 4.2.1](https://www.cisco.com/c/en/us/td/docs/dcn/nd/4x/articles-421/working-with-connectivity-for-lan-fabrics.html)
+— raises only a 64-character truncation caveat on the Description field, and
+so does the older NDFC
+[Add Interfaces for LAN Operational Mode, Release 12.2.2](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1222/articles/ndfc-add-interfaces-lan/add-interfaces-for-lan-operational-mode.html).
+The message is a generic catch-all that also appears in unrelated netascode
+issues [#505](https://github.com/netascode/ansible-dc-vxlan/issues/505) and
+[#345](https://github.com/netascode/ansible-dc-vxlan/issues/345), and in a
+[Cisco Community thread on ND 4.1.1g](https://community.cisco.com/t5/nexus-dashboard/ndfc-4-1-1g-issues-with-building-multisite-vxlan-evpn-fabric/td-p/5324694)
+about setting switch roles. The em dash is simply the one variable we control,
+and removing it costs nothing. There is a confound to keep in mind as well:
+those three port-channels are also the only vPC interfaces in the model, so a
+run that now succeeds does not on its own separate an em-dash problem from
+anything else on the vPC path.
+
+Both copies of the descriptions were changed to a plain hyphen, and they have
+to stay in step: `playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example`
+and `inventory/group_vars/all/dc_switches.yml`.
+
+**Pulling that change is only half the fix.** The descriptions that reach
+Nexus Dashboard come from the `.example` by way of stage 00, which copies it
+over `playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml` and
+substitutes only `serial_number` and `role`. That generated file is gitignored
+build output, so a pull updates the example and leaves the old em dashes
+sitting in the file the pipeline actually reads. Re-run stage 00 after
+pulling. It is the one stage here that SSHes to the switches, so the **client
+VPN has to be up** for it:
+
+```bash
+cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+git pull
+ansible-playbook playbooks/00_discover_dc_switch_serials.yml
+ansible-playbook playbooks/01_dc_deploy.yml
+```
+
+If you want NDFC's own account of a failure like this rather than the response
+Ansible printed, it records one: the controller raises an alarm under the
+`lan_fabric_errors` policy naming the template that failed. Nexus Dashboard →
+**Events/Alarms**, filtered to the time of the run.
+
 ## Coverage, and what is left to do
 
 **This pipeline already carries everything `cisco.nac_dc_vxlan` 0.9.0 can
@@ -400,4 +516,8 @@ because the collection reads and validates the model in Python, not in Jinja.
 | Stage 00 reports `UNREACHABLE` against a switch and stops | SSH to that management address failed. This is the only stage that talks to a switch rather than to Nexus Dashboard. It fails before writing anything, so the data model is left as it was rather than half generated | Check the VPN is up and you can reach `198.18.128.x`, that the address in `dc_switches.yml` is right, and that the vault credentials are current, then re-run the stage |
 | Stage 00 fails saying a serial never reached the file | A switch name in `dc_switches.yml` does not match the name in `topology_switches.nac.yaml.example`. The substitution anchors on that name, so a mismatch matches nothing and leaves a placeholder behind | Make the two files agree on the name and re-run the stage |
 | Stage 03 fails pointing at `topology_switches.nac.yaml` | The file is missing, or a serial is still `REPLACE_ME`, which means no clean stage 00 run has produced it | Re-run stage 00. It regenerates the file from scratch and refuses to leave a placeholder behind — see [Why serial discovery is its own stage](#why-serial-discovery-is-its-own-stage-and-why-it-generates-the-model) |
+| Stage 02 (or 03) fails at step `inventory` with `MODULE FAILURE` and, in the traceback, `command timeout triggered, timeout value is 30 secs` | The discovery call runs for minutes and the httpapi connection timed out at its 30-second default. The failure carries `cisco.dcnm`'s generic "verify your login credentials, access permissions and fabric details" text, so it reads like a credential problem and is not. It is stage 02 rather than 03 because 02 runs the same create role and the switch model already exists by then | `git pull` — `inventory/group_vars/nd/connection.yml` sets both timeouts to 1000. For one run without editing, add `-e ansible_command_timeout=1000 -e ansible_connect_timeout=1000`. See [Things that will bite you](#things-that-will-bite-you) |
+| Stage 02 (or 03) fails at step `interface_all` (`dcnm_interface`) with `RETURN_CODE: 500` on `POST .../lan-fabric/rest/globalInterface`, and each `DATA` entry says `An unexpected error occurred during template execution`, naming `DC-Leaf2:DC-Leaf1:vPC3`, `vPC4` and `vPC5` | Suspected — a non-ASCII character in a port-channel `description`. The em dash in `MAIN server — vPC3` was the only non-ASCII byte in the request and the only field in it that was not a collection default, and NDFC renders that string through a Velocity template. Not proven: NDFC returns the same generic message for unrelated faults | `git pull` — the descriptions are plain hyphens as of 2026-09-25. **A pull on its own is not enough:** what NDFC reads is the generated `topology_switches.nac.yaml`, so re-run `playbooks/00_discover_dc_switch_serials.yml` afterwards, with the VPN up. See [Things that will bite you](#things-that-will-bite-you) |
+| You changed `topology_switches.nac.yaml.example`, or pulled a change to it, and the build behaves as though nothing changed | The pipeline never reads the `.example`. It reads `topology_switches.nac.yaml`, which stage 00 generates from it and which is gitignored build output, so git never touches it | Re-run `playbooks/00_discover_dc_switch_serials.yml`. It regenerates the file from the current `.example` and `dc_switches.yml`. It SSHes to the switches, so the VPN has to be up |
+| Stage 02 (or 03) sits at the `inventory` step for minutes with no output | Not a fault. Nexus Dashboard is holding one request open per switch role while it discovers and imports the five switches | Wait. Interrupting it leaves the import half done. See [Things that will bite you](#things-that-will-bite-you) |
 | Stage 07 refuses to run, saying the fabric already exists | Working as intended | See [Coverage, and what is left to do](#coverage-and-what-is-left-to-do), item 3 |
