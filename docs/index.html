@@ -10003,8 +10003,16 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 </ul>
 <hr>
 <h4>Running it</h4>
+<p>First, install the collections. This track needs <code>cisco.nac_dc_vxlan</code> and <code>cisco.dcnm</code>, which are newer than the campus ones, so a script server staged before the DC track existed will not have them. Pull the latest checkout, then:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
-ansible-playbook playbooks/00_dc_deploy.yml</pre>
+ansible-galaxy collection install -r collections/requirements.yml --force
+ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'</pre>
+<p>You want <code>cisco.dcnm 3.13.0</code> and <code>cisco.nac_dc_vxlan 0.9.0</code>. The <code>--force</code> is not optional: without it <code>ansible-galaxy</code> silently skips any collection already present at <em>any</em> version, so an upgrade appears to succeed and never happens. Expect it to be slow, or to need a second attempt — the path out to <code>galaxy.ansible.com</code> over the dCloud VPN drops intermittently. Re-running the bootstrap playbook <code>01_bootstrap_script_server.yml</code> installs the same pins and is the better habit on a fresh pod.</p>
+<div class="admonition">
+<p>💡 <strong>If you skip this you get a confusing error.</strong> Ansible reports a missing <em>collection</em> as a missing <em>role</em>: <code>ERROR! the role 'cisco.nac_dc_vxlan.validate' was not found</code>, followed by a list of role search paths. Nothing is wrong with the playbook it points at — the collection simply is not installed.</p>
+</div>
+<p>Then run the pipeline:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/00_dc_deploy.yml</pre>
 <p>Five stages: ensure the fabric exists, report the serials for you to enter, create the full intent on the controller, deploy it to the switches, then verify the result. Credentials come from the same vault-encrypted <code>lab_access.yml</code> every other collection in this repository uses.</p>
 <p>The verification stage reads only the Nexus Dashboard API — no SSH to the switches — so it works even when your VPN cannot reach <code>198.18.128.x</code> directly, and it writes the same style of evidence report as the campus pipeline's stage 12. It compares every switch, VRF and network against what was declared, and checks that each attachment reports <code>DEPLOYED</code> rather than <code>PENDING</code>, which is the distinction between "intent exists on the controller" and "configuration reached the switch".</p>
 <div class="admonition">

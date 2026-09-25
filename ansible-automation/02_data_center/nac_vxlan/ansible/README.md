@@ -10,12 +10,56 @@ Built on [Cisco Nexus as Code](https://netascode.cisco.com/docs/data_models/vxla
 describe the fabric you want in YAML under `playbooks/host_vars/`; the collection works
 out the API calls.
 
+## Before you run anything
+
+Everything runs on the Kali script server, inside the `~/venv` that
+`00_scriptserver_bootstrap` builds. Two things have to be in place first.
+
+**1. The collections.** This pipeline needs `cisco.nac_dc_vxlan` and
+`cisco.dcnm`, which are newer than the campus ones — if your `~/venv` was
+built before the DC track was added, they are not there. Bring the checkout
+forward and re-run the bootstrap, which is what installs them:
+
+```bash
+cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+ansible-playbook playbooks/02_sync_from_git.yml
+ansible-playbook playbooks/01_bootstrap_script_server.yml
+```
+
+If you only want the collections, without the apt and venv work the bootstrap
+also does:
+
+```bash
+cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+ansible-galaxy collection install -r collections/requirements.yml --force
+```
+
+`--force` is not optional. Without it `ansible-galaxy` silently skips any
+collection already present at any version, so an upgrade appears to succeed
+and never happens — that is how the campus `cisco.catalystcenter` bump went
+unapplied for weeks. Expect the install to be slow or to need a retry; the
+path to `galaxy.ansible.com` over the dCloud VPN drops intermittently.
+
+Confirm before moving on:
+
+```bash
+ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'
+```
+
+You want `cisco.dcnm 3.13.0` and `cisco.nac_dc_vxlan 0.9.0`.
+
+**2. The External fabric.** In this lab it is a manual prerequisite, built in
+Nexus Dashboard with Monitor Mode on and the IOS-XE edge router discovered
+into it, before this pipeline runs. See
+[Coverage, and what is left to do](#coverage-and-what-is-left-to-do) for why
+the pipeline cannot do it.
+
 ## Running it
 
-Everything runs on the Kali script server, from **this directory** — the one
-holding `ansible.cfg`, not from `playbooks/`. The relative paths in
-`ansible.cfg` that reach the vault and the vars plugin are resolved against
-the working directory, so running from anywhere else breaks authentication:
+Run from **this directory** — the one holding `ansible.cfg`, not from
+`playbooks/`. The relative paths in `ansible.cfg` that reach the vault and the
+vars plugin are resolved against the working directory, so running from
+anywhere else breaks authentication:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
@@ -175,7 +219,7 @@ decides whether the cleanup needs a switch reload. It is set to `Enable`
 because the guide's Advanced tab says to, and because Cisco recommends it for
 Nexus 9000v fabrics like this pod.
 
-## Coverage, and what is left — TODO
+## Coverage, and what is left to do
 
 **This pipeline already carries everything `cisco.nac_dc_vxlan` 0.9.0 can
 express for this guide.** That is a deliberate boundary, not a stopping point
@@ -274,36 +318,20 @@ collections; without them there they would be installed as dependencies at
 whatever the Galaxy resolver picked, which is not what this file claims is
 running.
 
-### "the role 'cisco.nac_dc_vxlan.validate' was not found"
-
-The collection is not installed. Ansible reports a missing collection as a
-missing **role** and prints the role search path, which sends you looking in
-the wrong place — nothing is wrong with the playbook.
-
-The fix is to re-run the bootstrap, which is what installs:
-
-```bash
-cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
-ansible-playbook playbooks/02_sync_from_git.yml
-ansible-playbook playbooks/01_bootstrap_script_server.yml
-```
-
-To install only what this collection needs, without the apt and venv work:
-
-```bash
-ansible-galaxy collection install -r collections/requirements.yml --force
-ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'
-```
-
-`--force` is not cosmetic. Without it `ansible-galaxy` silently skips any
-collection already present at any version, which is how the campus
-`cisco.catalystcenter` bump went unapplied for weeks. Expect the install to be
-slow or to need a retry; the path to `galaxy.ansible.com` over the dCloud VPN
-drops intermittently.
-
 ND 4.2.1 support landed in `cisco.dcnm` 3.12.1, and `cisco.nac_dc_vxlan` 0.9.0
 itself requires `cisco.dcnm >= 3.13.0`, `ansible.netcommon >= 4.1.0` and
 `community.general >= 8.5.0`. Its Python dependencies (`nac-yaml`,
 `nac-validate`, `macaddress`, `packaging`, `jmespath`, `requests`) are in
 `ansible-automation/requirements.txt`; they are hard runtime requirements
 because the collection reads and validates the model in Python, not in Jinja.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ERROR! the role 'cisco.nac_dc_vxlan.validate' was not found`, followed by a list of role search paths | The **collection** is not installed. Ansible reports a missing collection as a missing role and prints the role search path, which points at the playbook rather than at what is installed. Nothing is wrong with the playbook | [Before you run anything](#before-you-run-anything), step 1 |
+| `Collection cisco.nac_dc_vxlan does not support Ansible version …` | You are not in the bootstrap's `~/venv`. 0.9.0 declares `requires_ansible ">=2.15.0,<2.19.0"` and this repo pins `ansible-core` 2.17.14 | `which ansible-playbook` — it should be under `~/venv/bin`. If apt offers to install `ansible-core`, decline; that is an unpinned copy outside the venv |
+| `No inventory was parsed, only implicit localhost is available` | You ran from `playbooks/` instead of the directory holding `ansible.cfg` | `cd` up one level and re-run |
+| Stage 02 reports `NOT DISCOVERED` against a switch | The CDP crawl did not reach it, or its management IP in `dc_switches.yml` does not match what Nexus Dashboard returned | Check the switch is up and its IP is right. The crawl seeds at `dc_discovery_seed_ip` (`198.18.128.101`) and walks two hops |
+| Stage 03 fails pointing at `topology_switches.nac.yaml` | The file is missing, or a serial is still `REPLACE_ME` | Run stage 02 and transcribe the serials — see [Why serial discovery is its own stage](#why-serial-discovery-is-its-own-stage-and-why-you-transcribe-by-hand) |
+| Stage 07 refuses to run, saying the fabric already exists | Working as intended | See [Coverage, and what is left to do](#coverage-and-what-is-left-to-do), item 3 |

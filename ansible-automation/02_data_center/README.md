@@ -18,8 +18,26 @@ collections: the WLC and Catalyst Center from `01_campus/evpn`, Splunk from
 
 ## Quick start
 
+This track needs `cisco.nac_dc_vxlan` and `cisco.dcnm`, which are newer than
+the campus collections. A `~/venv` built before the DC track was added does
+not have them, and the symptom is misleading — Ansible reports a missing
+collection as `the role 'cisco.nac_dc_vxlan.validate' was not found`. Install
+them once:
+
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+ansible-galaxy collection install -r collections/requirements.yml --force
+ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm'
+```
+
+`--force` matters: without it `ansible-galaxy` silently skips a collection
+already present at any version. Re-running
+`00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml` does the
+same thing and is the durable fix, since that is what installs on a fresh pod.
+
+Then:
+
+```bash
 ansible-playbook playbooks/00_dc_deploy.yml
 ```
 
