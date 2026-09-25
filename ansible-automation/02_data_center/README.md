@@ -50,13 +50,17 @@ The numbers carry information. `01_dc_deploy.yml` imports stages 02 through
 05 and nothing else, so a playbook numbered inside that range runs as part of
 the orchestrated build, while `00_discover_dc_switch_serials.yml` below it and
 `06_remove.yml` / `07_external_fabric.yml` above it are ones you run
-deliberately, by hand.
+deliberately, by name.
 
 Read `nac_vxlan/ansible/README.md` first. Three things in particular. The
 discovery stage is not part of the orchestrator: it SSHes to the switches,
-prints a serial for each, and you transcribe them into the data model
-yourself, which is the point of that stage — `01_dc_deploy.yml` stops at
-stage 03 until you have. `01_dc_deploy.yml` then erases the running
+reads a serial number off each one, and generates the switch half of the data
+model from them, so you have to run it once yourself before anything else —
+`01_dc_deploy.yml` stops at stage 03 until you have. What it generates is
+build output rather than something you maintain: every run overwrites
+`topology_switches.nac.yaml` silently, so changes belong in the tracked
+`.example` beside it or in the switch table it reads.
+`01_dc_deploy.yml` then erases the running
 configuration of all five switches as it imports them, with no confirmation
 prompt and no way to turn it off. And VRF-Lite to the IOS-XE edge router is
 still manual.

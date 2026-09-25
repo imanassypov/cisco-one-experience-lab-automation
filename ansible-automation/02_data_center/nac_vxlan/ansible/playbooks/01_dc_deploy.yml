@@ -22,12 +22,12 @@
 #
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 #
-# That stage prints a serial per switch; copy the tracked
-# host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example beside itself and
-# transcribe them in. It is a manual step on purpose — it is where you see
-# what cisco.nac_dc_vxlan actually keys a switch on. It is not imported here
-# because it SSHes to the switches rather than driving Nexus Dashboard, and
-# because it only needs running again when the pod hardware changes.
+# That stage reads a serial off each switch and generates
+# host_vars/Pseudoco-DC1/topology_switches.nac.yaml from the tracked .example
+# beside it. It is not imported here because it SSHes to the switches rather
+# than driving Nexus Dashboard, so it is the one stage that needs the switch
+# path up, and because it only needs running again when the pod hardware or
+# the switch table changes.
 #
 # Three other playbooks are deliberately absent:
 #   00_discover_dc_switch_serials.yml  prerequisite, see above

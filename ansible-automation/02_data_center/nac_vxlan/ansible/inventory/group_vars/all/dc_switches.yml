@@ -4,14 +4,17 @@
 # Hostnames, management addresses, fabric roles and endpoint port-channels are
 # identical in every pod (see Lab Topology/PseudoCo_Lab_Access_Lookup.md), so
 # they live in git. Serial numbers are pod-specific hardware and are NOT here:
-# 00_discover_dc_switch_serials.yml reads them off the switches and prints
-# them, and you transcribe them into
-# playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml by hand.
+# 00_discover_dc_switch_serials.yml reads them off the switches and writes
+# them into playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml, which
+# is generated and gitignored.
 #
 # This table is the single source of truth for the switch list. Stage 00 turns
 # it into an SSH inventory group at run time with add_host, rather than the
 # names and addresses being repeated in static_inventory.yml where the two
-# copies could drift.
+# copies could drift, and it substitutes the role below into the generated
+# model so that cannot drift either. The names here must match the names in
+# topology_switches.nac.yaml.example, because that substitution anchors on
+# them.
 #
 # Roles come from the guide: Nexus 9300s default to leaf and 9500s to spine on
 # import, but DC-Service-Leaf must be set to border and the two spines must be

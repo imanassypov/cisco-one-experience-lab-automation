@@ -1,25 +1,28 @@
 ---
-# Copy this file to topology_switches.nac.yaml and fill in the serials:
+# Shape reference for the switch topology. This file is tracked in git and is
+# read by exactly one thing: the generator in stage 00.
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
-#   cp playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example \
-#      playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml
 #
-# Then replace every REPLACE_ME below with the serial stage 00 printed for
-# that switch. Match on the management IP rather than on position in the list.
+# Stage 00 SSHes to the switches, reads ansible_net_serialnum from
+# cisco.nxos.nxos_facts, copies this file to topology_switches.nac.yaml beside
+# it and substitutes each switch's serial_number and role. Nothing has to
+# exist in Nexus Dashboard first, so it runs before anything else here. That
+# generated copy is what the create role reads, and it is gitignored because
+# serial numbers are the hardware of one dCloud pod.
 #
-# Stage 00 SSHes to the switches and reads ansible_net_serialnum from
-# cisco.nxos.nxos_facts, so nothing has to exist in Nexus Dashboard first —
-# run it before anything else in this collection.
+# Edit this file to change the SHAPE of the model — which switches exist, what
+# port-channels they carry. Edit inventory/group_vars/all/dc_switches.yml to
+# change the switch TABLE — names, management addresses, roles. The two must
+# agree on the names, because the generator anchors its substitution on the
+# switch name: a switch named differently here never receives its serial, and
+# stage 00's own post-write check fails the run rather than let a placeholder
+# reach the create role. That matters because rule 301 in the validate role
+# only checks that serial_number is non-empty, so a placeholder passes
+# validation and fails much later, deep inside the create role.
 #
-# Take care over the transcription. A wrong serial is accepted by the schema —
-# rule 301 only checks that the field is non-empty — so it passes validation
-# and fails much later, deep inside the create role.
-#
-# Your copy is gitignored because serials belong to one dCloud pod. This
-# .example stays tracked, so editing the copy never leaves the checkout dirty
-# and never blocks a git pull.
+# REPLACE_ME is the placeholder the generator overwrites. Leave it in place.
 vxlan:
   topology:
     switches:
