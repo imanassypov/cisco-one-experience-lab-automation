@@ -21,7 +21,7 @@
 # CAUTION: the data model documents vPC pairs as provision-and-decommission
 # only. Once deployed, a pair cannot be edited to change peers or to scale
 # peer-link members — the supported change is delete and recreate. Get this
-# right before 04_deploy.yml runs.
+# right before 03_deploy.yml runs.
 vxlan:
   topology:
     vpc_peers:

@@ -1,5 +1,5 @@
 ---
-# Stage 07 — create the External connectivity fabric, if it does not exist.
+# Stage 06 — create the External connectivity fabric, if it does not exist.
 #
 # Guide section 7, "Create an External Fabric": a second fabric, ASN 65531,
 # Fabric Monitor Mode checked, holding the IOS-XE edge router
@@ -27,9 +27,9 @@
 # playbook exists for the case where the fabric object is genuinely missing —
 # and even then, check Monitor Mode in the UI afterwards.
 #
-#   ansible-playbook playbooks/07_external_fabric.yml
+#   ansible-playbook playbooks/06_external_fabric.yml
 
-- name: Stage 07 — create the External connectivity fabric
+- name: Stage 06 — create the External connectivity fabric
   hosts: External
   gather_facts: false
   any_errors_fatal: true

@@ -21,7 +21,7 @@ all:
           ansible_host: ndfc.corp.pseudoco.com
         # External connectivity fabric. In this lab it is a manual
         # prerequisite, created in Monitor Mode with the IOS-XE edge router
-        # already in it. 07_external_fabric.yml can create the object if it
+        # already in it. 06_external_fabric.yml can create the object if it
         # is missing, but it cannot set Monitor Mode or add the router, so it
         # is deliberately absent from 01_dc_deploy.yml.
         External:

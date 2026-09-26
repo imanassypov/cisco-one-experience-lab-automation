@@ -5,7 +5,7 @@
 # Nexus Dashboard when the matching flag is true, and upstream defaults them
 # false precisely so that dropping a stanza from the data model cannot silently
 # tear down live fabric config. Flip one only for a deliberate, gated teardown
-# via 06_remove.yml, never in a normal run.
+# via 05_remove.yml, never in a normal run.
 edge_connections_delete_mode: false
 interface_delete_mode: false
 inventory_delete_mode: false

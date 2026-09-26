@@ -9,7 +9,7 @@
 #    for it, and dc_external_fabric_general.j2 does not merely omit the nvPair
 #    — it emits IS_READ_ONLY: false outright. So this model actively asks for
 #    the opposite of what the guide wants, and applying it to a fabric that is
-#    already in Monitor Mode would take it out of Monitor Mode. Stage 07
+#    already in Monitor Mode would take it out of Monitor Mode. Stage 06
 #    refuses to run against an existing External fabric for that reason.
 #
 # 2. The edge router. DC-SITE11-CEDGE8Kv (198.18.133.14) is an IOS-XE
