@@ -8,10 +8,14 @@
 # What it compares:
 #   - every switch in inventory/group_vars/all/dc_switches.yml is in the fabric, with the
 #     role that was declared for it
-#   - every VRF in vrfs.nac.yaml exists and is attached
+#   - every VRF in vrfs.nac.yaml exists and is attached to every switch in
+#     its vrf_attach_group
 #   - every network in networks.nac.yaml exists with the declared gateway,
 #     and is attached to the declared port-channels
-#   - every attachment reports lanAttachState: DEPLOYED
+#   - every attachment the controller reports as attached
+#     (isLanAttached: true) is DEPLOYED. Switches the controller lists but
+#     has not attached come back as NA and are not judged - see the comment
+#     in Compare VRFs.
 #
 # Writes evidence/stage04-verification.md and fails at the end on any mismatch.
 # Override with -e dc_verify_fail_on_mismatch=false to get the report without
@@ -50,6 +54,8 @@
       ansible.builtin.set_fact:
         dc_declared_vrfs: "{{ dc_declared_vrf_model.vxlan.overlay.vrfs | default([]) }}"
         dc_declared_networks: "{{ dc_declared_network_model.vxlan.overlay.networks | default([]) }}"
+        dc_declared_vrf_attach_groups: >-
+          {{ dc_declared_vrf_model.vxlan.overlay.vrf_attach_groups | default([]) }}
         dc_declared_network_attach_groups: >-
           {{ dc_declared_network_model.vxlan.overlay.network_attach_groups | default([]) }}
 
@@ -146,23 +152,71 @@
               | selectattr('vrfName', 'defined')
               | selectattr('vrfName', 'eq', item.name)
               | list | first) | default({}) }}
-        attach_states: >-
+        attachments: >-
           {{ (dc_vrf_attach_observed
               | selectattr('vrfName', 'defined')
               | selectattr('vrfName', 'eq', item.name)
-              | map(attribute='lanAttachList') | flatten
-              | selectattr('lanAttachState', 'defined')
-              | map(attribute='lanAttachState') | list) }}
+              | map(attribute='lanAttachList') | flatten | list) }}
+        # Nexus Dashboard enumerates every switch that COULD carry the VRF and
+        # reports the ones it does not with isLanAttached: false and
+        # lanAttachState: NA. NA is not a fault and not a pending state, so
+        # only the records the boolean calls attached are judged - otherwise
+        # DC-Service-Leaf, which vrfs.nac.yaml leaves out of the attach group
+        # on purpose because attaching it belongs to the VRF-Lite step, would
+        # fail this stage on every run. Every field on an NA record is null,
+        # so anything read off one needs default(x, true).
+        attached: >-
+          {{ attachments
+             | selectattr('isLanAttached', 'defined')
+             | selectattr('isLanAttached') | list }}
+        not_attached_switches: >-
+          {%- set names = [] -%}
+          {%- for a in attachments if not (a.isLanAttached | default(false, true)) -%}
+          {{- names.append(a.switchName | default('unknown', true)) or '' -}}
+          {%- endfor -%}
+          {{ names }}
+        attach_states: >-
+          {{ attached
+             | selectattr('lanAttachState', 'defined')
+             | map(attribute='lanAttachState') | list }}
+        attach_group_switches: >-
+          {{ (dc_declared_vrf_attach_groups
+              | selectattr('name', 'eq', item.vrf_attach_group | default(''))
+              | map(attribute='switches') | flatten | list) }}
+        # Ignoring the NA records would make the attachment check vacuous on
+        # its own - a VRF attached to nothing at all would look the same as
+        # one attached everywhere it was declared - so the declared attach
+        # group is checked against the attached set, the way the networks
+        # task checks its switch-and-port pairs. Declared hostnames keep
+        # their casing for the report and are compared case-insensitively,
+        # because Nexus Dashboard is inconsistent about it.
+        attached_switches: >-
+          {%- set names = [] -%}
+          {%- for a in attached -%}
+          {{- names.append((a.switchName | default('', true)) | lower) or '' -}}
+          {%- endfor -%}
+          {{ names }}
+        missing_switches: >-
+          {%- set missing = [] -%}
+          {%- for sw in attach_group_switches
+                if (sw.hostname | default('')) | lower not in attached_switches -%}
+          {{- missing.append(sw.hostname | default('')) or '' -}}
+          {%- endfor -%}
+          {{ missing }}
         row:
           name: "{{ item.name }}"
           declared_id: "{{ item.vrf_id }}"
           observed_id: "{{ observed.vrfId | default('absent') }}"
+          declared_switches: "{{ attach_group_switches | map(attribute='hostname') | list }}"
+          missing_switches: "{{ missing_switches }}"
+          not_attached_switches: "{{ not_attached_switches }}"
           attach_states: "{{ attach_states }}"
           ok: >-
             {{ (observed | length > 0)
                and (observed.vrfId | default(0) | int == item.vrf_id | int)
-               and (attach_states | length > 0)
-               and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0) }}
+               and (attached | length > 0)
+               and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
+               and (missing_switches | length == 0) }}
 
     - name: Compare networks
       ansible.builtin.set_fact:
@@ -187,9 +241,26 @@
               | selectattr('networkName', 'defined')
               | selectattr('networkName', 'eq', item.name)
               | map(attribute='lanAttachList') | flatten | list) }}
+        # Same partition as Compare VRFs: the controller lists every switch
+        # that could carry the network and marks the ones it has not attached
+        # NA, so only the isLanAttached records are judged.
+        attached: >-
+          {{ attachments
+             | selectattr('isLanAttached', 'defined')
+             | selectattr('isLanAttached') | list }}
+        not_attached_switches: >-
+          {%- set names = [] -%}
+          {%- for a in attachments if not (a.isLanAttached | default(false, true)) -%}
+          {{- names.append(a.switchName | default('unknown', true)) or '' -}}
+          {%- endfor -%}
+          {{ names }}
+        attach_states: >-
+          {{ attached
+             | selectattr('lanAttachState', 'defined')
+             | map(attribute='lanAttachState') | list }}
         attach_group_switches: >-
           {{ (dc_declared_network_attach_groups
-              | selectattr('name', 'eq', item.network_attach_group)
+              | selectattr('name', 'eq', item.network_attach_group | default(''))
               | map(attribute='switches') | flatten | list) }}
         # Attachments are compared as switch-and-port pairs, not as a flat list
         # of port names. The guide attaches each port-channel on *both* leaves,
@@ -206,10 +277,13 @@
           {%- endfor -%}
           {%- endfor -%}
           {{ pairs }}
+        # default('', true) is boolean mode on purpose: portNames is present
+        # but null on the switches the controller lists without attaching,
+        # and plain default() only ever substitutes for undefined.
         observed_attachments: >-
           {%- set pairs = [] -%}
-          {%- for a in attachments -%}
-          {%- for port in (a.portNames | default('')).split(',') if port | trim -%}
+          {%- for a in attached -%}
+          {%- for port in (a.portNames | default('', true)).split(',') if port | trim -%}
           {{- pairs.append((a.switchName | default('') ~ '|' ~ port | trim) | lower) or '' -}}
           {%- endfor -%}
           {%- endfor -%}
@@ -228,17 +302,14 @@
           observed_gateway: "{{ observed_config.gatewayIpAddress | default('absent') }}"
           declared_attachments: "{{ declared_attachments }}"
           missing_attachments: "{{ missing_attachments }}"
-          attach_states: >-
-            {{ attachments | selectattr('lanAttachState', 'defined')
-               | map(attribute='lanAttachState') | list }}
+          not_attached_switches: "{{ not_attached_switches }}"
+          attach_states: "{{ attach_states }}"
           ok: >-
             {{ (observed | length > 0)
                and (observed.vrf | default('') == item.vrf_name)
                and (observed_config.gatewayIpAddress | default('') == item.gw_ip_address)
-               and (attachments | length > 0)
-               and (attachments | selectattr('lanAttachState', 'defined')
-                    | map(attribute='lanAttachState') | reject('eq', 'DEPLOYED')
-                    | list | length == 0)
+               and (attached | length > 0)
+               and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
                and (missing_attachments | length == 0) }}
 
     - name: Collect the failures
