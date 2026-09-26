@@ -26,7 +26,7 @@
 #     asked Nexus Dashboard to CDP-crawl from a seed, and that API is
 #     fabric-scoped, which is why the fabric had to be created first. Reading
 #     the switches directly removes that ordering constraint entirely, which
-#     is why this is stage 00 and runs ahead of the fabric stage rather than
+#     is why this is stage 00 and runs ahead of the create stage rather than
 #     after it.
 #
 # Read-only with respect to the switches. nxos_facts issues show commands and
@@ -226,7 +226,7 @@
           name in inventory/group_vars/all/dc_switches.yml that does not match
           the name in topology_switches.nac.yaml.example — the substitution
           anchors on that name, so a mismatch matches nothing at all. Do not
-          run stage 03 against this file.
+          run stage 02 against this file.
 
     - name: Check each switch carries its own serial and its declared role
       ansible.builtin.assert:

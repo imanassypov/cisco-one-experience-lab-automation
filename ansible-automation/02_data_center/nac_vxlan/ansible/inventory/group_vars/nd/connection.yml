@@ -36,10 +36,6 @@ ndfc_switch_password: "{{ lab_access['DC-Leaf1'].password }}"
 # (It reads that way because cisco.dcnm's httpapi plugin appends "Please
 # verify your login credentials..." to every transport exception.)
 #
-# In practice this bites stage 02, not stage 03: 02_fabric.yml runs the same
-# dtc.create role unfiltered, so it does the import as soon as stage 00 has
-# generated topology_switches.nac.yaml.
-#
 # 1000 is not a comfort margin: cisco.dcnm's own
 # plugins/action/dcnm_inventory.py hard-fails unless both timeouts are >= 1000,
 # and its README sets exactly these two. That guard never fired here because

@@ -1,7 +1,7 @@
-{# Evidence report for 05_verify_fabric.yml. Generated — do not edit by hand. #}
+{# Evidence report for 04_verify_fabric.yml. Generated — do not edit by hand. #}
 # DC fabric verification — {{ dc_fabric_name }}
 
-Generated {{ dc_verify_timestamp }} by `05_verify_fabric.yml`.
+Generated {{ dc_verify_timestamp }} by `04_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
 `host_vars/{{ inventory_hostname }}/vrfs.nac.yaml` and
@@ -32,7 +32,7 @@ management IP, or when the role it holds is not the role declared for it.
 
 A VRF must exist with the declared VNI, be attached to at least one switch,
 and have every attachment in `DEPLOYED`. An attachment stuck in `PENDING`
-means the intent was created but never pushed — re-run `04_deploy.yml`.
+means the intent was created but never pushed — re-run `03_deploy.yml`.
 
 ## Networks
 

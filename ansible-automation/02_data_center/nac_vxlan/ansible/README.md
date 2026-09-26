@@ -74,32 +74,35 @@ writes the switch half of the data model from them, so nothing else here has a
 model to work with until it has run once. It is not part of the orchestrator,
 because it reaches the switches over SSH rather than driving Nexus Dashboard,
 and because it only needs running again when the pod hardware or the switch
-table changes. Stage 03 refuses to start until the serials are in the data
+table changes. Stage 02 refuses to start until the serials are in the data
 model — see "Why serial discovery is its own stage" below.
 
 | Playbook | What it does |
 |---|---|
 | `playbooks/00_discover_dc_switch_serials.yml` | SSHes to each switch, reads its serial, and generates `playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml` from the tracked `.example`. Read-only against the switches. **Run this first.** Not in the orchestrator |
-| `playbooks/01_dc_deploy.yml` | Orchestrator. Imports 02, 03, 04 and 05, in that order |
-| `playbooks/02_fabric.yml` | Ensures the fabric object exists. It runs the same create role as 03, so once stage 00 has generated the switch model this stage imports the switches too — its inventory step sits with no output for several minutes while Nexus Dashboard discovers them. `--tags cr_manage_fabric` holds it to the fabric object |
-| `playbooks/03_create.yml` | Creates the full intent on the controller. Converges whatever 02 left, and does the switch import itself if you run it on its own |
-| `playbooks/04_deploy.yml` | Pushes that intent to the switches |
-| `playbooks/05_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
-| `playbooks/06_remove.yml` | Destructive prune. Not in `01`. Needs `-e dc_remove_confirm=REMOVE_OK` |
-| `playbooks/07_external_fabric.yml` | Creates the External fabric **only if it is absent**. Not in `01` — different inventory host, and in this lab the fabric is a manual prerequisite |
+| `playbooks/01_dc_deploy.yml` | Orchestrator. Imports 02, 03 and 04, in that order |
+| `playbooks/02_create.yml` | Creates the whole intent on the controller: the fabric object, the switch import, the roles, the vPC pair, the port-channels, the VRFs and the networks. Its inventory step sits with no output for several minutes while Nexus Dashboard discovers the switches. `--tags cr_manage_fabric` holds it to the fabric object alone |
+| `playbooks/03_deploy.yml` | Pushes that intent to the switches |
+| `playbooks/04_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
+| `playbooks/05_remove.yml` | Destructive prune. Not in `01`. Needs `-e dc_remove_confirm=REMOVE_OK` |
+| `playbooks/06_external_fabric.yml` | Creates the External fabric **only if it is absent**. Not in `01` — different inventory host, and in this lab the fabric is a manual prerequisite |
 
 The numbers are not just an ordering, they tell you who runs the playbook.
-Stages 02 to 05 are contiguous because they are exactly what
-`01_dc_deploy.yml` imports, in the order it imports them; 06 and 07 sit above
+Stages 02 to 04 are contiguous because they are exactly what
+`01_dc_deploy.yml` imports, in the order it imports them; 05 and 06 sit above
 that range because they are deliberately outside the orchestrated run, and 00
 sits below it because it is the prerequisite you run yourself, once per pod,
 before the pipeline. So a plain `ansible-playbook playbooks/01_dc_deploy.yml` touches
-everything numbered 02 to 05 and nothing else.
+everything numbered 02 to 04 and nothing else.
 
 Useful overrides:
 
-- `-e dc_verify_fail_on_mismatch=false` — stage 05 reports without failing
-- `--tags cr_manage_fabric` — narrows a create run to the fabric object only
+- `-e dc_verify_fail_on_mismatch=false` — stage 04 reports without failing
+- `--tags cr_manage_fabric` — narrows stage 02 to the fabric object only. That
+  is the guide's "Create a VXLAN Fabric" step on its own, and `cr_manage_fabric`
+  is a real per-step tag inside the create role rather than a playbook of its
+  own. Stage 02's pre-tasks are tagged `always`, so even this narrowed run
+  still refuses to start without the generated switch model
 
 ## Layout
 
@@ -115,11 +118,11 @@ inventory/
   group_vars/dc_fabric_switches/connection.yml
                                   SSH to the switches; stage 00 only
 playbooks/
-  00_discover_dc_switch_serials.yml … 07_external_fabric.yml
+  00_discover_dc_switch_serials.yml … 06_external_fabric.yml
   host_vars/Pseudoco-DC1/*.nac.yaml   the Nexus as Code data model
   host_vars/External/global.nac.yaml
   templates/
-evidence/                         written by stage 05, gitignored
+evidence/                         written by stage 04, gitignored
 ```
 
 This mirrors `01_campus/evpn/ansible` with one forced exception: **`host_vars/`
@@ -171,8 +174,11 @@ Two things follow from that, and they are the reason this is stage 00:
 
 - **No ordering constraint.** Nothing has to exist in Nexus Dashboard first.
   An earlier version of this stage used the controller's CDP crawl
-  (`.../inventory/test-reachability`), which is fabric-scoped, and that is
-  the only reason `02_fabric.yml` had to run before it.
+  (`.../inventory/test-reachability`), which is fabric-scoped, so the fabric
+  had to be created before a single serial could be read. Satisfying that is
+  the only thing a separate fabric-first stage was ever for, and removing the
+  constraint is what allowed it to be deleted and the create stages to
+  collapse into one.
 - **It needs the switch path up.** Every other stage here reaches only the
   Nexus Dashboard API, so this is the one that will fail when SSH to
   `198.18.128.x` is unavailable.
@@ -221,7 +227,7 @@ so the stage proves its own work before letting you move on:
 
 - It refuses to write anything at all unless every declared switch returned a
   serial. If one comes back `UNREACHABLE` the run fails with nothing on disk,
-  so a partial model can never reach stage 03.
+  so a partial model can never reach stage 02.
 - Having written the file, it reads it back and asserts that no `REPLACE_ME`
   survived, that every serial it read is present, and that each switch carries
   its own serial and its declared role. That check is not belt-and-braces: an
@@ -230,14 +236,15 @@ so the stage proves its own work before letting you move on:
   change, so inspecting the written file is the only way a name mismatch gets
   caught.
 
-Stage 03 still makes the placeholder check independently, because the file is
+Stage 02 still makes the placeholder check independently, because the file is
 on disk and nothing stops somebody editing it after the fact. It refuses to
 start if the model is missing or if any `REPLACE_ME` is still in it, and tells
-you to re-run stage 00.
+you to re-run stage 00. Those pre-tasks are tagged `always`, so they run even
+under a tag filter.
 
 The stage is read-only *with respect to the switches*. `nxos_facts` issues show
 commands and nothing else, and the generated model is the only thing it writes
-anywhere. The first thing that writes to a switch is the import in stage 03.
+anywhere. The first thing that writes to a switch is the import in stage 02.
 
 ## Things that will bite you
 
@@ -268,9 +275,9 @@ stanza behind when commenting something out.
 
 **vPC pairs cannot be edited.** The data model treats them as
 provision-and-decommission only: changing the peers or scaling the peer-link
-means delete and recreate. Get `playbooks/host_vars/Pseudoco-DC1/topology_vpc.nac.yaml` right before stage 04.
+means delete and recreate. Get `playbooks/host_vars/Pseudoco-DC1/topology_vpc.nac.yaml` right before stage 03.
 
-**The import erases switches, and you cannot turn that off.** Stage 03 wipes
+**The import erases switches, and you cannot turn that off.** Stage 02 wipes
 the running configuration of each switch as it joins the fabric, which is what
 the guide does when it has you uncheck Preserve Config. What is worth knowing
 is that this is not a setting here: `preserve_config: false` is hardcoded in
@@ -285,12 +292,10 @@ because the guide's Advanced tab says to, and because Cisco recommends it for
 Nexus 9000v fabrics like this pod.
 
 **The import runs for minutes with no output, and a 30-second connection
-timeout used to kill it. It happens in stage 02, not stage 03.** Stage 02 runs
-the same `dtc.create` role as stage 03 and filters nothing, so as soon as
-stage 00 has generated `topology_switches.nac.yaml` — which it must have
-before either stage can build anything — the switch import lands in stage 02.
-Stage 03 only does the import itself if you run it on its own, or if you held
-02 to the fabric object with `--tags cr_manage_fabric`.
+timeout used to kill it.** It is stage 02's `inventory` step, which the create
+role reaches as soon as it has read the switch model stage 00 generated — so
+this is the first place a fresh pipeline appears to hang, long before anything
+is deployed.
 
 The import is a blocking HTTP call: `dcnm_inventory` POSTs to
 `fabrics/{fabric}/inventory/discover?setAndUseDiscoveryCredForLan=true` and
@@ -399,11 +404,6 @@ Ansible printed, it records one: the controller raises an alarm under the
 `lan_fabric_errors` policy naming the template that failed. Nexus Dashboard →
 **Events/Alarms**, filtered to the time of the run.
 
-## Coverage, and what is left to do
-
-**This pipeline already carries everything `cisco.nac_dc_vxlan` 0.9.0 can
-express for this guide.** That is a deliberate boundary, not a stopping point
-chosen at random. Guide sections 4, 5 and 6 are covered end to end: the
 **Pin `vlan_id` on every VRF and on every network. Leaving it out is safe when
 a human clicks "Propose VLAN" and is not safe in a batched run.** With the
 descriptions fixed, the next run got as far as step 17 of 21, `networks`
@@ -494,6 +494,11 @@ occurrence of "already in use" anywhere in the log - and a second run reported
 what proves the attachments actually landed rather than failing silently a
 second time.
 
+## Coverage, and what is left to do
+
+**This pipeline already carries everything `cisco.nac_dc_vxlan` 0.9.0 can
+express for this guide.** That is a deliberate boundary, not a stopping point
+chosen at random. Guide sections 4, 5 and 6 are covered end to end: the
 fabric, the switch import and roles, the vPC pair, the three vPC interfaces,
 and the VRFs and networks with their names, VLANs, descriptions, gateways and
 attachments. Everything below is outside the model, verified by reading the
@@ -548,13 +553,13 @@ section 8 depends on never happens.
 
 These are reachable with a supplementary `dcnm_fabric` call, and safely so:
 the create role applies the fabric with `state: merged`, so extra nvPairs set
-alongside it survive its re-runs. Set them in stage 02, before stage 04
+alongside it survive its re-runs. Set them in stage 02, before stage 03
 deploys, not afterwards.
 
 ### 3. Fabric Monitor Mode on the External fabric
 
 No key, and it does not fail safe. `dc_external_fabric_general.j2` emits
-`IS_READ_ONLY: false`, the opposite of the guide. Stage 07 guards against
+`IS_READ_ONLY: false`, the opposite of the guide. Stage 06 guards against
 this by refusing to run when the fabric already exists — see its header.
 
 ### 4. Importing the IOS-XE edge router
@@ -572,7 +577,7 @@ next person does not go looking.
 
 ### 6. Verification of the above
 
-Stage 05 checks switches, roles, VRFs, networks and attachments. When items 1
+Stage 04 checks switches, roles, VRFs, networks and attachments. When items 1
 and 2 land, extend it to assert the `VRF_LITE` extension on DC-Service-Leaf,
 so that a create-without-VRF-Lite run is caught rather than silently
 reverting external connectivity.
@@ -605,9 +610,11 @@ because the collection reads and validates the model in Python, not in Jinja.
 | `[WARNING]: ansible-pylibssh not installed, falling back to paramiko` during stage 00 | Your `~/venv` predates the `ansible-pylibssh` pin. `network_cli` autodetects its SSH library and warns when it has to fall back | Harmless — paramiko works and the serials still collect. To clear it, `pip install -r ansible-automation/requirements.txt` in `~/venv`, or re-run `01_bootstrap_script_server.yml` |
 | Stage 00 reports `UNREACHABLE` against a switch and stops | SSH to that management address failed. This is the only stage that talks to a switch rather than to Nexus Dashboard. It fails before writing anything, so the data model is left as it was rather than half generated | Check the VPN is up and you can reach `198.18.128.x`, that the address in `dc_switches.yml` is right, and that the vault credentials are current, then re-run the stage |
 | Stage 00 fails saying a serial never reached the file | A switch name in `dc_switches.yml` does not match the name in `topology_switches.nac.yaml.example`. The substitution anchors on that name, so a mismatch matches nothing and leaves a placeholder behind | Make the two files agree on the name and re-run the stage |
-| Stage 03 fails pointing at `topology_switches.nac.yaml` | The file is missing, or a serial is still `REPLACE_ME`, which means no clean stage 00 run has produced it | Re-run stage 00. It regenerates the file from scratch and refuses to leave a placeholder behind — see [Why serial discovery is its own stage](#why-serial-discovery-is-its-own-stage-and-why-it-generates-the-model) |
-| Stage 02 (or 03) fails at step `inventory` with `MODULE FAILURE` and, in the traceback, `command timeout triggered, timeout value is 30 secs` | The discovery call runs for minutes and the httpapi connection timed out at its 30-second default. The failure carries `cisco.dcnm`'s generic "verify your login credentials, access permissions and fabric details" text, so it reads like a credential problem and is not. It is stage 02 rather than 03 because 02 runs the same create role and the switch model already exists by then | `git pull` — `inventory/group_vars/nd/connection.yml` sets both timeouts to 1000. For one run without editing, add `-e ansible_command_timeout=1000 -e ansible_connect_timeout=1000`. See [Things that will bite you](#things-that-will-bite-you) |
-| Stage 02 (or 03) fails at step `interface_all` (`dcnm_interface`) with `RETURN_CODE: 500` on `POST .../lan-fabric/rest/globalInterface`, and each `DATA` entry says `An unexpected error occurred during template execution`, naming `DC-Leaf2:DC-Leaf1:vPC3`, `vPC4` and `vPC5` | Suspected — a non-ASCII character in a port-channel `description`. The em dash in `MAIN server — vPC3` was the only non-ASCII byte in the request and the only field in it that was not a collection default, and NDFC renders that string through a Velocity template. Not proven: NDFC returns the same generic message for unrelated faults | `git pull` — the descriptions are plain hyphens as of 2026-09-25. **A pull on its own is not enough:** what NDFC reads is the generated `topology_switches.nac.yaml`, so re-run `playbooks/00_discover_dc_switch_serials.yml` afterwards, with the VPN up. See [Things that will bite you](#things-that-will-bite-you) |
+| Stage 02 fails pointing at `topology_switches.nac.yaml` | The file is missing, or a serial is still `REPLACE_ME`, which means no clean stage 00 run has produced it | Re-run stage 00. It regenerates the file from scratch and refuses to leave a placeholder behind — see [Why serial discovery is its own stage](#why-serial-discovery-is-its-own-stage-and-why-it-generates-the-model) |
+| Stage 02 fails at step `inventory` with `MODULE FAILURE` and, in the traceback, `command timeout triggered, timeout value is 30 secs` | The discovery call runs for minutes and the httpapi connection timed out at its 30-second default. The failure carries `cisco.dcnm`'s generic "verify your login credentials, access permissions and fabric details" text, so it reads like a credential problem and is not | `git pull` — `inventory/group_vars/nd/connection.yml` sets both timeouts to 1000. For one run without editing, add `-e ansible_command_timeout=1000 -e ansible_connect_timeout=1000`. See [Things that will bite you](#things-that-will-bite-you) |
+| Stage 02 fails at step `interface_all` (`dcnm_interface`) with `RETURN_CODE: 500` on `POST .../lan-fabric/rest/globalInterface`, and each `DATA` entry says `An unexpected error occurred during template execution`, naming `DC-Leaf2:DC-Leaf1:vPC3`, `vPC4` and `vPC5` | Suspected — a non-ASCII character in a port-channel `description`. The em dash in `MAIN server — vPC3` was the only non-ASCII byte in the request and the only field in it that was not a collection default, and NDFC renders that string through a Velocity template. Not proven: NDFC returns the same generic message for unrelated faults | `git pull` — the descriptions are plain hyphens as of 2026-09-25. **A pull on its own is not enough:** what NDFC reads is the generated `topology_switches.nac.yaml`, so re-run `playbooks/00_discover_dc_switch_serials.yml` afterwards, with the VPN up. See [Things that will bite you](#things-that-will-bite-you) |
+| Stage 02 fails at step `networks` (`dcnm_network`) with `RETURN_CODE: 200`, and the `DATA` map says `Entered network VLAN id 2300 is already in use` for two of the three networks, followed by a successful `ROLLBACK_RESULT` | A VRF or network in the data model has no `vlan_id`, so `cisco.dcnm` asks the controller for the next free VLAN once per object inside a single loop. The resource-manager GET returns a free VLAN without reserving it, and nothing is committed in between, so every object in the run is handed the same one. The first attachment wins and the rest are rejected. The equivalent VRF failure is `Entered VRF VLAN id 2000 is already in use` | `git pull` - every VRF and network is pinned as of 2026-09-25 (VRFs 2000-2002, networks 2300-2302). These two files are read directly by the create role, so unlike the switch model no stage 00 re-run is needed. If you add a VRF or a network, give it an explicit `vlan_id` from the right range. See [Things that will bite you](#things-that-will-bite-you) |
+| Step 15 `vrfs` reports `ok (changed=True)` but something later complains that the VRFs are not there | `dcnm_vrf` does not inspect the per-attachment `DATA` map inside an HTTP 200 body, so attachments the controller rejected are not reported as a failure. The `ok` means the call returned, not that the VRFs attached | Read the `DATA` map in the `vrfs` response with `-v` rather than trusting the task result. The usual content is the VLAN collision in the row above |
 | You changed `topology_switches.nac.yaml.example`, or pulled a change to it, and the build behaves as though nothing changed | The pipeline never reads the `.example`. It reads `topology_switches.nac.yaml`, which stage 00 generates from it and which is gitignored build output, so git never touches it | Re-run `playbooks/00_discover_dc_switch_serials.yml`. It regenerates the file from the current `.example` and `dc_switches.yml`. It SSHes to the switches, so the VPN has to be up |
-| Stage 02 (or 03) sits at the `inventory` step for minutes with no output | Not a fault. Nexus Dashboard is holding one request open per switch role while it discovers and imports the five switches | Wait. Interrupting it leaves the import half done. See [Things that will bite you](#things-that-will-bite-you) |
-| Stage 07 refuses to run, saying the fabric already exists | Working as intended | See [Coverage, and what is left to do](#coverage-and-what-is-left-to-do), item 3 |
+| Stage 02 sits at the `inventory` step for minutes with no output | Not a fault. Nexus Dashboard is holding one request open per switch role while it discovers and imports the five switches | Wait. Interrupting it leaves the import half done. See [Things that will bite you](#things-that-will-bite-you) |
+| Stage 06 refuses to run, saying the fabric already exists | Working as intended | See [Coverage, and what is left to do](#coverage-and-what-is-left-to-do), item 3 |

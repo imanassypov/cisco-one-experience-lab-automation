@@ -1,9 +1,9 @@
 ---
-# Stage 06 — tear down fabric state that is no longer in the data model.
+# Stage 05 — tear down fabric state that is no longer in the data model.
 #
 # DESTRUCTIVE AND NOT PART OF 01_dc_deploy.yml. Run it by hand, deliberately:
 #
-#   ansible-playbook playbooks/06_remove.yml -e dc_remove_confirm=REMOVE_OK
+#   ansible-playbook playbooks/05_remove.yml -e dc_remove_confirm=REMOVE_OK
 #
 # The remove role deletes whatever exists on Nexus Dashboard but is absent from
 # playbooks/host_vars/Pseudoco-DC1/. That is how you decommission a network or a VRF: drop
@@ -18,7 +18,7 @@
 # into place, only recreated. Pass them as extra vars if you genuinely want a
 # full teardown.
 
-- name: Stage 06 — remove fabric state absent from the data model
+- name: Stage 05 — remove fabric state absent from the data model
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -37,7 +37,7 @@
         that:
           - dc_remove_confirm | default('') == 'REMOVE_OK'
         fail_msg: >-
-          06_remove.yml deletes VRFs, networks, interfaces and policies from
+          05_remove.yml deletes VRFs, networks, interfaces and policies from
           {{ dc_fabric_name }} that are not in the data model. Re-run with
           -e dc_remove_confirm=REMOVE_OK once you are sure the model in
           playbooks/host_vars/{{ inventory_hostname }}/ is complete and current.

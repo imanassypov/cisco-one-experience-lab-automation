@@ -47,16 +47,16 @@ Run from the directory holding `ansible.cfg`, not from `playbooks/` — the same
 convention as `01_campus/evpn`.
 
 The numbers carry information. `01_dc_deploy.yml` imports stages 02 through
-05 and nothing else, so a playbook numbered inside that range runs as part of
+04 and nothing else, so a playbook numbered inside that range runs as part of
 the orchestrated build, while `00_discover_dc_switch_serials.yml` below it and
-`06_remove.yml` / `07_external_fabric.yml` above it are ones you run
+`05_remove.yml` / `06_external_fabric.yml` above it are ones you run
 deliberately, by name.
 
 Read `nac_vxlan/ansible/README.md` first. Four things in particular. The
 discovery stage is not part of the orchestrator: it SSHes to the switches,
 reads a serial number off each one, and generates the switch half of the data
 model from them, so you have to run it once yourself before anything else —
-`01_dc_deploy.yml` stops at stage 03 until you have. What it generates is
+`01_dc_deploy.yml` stops at stage 02 until you have. What it generates is
 build output rather than something you maintain, so every run overwrites
 `topology_switches.nac.yaml` silently and changes belong in the tracked
 `.example` beside it or in the switch table it reads — which also means a
@@ -68,10 +68,8 @@ place the pipeline appears to hang: its inventory step sits with no output for
 several minutes while Nexus Dashboard discovers the five switches behind a
 blocking HTTP request, so let it run — on a checkout older than the
 1000-second timeouts in `inventory/group_vars/nd/connection.yml` it fails there
-instead, with `command timeout triggered, timeout value is 30 secs`. Expect
-that in **stage 02**, not stage 03: 02 runs the same create role and the
-generated switch model is already on disk by the time it runs. And VRF-Lite to
-the IOS-XE edge router is still manual.
+instead, with `command timeout triggered, timeout value is 30 secs`. And
+VRF-Lite to the IOS-XE edge router is still manual.
 
 One further symptom is worth knowing by name, because the fix is not the
 obvious one. If the build fails at step `interface_all` with an HTTP 500 on
@@ -82,6 +80,8 @@ in the tracked files now, but pulling that change does not on its own fix a
 script server: what Nexus Dashboard reads is the *generated*
 `topology_switches.nac.yaml`, so re-run the discovery stage after the pull,
 with the VPN up. The collection README carries the evidence, and the reasons
+this is a suspicion rather than a proven cause.
+
 A second symptom, further along the same run, is `Entered network VLAN id 2300
 is already in use` at the `networks` step, reported inside an HTTP 200 body
 rather than as an error. Every VRF and network in the data model now carries an
@@ -94,8 +94,6 @@ reserve it, so all three objects are handed the same number. Give any VRF or
 network you add an explicit VLAN too. These two files are read straight by the
 create role, so a plain `git pull` is enough here - no discovery re-run.
 
-this is a suspicion rather than a proven cause.
-
 ## Where the automation stops
 
 The pipeline carries everything `cisco.nac_dc_vxlan` 0.9.0 can express, which
@@ -105,7 +103,7 @@ is all of guide sections 4, 5 and 6. External connectivity — sections 7 and 8
 In this lab the External fabric and the IOS-XE edge router
 `DC-SITE11-CEDGE8Kv` (`198.18.133.14`) are a **prerequisite**, built in Nexus
 Dashboard before the pipeline runs: the fabric in Monitor Mode, the router
-discovered into it as an Edge Router. `07_external_fabric.yml` can create the
+discovered into it as an Edge Router. `06_external_fabric.yml` can create the
 fabric object if it is genuinely missing, but it cannot set Monitor Mode or
 add a non-NX-OS device, so it refuses to touch a fabric that already exists.
 
