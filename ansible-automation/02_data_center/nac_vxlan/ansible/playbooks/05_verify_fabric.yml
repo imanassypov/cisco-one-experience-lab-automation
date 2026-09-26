@@ -1,5 +1,5 @@
 ---
-# Stage 04 - verify the deployed fabric against the declared intent.
+# Stage 05 - verify the deployed fabric against the declared intent.
 #
 # Nexus Dashboard API only. No SSH to 198.18.128.x, so this stage works even
 # when the VPN cannot reach the switches directly, and it is read-only, so it
@@ -17,11 +17,11 @@
 #     has not attached come back as NA and are not judged - see the comment
 #     in Compare VRFs.
 #
-# Writes evidence/stage04-verification.md and fails at the end on any mismatch.
+# Writes evidence/stage05-verification.md and fails at the end on any mismatch.
 # Override with -e dc_verify_fail_on_mismatch=false to get the report without
 # the failure.
 
-- name: Stage 04 - verify the DC fabric against intent
+- name: Stage 05 - verify the DC fabric against intent
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -32,7 +32,7 @@
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
-    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage04-verification.md') | realpath }}"
+    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage05-verification.md') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
@@ -58,6 +58,53 @@
           {{ dc_declared_vrf_model.vxlan.overlay.vrf_attach_groups | default([]) }}
         dc_declared_network_attach_groups: >-
           {{ dc_declared_network_model.vxlan.overlay.network_attach_groups | default([]) }}
+
+    # Naming no attach group at all is allowed: the object is attached to
+    # nothing, and the comparison tasks fail its row on attached | length > 0
+    # without help here. Naming one that does not exist is the dangerous case.
+    # selectattr matches nothing, so attach_group_switches is empty, and
+    # missing_switches and missing_attachments are then empty too - those arms
+    # of the verdict pass having proved nothing, and a VRF attached to one leaf
+    # of two is reported as a PASS. Caught before the first API call so a typo
+    # reads as a typo, and never gated on dc_verify_fail_on_mismatch: that flag
+    # means "report the mismatch instead of failing", and a model this stage
+    # cannot resolve produces no report worth showing.
+    - name: Fail on an attach group that is named but never declared
+      ansible.builtin.assert:
+        that:
+          - unresolved_groups | length == 0
+        fail_msg: >-
+          DATA MODEL ERROR, not a fabric fault - do not go looking at the
+          switches. {{ unresolved_groups | length }} attach group reference(s)
+          in playbooks/host_vars/{{ inventory_hostname }} do not resolve.
+          {{ unresolved_groups | join('. ') }}.
+          Fix the spelling, or declare the missing group, then re-run stage 05.
+      vars:
+        vrf_group_names: >-
+          {{ dc_declared_vrf_attach_groups | map(attribute='name') | list }}
+        network_group_names: >-
+          {{ dc_declared_network_attach_groups | map(attribute='name') | list }}
+        # default('', true) is boolean mode so a key that is present but null
+        # reads as absent rather than as a group literally named None.
+        unresolved_groups: >-
+          {%- set unresolved = [] -%}
+          {%- for vrf in dc_declared_vrfs -%}
+          {%- set named = vrf.vrf_attach_group | default('', true) -%}
+          {%- if named and named not in vrf_group_names -%}
+          {{- unresolved.append("VRF " ~ vrf.name ~ " names vrf_attach_group '"
+              ~ named ~ "', which vrfs.nac.yaml does not declare (declared groups: "
+              ~ (vrf_group_names | join(', ') | default('none', true)) ~ ")") or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- for net in dc_declared_networks -%}
+          {%- set named = net.network_attach_group | default('', true) -%}
+          {%- if named and named not in network_group_names -%}
+          {{- unresolved.append("Network " ~ net.name ~ " names network_attach_group '"
+              ~ named ~ "', which networks.nac.yaml does not declare (declared groups: "
+              ~ (network_group_names | join(', ') | default('none', true)) ~ ")") or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ unresolved }}
 
     # ------------------------------------------------------- observed state
     - name: Read the fabric inventory
@@ -333,7 +380,7 @@
 
     - name: Write the verification report
       ansible.builtin.template:
-        src: templates/stage04-verification.md.j2
+        src: templates/stage05-verification.md.j2
         dest: "{{ dc_evidence_path }}"
         mode: "0644"
       delegate_to: localhost
