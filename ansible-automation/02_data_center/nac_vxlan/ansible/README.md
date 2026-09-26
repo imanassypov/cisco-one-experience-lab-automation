@@ -109,7 +109,7 @@ Two things to expect from a first run, both normal:
 | `01_dc_deploy.yml` | Orchestrator. Imports 02 to 05 in order |
 | `02_create.yml` | Creates the whole intent on the controller: fabric, switch import, roles, vPC pair, port-channels, VRFs, networks |
 | `03_advanced_settings.yml` | Applies the fabric settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
-| `04_deploy.yml` | Pushes that intent to the switches |
+| `04_recalculate_and_deploy.yml` | The guide's "Recalculate and Deploy". Pushes that intent to the switches, and is the first stage that changes running configuration |
 | `05_verify_fabric.yml` | Read-only check of the fabric against the declared model. Writes `evidence/stage05-verification.md` |
 | `06_remove.yml` | Destructive prune. Needs `-e dc_remove_confirm=REMOVE_OK` |
 | `07_external_fabric.yml` | Creates the External fabric only if it is absent |
@@ -318,7 +318,7 @@ Reading the report:
 - A name under **"Switches missing"** or **"Attachments missing"** is a real
   fault: something declared did not attach.
 - An attached switch in **`PENDING`** means the intent exists on the
-  controller but was never pushed. Re-run `04_deploy.yml`.
+  controller but was never pushed. Re-run `04_recalculate_and_deploy.yml`.
 - The report is regenerated on each run that reaches the end. If a run fails
   early, the previous report is left in place, so check its `Generated`
   timestamp before trusting it.
