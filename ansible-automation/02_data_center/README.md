@@ -94,6 +94,19 @@ reserve it, so all three objects are handed the same number. Give any VRF or
 network you add an explicit VLAN too. These two files are read straight by the
 create role, so a plain `git pull` is enough here - no discovery re-run.
 
+A third symptom belongs to the verify stage, and neither of its two forms is
+what it looks like. If `04_verify_fabric.yml` dies in `Compare networks` with
+`'None' has no attribute 'split'`, that is a field Nexus Dashboard returns as
+JSON `null` reaching a Jinja `default('')`, which substitutes only for an
+undefined value. If instead the report marks every VRF and network `NO` with
+attachment states reading `DEPLOYED, DEPLOYED, NA`, the `NA` rows are switches
+the controller lists but has not attached, DC-Service-Leaf among them, and the
+stage no longer judges them. Both are fixed as of 2026-09-25 and a plain
+`git pull` is the whole fix. A real fault reads as a name under "Switches
+missing" or "Attachments missing", or as an attached switch sitting in
+`PENDING`, which means the intent was created and never pushed - re-run
+`03_deploy.yml`. Stage 04 is read-only, so re-run it as often as you like.
+
 ## Where the automation stops
 
 The pipeline carries everything `cisco.nac_dc_vxlan` 0.9.0 can express, which
@@ -109,4 +122,6 @@ add a non-NX-OS device, so it refuses to touch a fabric that already exists.
 
 Extending MAIN, PROD and IOT out of DC-Service-Leaf over VRF-Lite is also
 manual. The collection README's TODO records what that would take, and why
-the Nexus as Code model cannot express it today.
+the Nexus as Code model cannot express it today. Stage 04 shows the gap rather
+than hiding it: DC-Service-Leaf is named under "Not attached" on every VRF row
+of the verification report, and that is expected.

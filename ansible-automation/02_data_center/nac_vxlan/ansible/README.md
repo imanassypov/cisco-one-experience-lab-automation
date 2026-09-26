@@ -83,7 +83,7 @@ model - see "Why serial discovery is its own stage" below.
 | `playbooks/01_dc_deploy.yml` | Orchestrator. Imports 02, 03 and 04, in that order |
 | `playbooks/02_create.yml` | Creates the whole intent on the controller: the fabric object, the switch import, the roles, the vPC pair, the port-channels, the VRFs and the networks. Its inventory step sits with no output for several minutes while Nexus Dashboard discovers the switches. `--tags cr_manage_fabric` holds it to the fabric object alone |
 | `playbooks/03_deploy.yml` | Pushes that intent to the switches |
-| `playbooks/04_verify_fabric.yml` | Nexus Dashboard API verification, writes `evidence/` |
+| `playbooks/04_verify_fabric.yml` | Read-only Nexus Dashboard API verification of the fabric against the declared intent. Writes `evidence/stage04-verification.md` and fails on any mismatch |
 | `playbooks/05_remove.yml` | Destructive prune. Not in `01`. Needs `-e dc_remove_confirm=REMOVE_OK` |
 | `playbooks/06_external_fabric.yml` | Creates the External fabric **only if it is absent**. Not in `01` - different inventory host, and in this lab the fabric is a manual prerequisite |
 
@@ -494,6 +494,47 @@ occurrence of "already in use" anywhere in the log - and a second run reported
 what proves the attachments actually landed rather than failing silently a
 second time.
 
+**Stage 04 judges only the switches Nexus Dashboard says it attached, and `NA`
+is not a fault.** The attachment endpoints enumerate every switch that *could*
+carry a VRF or a network, and report the ones the controller has not attached
+with `isLanAttached: false` and `lanAttachState: NA`. DC-Service-Leaf is one of
+those on every run, because `vrfs.nac.yaml` deliberately leaves it out of the
+attach group: attaching the VRFs to it is the VRF-Lite step the data model
+cannot express, item 1 of
+[Coverage, and what is left to do](#coverage-and-what-is-left-to-do). Folding
+those rows into the "every attachment must be DEPLOYED" test made all three
+VRFs and all three networks fail on a perfectly healthy fabric, so the stage
+partitions on the `isLanAttached` boolean and names the unattached switches
+under a **Not attached** column instead. It was *not* weakened into ignoring
+anything that is not `DEPLOYED`: an attached switch reporting `PENDING` or
+`OUT-OF-SYNC` still fails, which is the fault this stage exists to catch.
+
+Ignoring the `NA` rows on their own would have made the VRF attachment check
+vacuous - a VRF attached to nothing would look like one attached everywhere it
+was declared - so VRFs also gained a declared-versus-attached switch check,
+read from `vxlan.overlay.vrf_attach_groups` and reported under "Switches
+missing". Networks already had the equivalent in their switch-and-port pairs,
+under "Attachments missing". What each row now has to satisfy:
+
+- **Switch** - present in the fabric inventory at its declared management
+  address, holding its declared role.
+- **VRF** - exists, `vrfId` equals the declared `vrf_id`, at least one switch
+  actually attached, every *attached* switch `DEPLOYED`, and nothing under
+  "Switches missing".
+- **Network** - exists, in the declared VRF, with the declared anycast
+  gateway, at least one switch actually attached, every *attached* switch
+  `DEPLOYED`, and nothing under "Attachments missing".
+
+**Jinja's `default('')` does not catch an explicit JSON `null`, and the
+controller returns plenty of them.** Every field on one of those unattached
+records comes back null rather than absent - the key is there, the value is
+`None` - and `default()` substitutes only for an *undefined* value, so the null
+passes straight through. Stage 04 crashed on exactly that, with
+`'None' has no attribute 'split'` out of
+`(a.portNames | default('')).split(',')`. The fix is boolean mode,
+`default('', true)`, which substitutes for any falsy value. Use it for
+anything read off a Nexus Dashboard response here.
+
 ## Coverage, and what is left to do
 
 **This pipeline already carries everything `cisco.nac_dc_vxlan` 0.9.0 can
@@ -577,10 +618,13 @@ next person does not go looking.
 
 ### 6. Verification of the above
 
-Stage 04 checks switches, roles, VRFs, networks and attachments. When items 1
-and 2 land, extend it to assert the `VRF_LITE` extension on DC-Service-Leaf,
-so that a create-without-VRF-Lite run is caught rather than silently
-reverting external connectivity.
+Stage 04 checks switches, roles, VRFs, networks and attachments. Until items 1
+and 2 land, its report names DC-Service-Leaf under "Not attached" on every VRF
+row: that is the visible trace of this gap, not a defect - see
+[Things that will bite you](#things-that-will-bite-you). When they do land,
+extend the stage to assert the `VRF_LITE` extension on DC-Service-Leaf, so
+that a create-without-VRF-Lite run is caught rather than silently reverting
+external connectivity.
 
 ## Version pinning
 
@@ -617,4 +661,6 @@ because the collection reads and validates the model in Python, not in Jinja.
 | Step 15 `vrfs` reports `ok (changed=True)` but something later complains that the VRFs are not there | `dcnm_vrf` does not inspect the per-attachment `DATA` map inside an HTTP 200 body, so attachments the controller rejected are not reported as a failure. The `ok` means the call returned, not that the VRFs attached | Read the `DATA` map in the `vrfs` response with `-v` rather than trusting the task result. The usual content is the VLAN collision in the row above |
 | You changed `topology_switches.nac.yaml.example`, or pulled a change to it, and the build behaves as though nothing changed | The pipeline never reads the `.example`. It reads `topology_switches.nac.yaml`, which stage 00 generates from it and which is gitignored build output, so git never touches it | Re-run `playbooks/00_discover_dc_switch_serials.yml`. It regenerates the file from the current `.example` and `dc_switches.yml`. It SSHes to the switches, so the VPN has to be up |
 | Stage 02 sits at the `inventory` step for minutes with no output | Not a fault. Nexus Dashboard is holding one request open per switch role while it discovers and imports the five switches | Wait. Interrupting it leaves the import half done. See [Things that will bite you](#things-that-will-bite-you) |
+| Stage 04 fails in `Compare networks` with `The task includes an option with an undefined variable` and, in the message, `'None' has no attribute 'split'` | `portNames` is present but `null` on the attachment records for switches the controller lists without attaching, and Jinja's `default('')` substitutes only for an *undefined* value, never for `None` | `git pull` - the expression is `default('', true)` as of 2026-09-25. Stage 04 is read-only, so re-run it as often as you like. See [Things that will bite you](#things-that-will-bite-you) |
+| `evidence/stage04-verification.md` marks every VRF and network `NO`, with attachment states reading `DEPLOYED, DEPLOYED, NA` | Not a fault. `NA` is a switch Nexus Dashboard lists but has not attached - DC-Service-Leaf, which `vrfs.nac.yaml` leaves out of the attach group on purpose because attaching it is the manual VRF-Lite step. The old check folded those rows into its "all DEPLOYED" test, so a healthy fabric reported itself broken | `git pull` - as of 2026-09-25 the stage judges only the `isLanAttached` records and names the rest under "Not attached". A genuine fault reads as a name under "Switches missing" or "Attachments missing", or as an attached switch in `PENDING`, which means the intent was created and never pushed - re-run `03_deploy.yml` |
 | Stage 06 refuses to run, saying the fabric already exists | Working as intended | See [Coverage, and what is left to do](#coverage-and-what-is-left-to-do), item 3 |

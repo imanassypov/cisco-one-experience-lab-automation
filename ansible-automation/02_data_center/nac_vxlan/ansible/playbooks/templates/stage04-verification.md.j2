@@ -24,29 +24,39 @@ management IP, or when the role it holds is not the role declared for it.
 
 ## VRFs
 
-| VRF | ID declared | ID observed | Attachment states | Match |
-|---|---|---|---|---|
+| VRF | ID declared | ID observed | Switches declared | Switches missing | Not attached | Attachment states | Match |
+|---|---|---|---|---|---|---|---|
 {% for row in dc_vrf_rows | default([]) %}
-| {{ row.name }} | {{ row.declared_id }} | {{ row.observed_id }} | {{ row.attach_states | join(', ') if row.attach_states else 'none' }} | {{ 'yes' if row.ok else 'NO' }} |
+| {{ row.name }} | {{ row.declared_id }} | {{ row.observed_id }} | {{ row.declared_switches | join(', ') if row.declared_switches else 'none' }} | {{ row.missing_switches | join(', ') if row.missing_switches else 'none' }} | {{ row.not_attached_switches | join(', ') if row.not_attached_switches else 'none' }} | {{ row.attach_states | join(', ') if row.attach_states else 'none' }} | {{ 'yes' if row.ok else 'NO' }} |
 {% endfor %}
 
-A VRF must exist with the declared VNI, be attached to at least one switch,
-and have every attachment in `DEPLOYED`. An attachment stuck in `PENDING`
-means the intent was created but never pushed - re-run `03_deploy.yml`.
+A VRF must exist with the declared VNI and be attached, in `DEPLOYED`, to
+every switch in its `vrf_attach_group`. Nexus Dashboard lists every switch
+that could carry the VRF, marking the ones it has not attached with
+`isLanAttached: false` and `lanAttachState: NA`. `NA` is not a fault and not
+a pending state, so those switches are excluded from "Attachment states" and
+named under "Not attached" instead - DC-Service-Leaf belongs there, because
+`vrfs.nac.yaml` deliberately leaves it out of the attach group. A switch that
+*was* declared and is not among the attached ones is the real fault, and
+shows up under "Switches missing". An attachment stuck in `PENDING` means the
+intent was created but never pushed - re-run `03_deploy.yml`.
 
 ## Networks
 
-| Network | VRF declared | VRF observed | Gateway declared | Gateway observed | Attachments declared | Attachments missing | Attachment states | Match |
-|---|---|---|---|---|---|---|---|---|
+| Network | VRF declared | VRF observed | Gateway declared | Gateway observed | Attachments declared | Attachments missing | Not attached | Attachment states | Match |
+|---|---|---|---|---|---|---|---|---|---|
 {% for row in dc_network_rows | default([]) %}
-| {{ row.name }} | {{ row.declared_vrf }} | {{ row.observed_vrf }} | {{ row.declared_gateway }} | {{ row.observed_gateway }} | {{ row.declared_attachments | map('replace', '|', ' ') | join(', ') }} | {{ row.missing_attachments | map('replace', '|', ' ') | join(', ') if row.missing_attachments else 'none' }} | {{ row.attach_states | join(', ') if row.attach_states else 'none' }} | {{ 'yes' if row.ok else 'NO' }} |
+| {{ row.name }} | {{ row.declared_vrf }} | {{ row.observed_vrf }} | {{ row.declared_gateway }} | {{ row.observed_gateway }} | {{ row.declared_attachments | map('replace', '|', ' ') | join(', ') }} | {{ row.missing_attachments | map('replace', '|', ' ') | join(', ') if row.missing_attachments else 'none' }} | {{ row.not_attached_switches | join(', ') if row.not_attached_switches else 'none' }} | {{ row.attach_states | join(', ') if row.attach_states else 'none' }} | {{ 'yes' if row.ok else 'NO' }} |
 {% endfor %}
 
 A network must exist in the declared VRF with the declared anycast gateway,
 and each declared port-channel must be attached **on every switch it was
 declared on**, with every attachment in `DEPLOYED`. Attachments are listed as
 `switch port-channel` pairs, so a network that reached one leaf but not its
-vPC peer shows up here rather than passing.
+vPC peer shows up here rather than passing. As with the VRFs, the switches
+Nexus Dashboard lists but has not attached come back as `NA` and are named
+under "Not attached" rather than judged; a declared pair that is missing from
+the attached set is what fails, under "Attachments missing".
 
 ## Failures
 
@@ -58,10 +68,10 @@ values side by side.
 {% if row.observed_role is defined %}
 - **{{ row.name }}** ({{ row.ip }}) - {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
 {% elif row.declared_id is defined %}
-- **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% elif row.observed_id | string != row.declared_id | string %}has VNI {{ row.observed_id }}, declared as {{ row.declared_id }}{% elif not row.attach_states %}exists but is attached to nothing{% else %}attachments are {{ row.attach_states | join(', ') }}, all of which must be DEPLOYED{% endif %}
+- **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_id | string != row.declared_id | string %}{{ faults.append('has VNI ' ~ row.observed_id ~ ', declared as ' ~ row.declared_id) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('exists but is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attached switches report ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{% if row.missing_switches %}{{ faults.append('not attached on ' ~ row.missing_switches | join(', ')) or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
 
 {% else %}
-- **{{ row.name }}** (network) - {% if row.observed_vrf == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_vrf != row.declared_vrf %}{{ faults.append('is in VRF ' ~ row.observed_vrf ~ ', declared in ' ~ row.declared_vrf) or '' }}{% endif %}{% if row.observed_gateway != row.declared_gateway %}{{ faults.append('gateway is ' ~ row.observed_gateway ~ ', declared as ' ~ row.declared_gateway) or '' }}{% endif %}{% if row.missing_attachments %}{{ faults.append('not attached on ' ~ row.missing_attachments | map('replace', '|', ' ') | join(', ')) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attachments are ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
+- **{{ row.name }}** (network) - {% if row.observed_vrf == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_vrf != row.declared_vrf %}{{ faults.append('is in VRF ' ~ row.observed_vrf ~ ', declared in ' ~ row.declared_vrf) or '' }}{% endif %}{% if row.observed_gateway != row.declared_gateway %}{{ faults.append('gateway is ' ~ row.observed_gateway ~ ', declared as ' ~ row.declared_gateway) or '' }}{% endif %}{% if row.missing_attachments %}{{ faults.append('not attached on ' ~ row.missing_attachments | map('replace', '|', ' ') | join(', ')) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attached switches report ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
 
 {% endif %}
 {% endfor %}

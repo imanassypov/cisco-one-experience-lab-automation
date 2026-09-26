@@ -10026,7 +10026,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/02_create.yml --tags cr_manage_fabric</pre>
 <p>Stage 02's guards on the generated switch model are tagged <code>always</code>, so they still run underneath that filter — you get a fabric-only run <em>with</em> the checks rather than instead of them. The one thing you cannot do is stand up an empty fabric on a fresh checkout before running stage 00, because stage 02 refuses to start without the switch model. Stage 00 was already a hard prerequisite, so that costs you nothing real.</p>
 <p>The numbering is worth a second of your attention, because it answers a question you would otherwise have to open each file to settle: <strong>stages 02 to 04 are exactly what <code>01_dc_deploy.yml</code> runs, and anything numbered outside that range is something you invoke by name.</strong> Three playbooks sit outside it deliberately. <code>00_discover_dc_switch_serials.yml</code> comes first because it is the only stage that reaches a switch directly, and it only needs running again if the pod hardware changes. <code>05_remove.yml</code> is a destructive prune that the orchestrator must never trigger by accident. <code>06_external_fabric.yml</code> targets a different inventory host, and in this lab the External fabric is something you built by hand earlier.</p>
-<p>The verification stage reads only the Nexus Dashboard API — no SSH to the switches — so it works even when your VPN cannot reach <code>198.18.128.x</code> directly, and it writes the same style of evidence report as the campus pipeline's stage 12, at <code>evidence/stage04-verification.md</code>. It compares every switch, VRF and network against what was declared, and checks that each attachment reports <code>DEPLOYED</code> rather than <code>PENDING</code>, which is the distinction between "intent exists on the controller" and "configuration reached the switch".</p>
+<p>The verification stage reads only the Nexus Dashboard API — no SSH to the switches — so it works even when your VPN cannot reach <code>198.18.128.x</code> directly, and it writes the same style of evidence report as the campus pipeline's stage 12, at <code>evidence/stage04-verification.md</code>. It compares every switch, VRF and network against what was declared, and checks that each <em>attached</em> switch reports <code>DEPLOYED</code> rather than <code>PENDING</code>, which is the distinction between "intent exists on the controller" and "configuration reached the switch". It changes nothing at all, so you can re-run it as often as you like, and <code>-e dc_verify_fail_on_mismatch=false</code> gets you the report without failing the run.</p>
 <div class="admonition">
 <p>⚠️ <strong>This pipeline wipes the switches, and it will not ask you first.</strong> The guide builds this fabric greenfield, with <strong>Preserve Config</strong> unchecked, so Nexus Dashboard erases each switch's running configuration as it imports it. The automation does exactly the same thing, and there is no confirmation flag: <code>preserve_config: false</code> is hardcoded inside the Nexus as Code collection, so no setting in the data model changes it. Run it against a lab pod you are happy to rebuild, and expect all five switches to come back empty before the fabric is laid down on top.</p>
 </div>
@@ -10102,6 +10102,43 @@ git -C ~/cisco-one-experience-lab-automation pull
 ansible-playbook playbooks/02_create.yml</pre>
 </div>
 <p>All 21 steps then complete, and the play recap reads <code>Pseudoco-DC1 : ok=40 changed=4 unreachable=0 failed=0 skipped=17</code> with no "already in use" anywhere in the log. Run it a second time and both <code>vrfs</code> and <code>networks</code> report <code>ok (changed=False)</code>. That second run is the one that tells you the most, because unchanged means the attachments genuinely landed on the controller rather than merely being accepted by it.</p>
+<hr>
+<h4>Reading the verification report</h4>
+<p>Stage 04 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller and writes a file; it changes nothing:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+ansible-playbook playbooks/04_verify_fabric.yml</pre>
+<p>A healthy fabric ends with <code>failed=0</code> and this line, and the report at <code>evidence/stage04-verification.md</code> opens with the same count:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ok: [Pseudoco-DC1] =&gt; {
+    "msg": "All 11 evaluated check(s) match the declared intent."
+}
+
+**11 of 11 check(s) match intent.**</pre>
+<p>The VRF table is where a first reading usually goes wrong, so it is worth looking at a passing one before you ever see a failing one:</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">| VRF  | ID declared | ID observed | Switches declared  | Switches missing | Not attached    | Attachment states  | Match |
+| ---- | ----------- | ----------- | ------------------ | ---------------- | --------------- | ------------------ | ----- |
+| MAIN | 50000       | 50000       | DC-Leaf1, DC-Leaf2 | none             | DC-Service-Leaf | DEPLOYED, DEPLOYED | yes   |
+| PROD | 50001       | 50001       | DC-Leaf1, DC-Leaf2 | none             | DC-Service-Leaf | DEPLOYED, DEPLOYED | yes   |
+| IOT  | 50002       | 50002       | DC-Leaf1, DC-Leaf2 | none             | DC-Service-Leaf | DEPLOYED, DEPLOYED | yes   |</pre>
+<p>Every row says <code>yes</code>, and yet <strong>DC-Service-Leaf</strong> is sitting there in the middle of it. That is correct, and the networks table shows exactly the same thing in its own <strong>Not attached</strong> column.</p>
+<div class="admonition">
+<p>🔎 <strong><code>DC-Service-Leaf</code> under "Not attached" is expected, not a fault.</strong> Nexus Dashboard's attachment list enumerates every switch that <em>could</em> carry a VRF or network, not just the ones it has actually attached, and it marks the rest <code>NA</code>. The border leaf is deliberately left out of the attach group in the data model, for the reason in the admonition above: attaching the VRFs to it is the <strong>VRF-Lite</strong> step that the Nexus as Code model cannot express, which is why you did section 8 by hand. So the report names those switches rather than judging them. If you see <code>DC-Service-Leaf</code> there, the automation did precisely what it was told.</p>
+</div>
+<p>Which leaves the question of what a <em>real</em> failure looks like, because "everything is fine" is not a useful thing to learn from a verification stage. Three things still fail the run, and each points somewhere different:</p>
+<ul>
+<li>A name under <strong>Switches missing</strong> (VRFs) or <strong>Attachments missing</strong> (networks). You declared that switch and the controller has no attachment for it at all — a gap between your data model and the fabric, not a deployment problem.</li>
+<li>An attached switch reading <code>PENDING</code> in <strong>Attachment states</strong>. The intent exists on the controller but was never pushed to the switch. Re-run <code>ansible-playbook playbooks/03_deploy.yml</code>.</li>
+<li>An attached switch reading <code>OUT-OF-SYNC</code>, or a VNI, gateway or VRF name that does not match the column beside it. Something changed the fabric outside the data model.</li>
+</ul>
+<p>Only <code>NA</code> is set aside. An attached switch in any state other than <code>DEPLOYED</code> still fails, which is the whole point of running the stage.</p>
+<div class="admonition">
+<p>💡 <strong>If the stage dies with <code>'None' has no attribute 'split'</code>, your checkout is behind.</strong> The failure looks like this, at <code>TASK [Compare networks]</code>, and it is a bug in the stage rather than anything wrong with your fabric — the controller returns an empty field as <code>null</code> and an older copy of the playbook did not expect it. A plain <code>git pull</code> is the whole fix: nothing is regenerated, no VPN to the switches is needed, and the stage changes nothing, so just run it again.</p>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">fatal: [Pseudoco-DC1]: FAILED! =&gt; {"msg": "The task includes an option with an undefined variable..
+'None' has no attribute 'split'"}</pre>
+<pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+git -C ~/cisco-one-experience-lab-automation pull
+ansible-playbook playbooks/04_verify_fabric.yml</pre>
+</div>
+<hr>
 <p>Full documentation, including every deviation from upstream and the traps found while building it, lives in the repository at <code>ansible-automation/02_data_center/nac_vxlan/ansible/README.md</code> — the timeout and the interface failure above, and everything else with teeth, are under its <strong>Things that will bite you</strong> heading.</p>
 </div>
 </div>
