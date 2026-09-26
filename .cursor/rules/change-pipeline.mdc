@@ -1,14 +1,67 @@
 ---
-description: Four-agent pipeline for automation changes — build, then docs in parallel, then a documentation accuracy review
+description: How automation changes get made and self-checked; the four-agent docs pipeline is opt-in, not automatic
 alwaysApply: true
 ---
 
-# Change pipeline: build → docs in parallel → review
+# Change pipeline: build directly, self-check, and only fan out when asked
 
-Any change to a playbook, role, inventory or data model under
-`ansible-automation/` runs through four `generalPurpose` subagents in three
-waves. Skip the pipeline only for changes that touch no `.yml`/`.py` under
-`ansible-automation/` — a typo fix in prose does not need four agents.
+**Do the work directly.** Changes to a playbook, role, inventory or data model
+under `ansible-automation/` are made in this session, not handed to subagents.
+Spawning a build/README/guide/review fan-out for every edit slows development
+down more than it protects accuracy, so it is **opt-in**.
+
+**Launch the documentation and review agents only when the user asks for
+them**, in words like "run the pipeline", "get the docs agents on this" or
+"have it reviewed". Absent that, do not launch them, do not announce that you
+are about to, and do not treat a large change as implicit permission.
+
+This is a change of *who does the work*, not of *what the work is*. The
+obligations in `dev-workflow.mdc` still stand in full: a code change updates
+the README(s) **and** the release note in the same commit, a rename needs a
+repo-wide grep of the old name, and nothing commits until the user asks. Write
+those updates yourself as part of the change.
+
+## Self-check list, to run yourself on every change
+
+This is the old review wave, reduced to what you can do directly in a minute.
+It is the part whose absence actually costs something.
+
+- Every filename, stage number, playbook name, variable and CLI flag named in
+  the docs exists in the code, and every renamed identifier is gone
+  repo-wide: `rg -n '<old-name>'`
+- Commands are runnable as written from the stated working directory. In the
+  Ansible collections that means the directory holding `ansible.cfg`, not
+  `playbooks/`.
+- README and guide agree with each other. They describe the same pipeline to
+  two audiences; a contradiction is a bug in one of them.
+- Playbooks still parse: `ansible-playbook --syntax-check` on each one. The DC
+  and campus collections resolve their modules only in the script server's
+  `~/venv`, so a clean check there is worth more than one here.
+- Markdown anchor links resolve. GitHub lowercases a heading, drops
+  punctuation and hyphenates spaces — an em dash in a heading yields a
+  double hyphen and a dead link.
+- `docs/index.html` tag balance is unchanged, since it is hand-edited HTML:
+
+  ```bash
+  python3 -c "
+  import re; s=open('docs/index.html').read()
+  for t in ['div','pre','ul','li','p','tr','td','table']:
+      o,c=len(re.findall(r'<%s\b'%t,s)),len(re.findall(r'</%s>'%t,s))
+      print(t,o,c,'OK' if o==c else 'MISMATCH')"
+  ```
+
+- Everything under `ansible-automation/02_data_center/` is pure ASCII. Check
+  it with `rg -n '[^\x00-\x7F]' <path>` or a Python byte scan. **Never with
+  BSD `grep`**: macOS grep does not interpret `\x` escapes, so
+  `grep '[^\x00-\x7F]'` parses as a negated set of the literal characters
+  `\ x 0 - 7 F`, matches nearly every line of prose, and can never fail. It
+  has already produced one false green in this repo.
+- A markdown line must not *begin* with `- ` unless it is meant to be a
+  bullet. Rewrapping em-dash prose into ASCII hyphens is how that happens.
+
+## When the user does ask for the pipeline
+
+Four `generalPurpose` subagents in three waves, with these file boundaries.
 
 | Wave | Agent | Owns these files, and nothing else |
 |---|---|---|
@@ -24,11 +77,7 @@ tree (`git status`, the renamed paths, a syntax check) before proceeding.
 Both wave-2 agents launch in the **same** tool block so they run
 concurrently. Wave 3 launches only after both have returned.
 
-If a subagent cannot be launched, do that wave's work directly rather than
-dropping it. The review wave is the one most likely to be skipped under
-pressure and the one whose absence costs most.
-
-## Rules that make the parallelism safe
+### Rules that make the parallelism safe
 
 - **The release note belongs to the README agent alone.** It is one file per
   date with bullets appended, so two agents writing it would clobber each
@@ -38,8 +87,10 @@ pressure and the one whose absence costs most.
   prompt rather than letting two agents infer ownership.
 - Nothing commits. Commit and push only when the user asks (see
   `dev-workflow.mdc`).
+- "No change needed" is a legitimate result for a documentation agent. Say so
+  in the prompt, or it will manufacture an edit to look busy.
 
-## Briefing each agent
+### Briefing each agent
 
 Subagents do not share this session's context. Every prompt must carry:
 
@@ -50,34 +101,6 @@ Subagents do not share this session's context. Every prompt must carry:
    A subagent cannot see that this is a dCloud lab, that credentials come
    only from the vault, or that `docs/index.html` is served by GitHub Pages.
 4. Its file ownership from the table, stated as a hard boundary.
-
-## What the Review agent checks, and fixes directly
-
-It reads the README output, the guide output and the actual wave-1 code, and
-corrects any documentation that disagrees with the code. Specifically:
-
-- Every filename, stage number, playbook name, variable and CLI flag named in
-  the docs exists in the code, and every renamed identifier is gone
-  repo-wide: `grep -rn '<old-name>' --exclude-dir=.git .`
-- Commands are runnable as written from the stated working directory. In the
-  Ansible collections that means the directory holding `ansible.cfg`, not
-  `playbooks/`.
-- README and guide agree with each other. They describe the same pipeline to
-  two audiences; a contradiction is a bug in one of them.
-- `docs/index.html` tag balance is unchanged, since it is hand-edited HTML:
-
-  ```bash
-  python3 -c "
-  import re; s=open('docs/index.html').read()
-  for t in ['div','pre','ul','li','p','tr','td','table']:
-      o,c=len(re.findall(r'<%s\b'%t,s)),len(re.findall(r'</%s>'%t,s))
-      print(t,o,c,'OK' if o==c else 'MISMATCH')"
-  ```
-
-- Markdown anchor links resolve. GitHub lowercases a heading, drops
-  punctuation and hyphenates spaces — an em dash in a heading yields a
-  double hyphen and a dead link.
-- Playbooks still parse: `ansible-playbook --syntax-check` on each one.
-
-It then reports every fix it made, and every disagreement it found but chose
-not to resolve, so nothing silently changes meaning.
+5. Any live evidence already in hand — a captured API payload, a `PLAY RECAP`,
+   an exact error string. It turns a discovery task into an implementation
+   task and is the difference between a useful agent and a slow one.

@@ -46,9 +46,13 @@ vxlan:
         to: 59000
 
 # NOT MODELLED HERE - the guide's Resources tab also sets VRF Lite Deployment
-# to Back2BackAndToExternal, VRF Lite Subnet IP Range to 192.168.252.0/24, Auto
+# to Back2Back&ToExternal, VRF Lite Subnet IP Range to 192.168.252.0/24, Auto
 # Deploy for Peer, and Auto Allocation of Unique IP on VRF Extension. None of
 # those keys exist in the cisco.nac_dc_vxlan 0.9.0 data model (checked against
 # both vxlan.global.ibgp and vxlan.global.external), so they cannot be declared
-# from here. They are part of the VRF-Lite work that is still an open spike -
-# see the README section "VRF-Lite is unresolved".
+# from here.
+#
+# They are declared instead in inventory/group_vars/all/dc_advanced_settings.yml
+# and applied by playbooks/03_advanced_settings.yml, which writes them straight
+# to the controller. Keep them there, not here: this file is the Nexus as Code
+# model and the validate role rejects a key the schema does not know.

@@ -1,127 +1,94 @@
 # 02 - Data Center
 
-Automation for the data center section of the lab.
+Automation for the data center section of the lab: the VXLAN EVPN fabric that
+extends PseudoCo's MAIN / PROD / IOT segmentation from the campus and SD-WAN
+domains into the data center, so a workload is governed by the same business
+segment as the user reaching it.
 
 ## Tracks
 
-- **`nac_vxlan/`** - the Pseudoco-DC1 VXLAN EVPN fabric on Nexus Dashboard
-  4.2.1.10, built with [Cisco Nexus as Code](https://netascode.cisco.com/docs/data_models/vxlan/overview/)
-  (`cisco.nac_dc_vxlan` over `cisco.dcnm`). Covers the guide's **NDFC - DC
-  Fabric Deployment** section: fabric, five switches, vPC pair, server
-  port-channels, and the MAIN / PROD / IOT VRFs and networks.
-  See [`nac_vxlan/ansible/README.md`](nac_vxlan/ansible/README.md).
+**`nac_vxlan/`** builds the `Pseudoco-DC1` VXLAN EVPN fabric on Cisco Nexus
+Dashboard 4.2.1.10 with [Cisco Nexus as Code](https://netascode.cisco.com/docs/data_models/vxlan/overview/)
+(`cisco.nac_dc_vxlan` over `cisco.dcnm`). It covers sections 4, 5 and 6 of the
+student guide's **NDFC - DC Fabric Deployment**: the fabric and its five
+switches, the DC-Leaf1 / DC-Leaf2 vPC pair and the three server port-channels,
+and the MAIN / PROD / IOT VRFs and networks with their attachments.
 
-Nothing else in the data center is automated yet. The HQ services that live
-there - Catalyst Center, ISE, AD, the WLC, Splunk - are driven from other
-collections: the WLC and Catalyst Center from `01_campus/evpn`, Splunk from
-`07_assurance/splunk_evpn`.
+See [`nac_vxlan/ansible/README.md`](nac_vxlan/ansible/README.md) for how to
+run it and how the data model is put together.
+
+Nothing else in the data center is automated from here. The HQ services hosted
+there - Catalyst Center, ISE, Active Directory, the WLC and Splunk - are
+driven from other collections: the WLC and Catalyst Center from
+`01_campus/evpn`, Splunk from `07_assurance/splunk_evpn`.
 
 ## Quick start
 
-This track needs `cisco.nac_dc_vxlan`, `cisco.dcnm` and `cisco.nxos`, which
-are newer than the campus collections. A `~/venv` built before the DC track
-was added does
-not have them, and the symptom is misleading - Ansible reports a missing
-collection as `the role 'cisco.nac_dc_vxlan.validate' was not found`. Install
-them once:
+Run on the Kali script server, from the directory holding `ansible.cfg`:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
-ansible-galaxy collection install -r collections/requirements.yml --force
-ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm|nxos'
-```
-
-`--force` matters: without it `ansible-galaxy` silently skips a collection
-already present at any version. Re-running
-`00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml` does the
-same thing and is the durable fix, since that is what installs on a fresh pod.
-
-Then:
-
-```bash
 ansible-playbook playbooks/00_discover_dc_switch_serials.yml   # once, first
 ansible-playbook playbooks/01_dc_deploy.yml
 ```
 
-Run from the directory holding `ansible.cfg`, not from `playbooks/` - the same
-convention as `01_campus/evpn`.
+This track needs `cisco.nac_dc_vxlan`, `cisco.dcnm` and `cisco.nxos`, which
+are newer than the campus collections. If your `~/venv` predates this track,
+`git pull` and re-run
+`00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml`, which is
+what installs them.
 
-The numbers carry information. `01_dc_deploy.yml` imports stages 02 through
-04 and nothing else, so a playbook numbered inside that range runs as part of
-the orchestrated build, while `00_discover_dc_switch_serials.yml` below it and
-`05_remove.yml` / `06_external_fabric.yml` above it are ones you run
-deliberately, by name.
+Four things are worth knowing before that first run, and the collection README
+covers each in full:
 
-Read `nac_vxlan/ansible/README.md` first. Four things in particular. The
-discovery stage is not part of the orchestrator: it SSHes to the switches,
-reads a serial number off each one, and generates the switch half of the data
-model from them, so you have to run it once yourself before anything else -
-`01_dc_deploy.yml` stops at stage 02 until you have. What it generates is
-build output rather than something you maintain, so every run overwrites
-`topology_switches.nac.yaml` silently and changes belong in the tracked
-`.example` beside it or in the switch table it reads - which also means a
-`git pull` that changes either source does not reach Nexus Dashboard until
-you re-run the discovery stage. `01_dc_deploy.yml` then erases the running
-configuration of all five switches as it imports them, with no confirmation
-prompt and no way to turn it off. That import is also the one
-place the pipeline appears to hang: its inventory step sits with no output for
-several minutes while Nexus Dashboard discovers the five switches behind a
-blocking HTTP request, so let it run - on a checkout older than the
-1000-second timeouts in `inventory/group_vars/nd/connection.yml` it fails there
-instead, with `command timeout triggered, timeout value is 30 secs`. And
-VRF-Lite to the IOS-XE edge router is still manual.
+- **Stage 00 comes first and is not part of the orchestrator.** It reads a
+  serial number off each switch over SSH and generates the switch half of the
+  data model, so it needs the client VPN up. `01_dc_deploy.yml` will not get
+  past stage 02 until it has run once.
+- **What stage 00 generates is build output.** Every run overwrites
+  `topology_switches.nac.yaml`, so changes belong in the tracked sources
+  beside it. A `git pull` that touches either source does not reach Nexus
+  Dashboard until you re-run stage 00.
+- **Stage 02 erases the running configuration of all five switches** as it
+  imports them, with no prompt and no way to disable it.
+- **Stage 02's import step runs for several minutes with no output.** The
+  controller holds the request open while it discovers the switches. That is
+  expected, not a hang.
 
-One further symptom is worth knowing by name, because the fix is not the
-obvious one. If the build fails at step `interface_all` with an HTTP 500 on
-`globalInterface` and the words `template execution` in the message, the
-suspect is a non-ASCII character in a port-channel description - the em
-dashes that were in the data model until 2026-09-25. They are plain hyphens
-in the tracked files now, but pulling that change does not on its own fix a
-script server: what Nexus Dashboard reads is the *generated*
-`topology_switches.nac.yaml`, so re-run the discovery stage after the pull,
-with the VPN up. The collection README carries the evidence, and the reasons
-this is a suspicion rather than a proven cause.
+## What the pipeline covers
 
-A second symptom, further along the same run, is `Entered network VLAN id 2300
-is already in use` at the `networks` step, reported inside an HTTP 200 body
-rather than as an error. Every VRF and network in the data model now carries an
-explicit `vlan_id` - VRFs 2000, 2001, 2002 and networks 2300, 2301, 2302 - and
-that is the fix. The reason it is needed is that omitting the VLAN is only safe
-in the GUI: the guide's "Propose VLAN" button allocates one object at a time
-with a save in between, whereas `cisco.dcnm` asks the controller for the next
-free VLAN once per object in a single loop, and reading a free VLAN does not
-reserve it, so all three objects are handed the same number. Give any VRF or
-network you add an explicit VLAN too. These two files are read straight by the
-create role, so a plain `git pull` is enough here - no discovery re-run.
+`01_dc_deploy.yml` imports stages 02 through 05 and nothing else: create the
+intent on the controller, apply the fabric settings Nexus as Code has no key
+for, deploy the lot to the switches, then verify the result against the
+declared model. Stage 05 is read-only and writes
+`evidence/stage05-verification.md`.
 
-A third symptom belongs to the verify stage, and neither of its two forms is
-what it looks like. If `04_verify_fabric.yml` dies in `Compare networks` with
-`'None' has no attribute 'split'`, that is a field Nexus Dashboard returns as
-JSON `null` reaching a Jinja `default('')`, which substitutes only for an
-undefined value. If instead the report marks every VRF and network `NO` with
-attachment states reading `DEPLOYED, DEPLOYED, NA`, the `NA` rows are switches
-the controller lists but has not attached, DC-Service-Leaf among them, and the
-stage no longer judges them. Both are fixed as of 2026-09-25 and a plain
-`git pull` is the whole fix. A real fault reads as a name under "Switches
-missing" or "Attachments missing", or as an attached switch sitting in
-`PENDING`, which means the intent was created and never pushed - re-run
-`03_deploy.yml`. Stage 04 is read-only, so re-run it as often as you like.
+Stage 03 is the one that is not Nexus as Code. It writes the guide's
+Resources-tab settings - VRF Lite Deployment, its subnet pool, the two auto
+options - plus the License Tier and the Telemetry toggle, none of which exist
+in the `cisco.nac_dc_vxlan` 0.9.0 data model. Without it the fabric is left
+with VRF Lite Deployment at `Manual`, and external connectivity cannot be
+built. Its values live in
+`nac_vxlan/ansible/inventory/group_vars/all/dc_advanced_settings.yml`.
+
+Playbooks numbered outside that range are ones you run deliberately, by name:
+`00_discover_dc_switch_serials.yml` below it, `06_remove.yml` and
+`07_external_fabric.yml` above it.
 
 ## Where the automation stops
 
-The pipeline carries everything `cisco.nac_dc_vxlan` 0.9.0 can express, which
-is all of guide sections 4, 5 and 6. External connectivity - sections 7 and
-8 - is outside the data model and stays manual for now.
+The pipeline carries everything `cisco.nac_dc_vxlan` 0.9.0 can express for
+this guide, and the fabric settings it cannot. External connectivity, guide
+sections 7 and 8, stays manual.
 
-In this lab the External fabric and the IOS-XE edge router
-`DC-SITE11-CEDGE8Kv` (`198.18.133.14`) are a **prerequisite**, built in Nexus
-Dashboard before the pipeline runs: the fabric in Monitor Mode, the router
-discovered into it as an Edge Router. `06_external_fabric.yml` can create the
-fabric object if it is genuinely missing, but it cannot set Monitor Mode or
-add a non-NX-OS device, so it refuses to touch a fabric that already exists.
+The External fabric and the IOS-XE edge router `DC-SITE11-CEDGE8Kv`
+(`198.18.133.14`) are a **prerequisite**, built in Nexus Dashboard before the
+pipeline runs: the fabric in Monitor Mode, the router discovered into it as an
+Edge Router. Neither Monitor Mode nor a non-NX-OS device can be declared in
+the model.
 
-Extending MAIN, PROD and IOT out of DC-Service-Leaf over VRF-Lite is also
-manual. The collection README's TODO records what that would take, and why
-the Nexus as Code model cannot express it today. Stage 04 shows the gap rather
-than hiding it: DC-Service-Leaf is named under "Not attached" on every VRF row
-of the verification report, and that is expected.
+Extending MAIN, PROD and IOT out of DC-Service-Leaf over VRF-Lite is still
+manual, though stage 03 now puts the fabric-level settings it depends on in
+place. The verification report makes that boundary visible rather than hiding
+it: DC-Service-Leaf appears under "Not attached" on every VRF row, which is
+expected. The collection README records what closing the gap would take.

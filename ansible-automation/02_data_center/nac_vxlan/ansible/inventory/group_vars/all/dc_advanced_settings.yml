@@ -1,0 +1,86 @@
+---
+# Fabric settings the guide sets that Nexus as Code cannot express.
+#
+# cisco.nac_dc_vxlan 0.9.0 has no data model key for any of the settings
+# below. They are not optional extras: the guide's Resources tab sets the
+# VRF-Lite values, and without them a VRF-Lite extension to the external
+# router cannot be built. Stage 03 applies them directly, which is why it
+# exists at all.
+#
+# This file is the declared intent. Stage 03 is the mechanism and holds no
+# values of its own, so a change to the fabric is a change here.
+#
+# Two dictionaries, because Nexus Dashboard 4.2 keeps these settings in two
+# different places and they are written through two different APIs. Which one
+# a setting belongs to is not a judgement call - it was established by reading
+# the live fabric back, and a setting in the wrong dictionary fails loudly
+# rather than silently doing nothing.
+
+# --------------------------------------------------------------------------
+# Easy_Fabric template parameters, written with cisco.dcnm.dcnm_fabric.
+#
+# These are nvPairs on the fabric: the same store Nexus as Code writes the
+# rest of the fabric into. Names are the controller's own nvPair names, not
+# the UI labels, because that is what the module sends. Values may be written
+# as natural YAML types - dcnm_fabric converts a boolean to "true"/"false" and
+# an integer to its string form before comparing against the controller, so a
+# second run of stage 03 is correctly a no-op.
+# --------------------------------------------------------------------------
+dc_advanced_fabric_settings:
+  # UI: Resources tab, "VRF Lite Deployment". Manual by default, which means
+  # no VRF-Lite inter-fabric link is ever auto-created. Back2Back&ToExternal
+  # covers both the leaf-to-leaf and the leaf-to-external-router cases, which
+  # is what this fabric needs for the handoff to DC-SITE11-CEDGE8Kv.
+  #
+  # The ampersand is the controller's own spelling of the value, not a typo.
+  VRF_LITE_AUTOCONFIG: "Back2Back&ToExternal"
+
+  # UI: Resources tab, "Auto Deploy for Peer". With VRF-Lite auto-config on,
+  # this makes the matching configuration land on the far end of the
+  # inter-fabric link as well, instead of only the near end.
+  AUTO_SYMMETRIC_VRF_LITE: true
+
+  # UI: Resources tab, "Auto Allocation of Unique IP on VRF Extension over
+  # VRF Lite IFC". Gives every VRF extension its own /30 out of the range
+  # below rather than reusing one subnet across VRFs.
+  AUTO_UNIQUE_VRF_LITE_IP_PREFIX: true
+
+  # UI: Resources tab, "VRF Lite Subnet IP Range" and "VRF Lite Subnet Mask".
+  # The pool the per-extension point-to-point links are cut from. The default
+  # is 10.33.0.0/16, which overlaps nothing in this pod but is not the value
+  # the guide uses.
+  DCI_SUBNET_RANGE: 192.168.252.0/24
+  DCI_SUBNET_TARGET_MASK: 30
+
+# --------------------------------------------------------------------------
+# Nexus Dashboard fabric object properties, written with cisco.dcnm.dcnm_rest.
+#
+# These two are NOT nvPairs. Neither name appears anywhere in the 423 nvPairs
+# of the live fabric; they live on the Nexus Dashboard 4.2 fabric object at
+# /api/v1/manage/fabrics/<fabric>, alongside a camelCase mirror of the
+# nvPairs. dcnm_fabric cannot reach them, so stage 03 does a read-modify-write
+# on that object instead. Names and values here are exactly as the API
+# returns them, lower case included.
+# --------------------------------------------------------------------------
+dc_advanced_nd_fabric_settings:
+  # UI: fabric settings, "License Tier". Premier is the tier the guide
+  # selects; the fabric is created as essentials.
+  licenseTier: premier
+
+  # UI: fabric settings, "Telemetry". Unchecked, so Nexus Dashboard does not
+  # stream fabric telemetry into Insights. Already false on a freshly created
+  # fabric, so declaring it here is enforcement rather than a change - it
+  # stops a later UI click from drifting away unnoticed.
+  telemetryCollection: false
+
+# --------------------------------------------------------------------------
+# Deliberately NOT here
+#
+# "Add Switches without Reload" is the Advanced-tab dropdown behind the
+# GRFIELD_DEBUG_FLAG nvPair, and Nexus as Code does model it - as
+# vxlan.global.ibgp.greenfield_cleanup in
+# playbooks/host_vars/Pseudoco-DC1/global.nac.yaml, already set to Enable.
+# It is not duplicated here on purpose. Two files setting one nvPair is a
+# drift bug waiting to happen, and the rule for this stage is that it carries
+# only what Nexus as Code cannot express.
+# --------------------------------------------------------------------------
