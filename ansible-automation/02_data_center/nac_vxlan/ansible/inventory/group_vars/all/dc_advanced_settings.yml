@@ -73,6 +73,23 @@ dc_advanced_nd_fabric_settings:
   # stops a later UI click from drifting away unnoticed.
   telemetryCollection: false
 
+  # UI: fabric settings, "Location". San Jose, California, US.
+  #
+  # Coordinates, not a place name, and that is not a shortcut taken here:
+  # Nexus Dashboard has no field for the name. There is no city, country or
+  # address key anywhere on the fabric object, in its management sub-object or
+  # among the fabric's 423 nvPairs - checked, not assumed. The UI's location
+  # picker geocodes whatever you type and stores only these two numbers, then
+  # drops a pin on the fabric map. So the place name lives in this comment and
+  # nowhere else, which is the reason the comment is here.
+  #
+  # Both keys have to be given together. The stage applies this dictionary
+  # with a non-recursive combine, so a partial location would replace the
+  # whole object and leave the other coordinate at zero.
+  location:
+    latitude: 37.3382
+    longitude: -121.8863
+
 # --------------------------------------------------------------------------
 # Deliberately NOT here
 #

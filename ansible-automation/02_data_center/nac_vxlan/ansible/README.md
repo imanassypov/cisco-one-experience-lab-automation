@@ -251,15 +251,25 @@ its own, so changing the fabric means editing that file.
 | VRF Lite Subnet Mask | `DCI_SUBNET_TARGET_MASK` | `30` |
 | License Tier | `licenseTier` | `premier` |
 | Telemetry | `telemetryCollection` | `false` |
+| Location | `location` | `37.3382, -121.8863` (San Jose, California, US) |
 
 Two dictionaries, because Nexus Dashboard keeps these in two places. The first
 five are fabric **nvPairs** - the same store Nexus as Code writes the rest of
-the fabric into - and are applied with `cisco.dcnm.dcnm_fabric`. The last two
+the fabric into - and are applied with `cisco.dcnm.dcnm_fabric`. The last three
 are not nvPairs at all; they are properties of the Nexus Dashboard fabric
 object at `/api/v1/manage/fabrics/Pseudoco-DC1`, which `dcnm_fabric` cannot
 reach, so stage 03 does a read-modify-write on that object instead. A setting
 in the wrong dictionary fails the stage by name rather than being silently
 ignored.
+
+**Location is coordinates, because Nexus Dashboard has no field for the place
+name.** There is no city, country or address key on the fabric object, in its
+`management` sub-object, or among the fabric's nvPairs. The UI's location
+picker geocodes what you type and keeps only the two numbers, then drops a pin
+on the fabric map. So "San Jose" survives only as a comment in the data model,
+which is why that comment is there. Both coordinates have to be given
+together: the stage combines non-recursively, so a partial `location` would
+replace the whole object and leave the other coordinate at zero.
 
 Three things worth knowing:
 
