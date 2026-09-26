@@ -65,10 +65,10 @@ declared model. Stage 05 is read-only and writes
 
 Stage 03 is the one that is not Nexus as Code. It writes the guide's
 Resources-tab settings - VRF Lite Deployment, its subnet pool, the two auto
-options - plus the License Tier and the Telemetry toggle, none of which exist
-in the `cisco.nac_dc_vxlan` 0.9.0 data model. Without it the fabric is left
-with VRF Lite Deployment at `Manual`, and external connectivity cannot be
-built. Its values live in
+options - plus the License Tier, the Telemetry toggle and the fabric's map
+location, none of which exist in the `cisco.nac_dc_vxlan` 0.9.0 data model.
+Without it the fabric is left with VRF Lite Deployment at `Manual`, and
+external connectivity cannot be built. Its values live in
 `nac_vxlan/ansible/inventory/group_vars/all/dc_advanced_settings.yml`.
 
 Playbooks numbered outside that range are ones you run deliberately, by name:
