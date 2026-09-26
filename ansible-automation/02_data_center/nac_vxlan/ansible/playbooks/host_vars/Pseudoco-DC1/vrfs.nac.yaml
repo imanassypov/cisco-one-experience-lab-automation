@@ -4,15 +4,20 @@
 # These are the data center half of PseudoCo's MAIN / PROD / IOT segmentation,
 # matching the campus and SD-WAN VRFs of the same names.
 #
-# vlan_id is deliberately omitted on every VRF. The guide clicks "Propose
-# VLAN", which pulls from the fabric's L3 VLAN pool; omitting the key here
-# leaves that allocation to Nexus Dashboard rather than pinning a VLAN that
-# might collide.
+# vlan_id is pinned on every VRF, taken in declaration order from the fabric's
+# L3 VLAN range 2000-2299 (layer3_vlan_range in the collection's validate
+# defaults, which this model does not override). Leaving it out asks Nexus
+# Dashboard to allocate, which works for the guide because the GUI proposes one
+# VLAN per VRF and saves in between. It does not work for a batched run: the
+# resource-manager lookup returns the next free VLAN without reserving it, so
+# every VRF in the run is handed 2000, the first attachment wins and the rest
+# fail with "Entered VRF VLAN id 2000 is already in use".
 vxlan:
   overlay:
     vrfs:
       - name: MAIN
         vrf_id: 50000
+        vlan_id: 2000
         vrf_vlan_name: MAIN
         vrf_intf_desc: MAIN
         vrf_description: MAIN
@@ -20,6 +25,7 @@ vxlan:
 
       - name: PROD
         vrf_id: 50001
+        vlan_id: 2001
         vrf_vlan_name: PROD
         vrf_intf_desc: PROD
         vrf_description: PROD
@@ -27,6 +33,7 @@ vxlan:
 
       - name: IOT
         vrf_id: 50002
+        vlan_id: 2002
         vrf_vlan_name: IOT
         vrf_intf_desc: IOT
         vrf_description: IOT
