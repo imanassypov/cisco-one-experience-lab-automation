@@ -1,7 +1,7 @@
-{# Evidence report for 05_verify_fabric.yml. Generated - do not edit by hand. #}
+{# Evidence report for 06_verify_fabric.yml. Generated - do not edit by hand. #}
 # DC fabric verification - {{ dc_fabric_name }}
 
-Generated {{ dc_verify_timestamp }} by `05_verify_fabric.yml`.
+Generated {{ dc_verify_timestamp }} by `06_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
 `host_vars/{{ inventory_hostname }}/vrfs.nac.yaml` and
@@ -39,7 +39,7 @@ named under "Not attached" instead - DC-Service-Leaf belongs there, because
 `vrfs.nac.yaml` deliberately leaves it out of the attach group. A switch that
 *was* declared and is not among the attached ones is the real fault, and
 shows up under "Switches missing". An attachment stuck in `PENDING` means the
-intent was created but never pushed - re-run `04_recalculate_and_deploy.yml`.
+intent was created but never pushed - re-run `05_recalculate_and_deploy.yml`.
 
 ## Networks
 

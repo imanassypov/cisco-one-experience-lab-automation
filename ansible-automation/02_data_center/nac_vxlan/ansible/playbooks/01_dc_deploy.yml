@@ -10,19 +10,22 @@
 #       attachments
 #   03  apply the fabric settings Nexus as Code cannot express - the VRF-Lite
 #       resources, the license tier, the telemetry toggle and the location
-#   04  recalculate and deploy: push that intent to the switches
-#   05  verify the result against intent over the Nexus Dashboard API
+#   04  create the External connectivity fabric and put it in Monitor Mode
+#   05  recalculate and deploy: push that intent to the switches
+#   06  verify the result against intent over the Nexus Dashboard API
 #
-# The numbering carries meaning: 02 through 05 are contiguous because they are
+# The numbering carries meaning: 02 through 06 are contiguous because they are
 # exactly the stages this orchestrator imports. Everything outside that range -
-# the 00 prerequisite described below, and 06 and 07 - is something you run by
-# hand. So the number on a playbook already tells you whether a plain run of
-# this file will touch it.
+# the 00 prerequisite described below, and 07 - is something you run by hand.
+# So the number on a playbook already tells you whether a plain run of this
+# file will touch it.
 #
-# Stage 03 sits between create and deploy rather than after it because it
+# Stages 03 and 04 both sit ahead of the deploy, for the same reason. Stage 03
 # changes fabric parameters, which are inputs to the configuration the
-# controller generates. Run it later and the settings would be correct on the
-# controller but absent from the switches until the next deploy.
+# controller generates. Stage 04 creates the fabric on the far side of the
+# VRF-Lite handoff, which is what lets the controller resolve that handoff at
+# all. Run either one after stage 05 and the controller would be right while
+# the switches were a deploy behind.
 #
 # BEFORE THE FIRST RUN, get the serial numbers into the data model. This
 # orchestrator will not do it for you and stage 02 stops until you have:
@@ -36,24 +39,28 @@
 # path up, and because it only needs running again when the pod hardware or
 # the switch table changes.
 #
-# Three other playbooks are deliberately absent:
+# Two playbooks are deliberately absent:
 #   00_discover_dc_switch_serials.yml  prerequisite, see above
-#   06_remove.yml           destructive prune, run by hand with a confirm flag
-#   07_external_fabric.yml  different inventory host, and in this lab the
-#                           External fabric is a manual prerequisite
+#   07_remove.yml           destructive prune, run by hand with a confirm flag
 #
-# Three things worth knowing before a plain run:
+# Four things worth knowing before a plain run:
 #   - This is a greenfield build and there is no confirmation prompt. Stage 02
 #     imports the five switches with preserveConfig false - hardcoded in
 #     cisco.nac_dc_vxlan's inventory template, not something the data model or
 #     a flag can change - so each switch has its running configuration erased
 #     as it joins the fabric. Point this at a pod you are willing to lose.
-#   - Stage 04 changes running configuration and takes several minutes.
-#   - Stage 05 fails the run on any mismatch. Use
+#   - Stage 04 targets a different inventory host, External, and reads its
+#     settings from inventory/group_vars/all/dc_external_settings.yml rather
+#     than from a Nexus as Code model. It creates the External fabric in
+#     Monitor Mode and adds the IOS-XE edge router to it over REST, so that
+#     router must be reachable and have a vault entry.
+#   - Stage 05 changes running configuration and takes several minutes.
+#   - Stage 06 fails the run on any mismatch. Use
 #     -e dc_verify_fail_on_mismatch=false to get the report without the
 #     failure.
 
 - import_playbook: 02_create.yml
 - import_playbook: 03_advanced_settings.yml
-- import_playbook: 04_recalculate_and_deploy.yml
-- import_playbook: 05_verify_fabric.yml
+- import_playbook: 04_external_fabric.yml
+- import_playbook: 05_recalculate_and_deploy.yml
+- import_playbook: 06_verify_fabric.yml

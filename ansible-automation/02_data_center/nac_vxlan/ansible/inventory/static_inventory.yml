@@ -19,11 +19,17 @@ all:
         # Data Center VXLAN EVPN fabric - the one the guide builds.
         Pseudoco-DC1:
           ansible_host: ndfc.corp.pseudoco.com
-        # External connectivity fabric. In this lab it is a manual
-        # prerequisite, created in Monitor Mode with the IOS-XE edge router
-        # already in it. 07_external_fabric.yml can create the object if it
-        # is missing, but it cannot set Monitor Mode or add the router, so it
-        # is deliberately absent from 01_dc_deploy.yml.
+        # External connectivity fabric, created in Monitor Mode by
+        # 04_external_fabric.yml, which is part of 01_dc_deploy.yml. That
+        # stage also adds the IOS-XE edge router to it, over the Nexus
+        # Dashboard 4.x manage API - the legacy API that dcnm_inventory and
+        # Nexus as Code drive cannot discover a non-NX-OS device.
+        #
+        # This is the one host here with no data model under
+        # playbooks/host_vars/. The collection's create role cannot build a
+        # switchless fabric - it config-saves, and the controller answers 500
+        # - so this fabric is built from
+        # inventory/group_vars/all/dc_external_settings.yml instead.
         External:
           ansible_host: ndfc.corp.pseudoco.com
 

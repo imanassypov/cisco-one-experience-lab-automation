@@ -7,7 +7,7 @@
 #
 # It runs between create and deploy on purpose. These are fabric parameters,
 # not switch configuration: they change what the controller will generate, so
-# they have to be in place before stage 04 generates it. Nothing here touches
+# they have to be in place before stage 05 generates it. Nothing here touches
 # a switch, and DEPLOY is false throughout.
 #
 # The values live in inventory/group_vars/all/dc_advanced_settings.yml. This
@@ -90,7 +90,7 @@
     # "Key <name> not found in fabric configuration" rather than being
     # silently dropped.
     #
-    # DEPLOY is false because this stage only stages intent. Stage 04 is what
+    # DEPLOY is false because this stage only stages intent. Stage 05 is what
     # pushes configuration to the switches.
     - name: Apply the Easy_Fabric parameters
       cisco.dcnm.dcnm_fabric:
