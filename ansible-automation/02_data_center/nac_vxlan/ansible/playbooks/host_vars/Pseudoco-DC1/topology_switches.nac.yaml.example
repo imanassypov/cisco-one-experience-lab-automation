@@ -12,9 +12,9 @@
 # generated copy is what the create role reads, and it is gitignored because
 # serial numbers are the hardware of one dCloud pod.
 #
-# Edit this file to change the SHAPE of the model — which switches exist, what
+# Edit this file to change the SHAPE of the model - which switches exist, what
 # port-channels they carry. Edit inventory/group_vars/all/dc_switches.yml to
-# change the switch TABLE — names, management addresses, roles. The two must
+# change the switch TABLE - names, management addresses, roles. The two must
 # agree on the names, because the generator anchors its substitution on the
 # switch name: a switch named differently here never receives its serial, and
 # stage 00's own post-write check fails the run rather than let a placeholder
@@ -36,10 +36,10 @@ vxlan:
         # sends them as PEER1_PO_DESC/PEER2_PO_DESC in the globalInterface
         # payload, and NDFC renders them through a Velocity template.
         #
-        # They read "MAIN server — vPC3" with an em dash until 2026-09-25, and
+        # They read "MAIN server - vPC3" with an em dash until 2026-09-25, and
         # step 13/21 (interface_all, dcnm_interface) failed with HTTP 500 on
-        # POST .../lan-fabric/rest/globalInterface — "An unexpected error
-        # occurred during template execution" — against the three vPCs
+        # POST .../lan-fabric/rest/globalInterface - "An unexpected error
+        # occurred during template execution" - against the three vPCs
         # DC-Leaf2:DC-Leaf1:vPC3, vPC4 and vPC5. Every other nvPair in that
         # payload was the collection's own default from
         # roles/validate/files/defaults.yml (MTU jumbo, SPEED Auto, PC_MODE

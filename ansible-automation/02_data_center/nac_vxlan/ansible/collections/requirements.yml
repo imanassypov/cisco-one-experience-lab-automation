@@ -6,7 +6,7 @@
 # hard dependency, and that floor matters: ND 4.2.1 support landed in
 # cisco.dcnm 3.12.1 and 3.13.0 adds 4.3.1. Do not pin cisco.dcnm lower.
 #
-# cisco.nxos is used by one stage only — 00_discover_dc_switch_serials.yml,
+# cisco.nxos is used by one stage only - 00_discover_dc_switch_serials.yml,
 # which SSHes to the switches to read their serial numbers. Every other stage
 # talks to Nexus Dashboard over httpapi and needs none of it.
 #

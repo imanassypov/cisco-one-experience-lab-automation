@@ -1,5 +1,5 @@
 ---
-# Stage 04 — verify the deployed fabric against the declared intent.
+# Stage 04 - verify the deployed fabric against the declared intent.
 #
 # Nexus Dashboard API only. No SSH to 198.18.128.x, so this stage works even
 # when the VPN cannot reach the switches directly, and it is read-only, so it
@@ -17,7 +17,7 @@
 # Override with -e dc_verify_fail_on_mismatch=false to get the report without
 # the failure.
 
-- name: Stage 04 — verify the DC fabric against intent
+- name: Stage 04 - verify the DC fabric against intent
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true

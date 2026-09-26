@@ -1,5 +1,5 @@
 ---
-# Declared DC switch table — the tracked half of the topology.
+# Declared DC switch table - the tracked half of the topology.
 #
 # Hostnames, management addresses, fabric roles and endpoint port-channels are
 # identical in every pod (see Lab Topology/PseudoCo_Lab_Access_Lookup.md), so
@@ -38,7 +38,7 @@ dc_switches:
     # to its overlay VLAN, exactly as the guide's Network Attachments step does.
     #
     # Descriptions stay ASCII-only and must match the .example, which is the
-    # copy that reaches Nexus Dashboard — see the note on the interfaces in
+    # copy that reaches Nexus Dashboard - see the note on the interfaces in
     # playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example.
     interfaces:
       - name: Port-channel3

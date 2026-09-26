@@ -1,12 +1,12 @@
-{# Evidence report for 04_verify_fabric.yml. Generated — do not edit by hand. #}
-# DC fabric verification — {{ dc_fabric_name }}
+{# Evidence report for 04_verify_fabric.yml. Generated - do not edit by hand. #}
+# DC fabric verification - {{ dc_fabric_name }}
 
 Generated {{ dc_verify_timestamp }} by `04_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
 `host_vars/{{ inventory_hostname }}/vrfs.nac.yaml` and
 `host_vars/{{ inventory_hostname }}/networks.nac.yaml`. Observed state comes
-from the Nexus Dashboard API only — no device SSH — so this report is valid
+from the Nexus Dashboard API only - no device SSH - so this report is valid
 even when the switch management addresses are unreachable from here.
 
 **{{ dc_total_checks | int - dc_failed_rows | length }} of {{ dc_total_checks }} check(s) match intent.**
@@ -32,7 +32,7 @@ management IP, or when the role it holds is not the role declared for it.
 
 A VRF must exist with the declared VNI, be attached to at least one switch,
 and have every attachment in `DEPLOYED`. An attachment stuck in `PENDING`
-means the intent was created but never pushed — re-run `03_deploy.yml`.
+means the intent was created but never pushed - re-run `03_deploy.yml`.
 
 ## Networks
 
@@ -56,12 +56,12 @@ values side by side.
 
 {% for row in dc_failed_rows %}
 {% if row.observed_role is defined %}
-- **{{ row.name }}** ({{ row.ip }}) — {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
+- **{{ row.name }}** ({{ row.ip }}) - {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
 {% elif row.declared_id is defined %}
-- **{{ row.name }}** (VRF) — {% if row.observed_id == 'absent' %}does not exist on the controller{% elif row.observed_id | string != row.declared_id | string %}has VNI {{ row.observed_id }}, declared as {{ row.declared_id }}{% elif not row.attach_states %}exists but is attached to nothing{% else %}attachments are {{ row.attach_states | join(', ') }}, all of which must be DEPLOYED{% endif %}
+- **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% elif row.observed_id | string != row.declared_id | string %}has VNI {{ row.observed_id }}, declared as {{ row.declared_id }}{% elif not row.attach_states %}exists but is attached to nothing{% else %}attachments are {{ row.attach_states | join(', ') }}, all of which must be DEPLOYED{% endif %}
 
 {% else %}
-- **{{ row.name }}** (network) — {% if row.observed_vrf == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_vrf != row.declared_vrf %}{{ faults.append('is in VRF ' ~ row.observed_vrf ~ ', declared in ' ~ row.declared_vrf) or '' }}{% endif %}{% if row.observed_gateway != row.declared_gateway %}{{ faults.append('gateway is ' ~ row.observed_gateway ~ ', declared as ' ~ row.declared_gateway) or '' }}{% endif %}{% if row.missing_attachments %}{{ faults.append('not attached on ' ~ row.missing_attachments | map('replace', '|', ' ') | join(', ')) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attachments are ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
+- **{{ row.name }}** (network) - {% if row.observed_vrf == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_vrf != row.declared_vrf %}{{ faults.append('is in VRF ' ~ row.observed_vrf ~ ', declared in ' ~ row.declared_vrf) or '' }}{% endif %}{% if row.observed_gateway != row.declared_gateway %}{{ faults.append('gateway is ' ~ row.observed_gateway ~ ', declared as ' ~ row.declared_gateway) or '' }}{% endif %}{% if row.missing_attachments %}{{ faults.append('not attached on ' ~ row.missing_attachments | map('replace', '|', ' ') | join(', ')) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attachments are ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
 
 {% endif %}
 {% endfor %}

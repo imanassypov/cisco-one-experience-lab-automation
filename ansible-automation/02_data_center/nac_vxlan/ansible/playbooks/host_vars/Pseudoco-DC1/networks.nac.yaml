@@ -3,9 +3,9 @@
 # and "Create Attachments - Assign Switch Interfaces to Networks".
 #
 # One network per business segment, each anycast-gatewayed and bound to the
-# vPC that its Linux workload hangs off. The guide does this in two passes —
+# vPC that its Linux workload hangs off. The guide does this in two passes -
 # create the network, then edit its Network Attachments tab and add the
-# port-channel — and the data model collapses both into one declaration.
+# port-channel - and the data model collapses both into one declaration.
 #
 # is_l2_only stays false, which is the data model's spelling of the guide's
 # "Network Mode: Layer 3".
