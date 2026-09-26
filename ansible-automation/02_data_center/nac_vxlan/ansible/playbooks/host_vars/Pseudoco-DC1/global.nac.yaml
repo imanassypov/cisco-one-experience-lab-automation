@@ -12,14 +12,14 @@ vxlan:
 
   global:
     ibgp:
-      # Guide: BGP ASN 65000. Must be quoted — the schema types it as a string.
+      # Guide: BGP ASN 65000. Must be quoted - the schema types it as a string.
       bgp_asn: "65000"
       # Two spines, so two route reflectors.
       route_reflectors: 2
       # Guide's Add Switches dialog uses MD5 for discovery.
       auth_proto: MD5
 
-      # Renders GRFIELD_DEBUG_FLAG, the fabric's "Greenfield Cleanup Option" —
+      # Renders GRFIELD_DEBUG_FLAG, the fabric's "Greenfield Cleanup Option" -
       # the Advanced-tab dropdown the guide labels "Add Switches without
       # Reload" and tells you to set to enable. It does NOT control whether
       # the import is greenfield; that is preserveConfig, which
@@ -45,10 +45,10 @@ vxlan:
         from: 50000
         to: 59000
 
-# NOT MODELLED HERE — the guide's Resources tab also sets VRF Lite Deployment
+# NOT MODELLED HERE - the guide's Resources tab also sets VRF Lite Deployment
 # to Back2BackAndToExternal, VRF Lite Subnet IP Range to 192.168.252.0/24, Auto
 # Deploy for Peer, and Auto Allocation of Unique IP on VRF Extension. None of
 # those keys exist in the cisco.nac_dc_vxlan 0.9.0 data model (checked against
 # both vxlan.global.ibgp and vxlan.global.external), so they cannot be declared
-# from here. They are part of the VRF-Lite work that is still an open spike —
+# from here. They are part of the VRF-Lite work that is still an open spike -
 # see the README section "VRF-Lite is unresolved".

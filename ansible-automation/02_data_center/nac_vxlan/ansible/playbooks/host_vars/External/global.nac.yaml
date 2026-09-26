@@ -7,7 +7,7 @@
 # 1. Fabric Monitor Mode. The guide has you leave it checked so Nexus
 #    Dashboard never writes to the external device. There is no data model key
 #    for it, and dc_external_fabric_general.j2 does not merely omit the nvPair
-#    — it emits IS_READ_ONLY: false outright. So this model actively asks for
+#    - it emits IS_READ_ONLY: false outright. So this model actively asks for
 #    the opposite of what the guide wants, and applying it to a fabric that is
 #    already in Monitor Mode would take it out of Monitor Mode. Stage 06
 #    refuses to run against an existing External fabric for that reason.
@@ -16,7 +16,7 @@
 #    CSR/CAT8K, and it is added to this fabric by hand before any of this
 #    automation runs. Nothing here could do it anyway: the External inventory
 #    template has no device-type concept, and cisco.dcnm's dcnm_inventory has
-#    no device_type parameter at all — only role: edge_router. Neither layer
+#    no device_type parameter at all - only role: edge_router. Neither layer
 #    can tell Nexus Dashboard to discover a non-NX-OS device.
 #
 # Because the router is added first, Nexus Dashboard does have a far side to
@@ -30,5 +30,5 @@ vxlan:
 
   global:
     external:
-      # Guide: BGP ASN 65531. Quoted — the schema types it as a string.
+      # Guide: BGP ASN 65531. Quoted - the schema types it as a string.
       bgp_asn: "65531"

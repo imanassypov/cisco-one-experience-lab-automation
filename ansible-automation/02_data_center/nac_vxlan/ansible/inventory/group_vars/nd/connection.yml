@@ -3,9 +3,9 @@
 #
 # DEVIATION FROM UPSTREAM: the netascode example repo reads these from the
 # ND_HOST / ND_USERNAME / ND_PASSWORD / NDFC_SW_USERNAME / NDFC_SW_PASSWORD
-# environment variables. This repo has exactly one credential source — the
+# environment variables. This repo has exactly one credential source - the
 # vault-encrypted Lab Topology/lab_access.yml, injected as lab_access by
-# ansible-automation/plugins/vars/lab_access.py — so the env lookups are
+# ansible-automation/plugins/vars/lab_access.py - so the env lookups are
 # replaced with vault lookups. Do not reintroduce environment variables and do
 # not put passwords in this file.
 ansible_connection: ansible.netcommon.httpapi
@@ -26,8 +26,8 @@ ndfc_switch_username: "{{ lab_access['DC-Leaf1'].username }}"
 ndfc_switch_password: "{{ lab_access['DC-Leaf1'].password }}"
 
 # The inventory step of the create pipeline POSTs to
-# fabrics/{fabric}/inventory/discover — once per switch role, since
-# dcnm_inventory groups the switches into one payload per role — and Nexus
+# fabrics/{fabric}/inventory/discover - once per switch role, since
+# dcnm_inventory groups the switches into one payload per role - and Nexus
 # Dashboard holds each request open while it SSHes to those switches,
 # discovers them and imports them: minutes, not seconds. The httpapi
 # persistent connection defaults to 30s, so it tore the call down
@@ -41,7 +41,7 @@ ndfc_switch_password: "{{ lab_access['DC-Leaf1'].password }}"
 # and its README sets exactly these two. That guard never fired here because
 # cisco.nac_dc_vxlan's dtc.manage_resources drives the dcnm modules itself
 # through plugins/plugin_utils/ndfc_executor.py, and only dcnm_vrf and
-# dcnm_network are routed via their action plugins — everything else goes
+# dcnm_network are routed via their action plugins - everything else goes
 # straight to _execute_module. So dcnm_inventory never sees its own check and
 # nothing upstream will tell a future reader these lines are load-bearing.
 ansible_command_timeout: 1000

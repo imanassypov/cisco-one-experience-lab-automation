@@ -3,7 +3,7 @@
 #
 # Used by 00_discover_dc_switch_serials.yml only. Every other stage in this
 # collection talks to Nexus Dashboard over httpapi and never opens a session
-# to a switch — see group_vars/nd/connection.yml for that.
+# to a switch - see group_vars/nd/connection.yml for that.
 ansible_connection: ansible.netcommon.network_cli
 ansible_network_os: cisco.nxos.nxos
 

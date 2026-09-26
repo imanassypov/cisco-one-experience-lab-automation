@@ -12,8 +12,8 @@
 #   04  verify the result against intent over the Nexus Dashboard API
 #
 # The numbering carries meaning: 02 through 04 are contiguous because they are
-# exactly the stages this orchestrator imports. Everything outside that range —
-# the 00 prerequisite described below, and 05 and 06 — is something you run by
+# exactly the stages this orchestrator imports. Everything outside that range -
+# the 00 prerequisite described below, and 05 and 06 - is something you run by
 # hand. So the number on a playbook already tells you whether a plain run of
 # this file will touch it.
 #
@@ -37,9 +37,9 @@
 #
 # Three things worth knowing before a plain run:
 #   - This is a greenfield build and there is no confirmation prompt. Stage 02
-#     imports the five switches with preserveConfig false — hardcoded in
+#     imports the five switches with preserveConfig false - hardcoded in
 #     cisco.nac_dc_vxlan's inventory template, not something the data model or
-#     a flag can change — so each switch has its running configuration erased
+#     a flag can change - so each switch has its running configuration erased
 #     as it joins the fabric. Point this at a pod you are willing to lose.
 #   - Stage 03 changes running configuration and takes several minutes.
 #   - Stage 04 fails the run on any mismatch. Use

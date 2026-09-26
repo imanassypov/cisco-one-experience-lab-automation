@@ -1,5 +1,5 @@
 ---
-# Stage 05 — tear down fabric state that is no longer in the data model.
+# Stage 05 - tear down fabric state that is no longer in the data model.
 #
 # DESTRUCTIVE AND NOT PART OF 01_dc_deploy.yml. Run it by hand, deliberately:
 #
@@ -13,12 +13,12 @@
 # turn them on explicitly.
 #
 # Two flags stay off even here. inventory_delete_mode would evict switches from
-# the fabric, and link_vpc_delete_mode would break the vPC pair — neither is
+# the fabric, and link_vpc_delete_mode would break the vPC pair - neither is
 # something a routine prune should do, and a vPC pair cannot be edited back
 # into place, only recreated. Pass them as extra vars if you genuinely want a
 # full teardown.
 
-- name: Stage 05 — remove fabric state absent from the data model
+- name: Stage 05 - remove fabric state absent from the data model
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
