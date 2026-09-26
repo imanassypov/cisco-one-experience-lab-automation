@@ -1,5 +1,5 @@
 ---
-# Stage 04 - push the staged intent down to the switches.
+# Stage 05 - push the staged intent down to the switches.
 #
 # Named after what it is in the UI: every "Recalculate and Deploy" click.
 # Stages 02 and 03 build intent on the controller and change nothing on a
@@ -9,7 +9,7 @@
 # Expect this to take several minutes and expect switches to show as
 # out-of-sync while it runs.
 
-- name: Stage 04 - recalculate and deploy the DC fabric
+- name: Stage 05 - recalculate and deploy the DC fabric
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true

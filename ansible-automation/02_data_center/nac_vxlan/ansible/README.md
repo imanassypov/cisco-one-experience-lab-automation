@@ -67,9 +67,11 @@ ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm|nxos'
 You want `cisco.nac_dc_vxlan 0.9.0`, `cisco.dcnm 3.13.0` and
 `cisco.nxos 10.2.0`.
 
-**2. The External fabric.** In this lab the External fabric and its IOS-XE
-edge router are a manual prerequisite, built in Nexus Dashboard before this
-pipeline runs. See [Scope](#scope).
+**2. The IOS-XE edge router must be reachable and its vault entry present.**
+Stage 04 builds the External fabric *and* adds `DC-SITE11-CEDGE8Kv`
+(`198.18.133.14`) to it, logging in with the `DC-SITE11-CEDGE8Kv` entry in
+`Lab Topology/lab_access.yml`. Nothing else has to be done by hand, but the
+router does have to answer SSH on the pod. See [Scope](#scope).
 
 **3. The client VPN**, for stage 00 only. That stage is the one thing here
 that reaches the switches directly.
@@ -106,25 +108,31 @@ Two things to expect from a first run, both normal:
 | Playbook | What it does |
 |---|---|
 | `00_discover_dc_switch_serials.yml` | Reads each switch's serial over SSH and generates the switch model. Read-only against the switches. **Run first.** Not in the orchestrator |
-| `01_dc_deploy.yml` | Orchestrator. Imports 02 to 05 in order |
+| `01_dc_deploy.yml` | Orchestrator. Imports 02 to 06 in order |
 | `02_create.yml` | Creates the whole intent on the controller: fabric, switch import, roles, vPC pair, port-channels, VRFs, networks |
 | `03_advanced_settings.yml` | Applies the fabric settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
-| `04_recalculate_and_deploy.yml` | The guide's "Recalculate and Deploy". Pushes that intent to the switches, and is the first stage that changes running configuration |
-| `05_verify_fabric.yml` | Read-only check of the fabric against the declared model. Writes `evidence/stage05-verification.md` |
-| `06_remove.yml` | Destructive prune. Needs `-e dc_remove_confirm=REMOVE_OK` |
-| `07_external_fabric.yml` | Creates the External fabric only if it is absent |
+| `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode and adds the IOS-XE edge router to it |
+| `05_recalculate_and_deploy.yml` | The guide's "Recalculate and Deploy". Pushes that intent to the switches, and is the first stage that changes running configuration |
+| `06_verify_fabric.yml` | Read-only check of the fabric against the declared model. Writes `evidence/stage06-verification.md` |
+| `07_remove.yml` | Destructive prune. Needs `-e dc_remove_confirm=REMOVE_OK` |
 
-The numbering tells you who runs a playbook. Stages 02 to 05 are contiguous
+The numbering tells you who runs a playbook. Stages 02 to 06 are contiguous
 because they are exactly what `01_dc_deploy.yml` imports. Stage 00 sits below
 that range because it is the prerequisite you run yourself, once per pod, and
-06 and 07 sit above it because they are deliberately outside the orchestrated
-run.
+07 sits above it because it is deliberately outside the orchestrated run.
+
+Stages 03 and 04 both sit ahead of the deploy, for the same reason. Stage 03
+changes fabric parameters, which are inputs to the configuration the
+controller generates; stage 04 creates the fabric on the far side of the
+VRF-Lite handoff, which is what lets the controller resolve that handoff at
+all. Either one run after stage 05 would leave the controller correct and the
+switches a deploy behind.
 
 Useful overrides:
 
 - `--tags cr_manage_fabric` narrows stage 02 to the fabric object alone, which
   is the guide's "Create a VXLAN Fabric" step on its own
-- `-e dc_verify_fail_on_mismatch=false` has stage 05 write its report without
+- `-e dc_verify_fail_on_mismatch=false` has stage 06 write its report without
   failing the run
 
 ## The data model
@@ -139,10 +147,20 @@ Useful overrides:
 | `networks.nac.yaml` | The three networks, their gateways, and the port-channels they attach to |
 | `inventory/group_vars/all/dc_switches.yml` | The switch table: names, management addresses, roles, endpoint port-channels |
 | `inventory/group_vars/all/dc_advanced_settings.yml` | The fabric settings Nexus as Code has no key for, applied by stage 03 |
+| `inventory/group_vars/all/dc_external_settings.yml` | The whole External fabric: ASN and Monitor Mode, applied by stage 04 |
 
 The first six files are the Nexus as Code model and follow its schema. The
-last two are this repository's own, in plain Ansible `group_vars`, and are read
-directly by the playbooks that consume them.
+last three are this repository's own, in plain Ansible `group_vars`, and are
+read directly by the playbooks that consume them.
+
+The External fabric has no Nexus as Code model, which is why it appears only
+in that last group. The collection's create role cannot build it: the role
+always runs a config-save after its inventory step, and on a fabric with no
+switches the controller returns HTTP 500 `Fabric External cannot be deployed
+without any switches`. The fabric also holds no VRFs, networks or interfaces,
+so there is nothing for the collection to express. Stage 04 creates it with
+`cisco.dcnm.dcnm_fabric` and adds the edge router over REST, both from
+`dc_external_settings.yml`.
 
 `topology_switches.nac.yaml` is build output and is gitignored. Stage 00
 regenerates it from two tracked sources and overwrites it without asking, so
@@ -188,13 +206,14 @@ inventory/
   static_inventory.yml            one host per fabric, plus the switch group
   group_vars/all/dc_switches.yml  the switch table
   group_vars/all/dc_advanced_settings.yml  the non-model fabric settings
+  group_vars/all/dc_external_settings.yml  the External fabric
   group_vars/nd/               controller transport and credentials
   group_vars/dc_fabric_switches/  SSH to the switches; stage 00 only
 playbooks/
-  00_discover_dc_switch_serials.yml ... 07_external_fabric.yml
+  00_discover_dc_switch_serials.yml ... 07_remove.yml
   host_vars/Pseudoco-DC1/*.nac.yaml   the data model
   templates/
-evidence/                         written by stage 05, gitignored
+evidence/                         written by stage 06, gitignored
 ```
 
 `host_vars/` lives under `playbooks/`, not under `inventory/`, which is
@@ -293,10 +312,10 @@ model cannot express.
 
 ## What the verification stage proves
 
-`05_verify_fabric.yml` compares the declared model against what the controller
+`06_verify_fabric.yml` compares the declared model against what the controller
 actually holds, using the Nexus Dashboard API only. It is read-only and needs
 no switch access, so it works with the VPN down and can be re-run freely. It
-writes `evidence/stage05-verification.md` and fails on a mismatch.
+writes `evidence/stage06-verification.md` and fails on a mismatch.
 
 Eleven checks: five switches, three VRFs, three networks.
 
@@ -318,7 +337,7 @@ Reading the report:
 - A name under **"Switches missing"** or **"Attachments missing"** is a real
   fault: something declared did not attach.
 - An attached switch in **`PENDING`** means the intent exists on the
-  controller but was never pushed. Re-run `04_recalculate_and_deploy.yml`.
+  controller but was never pushed. Re-run `05_recalculate_and_deploy.yml`.
 - The report is regenerated on each run that reaches the end. If a run fails
   early, the previous report is left in place, so check its `Generated`
   timestamp before trusting it.
@@ -327,16 +346,107 @@ Reading the report:
 
 The pipeline carries all of the guide's sections 4, 5 and 6: everything
 `cisco.nac_dc_vxlan` 0.9.0 can express, plus the fabric settings it cannot,
-which stage 03 supplies. External connectivity, sections 7 and 8, stays
+which stage 03 supplies. It also carries section 7 in full - the External
+fabric *and* the edge router in it. Only section 8's VRF-Lite extensions stay
 manual.
 
-**The External fabric and the edge router** `DC-SITE11-CEDGE8Kv`
-(`198.18.133.14`) are built by hand in Nexus Dashboard before the pipeline
-runs: the fabric in Monitor Mode, the router discovered into it as an Edge
-Router. The model has no key for Monitor Mode, and `dcnm_inventory` has no
-concept of a non-NX-OS device, so neither can be declared.
-`07_external_fabric.yml` will create the fabric object if it is genuinely
-missing, but it refuses to touch one that already exists.
+**The External fabric** is built by stage 04, in Monitor Mode, with ASN 65531.
+Monitor Mode is not something the Nexus as Code model can express, and the
+collection does not merely omit it: `dc_external_fabric_general.j2` ties
+`IS_READ_ONLY` to the bootstrap setting instead, emitting `false` when
+bootstrap is off and `""` when it is on. Neither can produce `true`, so
+applying a Nexus as Code model to this fabric would take it *out* of Monitor
+Mode. Stage 04 therefore builds the fabric with `cisco.dcnm.dcnm_fabric` and
+sets Monitor Mode in the same call, so the fabric is never briefly writable.
+
+**The edge router** `DC-SITE11-CEDGE8Kv` (`198.18.133.14`) is also added by
+stage 04, but not with a `cisco.dcnm` module. Nexus Dashboard 4.x has two
+switch APIs, and only one of them supports a non-NX-OS device.
+
+The **legacy NDFC API** under `/appcenter/.../rest/control/` is what
+`dcnm_inventory` drives, and therefore what Nexus as Code drives. It has no
+IOS-XE support. The equivalent play would be:
+
+```yaml
+cisco.dcnm.dcnm_inventory:
+  fabric: External
+  state: merged
+  config:
+    - seed_ip: 198.18.133.14
+      auth_proto: MD5
+      role: edge_router
+      preserve_config: true
+```
+
+Run against this fabric, it fails with `Switch with IP 198.18.133.14 is not
+reachable or is not a valid IP`, although the router is reachable and the
+credentials are correct. The sequence is:
+
+1. `update_create_params()` builds a fixed payload - `seedIP`,
+   `snmpV3AuthProtocol`, `username`, `password`, `maxHops`,
+   `cdpSecondTimeout`, `role`, `preserveConfig`, `discoveryCredForLan`. There
+   is no key for the device type.
+2. That payload is POSTed to `inventory/test-reachability`, which returns
+   HTTP 200 with `reachable: true`, `auth: true`, `statusReason: "SNMPv3
+   Timeout"`, `valid: false`, `selectable: false`, and null `serialNumber`,
+   `platform` and `version`. The SSH login succeeded, but without a device
+   type the controller still required SNMPv3, so it read no device identity.
+3. `get_diff_merge()` expects a `Name(SERIAL)` pattern in `deviceIndex` and
+   finds the bare IP, which produces the reported error.
+
+A newer collection release would not change this. `platformType`,
+`device_type`, `ios-xe` and `iosxe` appear nowhere in `cisco.dcnm` 3.13.0,
+which is also the tip of that collection's `main` branch, nor in
+`cisco.nac_dc_vxlan`. Passing `platformType` to the legacy endpoint directly
+has no effect either, because the endpoint ignores it.
+
+The role is not the constraint: `edge_router` is a valid `dcnm_inventory`
+choice and a recognised Nexus as Code role.
+
+The **ND 4.x manage API** does support it. Stage 04 makes the same two calls
+the UI makes behind its Discover Switches and Add Switches steps:
+
+```
+POST /api/v1/manage/fabrics/External/actions/shallowDiscovery
+{"seedIpCollection":["198.18.133.14"],"platformType":"ios-xe",
+ "snmpV3AuthProtocol":"md5","username":"...","password":"...",
+ "maxHop":0,"discoveryCredForLan":false}
+
+POST /api/v1/manage/fabrics/External/switches?ticketId=
+{"platformType":"ios-xe","snmpV3AuthProtocol":"md5",
+ "username":"...","password":"...","preserveConfig":true,
+ "useCredentialForWrite":false,
+ "switches":[{"ip":"198.18.133.14","hostname":"DC-SITE11-CEDGE8Kv",
+              "model":"C8000V","softwareVersion":"17.18.4",
+              "serialNumber":"...","vdcId":0,"vdcMac":""}]}
+```
+
+Discovery supplies `model`, `softwareVersion` and `serialNumber`. Those are
+pod-specific, so the stage reads them rather than declaring them. Three
+details matter in the second call: it returns **202 with an empty body**, so
+the add is asynchronous and the stage polls `GET
+/api/v1/manage/fabrics/<fabric>/switches` for the outcome; no role is sent,
+because the controller assigns `edgeRouter` itself; and `preserveConfig` must
+be `true`, since the fabric is in Monitor Mode and the router's running
+configuration belongs to the lab.
+
+`snmpV3AuthProtocol` is a string on the manage API. Sending that same string
+to the legacy endpoint returns `HTTP 400: Cannot deserialize value of type int
+from String "md5"`. The two APIs do not share a schema, so a payload captured
+from the UI is not portable between them.
+
+`platformType` is the API form of the UI's `Device type: IOS XE` dropdown and
+its `CSR/CAT8K/ASR/CAT9K` sub-selector. It selects the discovery protocol
+rather than labelling the device. Cisco's External Connectivity Network guide
+states that *"Cisco CSR 1000v is discovered using SSH ... does not need SNMP
+support"* and that *"Starting from NDFC release 12.1.3b, SNMP is not required
+for IOS-XE devices."* Omitting it makes the controller use the NX-OS SNMPv3
+path, which produces the timeout above.
+
+Stage 04 is safe to re-run: the fabric converges with `state: merged`, and the
+router is discovered and added only when the fabric's switch list does not
+already contain it. Skip the router with `-e
+dc_external_add_edge_router=false`.
 
 **The VRF-Lite extensions themselves** - MAIN, PROD and IOT reaching out of
 DC-Service-Leaf to the edge router - are still manual. The fabric-level
@@ -350,7 +460,7 @@ thing to design around when this is written: the create role runs `dcnm_vrf`
 with `state: replaced`, so a create run will detach whatever a VRF-Lite stage
 attached, meaning that stage has to run after create on every pass.
 
-When VRF-Lite lands, extend stage 05 to assert the extension on
+When VRF-Lite lands, extend stage 06 to assert the extension on
 DC-Service-Leaf, so a create-without-VRF-Lite run is caught rather than
 silently reverting external connectivity.
 

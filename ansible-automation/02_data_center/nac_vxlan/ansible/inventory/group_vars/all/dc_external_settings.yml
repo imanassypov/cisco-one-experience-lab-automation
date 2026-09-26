@@ -1,0 +1,56 @@
+---
+# Declared intent for the External connectivity fabric - guide section 7,
+# "Create an External Fabric". 04_external_fabric.yml is the mechanism and
+# holds no values; this file holds the values and no mechanism.
+#
+# Unlike Pseudoco-DC1, this fabric has no Nexus as Code data model, because
+# the collection's create role cannot build it. The role always runs a
+# config-save after its inventory step, and on a fabric with no switches
+# Nexus Dashboard returns HTTP 500 "Fabric External cannot be deployed
+# without any switches". The fabric also holds no VRFs, networks or
+# interfaces, so there is nothing for the collection to express. Stage 04
+# creates it with cisco.dcnm.dcnm_fabric and adds the edge router over REST,
+# both from this file.
+#
+# Keys are External_Fabric template parameters, spelled exactly as the
+# controller spells them. dcnm_fabric raises
+#   ValueError: Key X not found in fabric configuration for fabric External
+# on anything it does not recognise, so a typo fails loudly rather than
+# silently doing nothing. Values are natural YAML types - the module
+# stringifies them before comparing against the controller, so true and 65531
+# are both idempotent.
+#
+# Everything not listed here is left at the template default. That is
+# deliberate: the fewer values declared, the fewer that can drift from a
+# controller upgrade.
+dc_external_fabric_settings:
+  # Guide: ASN 65531. Distinct from the DC fabric's 65000 - this is the other
+  # side of the eBGP VRF-Lite handoff, so the two must differ.
+  BGP_AS: "65531"
+
+  # Fabric Monitor Mode. The guide leaves it checked so Nexus Dashboard reads
+  # the external device and never writes to it. It is set at creation rather
+  # than afterwards so the fabric is never briefly writable.
+  IS_READ_ONLY: true
+
+# The IOS-XE edge router that lives in this fabric. Guide section 7, "Add
+# Switches": Seed IP 198.18.133.14, Device Type "IOS XE and CSR/CAT8K".
+#
+# platform_type is the API spelling of that Device Type dropdown. It selects
+# the discovery protocol rather than labelling the device: with it the
+# controller queries the seed over SSH, without it the seed gets the NX-OS
+# SNMPv3 path and comes back without an identity. See the playbook header.
+#
+# model, softwareVersion and serialNumber are not declared here, although the
+# add call requires all three. They are pod-specific, so the stage discovers
+# them and uses what the controller reports rather than a hardcoded serial
+# that would be wrong on the next pod.
+#
+# credential_key names the vault entry holding the router's login. The
+# credential itself stays in the vault-encrypted lab_access.yml; nothing in
+# this tree holds a password.
+dc_external_edge_router:
+  ip: 198.18.133.14
+  hostname: DC-SITE11-CEDGE8Kv
+  platform_type: ios-xe
+  credential_key: DC-SITE11-CEDGE8Kv

@@ -57,11 +57,11 @@ covers each in full:
 
 ## What the pipeline covers
 
-`01_dc_deploy.yml` imports stages 02 through 05 and nothing else: create the
+`01_dc_deploy.yml` imports stages 02 through 06 and nothing else: create the
 intent on the controller, apply the fabric settings Nexus as Code has no key
-for, deploy the lot to the switches, then verify the result against the
-declared model. Stage 05 is read-only and writes
-`evidence/stage05-verification.md`.
+for, create the External connectivity fabric, deploy the lot to the switches,
+then verify the result against the declared model. Stage 06 is read-only and
+writes `evidence/stage06-verification.md`.
 
 Stage 03 is the one that is not Nexus as Code. It writes the guide's
 Resources-tab settings - VRF Lite Deployment, its subnet pool, the two auto
@@ -71,21 +71,33 @@ Without it the fabric is left with VRF Lite Deployment at `Manual`, and
 external connectivity cannot be built. Its values live in
 `nac_vxlan/ansible/inventory/group_vars/all/dc_advanced_settings.yml`.
 
+Stage 04 is the other one that is not Nexus as Code, and it is the only stage
+that builds a second fabric. It creates `External`, ASN 65531, in Monitor
+Mode, from
+`nac_vxlan/ansible/inventory/group_vars/all/dc_external_settings.yml`. It runs
+before the deploy because this is the fabric on the far side of the VRF-Lite
+handoff.
+
 Playbooks numbered outside that range are ones you run deliberately, by name:
-`00_discover_dc_switch_serials.yml` below it, `06_remove.yml` and
-`07_external_fabric.yml` above it.
+`00_discover_dc_switch_serials.yml` below it and `07_remove.yml` above it.
 
 ## Where the automation stops
 
 The pipeline carries everything `cisco.nac_dc_vxlan` 0.9.0 can express for
-this guide, and the fabric settings it cannot. External connectivity, guide
-sections 7 and 8, stays manual.
+this guide, the fabric settings it cannot, and all of guide section 7: the
+External fabric and the IOS-XE edge router in it. What stays manual is the
+VRF-Lite extensions of section 8.
 
-The External fabric and the IOS-XE edge router `DC-SITE11-CEDGE8Kv`
-(`198.18.133.14`) are a **prerequisite**, built in Nexus Dashboard before the
-pipeline runs: the fabric in Monitor Mode, the router discovered into it as an
-Edge Router. Neither Monitor Mode nor a non-NX-OS device can be declared in
-the model.
+Stage 04 creates the External fabric in Monitor Mode and adds
+`DC-SITE11-CEDGE8Kv` (`198.18.133.14`) to it as an Edge Router. Neither step
+uses Nexus as Code, and the router is not added with `dcnm_inventory`. The
+legacy NDFC API that `dcnm_inventory` and Nexus as Code both drive has no
+IOS-XE support: it ignores a device-type field and uses NX-OS SNMPv3
+discovery, which returns HTTP 200 with a `SNMPv3 Timeout` status and no
+device identity. The ND 4.x manage API does support it, as `platformType:
+"ios-xe"`, so stage 04 calls that API directly - `actions/shallowDiscovery`
+to read the router's model, version and serial number, then
+`switches?ticketId=` to add it. The collection README has the detail.
 
 Extending MAIN, PROD and IOT out of DC-Service-Leaf over VRF-Lite is still
 manual, though stage 03 now puts the fabric-level settings it depends on in
