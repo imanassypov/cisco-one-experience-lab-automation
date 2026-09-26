@@ -10020,7 +10020,7 @@ ansible-galaxy collection list | grep -E 'nac_dc_vxlan|dcnm|nxos'</pre>
 <p>Then read the serials off the switches, which also writes the data model, and run the pipeline:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 ansible-playbook playbooks/01_dc_deploy.yml</pre>
-<p>The orchestrator runs four stages in order: <code>02_create.yml</code> builds the full intent on the controller, <code>03_advanced_settings.yml</code> applies the fabric settings Nexus as Code has no key for, <code>04_deploy.yml</code> pushes the lot to the switches, and <code>05_verify_fabric.yml</code> checks the result. Credentials come from the same vault-encrypted <code>lab_access.yml</code> every other collection in this repository uses.</p>
+<p>The orchestrator runs four stages in order: <code>02_create.yml</code> builds the full intent on the controller, <code>03_advanced_settings.yml</code> applies the fabric settings Nexus as Code has no key for, <code>04_recalculate_and_deploy.yml</code> pushes the lot to the switches, and <code>05_verify_fabric.yml</code> checks the result. Credentials come from the same vault-encrypted <code>lab_access.yml</code> every other collection in this repository uses.</p>
 <p>One stage builds everything, and that is worth saying plainly, because it does not mirror the order you clicked through by hand. <code>02_create.yml</code> creates the fabric object, imports and roles the five switches, pairs the vPC, lays down the port-channels and declares the VRFs and networks — all of sections 4, 5 and 6 in a single run. Giving the fabric object a stage of its own would be misleading rather than useful, because Nexus as Code drives the whole data model through one create role: a playbook that ran that role and filtered nothing would perform the entire build whatever its name promised.</p>
 <p>You can still have section 4 on its own when you want it, and the right way to ask for it is a tag rather than a separate playbook. The create role exposes a per-step tag for the fabric object:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">ansible-playbook playbooks/02_create.yml --tags cr_manage_fabric</pre>
@@ -10125,7 +10125,7 @@ ansible-playbook playbooks/02_create.yml</pre>
 <p>All 21 steps then complete, and the play recap reads <code>Pseudoco-DC1 : ok=40 changed=4 unreachable=0 failed=0 skipped=17</code> with no "already in use" anywhere in the log. Run it a second time and both <code>vrfs</code> and <code>networks</code> report <code>ok (changed=False)</code>. That second run is the one that tells you the most, because unchanged means the attachments genuinely landed on the controller rather than merely being accepted by it.</p>
 <hr>
 <h4>Reading the verification report</h4>
-<p>Stage 04 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller and writes a file; it changes nothing:</p>
+<p>Stage 05 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller and writes a file; it changes nothing:</p>
 <pre style="background: #1e1e1e; color: #dcdcdc; padding: 20px; overflow: auto; font-family: Consolas,monospace;">cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
 ansible-playbook playbooks/05_verify_fabric.yml</pre>
 <p>A healthy fabric ends with <code>failed=0</code> and this line, and the report at <code>evidence/stage05-verification.md</code> opens with the same count:</p>
@@ -10147,7 +10147,7 @@ ansible-playbook playbooks/05_verify_fabric.yml</pre>
 <p>Which leaves the question of what a <em>real</em> failure looks like, because "everything is fine" is not a useful thing to learn from a verification stage. Three things still fail the run, and each points somewhere different:</p>
 <ul>
 <li>A name under <strong>Switches missing</strong> (VRFs) or <strong>Attachments missing</strong> (networks). You declared that switch and the controller has no attachment for it at all — a gap between your data model and the fabric, not a deployment problem.</li>
-<li>An attached switch reading <code>PENDING</code> in <strong>Attachment states</strong>. The intent exists on the controller but was never pushed to the switch. Re-run <code>ansible-playbook playbooks/04_deploy.yml</code>.</li>
+<li>An attached switch reading <code>PENDING</code> in <strong>Attachment states</strong>. The intent exists on the controller but was never pushed to the switch. Re-run <code>ansible-playbook playbooks/04_recalculate_and_deploy.yml</code>.</li>
 <li>An attached switch reading <code>OUT-OF-SYNC</code>, or a VNI, gateway or VRF name that does not match the column beside it. Something changed the fabric outside the data model.</li>
 </ul>
 <p>Only <code>NA</code> is set aside. An attached switch in any state other than <code>DEPLOYED</code> still fails, which is the whole point of running the stage.</p>
