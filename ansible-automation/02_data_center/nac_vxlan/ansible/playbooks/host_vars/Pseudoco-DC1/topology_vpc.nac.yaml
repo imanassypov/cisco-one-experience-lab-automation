@@ -11,7 +11,12 @@
 # physical ports are confirmed on the box.
 #
 # domain_id is also omitted so Nexus Dashboard allocates from
-# vxlan.global.ibgp.vpc.domain_id_range.
+# vxlan.global.ibgp.vpc.domain_id_range. That is the same controller-side
+# allocation that had to be abandoned for VRF and network VLANs (see the
+# header of vrfs.nac.yaml): the lookup returns a free value without reserving
+# it, so a batched run hands every object the same one. It is safe here only
+# because there is exactly one vpc_peers entry, leaving nothing to collide
+# with. Pin domain_id explicitly before declaring a second pair.
 #
 # CAUTION: the data model documents vPC pairs as provision-and-decommission
 # only. Once deployed, a pair cannot be edited to change peers or to scale

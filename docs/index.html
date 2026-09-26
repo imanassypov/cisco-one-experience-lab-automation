@@ -9565,7 +9565,7 @@ AI-generated content may be incorrect." width="535" height="368"></p>
 <h4 class="dC-H2"><strong>Create VRF</strong> <o:p></o:p></h4>
 <p>To set up inter-VXLAN routing with symmetric Integrated Routing and Bridging (IRB) in VXLAN EVPN, you need a Layer-3 Virtual Network Identifier (VNI) for the overlay or tenant network.</p>
 <p>A Layer-3 VNI links to a tenant VRF routing instance, which helps separate the routing domain between tenant overlays. Nexus Dashboard simplifies this process by automating configuration checks, ensuring all VRF, BGP EVPN, and VXLAN settings are correct. This is particularly useful in large production environments with many peers and tenant overlays, where managing configurations can be complex. In this section, you will create and set up the initial tenant overlay VRF and its associated Layer-3 VNI. In the next section, you will follow the workflow to create networks that consist of Layer-2 (L2) VNIs and VLANs and link them to an overlay tenant VRF.</p>
-<p style="text-align: left;">In the Fabric <strong>Pseudoco-DC-1</strong>, click <strong>Segmentation and security</strong>, click on the <strong>VRFs</strong> tab, click the white <strong>Actions</strong> button and then finally click <strong>Create</strong>.</p>
+<p style="text-align: left;">In the Fabric <strong>Pseudoco-DC1</strong>, click <strong>Segmentation and security</strong>, click on the <strong>VRFs</strong> tab, click the white <strong>Actions</strong> button and then finally click <strong>Create</strong>.</p>
 <p><img class="img-fluid" role="presentation" src="" data-missing="14.6-1.png?1776286270669" alt="" width="865" height="478"></p>
 <p>In the <strong>Create VRF</strong> wizard, configure the following parameters</p>
 <ul>
@@ -9609,7 +9609,7 @@ AI-generated content may be incorrect." width="535" height="368"></p>
 <figure></figure>
 <p>We have completed the VRF creation, now let's create some Networks.</p>
 <h3 id="create-networks">Create Networks</h3>
-<p>In Nexus Dashboard, networks are where you set up Layer-2 (L2) Virtual Network Identifiers (VNIs) linked to VLANs for Layer-2 segments or bridge domains across the routed fabric. L2VNIs keep Layer-2 traffic within their boundaries, preventing it from crossing into other VNIs. For routing between different VNIs or VXLANs, a Layer-3 VNI with a VRF is necessary. If routing is needed, you can set up a Switched Virtual Interface (SVI), also known as an Anycast Gateway, on all leaf switches, which you then associate with the Layer-3 VNI VRF. If routing between L2VNIs is not required, the L2VNI can remain Layer-2 only. In this demo, you will set up two networks for inter-VXLAN routing, connecting them to the Layer-3 VNI VRF you created earlier.</p>
+<p>In Nexus Dashboard, networks are where you set up Layer-2 (L2) Virtual Network Identifiers (VNIs) linked to VLANs for Layer-2 segments or bridge domains across the routed fabric. L2VNIs keep Layer-2 traffic within their boundaries, preventing it from crossing into other VNIs. For routing between different VNIs or VXLANs, a Layer-3 VNI with a VRF is necessary. If routing is needed, you can set up a Switched Virtual Interface (SVI), also known as an Anycast Gateway, on all leaf switches, which you then associate with the Layer-3 VNI VRF. If routing between L2VNIs is not required, the L2VNI can remain Layer-2 only. In this demo, you will set up three networks for inter-VXLAN routing, connecting them to the Layer-3 VNI VRF you created earlier.</p>
 <p>In the Fabric <strong>Pseudoco-DC1</strong>, click <strong>Segmentation and security</strong>, click the <strong>Networks</strong> tab, click the <strong>Blue Actions</strong> button and then finally, click <strong>Create</strong>.</p>
 <p><img class="img-fluid" role="presentation" src="" data-missing="14.7-7.png?1776287908257" alt="" width="865" height="476"></p>
 <p>In the <strong>Create Network</strong> wizard, configure the following parameters</p>
@@ -9633,7 +9633,7 @@ AI-generated content may be incorrect." width="535" height="368"></p>
 <li>Network Name: <strong>ProdNetwork1</strong></li>
 <li>Network Mode: <strong>Layer 3</strong></li>
 <li>VRF Name: <strong>PROD</strong></li>
-<li>Network ID: <strong>30001</strong> (This is the first VNI from the L2VNI pool)</li>
+<li>Network ID: <strong>30001</strong> (This is the second VNI from the L2VNI pool)</li>
 <li>VLAN ID: <strong>Propose VLAN</strong> (This pulls a VLAN from the VLAN pool you created while creating the fabric and places it in the VLAN ID Field)</li>
 <li>IPv4 Gateway/Netmask: <strong>10.101.252.1/24</strong></li>
 <li>VLAN Name: <strong>ProdNetwork1</strong></li>
@@ -9649,7 +9649,7 @@ AI-generated content may be incorrect." width="535" height="368"></p>
 <li>Network Name: <strong>IOTNetwork1</strong></li>
 <li>Network Mode: <strong>Layer 3</strong></li>
 <li>VRF Name: <strong>IOT</strong></li>
-<li>Network ID: <strong>30002</strong> (This is the first VNI from the L2VNI pool)</li>
+<li>Network ID: <strong>30002</strong> (This is the third VNI from the L2VNI pool)</li>
 <li>VLAN ID: <strong>Propose VLAN</strong> (This pulls a VLAN from the VLAN pool you created while creating the fabric and places it in the VLAN ID Field)</li>
 <li>IPv4 Gateway/Netmask: <strong>10.102.252.1/24</strong></li>
 <li>VLAN Name: <strong>IOTNetwork1</strong></li>

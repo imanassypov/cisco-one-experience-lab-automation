@@ -82,6 +82,18 @@ in the tracked files now, but pulling that change does not on its own fix a
 script server: what Nexus Dashboard reads is the *generated*
 `topology_switches.nac.yaml`, so re-run the discovery stage after the pull,
 with the VPN up. The collection README carries the evidence, and the reasons
+A second symptom, further along the same run, is `Entered network VLAN id 2300
+is already in use` at the `networks` step, reported inside an HTTP 200 body
+rather than as an error. Every VRF and network in the data model now carries an
+explicit `vlan_id` - VRFs 2000, 2001, 2002 and networks 2300, 2301, 2302 - and
+that is the fix. The reason it is needed is that omitting the VLAN is only safe
+in the GUI: the guide's "Propose VLAN" button allocates one object at a time
+with a save in between, whereas `cisco.dcnm` asks the controller for the next
+free VLAN once per object in a single loop, and reading a free VLAN does not
+reserve it, so all three objects are handed the same number. Give any VRF or
+network you add an explicit VLAN too. These two files are read straight by the
+create role, so a plain `git pull` is enough here - no discovery re-run.
+
 this is a suspicion rather than a proven cause.
 
 ## Where the automation stops

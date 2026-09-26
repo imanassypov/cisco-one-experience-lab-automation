@@ -10,13 +10,20 @@
 # is_l2_only stays false, which is the data model's spelling of the guide's
 # "Network Mode: Layer 3".
 #
-# vlan_id is omitted throughout: the guide clicks "Propose VLAN".
+# vlan_id is pinned on every network, taken in declaration order from the
+# fabric's L2 VLAN range 2300-2999 (layer2_vlan_range in the collection's
+# validate defaults). The guide clicks "Propose VLAN", which is safe one
+# network at a time; in a batched run the resource-manager lookup hands back
+# the same next-free VLAN for all three, because reading it reserves nothing,
+# and the two that lose the race fail with "Entered network VLAN id 2300 is
+# already in use".
 vxlan:
   overlay:
     networks:
       - name: MainNetwork1
         vrf_name: MAIN
         net_id: 30000
+        vlan_id: 2300
         is_l2_only: false
         vlan_name: MainNetwork1
         int_desc: MainNetwork1
@@ -26,6 +33,7 @@ vxlan:
       - name: ProdNetwork1
         vrf_name: PROD
         net_id: 30001
+        vlan_id: 2301
         is_l2_only: false
         vlan_name: ProdNetwork1
         int_desc: ProdNetwork1
@@ -35,6 +43,7 @@ vxlan:
       - name: IOTNetwork1
         vrf_name: IOT
         net_id: 30002
+        vlan_id: 2302
         is_l2_only: false
         vlan_name: IOTNetwork1
         int_desc: IOTNetwork1
