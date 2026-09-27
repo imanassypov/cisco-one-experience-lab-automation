@@ -54,17 +54,57 @@
           {{ dc_vrf_lite_border_leaf }}.
 
 # ---------------------------------------------------------------------------
-# 1. The inter-fabric link
+# 1. Overlays
 #
-# This has to go before the switches do. The border leaf is an endpoint of it,
-# and the controller will not delete a switch that a link still references:
+# Networks first, then VRFs: a network sits inside a VRF, so the VRF cannot go
+# while a network still references it. Both have to go before the switches do -
+# the controller refuses to delete a switch that still carries overlay
+# attachments, and says so only as
 #
 #   Failed to delete the switch[955T6I5X2D4/DC-Service-Leaf].
 #   Please check Anomalies for possible reasons.
 #
+# which names neither the switch's attachments nor the link below as the cause.
+- name: Stage 09b - remove the overlays
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Delete every network
+      cisco.dcnm.dcnm_network:
+        fabric: "{{ dc_fabric_name }}"
+        state: deleted
+      register: dc_cleanup_networks
+      vars:
+        ansible_command_timeout: 3000
+        ansible_connect_timeout: 3000
+
+    - name: Delete every VRF
+      cisco.dcnm.dcnm_vrf:
+        fabric: "{{ dc_fabric_name }}"
+        state: deleted
+      register: dc_cleanup_vrfs
+      vars:
+        ansible_command_timeout: 3000
+        ansible_connect_timeout: 3000
+
+    - name: Report the overlay result
+      ansible.builtin.debug:
+        msg: >-
+          Networks removed (changed={{ dc_cleanup_networks.changed | default(false) }}),
+          VRFs removed (changed={{ dc_cleanup_vrfs.changed | default(false) }}).
+          This also clears the VRF-Lite extensions and the dot1q the controller
+          reserved for them.
+
+# ---------------------------------------------------------------------------
+# 2. The inter-fabric link
+#
+# This has to go before the switches do. The border leaf is an endpoint of it,
+# and the controller will not delete a switch that a link still references.
 # Stage 04 creates this link from the data model, so stage 09 removes the same
 # one, identified the same way.
-- name: Stage 09b - remove the VRF-Lite inter-fabric link
+- name: Stage 09c - remove the VRF-Lite inter-fabric link
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -93,12 +133,12 @@
              else '' }}
 
 # ---------------------------------------------------------------------------
-# 2. Inventory
+# 3. Inventory
 #
 # state: deleted with no config removes every switch in the named fabric.
 # Doing this before the fabric delete means the controller releases the
 # switches cleanly rather than losing them along with the fabric.
-- name: Stage 09c - remove the switches from the DC fabric
+- name: Stage 09d - remove the switches from the DC fabric
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -119,7 +159,7 @@
           {{ dc_fabric_name }} inventory cleared.
           changed={{ dc_cleanup_dc_inventory.changed | default(false) }}.
 
-- name: Stage 09d - remove the router from the External fabric
+- name: Stage 09e - remove the router from the External fabric
   hosts: External
   gather_facts: false
   any_errors_fatal: true
@@ -143,8 +183,8 @@
           changed={{ dc_cleanup_ext_inventory.changed | default(false) }}.
 
 # ---------------------------------------------------------------------------
-# 2. Fabrics
-- name: Stage 09e - delete both fabrics
+# 4. Fabrics
+- name: Stage 09f - delete both fabrics
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -165,11 +205,11 @@
           changed={{ dc_cleanup_fabrics.changed | default(false) }}.
 
 # ---------------------------------------------------------------------------
-# 3. The switch itself
+# 5. The switch itself
 #
 # Built from dc_vrf_lite.yml rather than hardcoded, so a tag added there is
 # cleaned up here without anyone remembering to.
-- name: Stage 09f - build the border leaf SSH group
+- name: Stage 09g - build the border leaf SSH group
   hosts: localhost
   gather_facts: false
   connection: local
@@ -187,7 +227,7 @@
         dc_switch_role: border
       changed_when: false
 
-- name: Stage 09g - strip the VRF-Lite sub-interfaces off the border leaf
+- name: Stage 09h - strip the VRF-Lite sub-interfaces off the border leaf
   hosts: dc_fabric_switches
   gather_facts: false
   any_errors_fatal: true
