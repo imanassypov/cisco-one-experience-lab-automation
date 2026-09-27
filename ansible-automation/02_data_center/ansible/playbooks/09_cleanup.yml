@@ -70,12 +70,36 @@
   gather_facts: false
   any_errors_fatal: true
 
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
   tasks:
+    # Everything below is skipped when the fabric has already gone, so a
+    # teardown can be re-run after one that stopped part way through. The list
+    # endpoint is used rather than a GET of the fabric itself because that
+    # answers 4xx for an absent fabric and dcnm_rest turns 4xx into a module
+    # failure. This fact is read again by the two plays that follow - it
+    # persists because they target the same host.
+    - name: List the fabrics on the controller
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics"
+      register: dc_cleanup_fabric_list
+      changed_when: false
+
+    - name: Note whether the controller still has {{ dc_fabric_name }}
+      ansible.builtin.set_fact:
+        dc_cleanup_dc_present: >-
+          {{ dc_fabric_name in
+             ((dc_cleanup_fabric_list.response | default({})).DATA
+              | default([], true) | map(attribute='fabricName') | list) }}
+
     - name: Delete every network
       cisco.dcnm.dcnm_network:
         fabric: "{{ dc_fabric_name }}"
         state: deleted
       register: dc_cleanup_networks
+      when: dc_cleanup_dc_present | bool
       vars:
         ansible_command_timeout: 3000
         ansible_connect_timeout: 3000
@@ -85,6 +109,7 @@
         fabric: "{{ dc_fabric_name }}"
         state: deleted
       register: dc_cleanup_vrfs
+      when: dc_cleanup_dc_present | bool
       vars:
         ansible_command_timeout: 3000
         ansible_connect_timeout: 3000
@@ -92,10 +117,12 @@
     - name: Report the overlay result
       ansible.builtin.debug:
         msg: >-
-          Networks removed (changed={{ dc_cleanup_networks.changed | default(false) }}),
-          VRFs removed (changed={{ dc_cleanup_vrfs.changed | default(false) }}).
-          This also clears the VRF-Lite extensions and the dot1q the controller
-          reserved for them.
+          {{ 'Networks removed (changed=' ~ (dc_cleanup_networks.changed | default(false)) ~
+             '), VRFs removed (changed=' ~ (dc_cleanup_vrfs.changed | default(false)) ~
+             '). This also clears the VRF-Lite extensions and the dot1q the'
+             ~ ' controller reserved for them.'
+             if dc_cleanup_dc_present | bool
+             else dc_fabric_name ~ ' is not on the controller - nothing to remove.' }}
 
 # ---------------------------------------------------------------------------
 # 2. The inter-fabric link
@@ -122,15 +149,16 @@
             dst_device: "{{ dc_external_edge_router.hostname }}"
       register: dc_cleanup_link
       failed_when: false
+      when: dc_cleanup_dc_present | bool
 
     - name: Report the link result
       ansible.builtin.debug:
         msg: >-
-          Inter-fabric link removed.
-          changed={{ dc_cleanup_link.changed | default(false) }}.
-          {{ 'The controller reported: ' ~ (dc_cleanup_link.msg | string)
-             if dc_cleanup_link.failed | default(false)
-             else '' }}
+          {{ 'Inter-fabric link removed. changed=' ~ (dc_cleanup_link.changed | default(false)) ~ '. '
+             ~ ('The controller reported: ' ~ (dc_cleanup_link.msg | string)
+                if dc_cleanup_link.failed | default(false) else '')
+             if dc_cleanup_dc_present | bool
+             else dc_fabric_name ~ ' is not on the controller - no link to remove.' }}
 
 # ---------------------------------------------------------------------------
 # 3. Inventory
@@ -164,6 +192,7 @@
         path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/inventory/switchesByFabric"
       register: dc_cleanup_dc_switches
       changed_when: false
+      when: dc_cleanup_dc_present | bool
 
     - name: Force-remove every switch from {{ dc_fabric_name }}
       cisco.dcnm.dcnm_rest:
@@ -189,7 +218,7 @@
                             | map(attribute='item.logicalName')
                             | select('defined') | join(', '))
                     if dc_cleanup_dc_removed.results | default([]) | length > 0
-                    else ' - the fabric was already empty' }}.
+                    else ' - nothing was there' }}.
 
 - name: Stage 09e - remove the router from the External fabric
   hosts: External
@@ -200,12 +229,27 @@
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
 
   tasks:
+    - name: List the fabrics on the controller
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics"
+      register: dc_cleanup_ext_fabric_list
+      changed_when: false
+
+    - name: Note whether the controller still has {{ dc_external_fabric_name }}
+      ansible.builtin.set_fact:
+        dc_cleanup_ext_present: >-
+          {{ dc_external_fabric_name in
+             ((dc_cleanup_ext_fabric_list.response | default({})).DATA
+              | default([], true) | map(attribute='fabricName') | list) }}
+
     - name: List the switches in {{ dc_external_fabric_name }}
       cisco.dcnm.dcnm_rest:
         method: GET
         path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_external_fabric_name }}/inventory/switchesByFabric"
       register: dc_cleanup_ext_switches
       changed_when: false
+      when: dc_cleanup_ext_present | bool
 
     - name: Force-remove every switch from {{ dc_external_fabric_name }}
       cisco.dcnm.dcnm_rest:
@@ -237,7 +281,17 @@
   gather_facts: false
   any_errors_fatal: true
 
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
   tasks:
+    - name: List the fabrics on the controller
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics"
+      register: dc_cleanup_remaining
+      changed_when: false
+
     - name: Delete both fabrics
       cisco.dcnm.dcnm_fabric:
         state: deleted
@@ -245,12 +299,18 @@
           - FABRIC_NAME: "{{ dc_external_fabric_name }}"
           - FABRIC_NAME: "{{ dc_fabric_name }}"
       register: dc_cleanup_fabrics
+      when: >-
+        [dc_fabric_name, dc_external_fabric_name]
+        | intersect((dc_cleanup_remaining.response | default({})).DATA
+                    | default([], true) | map(attribute='fabricName') | list)
+        | length > 0
 
     - name: Report the fabric result
       ansible.builtin.debug:
         msg: >-
-          Fabrics deleted.
-          changed={{ dc_cleanup_fabrics.changed | default(false) }}.
+          {{ 'Fabrics deleted. changed=' ~ (dc_cleanup_fabrics.changed | default(false)) ~ '.'
+             if dc_cleanup_fabrics.changed | default(false)
+             else 'Neither fabric was on the controller - nothing to delete.' }}
 
 # ---------------------------------------------------------------------------
 # 5. The switch itself
