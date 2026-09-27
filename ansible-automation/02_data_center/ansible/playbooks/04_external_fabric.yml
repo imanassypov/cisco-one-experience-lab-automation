@@ -130,12 +130,32 @@
 
     # ---------------------------------------------------------------- router
 
+    # The fabric is created through the lan-fabric API, but its switch list
+    # belongs to the manage API, and that one does not see a brand new fabric
+    # straight away: the read below returns 404 "Fabric not found" for a few
+    # seconds after creation. Retry until it appears rather than failing the
+    # whole build on a propagation delay.
     - name: Read the fabric's current switch list
       cisco.dcnm.dcnm_rest:
         method: GET
         path: "{{ nd_fabric_switches }}"
       register: dc_external_switches_before
       changed_when: false
+      ignore_errors: true
+      until: (dc_external_switches_before.response | default({})).RETURN_CODE | default(0) | int == 200
+      retries: "{{ dc_external_add_retries }}"
+      delay: "{{ dc_external_add_delay }}"
+
+    - name: Fail when the new fabric never became readable
+      ansible.builtin.assert:
+        that:
+          - (dc_external_switches_before.response | default({})).RETURN_CODE | default(0) | int == 200
+        fail_msg: >-
+          {{ inventory_hostname }} exists on the controller but
+          {{ nd_fabric_switches }} still reports "Fabric not found" after
+          {{ (dc_external_add_retries | int) * (dc_external_add_delay | int) }}s.
+          That is longer than a propagation delay, so check the fabric really
+          was created and that the manage API is healthy.
 
     # Matched on the management IP rather than the hostname. The IP is
     # declared here; the hostname is whatever the device reports.
