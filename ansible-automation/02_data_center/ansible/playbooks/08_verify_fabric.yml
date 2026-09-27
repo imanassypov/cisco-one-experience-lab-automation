@@ -732,8 +732,8 @@
           See {{ dc_evidence_path }}.
         success_msg: >-
           All {{ dc_total_checks }} evaluated check(s) match the declared intent.
-          {%- if dc_bgp_undetermined_rows | length > 0 %}
+          {% if dc_bgp_undetermined_rows | length > 0 %}
           The {{ dc_bgp_undetermined_rows | length }} BGP session check(s) the
           border leaf did not answer for are not among them.
-          {%- endif %}
+          {% endif %}
       when: dc_verify_fail_on_mismatch | bool

@@ -3,7 +3,7 @@
 # default holding the branch to check out, and this register silently shadowed
 # it. The default is gone now that the role never runs git, but the two names
 # are worth keeping distinct.
-- name: Collect git version
+- name: Collect git version  # noqa command-instead-of-module
   ansible.builtin.command:
     cmd: git --version
   register: script_server_git_binary_version
