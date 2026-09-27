@@ -36,7 +36,7 @@
 #     terminates on the parent interface, and it builds that link itself during
 #     a Recalculate and Deploy, once the edge router stage 04 adds is in the
 #     External fabric. Without that link there is no prototype to build the
-#     payload from, and this stage says so. So run 05_recalculate_config.yml
+#     payload from, and this stage says so. So run 05_recalculate_and_deploy.yml
 #     first, then this stage, then the deploy again. 01_dc_deploy.yml already
 #     imports the stages in that order.
 #

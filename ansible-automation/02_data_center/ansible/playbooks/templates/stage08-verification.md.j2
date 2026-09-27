@@ -90,7 +90,7 @@ after stage 05: the create role uses `state: replaced`, and the data model has
 no key for an extension, so a create run clears `extensionValues` even though
 it keeps the border leaf's attachment. Re-run `06_vrf_lite.yml`. If it then
 fails with `No VRF LITE capable interfaces found on this switch`, run
-`05_recalculate_config.yml` first, then retry stage 06.
+`05_recalculate_and_deploy.yml` first, then retry stage 06.
 A row that is attached and `DEPLOYED` but has a `NO` in one
 of the seen columns means the extension exists with different values than
 `dc_vrf_lite.yml` declares - reconcile those values before running stage 06
