@@ -82,8 +82,8 @@ none were checked.
 
 Each extension must be attached to the border leaf, in `DEPLOYED`, and its
 `extensionValues` must carry the declared interface, dot1q tag and neighbour
-address. The three "seen" columns are substring matches against that field,
-which Nexus Dashboard returns as a JSON document encoded into a string.
+address. Those three columns read named fields out of that document, which
+Nexus Dashboard returns as JSON nested inside a JSON string.
 
 A whole row reading `NO` with state `absent` almost always means stage 02 ran
 after stage 05: the create role uses `state: replaced`, and the data model has
@@ -95,6 +95,29 @@ A row that is attached and `DEPLOYED` but has a `NO` in one
 of the seen columns means the extension exists with different values than
 `dc_vrf_lite.yml` declares - reconcile those values before running stage 06
 again.
+
+## VRF-Lite sub-interfaces on the switch
+
+| Sub-interface | Declared | Oper | Dot1q | Address | MTU | Match |
+|---|---|---|---|---|---|---|
+{% for row in dc_subif_rows | default([]) | selectattr('determined') %}
+| {{ row.name }} | {{ row.declared }} | {{ row.oper_status }} | {{ 'yes' if row.dot1q_ok else 'NO' }} | {{ 'yes' if row.address_ok else 'NO' }} | {{ 'yes' if row.mtu_ok else 'NO' }} | {{ 'yes' if row.ok else 'NO' }} |
+{% endfor %}
+{% if not (dc_subif_rows | default([]) | selectattr('determined') | list) %}
+Not determined - the border leaf was not read, so none of the sub-interfaces
+were checked.
+{% endif %}
+
+The section above is what the controller believes; this one is what the switch
+actually runs. `show interface` is parsed with pyATS/Genie, so the dot1q tag,
+address and MTU are compared as named fields rather than matched out of screen
+text.
+
+The two can disagree, and the disagreement is the finding. Extensions
+`DEPLOYED` on the controller with no sub-interface here means the deploy did
+not reach the switch - run `07_recalculate_and_deploy.yml`. A sub-interface
+that is present but `down` usually means the far end is not configured to
+match; the BGP table below will show the session never leaving Idle.
 
 ## VRF-Lite BGP sessions
 

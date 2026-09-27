@@ -97,6 +97,7 @@
   # overrides all of them at once.
   vars:
     dc_verify_bgp_sessions: true
+    dc_verify_subinterfaces: true
   # A border leaf this play cannot reach must not fail stage 07. Every other
   # check in this stage talks to Nexus Dashboard and does not need the VPN to
   # the switch management range, so an unreachable switch costs one check rather
@@ -148,6 +149,35 @@
           {%- endfor -%}
           {{ cmds }}
 
+    # Every other check in this stage asks Nexus Dashboard what it believes.
+    # This one asks the switch, and it exists because the two can disagree
+    # silently: the controller reported all three extensions attached and
+    # DEPLOYED while the report called them missing, and only the running
+    # configuration settled which was right.
+    #
+    # pyATS/Genie turns `show interface` into a structure, so the dot1q tag, the
+    # address, the MTU and the operational state are read as named fields rather
+    # than matched out of screen text. Genie resolves the parser from
+    # ansible_network_os, which the inventory already sets to nxos.
+    #
+    # One command per sub-interface: NX-OS rejects more than two ranges in a
+    # single `show interface` and a sub-interface is not covered by a `show
+    # running-config interface Ethernet1/8` of its parent.
+    - name: Read each VRF-Lite sub-interface off the border leaf
+      ansible.utils.cli_parse:
+        command: "show interface {{ dc_vrf_lite_interface }}.{{ item.dot1q }}"
+        parser:
+          name: ansible.netcommon.pyats
+      loop: "{{ dc_vrf_lite_extensions | default([]) }}"
+      loop_control:
+        label: "{{ dc_vrf_lite_interface }}.{{ item.dot1q }}"
+      register: dc_subinterface_output
+      changed_when: false
+      ignore_errors: true
+      when:
+        - dc_verify_subinterfaces | bool
+        - inventory_hostname == dc_vrf_lite_border_leaf
+
 - name: Stage 07c - compare the fabric against intent and write the report
   hosts: Pseudoco-DC1
   gather_facts: false
@@ -157,12 +187,19 @@
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
     dc_verify_fail_on_mismatch: true
     dc_verify_bgp_sessions: true
+    dc_verify_subinterfaces: true
 
     # What stage 07b registered on the border leaf. The `in hostvars` test
     # covers the case where the flag is off and that host was never created.
     dc_bgp_output: >-
       {{ (hostvars[dc_vrf_lite_border_leaf].dc_bgp_session_output | default({}))
          if dc_vrf_lite_border_leaf in hostvars else {} }}
+
+    # The pyATS-parsed sub-interfaces from the same play, one result per
+    # declared extension.
+    dc_subinterface_results: >-
+      {{ ((hostvars[dc_vrf_lite_border_leaf].dc_subinterface_output | default({})).results | default([]))
+         if dc_vrf_lite_border_leaf in hostvars else [] }}
 
     # True only when the border leaf answered. An unreachable switch, a refused
     # login and a failed command all leave stdout empty, and the BGP rows then
@@ -303,30 +340,24 @@
       changed_when: false
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
-    # extensionValues nests JSON inside JSON. Unwrapping it to the connection
-    # list and re-encoding that gives a string whose quoting is predictable,
-    # which is what the substring comparison below relies on.
+    # extensionValues nests JSON inside JSON: a string holding a mapping whose
+    # VRF_LITE_CONN value is itself a string holding the connection list. Both
+    # levels are unwrapped here so the comparison below can read named fields.
     - name: Index the extensions by VRF
       ansible.builtin.set_fact:
         dc_vrf_lite_extension_values: >-
           {%- set out = {} -%}
           {%- for record in ((dc_observed_vrf_switches.response | default({})).DATA | default([])) -%}
-          {%- set switch = (record.get('switchDetailsList', []) | first | default({})) -%}
+          {%- set switch = record.get('switchDetailsList', []) | first | default({}) -%}
           {%- set raw = switch.get('extensionValues', '') -%}
           {%- set values = (raw | from_json) if raw is string and raw | length > 0 else raw -%}
           {%- set raw_conn = values.get('VRF_LITE_CONN', '') if values is mapping else '' -%}
           {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else raw_conn -%}
           {%- set connections = conn_doc.get('VRF_LITE_CONN', []) if conn_doc is mapping else [] -%}
-          {%- set _ = out.update({record.get('vrfName', ''): (connections | to_json)}) -%}
+          {%- set _ = out.update({record.get('vrfName', ''): (connections | first | default({}))}) -%}
           {%- endfor -%}
           {{ out }}
       when: dc_vrf_lite_extensions | default([]) | length > 0
-
-    - name: TEMP debug
-      ansible.builtin.debug:
-        msg:
-          - "TYPE={{ dc_vrf_lite_extension_values | default('UNDEF') | type_debug }}"
-          - "KEYS={{ dc_vrf_lite_extension_values.keys() | list if dc_vrf_lite_extension_values is defined and dc_vrf_lite_extension_values is mapping else 'NOPE' }}"
 
     - name: Read the network attachments
       cisco.dcnm.dcnm_rest:
@@ -568,12 +599,14 @@
     # connectivity is simply gone.
     #
     # extensionValues is a JSON document encoded into a string field, and its
-    # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, IP_MASK, NEIGHBOR_IP) are an
-    # NDFC implementation detail rather than a documented contract. So the three
-    # declared values are matched as substrings of the raw field rather than by
-    # walking a parsed structure. A schema change then costs a false failure
-    # that is obvious in the report, rather than a check that silently passes
-    # because a renamed key read as absent on both sides.
+    # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, NEIGHBOR_IP) are an NDFC
+    # implementation detail rather than a documented contract. They are still
+    # read by name, because a substring test against the encoded field cannot
+    # work here: a template that yields JSON text is literal_eval'd back into a
+    # list, so `x in field` tests membership rather than containment and read as
+    # false for all three extensions while the switch carried every one of them.
+    # A renamed key still fails visibly - the declared value is compared against
+    # an absent one, not against nothing on both sides.
     - name: Compare the VRF-Lite extensions
       ansible.builtin.set_fact:
         dc_vrf_lite_rows: "{{ dc_vrf_lite_rows | default([]) + [row] }}"
@@ -589,7 +622,7 @@
               | selectattr('switchName', 'defined')
               | selectattr('switchName', 'equalto', dc_vrf_lite_border_leaf)
               | list | first) | default({}) }}
-        extension_values: "{{ dc_vrf_lite_extension_values[item.vrf] | default('', true) }}"
+        extension: "{{ (dc_vrf_lite_extension_values | default({}))[item.vrf] | default({}, true) }}"
         row:
           name: "VRF-Lite {{ item.vrf }} on {{ dc_vrf_lite_border_leaf }}"
           attached: "{{ border_attachment.isLanAttached | default(false, true) }}"
@@ -597,15 +630,58 @@
           declared: >-
             {{ dc_vrf_lite_interface }} dot1q {{ item.dot1q }}
             {{ item.ipv4_addr }} -> {{ item.neighbor_ipv4 }}
-          interface_seen: "{{ dc_vrf_lite_interface in extension_values }}"
-          dot1q_seen: "{{ ('\"' ~ item.dot1q ~ '\"') in extension_values }}"
-          neighbor_seen: "{{ item.neighbor_ipv4 in extension_values }}"
+          interface_seen: "{{ extension.IF_NAME | default('', true) == dc_vrf_lite_interface }}"
+          dot1q_seen: "{{ extension.DOT1Q_ID | default('', true) | string == item.dot1q | string }}"
+          neighbor_seen: "{{ extension.NEIGHBOR_IP | default('', true) == item.neighbor_ipv4 }}"
           ok: >-
             {{ (border_attachment.isLanAttached | default(false, true) | bool)
                and (border_attachment.lanAttachState | default('', true) == 'DEPLOYED')
-               and (dc_vrf_lite_interface in extension_values)
-               and (('"' ~ item.dot1q ~ '"') in extension_values)
-               and (item.neighbor_ipv4 in extension_values) }}
+               and (extension.IF_NAME | default('', true) == dc_vrf_lite_interface)
+               and (extension.DOT1Q_ID | default('', true) | string == item.dot1q | string)
+               and (extension.NEIGHBOR_IP | default('', true) == item.neighbor_ipv4) }}
+
+    # The switch's own account of the same three extensions, parsed by Genie.
+    # The controller check above proves intent was written and deployed; this
+    # proves the sub-interface exists and carries the declared tag, address and
+    # MTU. Keeping both is the point - when they disagree, the disagreement is
+    # the finding.
+    #
+    # Genie returns the interface detail under the full interface name, mtu as
+    # an integer, first_dot1q as a string, and ipv4 keyed by address/prefix -
+    # so each field is compared in its own type rather than as text.
+    - name: Compare the VRF-Lite sub-interfaces on the switch
+      ansible.builtin.set_fact:
+        dc_subif_rows: "{{ dc_subif_rows | default([]) + [row] }}"
+      loop: "{{ dc_vrf_lite_extensions | default([]) }}"
+      loop_control:
+        label: "{{ dc_vrf_lite_interface }}.{{ item.dot1q }}"
+        index_var: dc_subif_index
+      vars:
+        result: >-
+          {{ dc_subinterface_results[dc_subif_index]
+             if (dc_subinterface_results | length) > dc_subif_index
+             else {} }}
+        if_name: "{{ dc_vrf_lite_interface }}.{{ item.dot1q }}"
+        detail: "{{ (result.parsed | default({}))[if_name] | default({}, true) }}"
+        row:
+          name: "Sub-interface {{ if_name }} on {{ dc_vrf_lite_border_leaf }}"
+          determined: "{{ detail | length > 0 }}"
+          declared: >-
+            dot1q {{ item.dot1q }} {{ item.ipv4_addr }} mtu {{ dc_vrf_lite_mtu }}
+          oper_status: "{{ detail.oper_status | default('not read', true) }}"
+          dot1q_ok: >-
+            {{ (detail.encapsulations | default({})).first_dot1q
+               | default('', true) | string == item.dot1q | string }}
+          address_ok: "{{ item.ipv4_addr in (detail.ipv4 | default({})) }}"
+          mtu_ok: "{{ detail.mtu | default(0, true) | int == dc_vrf_lite_mtu | int }}"
+          ok: >-
+            {{ (detail | length > 0)
+               and (detail.oper_status | default('', true) == 'up')
+               and ((detail.encapsulations | default({})).first_dot1q
+                    | default('', true) | string == item.dot1q | string)
+               and (item.ipv4_addr in (detail.ipv4 | default({})))
+               and (detail.mtu | default(0, true) | int == dc_vrf_lite_mtu | int) }}
+      when: dc_verify_subinterfaces | bool
 
     # Everything above is the controller's opinion. A VRF-Lite extension that is
     # attached and DEPLOYED means Nexus Dashboard pushed a sub-interface and a
@@ -708,6 +784,8 @@
              + (dc_vrf_rows | default([]) | rejectattr('ok') | list)
              + (dc_network_rows | default([]) | rejectattr('ok') | list)
              + (dc_vrf_lite_rows | default([]) | rejectattr('ok') | list)
+             + (dc_subif_rows | default([]) | selectattr('determined')
+                | rejectattr('ok') | list)
              + (dc_bgp_rows | default([]) | selectattr('determined')
                 | rejectattr('ok') | list) }}
         dc_total_checks: >-
@@ -715,10 +793,14 @@
              + (dc_vrf_rows | default([]) | length)
              + (dc_network_rows | default([]) | length)
              + (dc_vrf_lite_rows | default([]) | length)
+             + (dc_subif_rows | default([]) | selectattr('determined')
+                | list | length)
              + (dc_bgp_rows | default([]) | selectattr('determined')
                 | list | length) }}
         dc_bgp_undetermined_rows: >-
           {{ dc_bgp_rows | default([]) | rejectattr('determined') | list }}
+        dc_subif_undetermined_rows: >-
+          {{ dc_subif_rows | default([]) | rejectattr('determined') | list }}
 
     # ------------------------------------------------------------- evidence
     - name: Make sure the evidence directory exists
