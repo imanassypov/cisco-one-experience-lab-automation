@@ -10413,7 +10413,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 No VRF LITE capable interfaces found on this switch.
 ip: 198.18.128.13, serial_number: 955T6I5X2D4</pre>
 <p>That message comes from one specific check inside <code>dcnm_vrf</code>, and knowing which one is what rules everything else out. The module asks the controller for the border leaf's <code>extensionPrototypeValues</code> — the list of extensions Nexus Dashboard is <em>offering</em> on that switch — keeps only the entries whose <code>extensionType</code> is <code>VRF_LITE</code>, and fails when none survives. <strong>A prototype exists only where a VRF-Lite IFC terminates</strong>, so the question this error asks is never "did the attachment work" but "does the IFC exist". <a href="#page-dc-vrflite">Card 6</a> is about the two settings meant to create one, and about how far they can get with a non-Nexus peer in Monitor Mode.</p>
-<p>Stage 05 reads that precondition <em>before</em> it writes anything, so the failure names the cause rather than the symptom, and it retries for two minutes in case a deploy has only just finished (<code>-e dc_vrf_lite_retries=12</code> to wait longer).</p>
+<p>Stage 06 does not try to predict this failure; it lets the module report it, and its <code>rescue</code> block turns the message into the instruction that resolves it — run the deploy stage first. Ordering the stages <code>05, 06, 07</code> makes that the normal path.</p>
 <hr>
 <h4>The first explanation, which was half right: a CDP correlation you can wait out</h4>
 <p>This is the interesting one, because the instinct behind it was sound and it was abandoned for a bad reason. Running the deploy stage straight after <code>04_external_fabric.yml</code> once reported nothing to do:</p>
