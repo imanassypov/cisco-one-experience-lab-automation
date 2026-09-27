@@ -7,7 +7,7 @@
 # DC-SITE11-CEDGE8Kv (198.18.133.14).
 #
 # This stage runs before the deploy because it builds the fabric on the far
-# side of the VRF-Lite handoff. If it ran after stage 05, the DC fabric would
+# side of the VRF-Lite handoff. If it ran after stage 06, the DC fabric would
 # be deployed against a peer fabric that did not yet exist.
 #
 #   ansible-playbook playbooks/04_external_fabric.yml

@@ -1,5 +1,5 @@
 ---
-# Stage 06 - verify the deployed fabric against the declared intent.
+# Stage 07 - verify the deployed fabric against the declared intent.
 #
 # Nexus Dashboard API only. No SSH to 198.18.128.x, so this stage works even
 # when the VPN cannot reach the switches directly, and it is read-only, so it
@@ -12,16 +12,20 @@
 #     its vrf_attach_group
 #   - every network in networks.nac.yaml exists with the declared gateway,
 #     and is attached to the declared port-channels
+#   - every VRF-Lite extension in inventory/group_vars/all/dc_vrf_lite.yml is
+#     attached and DEPLOYED on the border leaf, with the declared interface,
+#     dot1q tag and neighbour address. This is what catches a stage 02 re-run
+#     that silently detached the extensions stage 05 made
 #   - every attachment the controller reports as attached
 #     (isLanAttached: true) is DEPLOYED. Switches the controller lists but
 #     has not attached come back as NA and are not judged - see the comment
 #     in Compare VRFs.
 #
-# Writes evidence/stage06-verification.md and fails at the end on any mismatch.
+# Writes evidence/stage07-verification.md and fails at the end on any mismatch.
 # Override with -e dc_verify_fail_on_mismatch=false to get the report without
 # the failure.
 
-- name: Stage 06 - verify the DC fabric against intent
+- name: Stage 07 - verify the DC fabric against intent
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -32,7 +36,7 @@
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
-    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage06-verification.md') | realpath }}"
+    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage07-verification.md') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
@@ -78,7 +82,7 @@
           switches. {{ unresolved_groups | length }} attach group reference(s)
           in playbooks/host_vars/{{ inventory_hostname }} do not resolve.
           {{ unresolved_groups | join('. ') }}.
-          Fix the spelling, or declare the missing group, then re-run stage 06.
+          Fix the spelling, or declare the missing group, then re-run stage 07.
       vars:
         vrf_group_names: >-
           {{ dc_declared_vrf_attach_groups | map(attribute='name') | list }}
@@ -207,11 +211,18 @@
         # Nexus Dashboard enumerates every switch that COULD carry the VRF and
         # reports the ones it does not with isLanAttached: false and
         # lanAttachState: NA. NA is not a fault and not a pending state, so
-        # only the records the boolean calls attached are judged - otherwise
-        # DC-Service-Leaf, which vrfs.nac.yaml leaves out of the attach group
-        # on purpose because attaching it belongs to the VRF-Lite step, would
-        # fail this stage on every run. Every field on an NA record is null,
-        # so anything read off one needs default(x, true).
+        # only the records the boolean calls attached are judged. Every field
+        # on an NA record is null, so anything read off one needs
+        # default(x, true).
+        #
+        # DC-Service-Leaf is the switch this mattered for. vrfs.nac.yaml
+        # leaves it out of every attach group on purpose, because attaching
+        # it belongs to the VRF-Lite step - so before stage 05 existed it
+        # showed up here as NA on every VRF. Stage 05 now attaches it, so it
+        # normally arrives as a real DEPLOYED record and is judged like any
+        # other. It is still not in attach_group_switches, which is why the
+        # extension is checked separately below rather than through
+        # missing_switches.
         attached: >-
           {{ attachments
              | selectattr('isLanAttached', 'defined')
@@ -359,16 +370,67 @@
                and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
                and (missing_attachments | length == 0) }}
 
+    # A VRF-Lite extension is the one part of the fabric that stage 02 can
+    # silently undo: its create role runs dcnm_vrf with state: replaced
+    # against a model that deliberately omits DC-Service-Leaf, so a create
+    # run detaches every extension stage 05 made. Without this comparison
+    # that regression is invisible here - the VRF still exists, the two
+    # server leaves are still attached, and external connectivity is simply
+    # gone. Checked whenever dc_vrf_lite_extensions is declared.
+    #
+    # extensionValues is a JSON document encoded INTO a string field, and its
+    # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, IP_MASK, NEIGHBOR_IP) are
+    # an NDFC implementation detail rather than a documented contract. So the
+    # three declared values are matched as substrings of the raw field rather
+    # than by walking a parsed structure: a schema change then costs a
+    # false failure that is obvious from the report, not a traceback or - far
+    # worse - a check that silently passes because a renamed key read as
+    # absent on both sides.
+    - name: Compare the VRF-Lite extensions
+      ansible.builtin.set_fact:
+        dc_vrf_lite_rows: "{{ dc_vrf_lite_rows | default([]) + [row] }}"
+      loop: "{{ dc_vrf_lite_extensions | default([]) }}"
+      loop_control:
+        label: "{{ item.vrf }}"
+      vars:
+        border_attachment: >-
+          {{ (dc_vrf_attach_observed
+              | selectattr('vrfName', 'defined')
+              | selectattr('vrfName', 'eq', item.vrf)
+              | map(attribute='lanAttachList') | flatten
+              | selectattr('switchName', 'defined')
+              | selectattr('switchName', 'equalto', dc_vrf_lite_border_leaf)
+              | list | first) | default({}) }}
+        extension_values: "{{ border_attachment.extensionValues | default('', true) }}"
+        row:
+          name: "VRF-Lite {{ item.vrf }} on {{ dc_vrf_lite_border_leaf }}"
+          attached: "{{ border_attachment.isLanAttached | default(false, true) }}"
+          state: "{{ border_attachment.lanAttachState | default('absent', true) }}"
+          declared: >-
+            {{ dc_vrf_lite_interface }} dot1q {{ item.dot1q }}
+            {{ item.ipv4_addr }} -> {{ item.neighbor_ipv4 }}
+          interface_seen: "{{ dc_vrf_lite_interface in extension_values }}"
+          dot1q_seen: "{{ ('\"' ~ item.dot1q ~ '\"') in extension_values }}"
+          neighbor_seen: "{{ item.neighbor_ipv4 in extension_values }}"
+          ok: >-
+            {{ (border_attachment.isLanAttached | default(false, true) | bool)
+               and (border_attachment.lanAttachState | default('', true) == 'DEPLOYED')
+               and (dc_vrf_lite_interface in extension_values)
+               and (('"' ~ item.dot1q ~ '"') in extension_values)
+               and (item.neighbor_ipv4 in extension_values) }}
+
     - name: Collect the failures
       ansible.builtin.set_fact:
         dc_failed_rows: >-
           {{ (dc_switch_rows | default([]) | rejectattr('ok') | list)
              + (dc_vrf_rows | default([]) | rejectattr('ok') | list)
-             + (dc_network_rows | default([]) | rejectattr('ok') | list) }}
+             + (dc_network_rows | default([]) | rejectattr('ok') | list)
+             + (dc_vrf_lite_rows | default([]) | rejectattr('ok') | list) }}
         dc_total_checks: >-
           {{ (dc_switch_rows | default([]) | length)
              + (dc_vrf_rows | default([]) | length)
-             + (dc_network_rows | default([]) | length) }}
+             + (dc_network_rows | default([]) | length)
+             + (dc_vrf_lite_rows | default([]) | length) }}
 
     # ------------------------------------------------------------- evidence
     - name: Make sure the evidence directory exists
@@ -380,7 +442,7 @@
 
     - name: Write the verification report
       ansible.builtin.template:
-        src: templates/stage06-verification.md.j2
+        src: templates/stage07-verification.md.j2
         dest: "{{ dc_evidence_path }}"
         mode: "0644"
       delegate_to: localhost

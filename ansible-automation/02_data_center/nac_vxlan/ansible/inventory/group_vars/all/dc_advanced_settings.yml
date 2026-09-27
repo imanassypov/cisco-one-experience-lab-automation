@@ -27,17 +27,92 @@
 # second run of stage 03 is correctly a no-op.
 # --------------------------------------------------------------------------
 dc_advanced_fabric_settings:
-  # UI: Resources tab, "VRF Lite Deployment". Manual by default, which means
-  # no VRF-Lite inter-fabric link is ever auto-created. Back2Back&ToExternal
-  # covers both the leaf-to-leaf and the leaf-to-external-router cases, which
-  # is what this fabric needs for the handoff to DC-SITE11-CEDGE8Kv.
+  # UI: Resources tab, "VRF Lite Deployment". Guide step: "select
+  # Back2BackAndToExternal".
   #
-  # The ampersand is the controller's own spelling of the value, not a typo.
+  # Cisco, "Editing Data Center VXLAN Fabric Settings", Nexus Dashboard
+  # 4.2.1: "Specify the VRF Lite method for extending inter fabric
+  # connections. The VRF Lite Subnet IP Range field specifies resources
+  # reserved for IP address used for VRF Lite when VRF Lite IFCs are
+  # auto-created. If you select Back2Back&ToExternal, then VRF Lite IFCs are
+  # auto-created."
+  # https://www.cisco.com/c/en/us/td/docs/dcn/nd/4x/articles-421/editing-fabric-settings-data-center-vxlan.html
+  #
+  # Cisco, "Nexus Dashboard Fabric Controller - VRF Lite", 12.2.1, on this
+  # value specifically: "Use this option to automatically configure VRF Lite
+  # IFCs between a border switch and the edge or core switches in external
+  # fabric or between back-to-back border switches in VXLAN EVPN fabric."
+  # The default is Manual, under which no IFC is ever auto-created.
+  # https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html
+  #
+  # The same article bounds which devices this applies to: "Autoconfiguration
+  # is supported for the following cases: Border role in the VXLAN fabric and
+  # Edge Router role in the connected external fabric device; Border Gateway
+  # role in the VXLAN fabric and Edge Router role in the connected external
+  # fabric device; Border role to another Border role directly."
+  #
+  # That sentence is why only DC-Service-Leaf ever reacts to this setting: it
+  # is the one switch in dc_switches.yml with role: border, and the edge
+  # router stage 04 adds is the one device with the edgeRouter role. The two
+  # leaves and the two spines are outside the supported cases and are never
+  # touched by it. See "The wait that replaced the second deploy" in the
+  # collection README.
+  #
+  # The ampersand is the controller's own spelling of the nvPair value, not a
+  # typo, and it differs from the UI label the guide quotes
+  # ("Back2BackAndToExternal"). The nvPair is what dcnm_fabric sends, so the
+  # nvPair spelling is the one that belongs here.
   VRF_LITE_AUTOCONFIG: "Back2Back&ToExternal"
 
-  # UI: Resources tab, "Auto Deploy for Peer". With VRF-Lite auto-config on,
-  # this makes the matching configuration land on the far end of the
-  # inter-fabric link as well, instead of only the near end.
+  # UI: Resources tab, "Auto Deploy for Peer". Guide step: "Check the Auto
+  # Deploy for Peer check box".
+  #
+  # Cisco, "Editing Data Center VXLAN Fabric Settings", Nexus Dashboard
+  # 4.2.1: "This check box is applicable for VRF Lite deployment. When you
+  # select this checkbox, auto-created VRF Lite IFCs will have the Auto
+  # Generate Configuration for Peer field in the VRF Lite tab set. ... This
+  # configuration only affects the new auto-created IFCs and does not affect
+  # the existing IFCs."
+  #
+  # So this setting writes no configuration itself. It is a default carried
+  # onto each IFC at the moment the IFC is auto-created, and the Cisco text
+  # is explicit that flipping it later does not reach an IFC that already
+  # exists.
+  #
+  # What the field it presets does, from the same VRF Lite article: "Auto
+  # Generate Configuration for Peer - Specifies to auto generate a VRF-Lite
+  # configuration for managed NX-OS neighbor devices. This knob autoconfigures
+  # the neighbor VRF on the neighboring managed device."
+  #
+  # ON THIS POD IT HAS NO EFFECT, for two independently sufficient reasons,
+  # and it is declared anyway because the guide declares it and this file
+  # mirrors the guide's fabric settings:
+  #
+  #   - The peer is not NX-OS. DC-SITE11-CEDGE8Kv is an IOS-XE Catalyst
+  #     8000V. Cisco's guidelines for automatic VRF Lite (IFC) configuration
+  #     state "Auto IFC is supported on Cisco Nexus devices only" and "If the
+  #     device in the External fabric is non-Nexus, you must create IFC
+  #     manually." The student guide says the same thing in its own note
+  #     beside this checkbox: "Nexus Dashboard can automate configuration on
+  #     the external device if it is NXOS or ASR9k."
+  #   - The External fabric is in Monitor Mode. Cisco: "To deploy
+  #     configurations in the external fabric, you must uncheck the Fabric
+  #     Monitor Mode check box in the external fabric settings. When an
+  #     external fabric is set to Fabric Monitor Mode Only, you cannot deploy
+  #     configurations on the switches." dc_external_settings.yml sets
+  #     IS_READ_ONLY: true deliberately, because the lab's edge router is
+  #     pre-configured and must not be overwritten.
+  #
+  # The practical consequence is that VRF-Lite automation in this lab stops
+  # at the border leaf. Everything beyond it was configured by hand before
+  # the pod was handed over.
+  #
+  # nvPair-to-UI mapping confirmed against the CiscoDevNet NDFC Terraform
+  # provider, which documents auto_symmetric_vrf_lite as "Whether to auto
+  # generate VRF LITE sub-interface and BGP peering configuration on managed
+  # neighbor devices. If set, auto created VRF Lite IFC links will have Auto
+  # Deploy for Peer enabled."
+  # https://registry.terraform.io/providers/CiscoDevNet/ndfc/latest/docs/data-sources/fabric
   AUTO_SYMMETRIC_VRF_LITE: true
 
   # UI: Resources tab, "Auto Allocation of Unique IP on VRF Extension over

@@ -141,7 +141,7 @@ cd ~/cisco-one-experience-lab-automation
 git pull
 ```
 
-Re-run `01_bootstrap_script_server.yml` afterwards only if the update changed a pinned collection or Python package — check the newest file in [`release-notes/`](../../release-notes/), which says so.
+Re-run `01_bootstrap_script_server.yml` afterwards only if the update changed a pinned collection or Python package — check [`release-notes/CHANGELOG.md`](../../release-notes/CHANGELOG.md), which says so.
 
 There used to be a `02_sync_from_git.yml` that wrapped `ansible.builtin.git`. It was removed because it added confusion without adding anything: it did what `git pull` does, in a way that obscured what was happening, and it encouraged putting the pull inside the bootstrap too. That was actively harmful. The bootstrap runs from the checkout it would have been rewriting, and it reads `requirements.txt`, the Galaxy pins and its own `defaults/main.yml` off disk *before* the point where the pull sat — so the pull could not inform the work that followed it, and all it achieved was making `defaults/main.yml` disagree with the task files for the rest of the play. On top of that, a dirty tree aborted the whole bootstrap after packages, the venv, PATH and the collections had already succeeded.
 

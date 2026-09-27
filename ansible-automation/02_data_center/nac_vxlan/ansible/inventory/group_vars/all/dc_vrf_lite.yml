@@ -1,0 +1,95 @@
+---
+# Declared VRF-Lite extensions out of the border leaf. Guide section 8,
+# "Create VRF-Lite Connections to External".
+#
+# This file exists because the Nexus as Code data model cannot express a
+# VRF-Lite extension. A vrf_attach_group entry in vrfs.nac.yaml can name a
+# switch and nothing else - there is no key for EXTEND: VRF_LITE, for the
+# sub-interface, for the dot1q tag or for the neighbour address. So the
+# extensions are declared here and applied by stage 05 with cisco.dcnm's
+# dcnm_vrf module directly, which does support attach[].vrf_lite[].
+#
+# ORDERING. Stage 05 sits between 04 and the deploy, because attaching an
+# extension writes intent to the controller and touches no switch - the same
+# thing stages 02, 03 and 04 do. Stage 06 is the only stage that changes
+# running configuration, so staging the extensions before it means the parent
+# interface, the three dot1q sub-interfaces and their BGP neighbours all land
+# in a single Recalculate and Deploy.
+#
+# Stage 05 must run after stage 02 on EVERY pass, not once. The create role in
+# stage 02 runs dcnm_vrf with state: replaced, so it strips any attachment
+# vrfs.nac.yaml does not list - and vrfs.nac.yaml deliberately does not list
+# DC-Service-Leaf. A create run therefore removes whatever stage 05 attached,
+# and stage 05 puts it back. Stage 07 asserts the extensions exist so a
+# create-without-05 run is caught rather than discovered later as broken
+# external connectivity.
+#
+# Stage 05 must also run after stage 04, and cannot run immediately after it.
+# The extension hangs off the inter-fabric link that VRF_LITE_AUTOCONFIG
+# builds, and the controller only builds that once it has detected the CDP
+# adjacency between the border leaf and the edge router - which it does
+# asynchronously, after stage 04's add returns HTTP 202 with an empty body.
+# Stage 05 waits that out with until/retries rather than failing.
+#
+# The parent interface the sub-interfaces below sit on is prepared by the
+# controller, not declared here. It appears in the Pending Config dialog as:
+#
+#   interface ethernet1/8
+#     no switchport
+#     mtu 9000
+#     description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
+#     no shutdown
+
+# The border leaf that carries every extension, and the interface on it that
+# faces the edge router. Ethernet1/8 is not chosen here - Nexus Dashboard
+# detects it over CDP and the guide confirms it: "the interfaces connecting
+# your border leaf and external router are automatically detected with being
+# Ethernet1/8 and GigabitEthernet2". It is declared so the run is
+# deterministic and so stage 07 has something to assert against.
+dc_vrf_lite_border_leaf: DC-Service-Leaf
+dc_vrf_lite_interface: Ethernet1/8
+
+# WHY THE ADDRESSES ARE PINNED RATHER THAN LEFT TO THE CONTROLLER.
+#
+# AUTO_UNIQUE_VRF_LITE_IP_PREFIX is on, so Nexus Dashboard is perfectly able
+# to allocate these from DCI_SUBNET_RANGE itself, and in a greenfield build it
+# should. It is overridden here for the reason the guide gives beside the same
+# fields: "Because in this lab the other side of the link is already
+# configured and was done manually, we are forcing the IP addresses and
+# encapsulation to be pre-determined values in the DC-Service-Leaf side. In a
+# real implementation, if the other side of the link is configured later or if
+# the external equipment is managed by NDFC, there is no need to change the
+# parameters above."
+#
+# The External fabric is in Monitor Mode (IS_READ_ONLY: true), so Nexus
+# Dashboard will never write to DC-SITE11-CEDGE8Kv. Its side of these three
+# links is pre-built by the pod. If the leaf picked its own addresses they
+# would not match the router and BGP would never come up.
+#
+# peer_vrf is the VRF name on the router side. The router uses the same three
+# names as the fabric, so each row names itself.
+#
+# dot1q is a string, not an integer: dcnm_vrf declares it type: str. Quoting
+# it here keeps the playbook from relying on YAML's implicit int-to-str
+# coercion at module boundary.
+#
+# The order below is the order the guide works through - PROD, then IOT, then
+# MAIN - which is also ascending dot1q and ascending address.
+dc_vrf_lite_extensions:
+  - vrf: PROD
+    peer_vrf: PROD
+    dot1q: "2"
+    ipv4_addr: 192.168.252.5/30
+    neighbor_ipv4: 192.168.252.6
+
+  - vrf: IOT
+    peer_vrf: IOT
+    dot1q: "3"
+    ipv4_addr: 192.168.252.9/30
+    neighbor_ipv4: 192.168.252.10
+
+  - vrf: MAIN
+    peer_vrf: MAIN
+    dot1q: "4"
+    ipv4_addr: 192.168.252.13/30
+    neighbor_ipv4: 192.168.252.14
