@@ -92,7 +92,7 @@ each is pinned for a different reason.
 |---|---|---|
 | `cisco.nac_dc_vxlan` | 0.9.0 | The declarative layer. It renders `cisco.dcnm` module calls from the `host_vars` data model |
 | `cisco.dcnm` | 3.13.0 | The modules underneath. **The floor matters**: Nexus Dashboard 4.2.1 support landed in `cisco.dcnm` 3.12.1 and 3.13.0 adds 4.3.1, and `cisco.nac_dc_vxlan` 0.9.0 declares `cisco.dcnm` >= 3.13.0 as a hard dependency. Do not pin it lower |
-| `cisco.nxos` | 10.2.0 | Used by **one stage only** - `00_discover_dc_switch_serials.yml`, which SSHes to the switches to read their serial numbers. Every other stage talks to Nexus Dashboard over `httpapi` and needs none of it |
+| `cisco.nxos` | 10.2.0 | Used by **two stages only** - `00_discover_dc_switch_serials.yml`, which SSHes to the switches to read their serial numbers, and the BGP session check in `07_verify_fabric.yml`, which reads the border leaf. Every other stage talks to Nexus Dashboard over `httpapi` and needs none of it |
 
 The four supporting collections - `ansible.netcommon` 7.1.0, `ansible.utils`
 5.1.2, `ansible.posix` 2.0.0 and `community.general` 10.1.0 - match the
@@ -188,17 +188,13 @@ that range because it is the prerequisite you run yourself, once per pod, and
 `diagnose_vrf_lite.yml` has no number at all, which is the point: a number
 would make it look like something the pipeline runs.
 
-Stages 03, 04 and 05 all sit ahead of the deploy, for the same reason. Stage
-03 changes fabric parameters, which are inputs to the configuration the
-controller generates; stage 04 creates the fabric on the far side of the
-VRF-Lite handoff, which is what lets the controller resolve that handoff at
-all; stage 05 attaches the extensions that ride it. Any of the three run after
-stage 06 would leave the controller correct and the switches a deploy behind.
-
-That ordering is what collapses the guide's deploy-edit-deploy sequence into
-one push. Because the extensions are already staged when stage 06 runs, a
-single Recalculate and Deploy carries the parent interface, the three dot1q
-sub-interfaces and their BGP neighbours together.
+Stages 03 and 04 run before the first deploy because their settings and
+External fabric are inputs to the inter-fabric connection. Stage 05 runs
+after that first deploy because it needs the connection to exist. The second
+deploy then carries the parent interface, the three dot1q sub-interfaces and
+their BGP neighbours to the border leaf. The execution order is
+`02, 03, 04, 06, 05, 06, 07`; the file numbers do not show the complete
+execution order.
 
 Useful overrides:
 
@@ -208,6 +204,8 @@ Useful overrides:
   and lets `dcnm_vrf` report its own error instead
 - `-e dc_verify_fail_on_mismatch=false` has stage 07 write its report without
   failing the run
+- `-e dc_verify_bgp_sessions=false` has stage 07 skip the one check that needs
+  SSH to a switch, and compare only what the controller knows
 
 ## The data model
 
@@ -533,11 +531,12 @@ step 5 staged them before this ran. Every attachment flips `PENDING` ->
 
 **7. Verified.** Stage 07 reads `vrfs.nac.yaml` again - the same file, not a
 copy - and compares it against the controller: PROD exists with VNI 50001, is
-attached to all three declared leaves, every attachment reads `DEPLOYED`, and the
-border leaf's attachment carries the declared interface, dot1q tag and
-neighbour address in its `extensionValues`. Three of the report's fourteen
-checks are PROD - the VRF row, the `ProdNetwork1` row and the VRF-Lite row -
-and all three land in `evidence/stage07-verification.md`.
+attached to all three declared leaves, every attachment reads `DEPLOYED`, and
+the border leaf's attachment carries the declared interface, dot1q tag and
+neighbour address in its `extensionValues`. The VRF, `ProdNetwork1`, and
+VRF-Lite rows are three of the fourteen controller checks. When SSH BGP
+verification is enabled and the border leaf answers, the report also evaluates
+three BGP session checks, for seventeen checks total.
 
 Change `vrf_id` in step 1 and re-run: steps 2 through 7 all follow, and no
 other file needs touching. That is the whole argument for writing the fabric
@@ -719,6 +718,143 @@ the handoff was configured by hand before the pod was handed over, which is
 also why the guide tells you to force the addresses and encapsulation on the
 border side rather than let the controller allocate both ends.
 
+There is a third reason not to write to that router, and it is the strongest
+of the three: **`DC-SITE11-CEDGE8Kv` is an SD-WAN edge managed by vManage.**
+Its interface list carries `Sdwan-system-intf`, `vmanage_system` and
+`Tunnel3`, so its configuration belongs to the Catalyst SD-WAN controller.
+Two controllers writing the same device is a worse outcome than a handoff
+half-automated.
+
+## The router's side of the handoff, verified
+
+**It is fully built, and it matches the declared intent exactly.** This is
+worth stating plainly because the controller's view of the device suggests
+otherwise, and that view is misleading.
+
+```
+DC-SITE11-CEDGE8Kv# show ip interface brief
+Interface              IP-Address      OK? Method Status   Protocol
+GigabitEthernet2       unassigned      YES unset  up       up
+GigabitEthernet2.2     192.168.252.6   YES other  up       up
+GigabitEthernet2.3     192.168.252.10  YES other  up       up
+GigabitEthernet2.4     192.168.252.14  YES other  up       up
+```
+
+Those three addresses are exactly the `neighbor_ipv4` values in
+`dc_vrf_lite.yml`, on exactly the declared dot1q tags, and the router has an
+eBGP neighbour configured for each of `192.168.252.5`, `.9` and `.13` in
+AS 65000 - our fabric's ASN, peered from its own 65531.
+
+**Reading `SUBIFS=[]` from the controller is not evidence that the router is
+unconfigured.** Nexus Dashboard reports an empty sub-interface list, no VRF
+definitions and no `192.168.252.x` addresses for this device, and that is
+Monitor Mode behaving as designed: the controller does not manage the router,
+so it holds no policy for it and has nothing to report. Ask the router, not
+the controller.
+
+One mismatch is real but harmless. The router's own VRFs are named `10`, `101`
+and `102` rather than `MAIN`, `PROD` and `IOT` - vManage names a VRF by its
+SD-WAN VPN id. `Gi2.4` is in VRF `10` (MAIN), `Gi2.2` in `101` (PROD) and
+`Gi2.3` in `102` (IOT). The `peer_vrf` values in `dc_vrf_lite.yml` are the
+name Nexus Dashboard would give the far-side VRF if it configured the far
+side, which it never does, so nothing compares the two.
+
+### What the router shows when the fabric side is not deployed
+
+The router is the only place in this lab that can tell you whether the handoff
+actually works, and on a pod where stage 06 has not pushed the sub-interfaces
+it says so clearly:
+
+```
+DC-SITE11-CEDGE8Kv# show bgp vpnv4 unicast all summary
+Neighbor        V           AS MsgRcvd MsgSent  Up/Down  State/PfxRcd
+192.168.252.5   4        65000       0       0  1d18h    Active
+192.168.252.9   4        65000       0       0  1d18h    Active
+192.168.252.13  4        65000       0       0  1d18h    Idle
+```
+
+`Active` and `Idle` with zero messages in either direction means the TCP
+session is not being answered. The matching read on the border leaf explains
+why:
+
+```
+DC-Service-Leaf# show running-config interface Ethernet1/8
+interface Ethernet1/8
+  description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
+  no switchport
+  mtu 9000
+  no shutdown
+
+DC-Service-Leaf# show ip interface brief vrf all | include 192.168.252
+DC-Service-Leaf#
+```
+
+The parent is up and the three sub-interfaces do not exist, so there is
+nothing for the router to peer with. Stage 05 can report success and stage 07
+can pass while this is true, because both are intent-versus-controller
+comparisons. The extensions are staged; they reach the switch only on the
+stage 06 deploy that follows.
+
+### Why the BGP check uses SSH
+
+**Stage 07 checks the three VRF-Lite eBGP sessions by reading the border leaf
+over SSH, and it is the only check in the stage that does not come from the
+controller.** The evidence above is why it exists: every controller-side check
+can be green while all three sessions sit in `Active`. Without this check a
+student following the guide gets a clean run and no external connectivity,
+with nothing in the output pointing at the cause.
+
+**Nexus Dashboard has no API that answers the question.** Its LAN API is an
+intent and provisioning surface plus config compliance - fabrics, switches,
+VRFs, networks, attachments, links and the deploy and compliance state of
+each. None of those report routing protocol state, so an attachment reading
+`DEPLOYED` means the controller pushed a sub-interface and a neighbour
+statement, and nothing more. Whether the neighbour answered is only visible on
+a device, and the two come apart routinely here, because the far end of these
+three links is pre-built by the pod and the controller never writes to it: an
+address or dot1q tag that does not match the router leaves the leaf configured
+exactly as declared, with a session that never leaves `Idle`.
+
+Three properties of how the check is built, each of which is the reason it can
+be added without weakening the rest of the stage:
+
+- **It reads the border leaf, not the router.** `DC-Service-Leaf` reports the
+  same session state, and reading it keeps the check inside the fabric the
+  pipeline owns. It needs no second credential and no exception to the rule
+  that nothing touches `DC-SITE11-CEDGE8Kv`. The SSH settings and the vault
+  credentials are the ones stage 00 already uses, in
+  `inventory/group_vars/dc_fabric_switches/connection.yml`, so the play adds
+  the border leaf to that group with `add_host` rather than repeating them.
+- **It is optional, and non-fatal when the switch is unreachable.** Every
+  other check in stage 07 talks to the controller and works with the VPN to
+  the `198.18.128.x` management range down, so "could not determine" is a
+  distinct outcome from "down". An unreachable border leaf costs one check
+  rather than the whole report: those rows read `not determined`, are left out
+  of both the failure list and the total, and never fail the run.
+  `-e dc_verify_bgp_sessions=false` skips the SSH read entirely.
+- **It is reported apart from the intent tables.** It answers a different
+  question - not "did the controller accept what we declared" but "did the
+  neighbour answer" - so it has its own table in the report, and a run that
+  could not make it says so on screen rather than leaving a green "all checks
+  match" to be read as a fabric that works.
+
+The command is `show bgp sessions vrf <vrf>`, one per declared extension, from
+the "Monitor BGP Statistics" table of the [Cisco Nexus 9000 Series NX-OS
+Unicast Routing Configuration Guide, Release
+10.6(x)](https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/configuration/unicast-routing-configuration/cisco-nexus-9000-series-nx-os-unicast-routing-configuration-guide/configuring-bgp.html).
+The VRF name has to be on the command: a VRF-Lite peering lives inside its
+VRF, not in the default VRF and not in the EVPN address family, so without it
+the neighbour is not in the output at all. `output: json` asks NX-OS for the
+structured form, so nothing downstream matches against screen text.
+
+Two shapes in that output are worth knowing, because both are silent when
+mishandled. NX-OS returns `ROW_vrf` and `ROW_neighbor` as a bare object when
+there is one and as a list when there are several, so each is wrapped into a
+list before it is searched. And `vrf-name-out` may come back lower case where
+the data model declares `PROD`, so the VRF names are compared
+case-insensitively. Either mistake produces `absent` on a healthy fabric
+rather than an error.
+
 ## What stage 05 needs from the controller
 
 **Stage 05 needs a VRF-Lite inter-fabric connection to already exist on
@@ -754,6 +890,15 @@ No VRF LITE capable interfaces found on this switch.
 ip: 198.18.128.13, serial_number: 955T6I5X2D4
 ```
 
+**Every `dcnm_vrf.py` line number in this README is against `cisco.dcnm`
+3.13.0**, which is what `collections/requirements.yml` pins and what the
+script server installs. Read that source without installing it with:
+
+```bash
+ansible-galaxy collection download cisco.dcnm:3.13.0 -p /tmp/x
+tar xzf /tmp/x/cisco-dcnm-3.13.0.tar.gz plugins/modules/dcnm_vrf.py
+```
+
 That message comes from `dcnm_vrf.py` line 4721, and the path to it is worth
 knowing because it rules so much out. `push_diff_attach` reads
 
@@ -761,7 +906,7 @@ knowing because it rules so much out. `push_diff_attach` reads
 lite_objects["DATA"][0]["switchDetailsList"][0]["extensionPrototypeValues"]
 ```
 
-at lines 5126-5127, from
+at lines 5126-5128, from
 
 ```
 GET /appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/
@@ -866,14 +1011,15 @@ DC-Service-Leaf - the one switch the IFC terminates on - returns
 ## The sub-interface MTU, and why it is declared
 
 **A deploy straight after stage 05 fails with `Delivery failed with message:
-MTU of sub-interface greater than parent interface detected`.** Three numbers
+MTU of sub-interface greater than parent interface detected`.** Four numbers
 explain it, and only one of them is ours to set.
 
 | Value | Where it comes from |
 |---|---|
-| Parent `Ethernet1/8` MTU **9000** | The `Link MTU` field on the auto-created IFC. Cisco labels it *"Interface MTU on both ends of VRF Lite IFC"*. The template default is 9216, so 9000 is what the controller derived for this link - and it matches `mtu 9000` on the router's `GigabitEthernet2`. |
+| Parent `Ethernet1/8` MTU **9000** | The `Link MTU` field on the auto-created IFC. Cisco labels it *"Interface MTU on both ends of VRF Lite IFC"*. The template default is 9216, so 9000 is what the controller derived for this link. It is a controller-side number and, despite the field's name, it is **not** what the router carries. |
 | Sub-interface MTU **9216** | The **fallback in the controller's own VRF extension template**. `Default_VRF_Extension_Universal` carries a per-extension `Subinterface MTU` field and renders `if (@ITEM.MTU != "") { mtu @ITEM.MTU } else { mtu 9216 }`. |
-| `dc_vrf_lite_mtu` **9000** | Declared by this repository, in `inventory/group_vars/all/dc_vrf_lite.yml`. |
+| Router IP MTU **1500** | What `DC-SITE11-CEDGE8Kv` actually carries on `GigabitEthernet2` and on all three of its dot1q sub-interfaces. Measured on the pod, not inferred. |
+| `dc_vrf_lite_mtu` **1500** | Declared by this repository, in `inventory/group_vars/all/dc_vrf_lite.yml`, to match the router. |
 
 The 9216 is not a `cisco.dcnm` default and not a fabric setting. It is the
 template's `else` branch, taken because **`dcnm_vrf` never populates that
@@ -885,22 +1031,92 @@ the list of properties it writes into `VRF_LITE_CONN` is `DOT1Q_ID`,
 have this problem, because the prototype it offers carries `"MTU":"9000"` and
 the UI writes it through.
 
-**Why the sub-interfaces come down to 9000 rather than the parent going up to
-9216.** Raising the parent would make the deploy pass, and would leave
-`DC-Service-Leaf` at 9216 facing a router that is still at 9000, because
-Monitor Mode means the controller cannot correct the far end. An MTU mismatch
-across a routed link does not fail a deploy; it fails later, on large packets.
-Matching the value the pod already configured is the safer half of the trade,
-so the sub-interfaces are pinned to 9000.
+**Why the value is 1500, and why it is not 9000.** The parent's 9000 rules
+9216 out, but it does not choose a value: anything from 576 up to 9000 is
+accepted by the switch. What chooses it is the router, because a routed link
+only works if both ends agree on how large an IP packet may be, and the
+router is the end this repository cannot change.
 
-A note on where the constraint is written down: the public [Cisco Nexus 9000
-Series NX-OS Interfaces Configuration
+`DC-SITE11-CEDGE8Kv` carries **1500**, measured on the pod:
+
+```
+DC-SITE11-CEDGE8Kv# show interfaces GigabitEthernet2
+GigabitEthernet2 is up, line protocol is up
+  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec,
+
+DC-SITE11-CEDGE8Kv# show ip interface GigabitEthernet2.2
+  Internet address is 192.168.252.6/30
+  MTU is 1500 bytes
+```
+
+`GigabitEthernet2.3` and `.4` report the same, and none of the three carries
+an `mtu` or `ip mtu` line of its own - `show running-config interface
+GigabitEthernet2.2` is four lines long, `encapsulation dot1Q 2`, `vrf
+forwarding 101`, the address and `no ip redirects`. They inherit 1500 from
+the parent. Cisco's [IP Application Services Command
+Reference](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/ipapp/command/iap-cr-book/iap-i1.html)
+gives the default IP MTU for an Ethernet interface as 1500 and states that
+*"changing the MTU value (by using the `mtu` interface configuration command)
+can affect the IP MTU value. If the current IP MTU value is the same as the
+MTU value and you change the MTU value, then the IP MTU value is modified
+automatically to match the new MTU value. However, the reverse is not true."*
+So on this router the interface MTU and the IP MTU are both 1500, and only an
+explicit `ip mtu` - which the [Cisco IOS XE Catalyst SD-WAN Qualified Command
+Reference
+Guide](https://www.cisco.com/c/en/us/td/docs/routers/sdwan/command/iosxe/qualified-cli-command-reference-guide/m-ip-commands.html)
+confirms is valid in `config-subif` on this platform - could separate them.
+
+It is the **IP MTU** that matters on a routed handoff, which is why
+`show ip interface` is the command to settle this rather than
+`show interfaces`. The [Cisco IOS IP Addressing Services Command
+Reference](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/ipaddr/command/ipaddr-cr-book/ipaddr-r1.html)
+documents `show ip interface [type number] [brief]` in privileged EXEC mode
+and defines its `MTU is` field as *"MTU value set on the interface, in
+bytes"*.
+
+Monitor Mode means Nexus Dashboard can never raise the router to meet a
+larger value, so 9000 on our side would be a real mismatch rather than a
+conservative choice. The earlier version of this section claimed 9000 matched
+`mtu 9000` on the router's `GigabitEthernet2`. It does not, and never did;
+that 9000 was the controller's `Link MTU` on the inter-fabric link, read
+across as if it were the router's interface MTU. The two are different
+things, and the field name *"Interface MTU on both ends of VRF Lite IFC"* is
+what made the confusion easy.
+
+**How a 1500-versus-9000 mismatch would have presented, had it shipped.** Not
+as a failed deploy, and not as a dead BGP session either.
+
+- **The eBGP sessions would still come up.** BGP runs over TCP, and TCP sizes
+  its own segments from the interface MTU at each end. Cisco's [Resolve IPv4
+  Fragmentation, MTU, MSS, and PMTUD Issues with GRE and
+  IPsec](https://www.cisco.com/c/en/us/support/docs/ip/generic-routing-encapsulation-gre/25885-pmtud-ipfrag.html)
+  describes the mechanism: the MSS a host advertises is *"the minimum buffer
+  size and the MTU of the outgoing interface (- 40)"*, and *"the hosts then
+  compare the MSS size received against their own interface MTU and again
+  choose the lower of the two values."* The router would advertise an MSS
+  derived from 1500, the leaf would honour it, and the session would
+  establish and exchange routes normally. A mismatch here is invisible to the
+  thing a student is most likely to check.
+- **Transit traffic above 1500 bytes would be dropped, not fragmented.** The
+  leaf would be willing to put a 9000-byte IP packet on the wire; the router
+  would receive a frame larger than its interface can accept and discard it.
+  Nothing on the leaf would report an error, because from its point of view
+  the packet was sent successfully.
+- **There is no OSPF or IS-IS here to catch it.** Those protocols exchange
+  MTU in their database-description packets and refuse to form an adjacency
+  on a mismatch, which turns the fault into an immediate, obvious failure.
+  This handoff is eBGP per VRF over dot1q sub-interfaces, so that safety net
+  does not exist.
+
+A note on where the parent constraint is written down: the public [Cisco
+Nexus 9000 Series NX-OS Interfaces Configuration
 Guide](https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/configuration/interfaces/cisco-nexus-9000-series-nx-os-interfaces-configuration-guide-release-106x/m_configuring_layer_3_interfaces_9x.html)
 documents sub-interfaces and gives the configurable MTU range for a Layer 3
 interface or sub-interface as 576-9216, but it does not state that a
 sub-interface may not exceed its parent. The authority for that here is the
 switch itself, which rejected the configuration, and the controller repeated
-the rejection verbatim. Treat the error string as the evidence.
+the rejection verbatim. Treat the error string as the evidence. 1500 is
+comfortably inside that range, so the switch accepts it.
 
 `05_vrf_lite.yml` applies it after `dcnm_vrf` returns, with a `POST` to
 `top-down/fabrics/<fabric>/vrfs/attachments`. It reads the extension back
@@ -911,6 +1127,97 @@ VLAN and `instanceValues` come from the attachments endpoint, not from
 `vrfs/switches`, which reports the VLAN as `-1` and returns no instance
 values. The task only posts for a VRF whose MTU is not already the declared
 value, so a second run sends nothing.
+
+**The `lanAttachList` in that POST holds only `DC-Service-Leaf`, and that is
+safe.** MAIN, PROD and IOT are attached to DC-Leaf1 and DC-Leaf2 as well, by
+stage 02, so it matters whether the controller reads the list as the whole
+truth for the VRF, which would silently detach both server leaves, or as a
+per-switch upsert. It is a per-switch upsert: detaching is something a caller
+has to ask for explicitly, and omission is inert.
+
+Cisco documents `deployment` as the attach/detach selector on each object in
+the list. The [vrfAttachmentsPostPayload
+schema](https://developer.cisco.com/docs/nexus-dashboard/latest/vrfattachmentspostpayload/)
+(Nexus Dashboard API v1, Release 4.2 and later) describes that boolean as
+*"When deployment value is true it means it is to attach and when the value is
+false it means it is detach"*, and the [NDFC 12.1.2 API
+changelog](https://developer.cisco.com/docs/nexus-dashboard-fabric-controller/12-1-2/api-changelog/)
+says the same of this exact path, under the heading *"Attach/Detach
+VRFs/VRF-Lite"*: *"List of LAN Attach objects. When in Lan Attach object
+deployment:true it's attach and when deployment:false it's detach."* Neither
+page states a merge rule for the list in so many words, so the confirmation
+that a short list is harmless comes from the module.
+
+`dcnm_vrf` posts partial lists as its ordinary mode of operation. Under
+`state: merged`, `diff_merge_attach` (line 3379) sets the outgoing list to the
+output of `diff_for_attach_deploy` (lines 3403-3411), and that function
+appends only the switches whose state actually differs: its two
+`attach_list.append(want)` calls, at lines 1583 and 1625, are both reached
+only after a comparison has failed. A switch that is
+attached and unchanged never reaches the payload. Stage 05 already depends on
+this: it runs `merged` naming only the border leaf, and the DC-Leaf1 and
+DC-Leaf2 attachments survive it.
+
+The settling evidence is what the module does when it *does* want a detach.
+Every detach path builds an explicit entry carrying `deployment: False` and
+puts it in the same `lanAttachList`: `get_diff_delete` (line 2871, at lines
+2912 and 2936), `get_diff_override` (line 2969, at line 2998) and
+`get_diff_replace` (line 3033, at lines 3065 and 3079). `get_diff_replace`
+walks the controller's current attachments, finds each switch the playbook did
+not name, and re-posts it with `deployment: False` (lines 3058-3066). If
+leaving a switch out of the list were enough to detach it, that loop would be
+dead code and `replaced` could simply post the wanted list.
+
+One helper named in earlier versions of this section is gone. `get_diff_delete`
+used to delegate to a `get_items_to_detach` method; in 3.13.0 there is no such
+method and the delete path builds its `detach_items` list inline, in the two
+blocks cited above. The behaviour is unchanged - an explicit
+`item.update({"deployment": False})` per switch - only the structure moved.
+
+The integration tests show the same shape from the outside.
+`tests/integration/targets/dcnm_vrf/tests/dcnm/standalone/replaced.yaml`
+attaches one VRF to two switches under `merged` (SETUP.4, lines 67-82), then
+runs `state: replaced` with no `attach` key at all (TEST.1, lines 118-128).
+The asserted result is two diff entries, both `deploy == false` (lines
+152-153): the module manufactured two explicit detach records rather than
+posting an empty list. TEST.4 (lines 288-302) is the same in miniature, with
+only `switch_1` named on the replace and the one diff entry being the dropped
+switch at `deploy == false`.
+
+**No `cisco.dcnm` release exposes the sub-interface MTU, checked up to the
+current one.** The seven `vrf_lite` suboptions and the seven `VRF_LITE_CONN`
+properties listed above are unchanged in 3.13.0, the newest release on Galaxy,
+where `vrf_lite_properties` sits at line 1240. The module's `vrf_int_mtu` key
+is a different field: it maps to `mtu` in `Default_VRF_Universal`, the VRF's
+own L3 interface MTU, not the extension's `Subinterface MTU`. The field is not
+missing from the product, since Nexus Dashboard's newer model exposes it as
+`extensionValues[].mtu` defaulting to 9216 in
+[vrfAttachmentDetail](https://developer.cisco.com/docs/nexus-dashboard/latest/one-manage-one-manage-model-vrfattachmentdetail/),
+but no module reaches it, so the hand-built POST stays.
+
+**What the POST echoes back, and why each field is safe to echo.**
+`freeformConfig` is *"any configuration not included in overlay templates
+which is needed as part of this VRF attachment"* in the payload schema above,
+so dropping it would erase per-attachment config. The module treats it the
+same way and says so in a comment: *"copy freeformConfig from have as module
+is not managing it"* (lines 1436-1437). Stage 05 reads it from
+`switchDetailsList` on `vrfs/switches`, which is where the module reads it too
+(lines 2600 and 2714). `instanceValues` carries the controller-owned
+`loopbackId`, `loopbackIpAddress` and `loopbackIpV6Address`, which the module
+also copies forward from the controller rather than rebuilding (lines
+1451-1470).
+`MULTISITE_CONN` defaulting to the literal `{"MULTISITE_CONN":[]}` cannot wipe
+real multi-site state here: the stage echoes the controller's value whenever
+the key is present and falls back only when it is absent, and the module
+hard-codes that same literal unconditionally in both directions anyway, when
+building a VRF-Lite extension to write (lines 1703-1705) and when reading one
+back (lines 2707-2709). Any `merged` run of stage 05 has already set it.
+`vlan` is the one field where the stage and the module differ: the module
+zeroes it before sending (`push_diff_attach` at line 5039, with
+`vrf_attach.update(vlan=0)` at line 5070) while the stage sends
+the VLAN it has just read from the attachments endpoint. Both are no-ops
+against an already-attached switch, and sending the current value is the
+narrower change of the two.
 
 The rest of this section is the evidence for the asynchronous correlation and
 the Cisco framing around it, which still stand on their own.
@@ -985,12 +1292,21 @@ The habits worth keeping from all of this generalise past one stage:
 ## What the verification stage proves
 
 `07_verify_fabric.yml` compares the declared model against what the controller
-actually holds, using the Nexus Dashboard API only. It is read-only and needs
-no switch access, so it works with the VPN down and can be re-run freely. It
-writes `evidence/stage07-verification.md` and fails on a mismatch.
+actually holds, and then asks the border leaf one question the controller
+cannot answer. It is read-only throughout and can be re-run freely. It writes
+`evidence/stage07-verification.md` and fails on a mismatch.
 
-Fourteen checks: five switches, three VRFs, three networks, three VRF-Lite
-extensions.
+Seventeen checks: five switches, three VRFs, three networks, three VRF-Lite
+extensions and three VRF-Lite BGP sessions.
+
+**Fourteen of those come from the Nexus Dashboard API and need no switch
+access, so they work with the VPN to `198.18.128.x` down. The three BGP
+session checks are read off `DC-Service-Leaf` over SSH and do not.** When the
+border leaf cannot be reached those three read `not determined`, drop out of
+the total, and the stage says on screen that they were not made - so the count
+is of checks actually performed, and a run with the VPN down reports 14 of 14
+rather than claiming three sessions are down. `-e dc_verify_bgp_sessions=false`
+skips them deliberately and reports them as skipped.
 
 - **Switch** - present in the fabric inventory at its declared management
   address, holding its declared role.
@@ -1008,6 +1324,14 @@ extensions.
   `vrf_attach_groups` did not make this check redundant - an attach group can
   name a switch but never an extension, so the model-derived attachment
   comparison cannot see it.
+- **VRF-Lite BGP session** - `Established` on the border leaf, per declared
+  extension. This is the check that separates "the controller pushed the
+  extension" from "external connectivity works", and it is the only one read
+  from a device rather than from the controller. `absent` means the switch
+  answered and has no session to that neighbour in that VRF at all, so the
+  extension never reached the running configuration; any other state means it
+  did and the far end is not answering. See "Why the BGP check uses SSH" above
+  for how each of those reads.
 
 `extensionValues` is a JSON document encoded into a string field, and its
 inner keys are an NDFC implementation detail rather than a documented
@@ -1029,6 +1353,11 @@ Reading the report:
   fault: something declared did not attach.
 - An attached switch in **`PENDING`** means the intent exists on the
   controller but was never pushed. Re-run `06_recalculate_and_deploy.yml`.
+- **`not determined` in the BGP session table is not a fault in the fabric.**
+  It means this run could not read the border leaf, and the reason the
+  transport gave is printed beside it. Those rows are excluded from the count
+  at the top of the report, because a check that was not made is not a check
+  that passed.
 - The report is regenerated on each run that reaches the end. If a run fails
   early, the previous report is left in place, so check its `Generated`
   timestamp before trusting it.
@@ -1216,7 +1545,7 @@ Two ordering constraints, both enforced by `01_dc_deploy.yml`:
 - **Stage 05 runs after stage 02 on every pass, not once.** The create role
   runs `dcnm_vrf` with `state: replaced`, and a `replaced` want that carries
   no `vrf_lite` block against an attachment that has one takes the branch at
-  `dcnm_vrf.py` lines 1543-1549 and pushes the change, clearing
+  `dcnm_vrf.py` lines 1544-1549 and pushes the change, clearing
   `extensionValues`. Under `merged` the same comparison returns at line 1551
   and leaves it alone. So every create run resets these extensions and stage
   05 puts them back, idempotently. Adding `DC-Service-Leaf` to

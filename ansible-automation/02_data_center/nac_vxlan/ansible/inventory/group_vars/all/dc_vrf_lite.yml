@@ -25,7 +25,7 @@
 #
 # That ordering is safe, and the evidence is the module's own integration
 # test. tests/integration/targets/dcnm_vrf/tests/dcnm/standalone/merged.yaml
-# TEST.4 (lines 280-330) deletes every VRF first, then in ONE state: merged
+# TEST.4 (lines 280-302) deletes every VRF first, then in ONE state: merged
 # call creates a VRF and attaches it with a vrf_lite block to a switch that
 # had no attachment at all - and asserts changed == true with three HTTP
 # 200s. Inside the module, push_to_remote (dcnm_vrf.py line 5495) runs
@@ -103,8 +103,17 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 # links is pre-built by the pod. If the leaf picked its own addresses they
 # would not match the router and BGP would never come up.
 #
-# peer_vrf is the VRF name on the router side. The router uses the same three
-# names as the fabric, so each row names itself.
+# The router's side is built and running. "show ip interface brief" on it
+# lists GigabitEthernet2.2, .3 and .4 up/up with 192.168.252.6, .10 and .14,
+# which are exactly the three neighbor_ipv4 values below, and it has an eBGP
+# neighbour configured for each of .5, .9 and .13 in AS 65000.
+#
+# peer_vrf is the name Nexus Dashboard would give the VRF on the router if it
+# configured the far end, which in Monitor Mode it never does. The router's
+# own VRFs are numbered - "show vrf" on it returns 10, 101 and 102, because
+# vManage names them by SD-WAN VPN id - so these rows carry the fabric's own
+# VRF name on both sides. That is what the controller stores and what stage 07
+# checks; nothing compares it to the router.
 #
 # MTU on the three sub-interfaces, declared here because leaving it out breaks
 # the deploy.
@@ -122,15 +131,23 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 #   Delivery failed with message: MTU of sub-interface greater than parent
 #   interface detected
 #
-# 9000 is also what the pod configured on the far end, DC-SITE11-CEDGE8Kv
-# GigabitEthernet2. Matching it matters more than matching the template: an IP
-# MTU mismatch across a routed link does not fail the deploy, it fails later on
-# large packets. So the sub-interfaces are pinned to the same 9000 rather than
-# the parent being raised to 9216.
+# That rules 9216 out but does not pick a value. The router picks it. This is
+# a routed link, so both ends have to agree on how large an IP packet may be,
+# and DC-SITE11-CEDGE8Kv reports 1500 on all three of its sub-interfaces:
+#
+#   DC-SITE11-CEDGE8Kv# show ip interface GigabitEthernet2.2
+#     Internet address is 192.168.252.6/30
+#     MTU is 1500 bytes
+#
+# They inherit it from GigabitEthernet2, which is MTU 1500 and carries no mtu
+# or ip mtu line of its own. Monitor Mode means the controller can never raise
+# the router to meet a larger value, so anything above 1500 would leave the
+# two ends disagreeing: packets the leaf is willing to send would be too big
+# for the router to accept, and they would be dropped rather than fragmented.
 #
 # 05_vrf_lite.yml applies this after dcnm_vrf, over the attachments API,
 # because the module has no key for it.
-dc_vrf_lite_mtu: 9000
+dc_vrf_lite_mtu: 1500
 
 # dot1q is a string, not an integer: dcnm_vrf declares it type: str. Quoting
 # it here keeps the playbook from relying on YAML's implicit int-to-str

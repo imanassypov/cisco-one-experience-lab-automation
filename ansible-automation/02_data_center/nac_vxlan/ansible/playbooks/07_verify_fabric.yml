@@ -1,9 +1,15 @@
 ---
 # Stage 07 - verify the deployed fabric against the declared intent.
 #
-# Nexus Dashboard API only, and read-only. There is no SSH to 198.18.128.x, so
-# this stage works even when the VPN cannot reach the switches, and it is safe
-# to re-run as often as you like while debugging.
+# Read-only throughout: API GETs to Nexus Dashboard and show commands on one
+# switch, so it is safe to re-run as often as you like while debugging.
+#
+# Two sources of truth, deliberately kept apart. Almost every check reads the
+# Nexus Dashboard API, which needs no SSH and works when the VPN cannot reach
+# the 198.18.128.x management range. One check reads the real BGP session state
+# off the border leaf over SSH, because "the controller deployed the extension"
+# and "the eBGP session came up" are different claims, and only the second one
+# means external connectivity works.
 #
 # What it compares:
 #   - every switch in inventory/group_vars/all/dc_switches.yml is in the
@@ -19,6 +25,11 @@
 #   - every attachment the controller reports as attached (isLanAttached: true)
 #     is DEPLOYED. Switches the controller lists but has not attached come back
 #     as NA and are not judged - see the comment in Compare VRFs
+#   - every VRF-Lite eBGP session declared in dc_vrf_lite.yml is Established on
+#     the border leaf. This is the only check that reads a switch instead of the
+#     controller, and the only one with three possible answers rather than two:
+#     established, down, or not determined because the switch was unreachable.
+#     Not determined never counts as down and never fails the run
 #
 # It writes evidence/stage07-verification.md and fails at the end on any
 # mismatch.
@@ -28,13 +39,116 @@
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/07_verify_fabric.yml
 #
-# Useful override:
+# Useful overrides:
 #   -e dc_verify_fail_on_mismatch=false   write the report without failing the
 #                                         run
+#   -e dc_verify_bgp_sessions=false       skip the SSH read of the BGP sessions
+#                                         and compare only what the controller
+#                                         knows
 #
 # Background: "What the verification stage proves" in the README.
 
-- name: Stage 07 - verify the DC fabric against intent
+- name: Stage 07a - name the border leaf as the target of the BGP session check
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    # Set false to skip the BGP session check. With it off no SSH session is
+    # opened at all, and the report says the check was skipped rather than
+    # making any claim about the sessions.
+    dc_verify_bgp_sessions: true
+
+  tasks:
+    # add_host creates an inventory host while the play is running, which is how
+    # stage 00 builds its switch group too. The group is dc_fabric_switches
+    # because that is where the SSH settings and the vault credentials already
+    # live, in inventory/group_vars/dc_fabric_switches/connection.yml, so
+    # nothing about the connection is repeated here.
+    #
+    # The management address is looked up in
+    # inventory/group_vars/all/dc_switches.yml, the same table stage 00 reads. A
+    # border leaf missing from that table falls back to being resolved by name.
+    - name: Add the border leaf to the switch group so it can be read over SSH
+      ansible.builtin.add_host:
+        name: "{{ dc_vrf_lite_border_leaf }}"
+        groups: dc_fabric_switches
+        ansible_host: >-
+          {{ (dc_switches | default([])
+              | selectattr('name', 'eq', dc_vrf_lite_border_leaf)
+              | map(attribute='management_ipv4_address')
+              | list | first) | default(dc_vrf_lite_border_leaf, true) }}
+      changed_when: false
+      when:
+        - dc_verify_bgp_sessions | bool
+        - dc_vrf_lite_extensions | default([]) | length > 0
+
+- name: Stage 07b - read the VRF-Lite BGP session state off the border leaf
+  # Only the border leaf carries the VRF-Lite extensions, and the task below is
+  # limited to it. The play still names the whole group because that is the one
+  # the credentials are attached to, and because stage 00 may already have
+  # filled it with all five switches when both stages run from
+  # 01_dc_deploy.yml. A task that is skipped opens no SSH session, so naming the
+  # group costs nothing.
+  hosts: dc_fabric_switches
+  gather_facts: false
+  # vars declared in one play are not visible in the next, so the default for
+  # this flag is repeated in each play that reads it. -e on the command line
+  # overrides all of them at once.
+  vars:
+    dc_verify_bgp_sessions: true
+  # A border leaf this play cannot reach must not fail stage 07. Every other
+  # check in this stage talks to Nexus Dashboard and does not need the VPN to
+  # the switch management range, so an unreachable switch costs one check rather
+  # than the whole report. ignore_unreachable lets the play finish anyway; the
+  # next play sees an empty result and reports those rows as "not determined".
+  ignore_unreachable: true
+
+  tasks:
+    # One show command per extension declared in
+    # inventory/group_vars/all/dc_vrf_lite.yml, sent in a single SSH session.
+    #
+    # The command is `show bgp sessions [vrf vrf-name]`, from the "Monitor BGP
+    # Statistics" table of the Cisco Nexus 9000 Series NX-OS Unicast Routing
+    # Configuration Guide, Release 10.6(x), BGP chapter:
+    # https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/configuration/unicast-routing-configuration/cisco-nexus-9000-series-nx-os-unicast-routing-configuration-guide/configuring-bgp.html
+    # A VRF-Lite peering lives inside its VRF, not in the default VRF and not in
+    # the EVPN address family, so the VRF name has to be on the command or the
+    # neighbour is not in the output at all. A BGP session is one TCP session per
+    # neighbour whatever address families it carries, so the session state is
+    # read here rather than per address family.
+    #
+    # `output: json` asks NX-OS for the machine-readable form of the output, and
+    # the module hands back a parsed dictionary. Nothing downstream matches
+    # against screen text.
+    #
+    # A VRF that does not exist on this switch returns an empty string rather
+    # than an error, so a fabric that was never built reads as "no session"
+    # instead of stopping the run here.
+    #
+    # ignore_errors leaves the verdict to the next play instead of taking it
+    # here: a command that failed has to read as "not determined", not as a down
+    # session. register saves the result so the next play can read it out of
+    # hostvars.
+    - name: Ask the border leaf for the BGP session state of each VRF-Lite VRF
+      cisco.nxos.nxos_command:
+        commands: "{{ dc_bgp_session_commands }}"
+      register: dc_bgp_session_output
+      changed_when: false
+      ignore_errors: true
+      when:
+        - dc_verify_bgp_sessions | bool
+        - inventory_hostname == dc_vrf_lite_border_leaf
+      vars:
+        dc_bgp_session_commands: >-
+          {%- set cmds = [] -%}
+          {%- for ext in dc_vrf_lite_extensions | default([]) -%}
+          {{- cmds.append({'command': 'show bgp sessions vrf ' ~ ext.vrf,
+                           'output': 'json'}) or '' -}}
+          {%- endfor -%}
+          {{ cmds }}
+
+- name: Stage 07c - compare the fabric against intent and write the report
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -42,6 +156,27 @@
   vars:
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
     dc_verify_fail_on_mismatch: true
+    dc_verify_bgp_sessions: true
+
+    # What stage 07b registered on the border leaf. The `in hostvars` test
+    # covers the case where the flag is off and that host was never created.
+    dc_bgp_output: >-
+      {{ (hostvars[dc_vrf_lite_border_leaf].dc_bgp_session_output | default({}))
+         if dc_vrf_lite_border_leaf in hostvars else {} }}
+
+    # True only when the border leaf answered. An unreachable switch, a refused
+    # login and a failed command all leave stdout empty, and the BGP rows then
+    # read "not determined" rather than claiming the sessions are down.
+    dc_bgp_determined: >-
+      {{ (dc_verify_bgp_sessions | bool)
+         and ((dc_bgp_output.stdout | default([]) | length) > 0) }}
+
+    # The transport's own explanation, shown in the report when the read did not
+    # happen, so the student is not left guessing between a VPN that is down and
+    # a password that is wrong.
+    dc_bgp_undetermined_reason: >-
+      {{ dc_bgp_output.msg
+         | default('stage 07b did not run, so nothing was read', true) }}
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
@@ -431,18 +566,118 @@
                and (('"' ~ item.dot1q ~ '"') in extension_values)
                and (item.neighbor_ipv4 in extension_values) }}
 
+    # Everything above is the controller's opinion. A VRF-Lite extension that is
+    # attached and DEPLOYED means Nexus Dashboard pushed a sub-interface and a
+    # neighbour statement; it does not mean the neighbour answered. The two come
+    # apart routinely, because the far end of these three links is pre-built by
+    # the pod and Nexus Dashboard never writes to it - an address or dot1q tag
+    # that does not match the router leaves the leaf configured exactly as
+    # declared, with a session that never leaves Idle.
+    #
+    # So this check reads the switch. Stage 07b collected the output; the work
+    # here is picking each declared neighbour out of it.
+    #
+    # Nexus Dashboard has no API for this. Its LAN API is an intent and
+    # provisioning surface plus config compliance, and nothing in it reports
+    # routing protocol state - see "Why the BGP check uses SSH" in the README.
+    #
+    # Three outcomes, and the third is not the second: Established, down (any
+    # other state, or no such session on the switch), and not determined,
+    # meaning the border leaf did not answer. Only the first two are counted or
+    # judged.
+    - name: Compare the VRF-Lite BGP sessions against intent
+      ansible.builtin.set_fact:
+        dc_bgp_rows: "{{ dc_bgp_rows | default([]) + [row] }}"
+      loop: "{{ dc_vrf_lite_extensions | default([]) }}"
+      loop_control:
+        label: "{{ item.vrf }} to {{ item.neighbor_ipv4 }}"
+        # index_var exposes the loop position, which is how each command's
+        # output is matched to the extension that asked for it.
+        index_var: dc_bgp_index
+      vars:
+        # stdout holds one entry per command sent, in the order they were sent,
+        # and that order is the order of dc_vrf_lite_extensions - so entry N
+        # belongs to extension N. The length test avoids reading past the end
+        # when the read did not happen.
+        raw: >-
+          {{ (dc_bgp_output.stdout | default([]))[dc_bgp_index]
+             if ((dc_bgp_output.stdout | default([]) | length) > dc_bgp_index)
+             else '' }}
+        # A VRF the switch does not have returns an empty string, so the mapping
+        # test is what separates "no such VRF" from a real answer.
+        vrf_table: "{{ (raw.TABLE_vrf | default({})) if raw is mapping else {} }}"
+        # NX-OS returns ROW_vrf and ROW_neighbor as a single object when there is
+        # one of them and as a list when there are several. Both shapes are
+        # wrapped into a list so the lookups below do not have to care.
+        vrf_rows: >-
+          {%- set r = vrf_table.ROW_vrf | default([]) -%}
+          {{ [r] if r is mapping else r }}
+        # The switch reports vrf-name-out in lower case ("prod") where the data
+        # model declares PROD, so the two names are compared case-insensitively.
+        vrf_row: >-
+          {%- set matched = [] -%}
+          {%- for v in vrf_rows
+                if ((v['vrf-name-out'] | default('', true)) | lower
+                    == item.vrf | lower) -%}
+          {{- matched.append(v) or '' -}}
+          {%- endfor -%}
+          {{ (matched | first) | default({}, true) }}
+        neighbor_rows: >-
+          {%- set n = (vrf_row.TABLE_neighbor | default({})).ROW_neighbor
+                      | default([]) -%}
+          {{ [n] if n is mapping else n }}
+        # Matched on the exact neighbour address declared in dc_vrf_lite.yml.
+        # Every value in this output is a string even where it reads as a number,
+        # so the address is compared as text and the peer ASN is reported as
+        # text.
+        neighbor_row: >-
+          {%- set matched = [] -%}
+          {%- for n in neighbor_rows
+                if (n['neighbor-id'] | default('', true)) == item.neighbor_ipv4 -%}
+          {{- matched.append(n) or '' -}}
+          {%- endfor -%}
+          {{ (matched | first) | default({}, true) }}
+        # 'absent' is a distinct answer from a state name: it means the switch
+        # answered and has no session to this neighbour in this VRF at all.
+        observed_state: "{{ neighbor_row.state | default('absent', true) }}"
+        row:
+          name: "BGP session {{ item.vrf }} to {{ item.neighbor_ipv4 }}"
+          vrf: "{{ item.vrf }}"
+          neighbor: "{{ item.neighbor_ipv4 }}"
+          expected_state: Established
+          observed_state: "{{ observed_state if dc_bgp_determined | bool else 'not determined' }}"
+          # The peer ASN is reported, not asserted: dc_vrf_lite.yml declares no
+          # ASN, so there is nothing to compare it against. It is here because
+          # the wrong AS on the far end is a common reason a session sits in
+          # Idle or Active.
+          peer_as: >-
+            {{ (neighbor_row.remoteas | default('not reported', true))
+               if dc_bgp_determined | bool else 'not determined' }}
+          determined: "{{ dc_bgp_determined | bool }}"
+          ok: "{{ observed_state == 'Established' }}"
+      when: dc_verify_bgp_sessions | bool
+
+    # Rows the border leaf never answered for are left out of both the failure
+    # list and the total, so an unreachable switch neither fails the run nor
+    # inflates the "all checks match" count with checks that were not made.
     - name: Collect the failures
       ansible.builtin.set_fact:
         dc_failed_rows: >-
           {{ (dc_switch_rows | default([]) | rejectattr('ok') | list)
              + (dc_vrf_rows | default([]) | rejectattr('ok') | list)
              + (dc_network_rows | default([]) | rejectattr('ok') | list)
-             + (dc_vrf_lite_rows | default([]) | rejectattr('ok') | list) }}
+             + (dc_vrf_lite_rows | default([]) | rejectattr('ok') | list)
+             + (dc_bgp_rows | default([]) | selectattr('determined')
+                | rejectattr('ok') | list) }}
         dc_total_checks: >-
           {{ (dc_switch_rows | default([]) | length)
              + (dc_vrf_rows | default([]) | length)
              + (dc_network_rows | default([]) | length)
-             + (dc_vrf_lite_rows | default([]) | length) }}
+             + (dc_vrf_lite_rows | default([]) | length)
+             + (dc_bgp_rows | default([]) | selectattr('determined')
+                | list | length) }}
+        dc_bgp_undetermined_rows: >-
+          {{ dc_bgp_rows | default([]) | rejectattr('determined') | list }}
 
     # ------------------------------------------------------------- evidence
     - name: Make sure the evidence directory exists
@@ -468,6 +703,25 @@
           {{ dc_total_checks }} check(s) match the declared intent.
           Report: {{ dc_evidence_path }}
 
+    # Said out loud rather than left to the report, because a run that could not
+    # read the switch still ends in a green "all checks match" for everything it
+    # could read, and that is easy to mistake for a fabric that works.
+    - name: Say so when the BGP sessions could not be read
+      ansible.builtin.debug:
+        msg: >-
+          {{ dc_bgp_undetermined_rows | length }} BGP session(s) were NOT
+          checked, because {{ dc_vrf_lite_border_leaf }} did not answer:
+          {{ dc_bgp_undetermined_reason }}.
+          Those sessions are neither up nor down as far as this run knows.
+          This stage reaches the switch over SSH, so check that the client VPN
+          is up and that {{ dc_vrf_lite_border_leaf }} answers on the management
+          address declared for it in
+          inventory/group_vars/all/dc_switches.yml. To compare only what the
+          controller knows and drop these rows, re-run with
+          -e dc_verify_bgp_sessions=false. Everything else in this report came
+          from Nexus Dashboard and is unaffected.
+      when: dc_bgp_undetermined_rows | length > 0
+
     - name: Fail on any mismatch
       ansible.builtin.assert:
         that:
@@ -478,4 +732,8 @@
           See {{ dc_evidence_path }}.
         success_msg: >-
           All {{ dc_total_checks }} evaluated check(s) match the declared intent.
+          {%- if dc_bgp_undetermined_rows | length > 0 %}
+          The {{ dc_bgp_undetermined_rows | length }} BGP session check(s) the
+          border leaf did not answer for are not among them.
+          {%- endif %}
       when: dc_verify_fail_on_mismatch | bool

@@ -17,9 +17,44 @@
 
 - name: Collect installed Galaxy collections
   ansible.builtin.command:
-    cmd: "{{ script_server_venv_path }}/bin/ansible-galaxy collection list"
+    cmd: >-
+      {{ script_server_venv_path }}/bin/ansible-galaxy collection list
+      --format json
   register: script_server_galaxy_list
   changed_when: false
+
+- name: Flatten installed Galaxy collection versions
+  ansible.builtin.set_fact:
+    script_server_galaxy_versions: >-
+      {%- set installed = {} -%}
+      {%- for collection_root in (script_server_galaxy_list.stdout | from_json).values() -%}
+      {%- for collection_name, metadata in collection_root.items() -%}
+      {{- installed.update({collection_name: metadata.version}) or '' -}}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ installed }}
+
+- name: Verify every pinned Galaxy collection version
+  ansible.builtin.assert:
+    that:
+      - >-
+        (script_server_galaxy_versions[item.name] | default(''))
+        == (item.version | string)
+    fail_msg: >-
+      {{ item.name }} is not at the pinned version {{ item.version }}.
+      Installed: {{ script_server_galaxy_versions[item.name] | default('missing') }}.
+      Re-run the bootstrap so ansible-galaxy reinstalls the pinned requirements.
+    success_msg: "{{ item.name }} {{ item.version }} is installed."
+  loop: "{{ script_server_collection_requirements.collections }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.version }}"
+
+- name: Check Python package dependency consistency
+  ansible.builtin.command:
+    cmd: "{{ script_server_venv_path }}/bin/python -m pip check"
+  register: script_server_pip_check
+  changed_when: false
+  failed_when: script_server_pip_check.rc != 0
 
 # Exports PATH first on purpose: this proves the binaries resolve once the rc
 # file is in effect, NOT that the student's already-open shell can see them.
@@ -66,7 +101,8 @@
       - "PATH binaries (resolved with the new PATH applied): {{ script_server_path_check.stdout_lines }}"
       - "DNS: {{ script_server_dns_verify.stdout }}"
       - "Vault password file: {{ script_server_vault }}"
-      - "{{ script_server_galaxy_list.stdout_lines }}"
+      - "Galaxy collections: {{ script_server_galaxy_versions }}"
+      - "Python dependencies: {{ script_server_pip_check.stdout | default('ok') }}"
       - >-
         NEXT: this shell started before PATH was updated, so `ansible-playbook`
         is still not found in it. Run `exec $SHELL -l` here, or open a new SSH
