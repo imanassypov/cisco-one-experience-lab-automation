@@ -322,6 +322,12 @@
           {{ out }}
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
+    - name: TEMP debug
+      ansible.builtin.debug:
+        msg:
+          - "TYPE={{ dc_vrf_lite_extension_values | default('UNDEF') | type_debug }}"
+          - "KEYS={{ dc_vrf_lite_extension_values.keys() | list if dc_vrf_lite_extension_values is defined and dc_vrf_lite_extension_values is mapping else 'NOPE' }}"
+
     - name: Read the network attachments
       cisco.dcnm.dcnm_rest:
         method: GET
