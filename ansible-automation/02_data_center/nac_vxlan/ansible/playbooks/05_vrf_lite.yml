@@ -411,7 +411,8 @@
     # parent with "MTU of sub-interface greater than parent interface
     # detected", so the deploy that follows this stage would fail. These two
     # tasks put dc_vrf_lite_mtu, from dc_vrf_lite.yml, into the extension the
-    # module just wrote.
+    # module just wrote. That value is 1500, the IP MTU the edge router
+    # carries on its side of the same three links.
     #
     # The current extension is read back rather than rebuilt, because the
     # controller adds fields of its own to it - the neighbour ASN and the

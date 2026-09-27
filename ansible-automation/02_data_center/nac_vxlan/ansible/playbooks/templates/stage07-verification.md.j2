@@ -4,12 +4,23 @@
 Generated {{ dc_verify_timestamp }} by `07_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
+`group_vars/all/dc_vrf_lite.yml`,
 `host_vars/{{ inventory_hostname }}/vrfs.nac.yaml` and
-`host_vars/{{ inventory_hostname }}/networks.nac.yaml`. Observed state comes
-from the Nexus Dashboard API only - no device SSH - so this report is valid
-even when the switch management addresses are unreachable from here.
+`host_vars/{{ inventory_hostname }}/networks.nac.yaml`.
+
+Observed state has two sources. Every table except the last one is read from
+the Nexus Dashboard API, needs no device SSH, and is therefore valid even when
+the switch management addresses are unreachable from here. The BGP session
+table is read off the border leaf itself over SSH, because the controller has
+no API that reports routing protocol state. When that switch cannot be
+reached, those rows read `not determined` and are excluded from the count
+below rather than being reported as sessions that are down.
 
 **{{ dc_total_checks | int - dc_failed_rows | length }} of {{ dc_total_checks }} check(s) match intent.**
+{% if dc_bgp_undetermined_rows | default([]) %}
+
+**{{ dc_bgp_undetermined_rows | length }} further BGP session check(s) could not be made, and are in neither of those numbers.**
+{% endif %}
 
 ## Switches
 
@@ -86,6 +97,53 @@ of the seen columns means the extension exists with different values than
 `dc_vrf_lite.yml` declares - someone edited it in the UI, or the controller
 allocated its own addresses because the declared ones were removed.
 
+## VRF-Lite BGP sessions
+
+{% if not (dc_verify_bgp_sessions | bool) %}
+Skipped: this run was made with `-e dc_verify_bgp_sessions=false`, so the
+border leaf was not read and nothing here is known either way.
+{% elif not (dc_vrf_lite_rows | default([])) %}
+No VRF-Lite extensions are declared in `group_vars/all/dc_vrf_lite.yml`, so
+there are no sessions to check.
+{% else %}
+Read from `{{ dc_vrf_lite_border_leaf }}` with
+`show bgp sessions vrf <vrf>`, one command per declared extension.
+
+| VRF | Neighbour | Peer ASN observed | State expected | State observed | Match |
+|---|---|---|---|---|---|
+{% for row in dc_bgp_rows | default([]) %}
+| {{ row.vrf }} | {{ row.neighbor }} | {{ row.peer_as }} | {{ row.expected_state }} | {{ row.observed_state }} | {{ 'yes' if row.ok else ('not determined' if not row.determined else 'NO') }} |
+{% endfor %}
+
+This is the only table in this report that describes the fabric rather than
+the controller's intent for it. The tables above prove Nexus Dashboard pushed
+a sub-interface, a dot1q tag and a neighbour statement; this one asks the
+border leaf whether the neighbour answered.
+
+`Established` is the only state that means external connectivity works. `Idle`
+usually means the session is not being attempted or is being refused, and
+`Active` means the leaf is trying and getting nothing back; both point at the
+far end, DC-SITE11-CEDGE8Kv, whose side of these links is pre-built by the pod
+and which Nexus Dashboard never writes to. Check that the router's
+sub-interface for that dot1q tag carries the address `dc_vrf_lite.yml` names
+as `neighbor_ipv4`, that it is up, and that the peer ASN in the table above is
+the AS the router really uses. `absent` is a different fault: the switch
+answered and has no session to that neighbour in that VRF at all, so the
+extension never reached the running configuration - re-run
+`05_vrf_lite.yml` and then `06_recalculate_and_deploy.yml`.
+{% endif %}
+{% if dc_bgp_undetermined_rows | default([]) %}
+
+`not determined` is not a fault in the fabric. It means this run could not
+read `{{ dc_vrf_lite_border_leaf }}`: {{ dc_bgp_undetermined_reason }}. Those
+{{ dc_bgp_undetermined_rows | length }} row(s) are excluded from the count at
+the top of this report, because a check that was not made is not a check that
+passed. Unlike every other table here, this one needs the client VPN up and
+SSH to the switch management range. Fix that and re-run, or re-run with
+`-e dc_verify_bgp_sessions=false` to get a report that makes no claim about
+BGP at all.
+{% endif %}
+
 ## Failures
 
 {% if dc_failed_rows | length > 0 %}
@@ -95,6 +153,9 @@ values side by side.
 {% for row in dc_failed_rows %}
 {% if row.observed_role is defined %}
 - **{{ row.name }}** ({{ row.ip }}) - {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
+{% elif row.expected_state is defined %}
+- **{{ row.name }}** (BGP session) - {% if row.observed_state == 'absent' %}{{ dc_vrf_lite_border_leaf }} has no BGP session to {{ row.neighbor }} in VRF {{ row.vrf }}, so the extension is not in its running configuration; re-run `05_vrf_lite.yml` then `06_recalculate_and_deploy.yml`{% else %}the session to {{ row.neighbor }} in VRF {{ row.vrf }} is `{{ row.observed_state }}`, not `Established`. The neighbour is configured on the leaf, since the leaf reports a session for it, so look next at the far end on DC-SITE11-CEDGE8Kv{% endif %}
+
 {% elif row.interface_seen is defined %}
 - **{{ row.name }}** (VRF-Lite) - {% if not row.attached %}not attached to the border leaf at all; re-run `05_vrf_lite.yml`{% else %}{% set faults = [] %}{% if row.state != 'DEPLOYED' %}{{ faults.append('attachment state is ' ~ row.state ~ ', must be DEPLOYED') or '' }}{% endif %}{% if not row.interface_seen %}{{ faults.append('declared interface is absent from extensionValues') or '' }}{% endif %}{% if not row.dot1q_seen %}{{ faults.append('declared dot1q tag is absent from extensionValues') or '' }}{% endif %}{% if not row.neighbor_seen %}{{ faults.append('declared neighbour address is absent from extensionValues') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
 
@@ -113,14 +174,18 @@ None.
 ## Not covered by this report
 
 - **The edge router's side of the VRF-Lite links.** The extensions on
-  DC-Service-Leaf are built by `05_vrf_lite.yml` and checked above, but the
-  matching sub-interfaces and BGP neighbours on DC-SITE11-CEDGE8Kv are not.
-  The External fabric is in Monitor Mode, so Nexus Dashboard never writes to
-  that router and has nothing to report about it. Its side of the three links
-  is pre-built by the pod, which is why the addresses in `dc_vrf_lite.yml`
-  are pinned rather than allocated.
-- **BGP adjacency state.** That the extension is `DEPLOYED` means the
-  controller pushed it, not that the neighbour came up.
-- **Data plane.** This is an intent-versus-controller comparison. It proves
-  Nexus Dashboard deployed what was declared; it does not prove a server on
-  MainNetwork1 can reach one on ProdNetwork1.
+  DC-Service-Leaf are built by `05_vrf_lite.yml` and checked above, and the BGP
+  session table says whether the router answered, but nothing here is read from
+  DC-SITE11-CEDGE8Kv itself. The External fabric is in Monitor Mode, so Nexus
+  Dashboard never writes to that router and has nothing to report about it. Its
+  side of the three links is pre-built by the pod, which is why the addresses in
+  `dc_vrf_lite.yml` are pinned rather than allocated.
+- **What the sessions carry.** `Established` means the two routers are talking.
+  It does not say how many prefixes crossed, or that the ones that did are the
+  ones you wanted. `show bgp ipv4 unicast neighbors <neighbour> vrf <vrf>` on
+  the border leaf reports the prefixes sent and received on that session.
+- **The fabric underlay and the EVPN overlay.** The BGP session table covers
+  only the three VRF-Lite eBGP sessions to the edge router. The iBGP EVPN
+  sessions to the spines are not checked here.
+- **Data plane.** Nothing here sends a packet between two workloads, so it does
+  not prove a server on MainNetwork1 can reach one on ProdNetwork1.
