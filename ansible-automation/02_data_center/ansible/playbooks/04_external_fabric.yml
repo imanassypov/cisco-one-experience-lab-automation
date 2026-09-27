@@ -57,6 +57,9 @@
     # own call completed in about 14 seconds; these values allow five minutes.
     dc_external_add_retries: 30
     dc_external_add_delay: 10
+    # Read off the router by stage 00, the same lookup the switches come from.
+    dc_external_router_serial: >-
+      {{ dc_device_serials[dc_external_edge_router.hostname] | default('') }}
 
   pre_tasks:
     - name: Require the External fabric settings to be declared
@@ -71,6 +74,20 @@
           dc_external_fabric_settings or dc_external_edge_router is incomplete.
           Both are expected in
           inventory/group_vars/all/dc_external_settings.yml.
+      tags: [always]
+
+    # The serial comes from stage 00's lookup rather than from the controller,
+    # so a missing lookup is an ordering problem worth naming here rather than
+    # a confusing empty serial in the add payload later.
+    - name: Require stage 00 to have read the edge router serial
+      ansible.builtin.assert:
+        that:
+          - dc_external_router_serial | length > 0
+        fail_msg: >-
+          No serial for {{ dc_external_edge_router.hostname }} in
+          inventory/group_vars/all/dc_device_serials.yml. That file is written
+          by stage 00. Run playbooks/00_discover_dc_switch_serials.yml first.
+      when: dc_external_add_edge_router | bool
       tags: [always]
 
     # Existence is read from the fabric list rather than from a GET of the
@@ -196,17 +213,27 @@
     # status has to be read rather than inferred from the response code. A
     # successful IOS-XE discovery reports "manageable" and carries a serial
     # number; the SNMPv3 fallback reports "SNMPv3 Timeout" and no serial.
+    #
+    # The serial it reports is checked against the one stage 00 read off the
+    # router itself rather than trusted on its own. The two disagreeing means
+    # the seed address now answers as a different device, and posting either
+    # value would be wrong.
     - name: Require the discovered router to be manageable
       ansible.builtin.assert:
         that:
           - dc_external_discovered | length == 1
           - dc_external_discovered[0].status == 'manageable'
           - dc_external_discovered[0].serialNumber | default('') | length > 0
+          - dc_external_discovered[0].serialNumber == dc_external_router_serial
         fail_msg: >-
           Discovery of {{ dc_external_edge_router.ip }} did not return a
-          manageable switch: {{ dc_external_discovered | to_json }}.
-          A statusReason of "SNMPv3 Timeout" indicates platformType did not
-          reach the controller, which then used the NX-OS discovery path.
+          manageable switch matching the declared model:
+          {{ dc_external_discovered | to_json }}.
+          Stage 00 read serial '{{ dc_external_router_serial }}' off that
+          address. A statusReason of "SNMPv3 Timeout" indicates platformType
+          did not reach the controller, which then used the NX-OS discovery
+          path. A serial mismatch instead means the address now answers as a
+          different device - re-run stage 00.
       vars:
         dc_external_discovered: >-
           {{ ((dc_external_discovery.response | default({})).DATA
@@ -222,11 +249,13 @@
     # No role is sent. The controller assigns edgeRouter to an IOS-XE device in
     # an external connectivity fabric, which is the role the guide specifies.
     #
-    # model, softwareVersion and serialNumber come from the discovery above
-    # because they are pod-specific, but the switch entry is rebuilt key by key
-    # rather than passed through whole: the discovery response also carries
-    # status and statusReason, which are outputs rather than inputs, and omits
-    # vdcMac, which the add requires.
+    # model, softwareVersion and hostname come from the discovery above because
+    # they are pod-specific, but the switch entry is rebuilt key by key rather
+    # than passed through whole: the discovery response also carries status and
+    # statusReason, which are outputs rather than inputs, and omits vdcMac,
+    # which the add requires. serialNumber comes from the stage 00 lookup, the
+    # same source every other stage uses, and the assert above has already
+    # proved discovery agrees with it.
     - name: Add the edge router to the fabric
       cisco.dcnm.dcnm_rest:
         method: POST
@@ -243,7 +272,7 @@
                 'hostname': dc_external_discovered[0].hostname,
                 'model': dc_external_discovered[0].model,
                 'softwareVersion': dc_external_discovered[0].softwareVersion,
-                'serialNumber': dc_external_discovered[0].serialNumber,
+                'serialNumber': dc_external_router_serial,
                 'vdcId': dc_external_discovered[0].vdcId | default(0),
                 'vdcMac': ''}]}
              | to_json }}

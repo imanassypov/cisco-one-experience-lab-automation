@@ -21,6 +21,9 @@
 **/host_vars/*/topology_switches.nac.yaml
 !**/host_vars/*/topology_switches.nac.yaml.example
 
+# Pod-local serial lookup, written by the same stage and for the same reason.
+**/inventory/group_vars/all/dc_device_serials.yml
+
 # Splunk assurance build output. The .spl is rebuilt from splunk-app/ on every
 # deploy. The collector config is only ever rendered onto the Splunk host, where
 # it carries a live HEC token, so a copy here would be a leak.
