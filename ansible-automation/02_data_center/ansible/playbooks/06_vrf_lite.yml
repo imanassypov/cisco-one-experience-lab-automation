@@ -332,6 +332,8 @@
           {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else {} -%}
           {%- set current = ((conn_doc.get('VRF_LITE_CONN', []) | first | default({}))
                              if conn_doc is mapping else {}) -%}
+          {%- set multisite = (values.get('MULTISITE_CONN') or '{"MULTISITE_CONN":[]}')
+                              if values is mapping else '{"MULTISITE_CONN":[]}' -%}
           {%- set declared_fields = {
                 'IF_NAME': dc_vrf_lite_interface,
                 'DOT1Q_ID': ext.dot1q | string,
@@ -355,10 +357,10 @@
                   'serialNumber': dc_vrf_lite_border_serial,
                   'vlan': attachment.get('vlanId'),
                   'deployment': true,
-                  'instanceValues': attachment.get('instanceValues', ''),
-                  'freeformConfig': attachment.get('freeformConfig', ''),
+                  'instanceValues': attachment.get('instanceValues') or '',
+                  'freeformConfig': attachment.get('freeformConfig') or '',
                   'extensionValues': ({'VRF_LITE_CONN': ({'VRF_LITE_CONN': [desired]} | to_json),
-                                       'MULTISITE_CONN': '{"MULTISITE_CONN":[]}'}) | to_json
+                                       'MULTISITE_CONN': multisite}) | to_json
                 }]
               }) or '' -}}
           {%- endif -%}
