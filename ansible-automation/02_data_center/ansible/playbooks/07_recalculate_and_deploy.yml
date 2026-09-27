@@ -26,6 +26,32 @@
   gather_facts: false
   any_errors_fatal: true
 
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
   roles:
     - role: cisco.nac_dc_vxlan.validate
-    - role: cisco.nac_dc_vxlan.dtc.deploy
+
+  tasks:
+    # The deploy role only pushes switches the controller already reports as
+    # Out-of-Sync, and the attachment stage 06 writes does not move that flag by
+    # itself. config-save recalculates the intended configuration, and reading
+    # config-preview is what refreshes each switch's compliance state. Without
+    # them stage 06's extensions sit on the controller, every switch still reads
+    # In-Sync, and this stage reports "no switches need deployment" while the
+    # sub-interfaces never reach DC-Service-Leaf.
+    - name: Recalculate the intended configuration
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-save"
+      changed_when: true
+
+    - name: Refresh each switch's compliance state
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-preview?forceShowRun=false&showBrief=true"
+      changed_when: false
+
+    - name: Deploy every switch the controller reports as out of sync
+      ansible.builtin.include_role:
+        name: cisco.nac_dc_vxlan.dtc.deploy
