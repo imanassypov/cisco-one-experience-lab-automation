@@ -87,3 +87,34 @@
 
   roles:
     - role: cisco.nac_dc_vxlan.dtc.deploy
+
+# The deploy above is what makes Ethernet1/8 real on the border leaf, and only
+# then does CDP report the edge router across it. Nexus Dashboard builds the
+# VRF-Lite inter-fabric link from that adjacency during a recalculation, so the
+# one that ran before the deploy was too early to see it. Recalculating again
+# here is what puts the link in place for stage 06.
+#
+# Measured on 2026-09-27, on a fabric built from scratch: straight after the
+# deploy the controller offered DC-Service-Leaf no extension prototype at all;
+# a single further config-save plus config-preview turned that into
+# ['VRF_LITE'], with no other change and no waiting.
+- name: Stage 05 - recalculate again so the inter-fabric link is built
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
+  tasks:
+    - name: Recalculate now that the adjacency exists
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-save"
+      changed_when: true
+
+    - name: Refresh compliance so stage 07 can see what this produced
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-preview?forceShowRun=false&showBrief=true"
+      changed_when: false
