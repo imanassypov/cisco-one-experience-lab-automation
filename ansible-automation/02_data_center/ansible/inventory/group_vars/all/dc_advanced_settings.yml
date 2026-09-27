@@ -62,7 +62,15 @@ dc_advanced_fabric_settings:
   # typo, and it differs from the UI label the guide quotes
   # ("Back2BackAndToExternal"). The nvPair is what dcnm_fabric sends, so the
   # nvPair spelling is the one that belongs here.
-  VRF_LITE_AUTOCONFIG: "Back2Back&ToExternal"
+  #
+  # MANUAL RATHER THAN Back2Back&ToExternal, and this is a deliberate
+  # departure from the guide. Auto-created IFCs come with auto-allocated dot1q
+  # IDs, and on this pod the router's tags are fixed and pre-built, so the
+  # controller's allocation and the router disagree - see the long note in
+  # inventory/group_vars/all/dc_vrf_lite.yml. Stage 04 creates the one IFC this
+  # fabric needs itself, from declared values, which is what Manual leaves room
+  # for: "The default is Manual, under which no IFC is ever auto-created."
+  VRF_LITE_AUTOCONFIG: "Manual"
 
   # UI: Resources tab, "Auto Deploy for Peer". Guide step: "Check the Auto
   # Deploy for Peer check box".

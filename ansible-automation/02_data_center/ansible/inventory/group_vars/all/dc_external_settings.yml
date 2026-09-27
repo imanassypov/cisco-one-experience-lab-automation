@@ -23,6 +23,13 @@
 # Everything not listed here is left at the template default. That is
 # deliberate: the fewer values declared, the fewer that can drift from a
 # controller upgrade.
+
+# The fabric's name, matching the host it is driven through in
+# inventory/static_inventory.yml. Declared so a play that is not running
+# against that host - stage 04's link play runs against the DC fabric - can
+# still name it.
+dc_external_fabric_name: External
+
 dc_external_fabric_settings:
   # Guide: ASN 65531. Distinct from the DC fabric's 65000 - this is the other
   # side of the eBGP VRF-Lite handoff, so the two must differ.

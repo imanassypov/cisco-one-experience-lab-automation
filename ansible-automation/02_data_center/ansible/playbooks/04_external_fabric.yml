@@ -328,3 +328,63 @@
                    else 'Edge router skipped because
                    dc_external_add_edge_router is false. VRF-Lite extensions
                    to it cannot be built until it is in the fabric.') }}
+
+# ---------------------------------------------------------------------------
+# The inter-fabric link stage 06 depends on.
+#
+# VRF_LITE_AUTOCONFIG is Manual, so the controller creates no IFC of its own.
+# That is deliberate: an auto-created IFC also auto-allocates a dot1q ID per
+# VRF, and this pod's router has fixed tags that the controller's allocation
+# does not match. Declaring the link here means nothing is allocated behind the
+# data model's back.
+#
+# This runs against the DC fabric rather than the External one because the link
+# belongs to the source fabric, and it runs after the play above because the
+# router has to be in the External fabric before a link can terminate on it.
+- name: Stage 04 - build the VRF-Lite inter-fabric link
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    # The DC fabric's ASN lives in the NAC model rather than in group_vars, so
+    # the link cannot contradict the fabric it joins.
+    - name: Read the declared fabric ASN
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/global.nac.yaml"
+        name: dc_global_model
+      delegate_to: localhost
+
+    - name: Create the inter-fabric link on {{ dc_vrf_lite_interface }}
+      cisco.dcnm.dcnm_links:
+        state: merged
+        src_fabric: "{{ dc_fabric_name }}"
+        config:
+          - dst_fabric: "{{ dc_external_fabric_name }}"
+            src_interface: "{{ dc_vrf_lite_interface }}"
+            dst_interface: "{{ dc_vrf_lite_peer_interface }}"
+            src_device: "{{ dc_vrf_lite_border_leaf }}"
+            dst_device: "{{ dc_external_edge_router.hostname }}"
+            template: ext_fabric_setup
+            profile:
+              ipv4_subnet: "{{ dc_vrf_lite_ifc.ipv4_addr }}"
+              neighbor_ip: "{{ dc_vrf_lite_ifc.neighbor_ipv4 }}"
+              src_asn: "{{ dc_global_model.vxlan.global.bgp_asn }}"
+              dst_asn: "{{ dc_external_fabric_settings.BGP_AS }}"
+              mtu: "{{ dc_vrf_lite_ifc.mtu }}"
+              # False because the far end is in Monitor Mode: the controller
+              # must not try to generate configuration on the router.
+              auto_deploy: false
+      register: dc_external_link
+
+    - name: Report the link result
+      ansible.builtin.debug:
+        msg: >-
+          Inter-fabric link {{ dc_vrf_lite_border_leaf }}
+          {{ dc_vrf_lite_interface }} -> {{ dc_external_edge_router.hostname }}
+          {{ dc_vrf_lite_peer_interface }},
+          {{ dc_vrf_lite_ifc.ipv4_addr }} to {{ dc_vrf_lite_ifc.neighbor_ipv4 }},
+          MTU {{ dc_vrf_lite_ifc.mtu }}.
+          changed={{ dc_external_link.changed | default(false) }}.
+          Stage 05 deploys it; stage 06 reads the extension prototype it
+          produces.

@@ -86,6 +86,33 @@ dc_vrf_lite_interface: Ethernet1/8
 # inter-fabric link.
 dc_vrf_lite_peer_interface: GigabitEthernet2
 
+# THE INTER-FABRIC LINK ITSELF, which this collection now creates rather than
+# letting the controller auto-create.
+#
+# With VRF_LITE_AUTOCONFIG set to Back2Back&ToExternal the controller builds
+# this link on its own - and, while doing so, allocates a dot1q ID per VRF out
+# of TOP_DOWN_L3_DOT1Q in an order of its own choosing. Measured on
+# 2026-09-27 it handed PROD 2, MAIN 3 and IOT 4, where the pre-built router
+# needs PROD 2, IOT 3 and MAIN 4. Stage 06 then cannot write the declared tags
+# because they are a permutation of the controller's: MAIN cannot take 4 while
+# IOT holds it, and the controller answers HTTP 500 "Id[3] is already
+# allocated to MAIN". Nothing in the payload can resolve that, because the
+# allocation happens before stage 06 runs.
+#
+# So VRF_LITE_AUTOCONFIG is Manual and the values below are declared. Nothing
+# is auto-allocated, and the data model is authoritative end to end.
+#
+# These are the parent link's own addresses, not a VRF's. The controller used
+# 192.168.252.0/30 for it, the first /30 of DCI_SUBNET_RANGE, and the router's
+# GigabitEthernet2 carries no address at all - the peering that matters is
+# per-VRF on the sub-interfaces below.
+dc_vrf_lite_ifc:
+  ipv4_addr: 192.168.252.1/30
+  neighbor_ipv4: 192.168.252.2
+  # The parent interface MTU. Every sub-interface has to stay at or below it,
+  # which is what dc_vrf_lite_mtu further down respects.
+  mtu: 9000
+
 # WHY THE ADDRESSES ARE PINNED RATHER THAN LEFT TO THE CONTROLLER.
 #
 # AUTO_UNIQUE_VRF_LITE_IP_PREFIX is on, so Nexus Dashboard is perfectly able
