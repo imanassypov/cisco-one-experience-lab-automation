@@ -234,12 +234,17 @@
     # neighbour ASN and the Jython template both come from the inter-fabric
     # link. Starting from it, rather than building a connection from scratch,
     # is what keeps ios_xe_Ext_VRF_Lite_Jython on an IOS-XE peer.
-    - name: Read the VRF-Lite extension prototype the controller offers
+    #
+    # The same response also carries the extension currently in place, which is
+    # what makes a re-run a no-op. The attachments endpoint does NOT return
+    # extensionValues, so reading the current state from there finds nothing
+    # and rewrites the extension on every run.
+    - name: Read the VRF-Lite prototypes and the extensions in place
       cisco.dcnm.dcnm_rest:
         method: GET
         path: >-
-          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{ dc_vrf_lite_extensions[0].vrf }}&serial-numbers={{ dc_vrf_lite_border_serial }}
-      register: dc_vrf_lite_probe
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{ dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}&serial-numbers={{ dc_vrf_lite_border_serial }}
+      register: dc_vrf_lite_switch_read
       changed_when: false
 
     # The VLAN and the per-switch instance values come from the attachments
@@ -254,38 +259,61 @@
       register: dc_vrf_lite_attach_read
       changed_when: false
 
-    # extensionValues is a JSON document stored inside a JSON string, so it is
-    # decoded with from_json rather than read as a mapping.
-    - name: Extract the prototype connection
+    # extensionValues nests JSON inside JSON, and the controller is not
+    # consistent about it: the prototype's copy arrives as a string while the
+    # switch's own arrives as a mapping whose values are strings. Hence the
+    # from_json plus 'is mapping' guard at each level.
+    - name: Index the controller state by VRF
       ansible.builtin.set_fact:
-        dc_vrf_lite_prototype: >-
-          {%- set switch = (((dc_vrf_lite_probe.response | default({})).DATA | default([])
-                             | first | default({})).switchDetailsList | default([])
-                            | first | default({})) -%}
-          {%- set found = namespace(values={}) -%}
-          {%- for proto in switch.get('extensionPrototypeValues', []) -%}
-          {%- if proto.get('extensionType', '') == 'VRF_LITE' and found.values == {} -%}
-          {%- set raw = proto.get('extensionValues', '') -%}
+        dc_vrf_lite_state: >-
+          {%- set state = {} -%}
+          {%- for record in ((dc_vrf_lite_switch_read.response | default({})).DATA | default([])) -%}
+          {%- set switch = (record.get('switchDetailsList', []) | first | default({})) -%}
+          {%- set proto = namespace(values={}) -%}
+          {%- for candidate in switch.get('extensionPrototypeValues', []) -%}
+          {%- if candidate.get('extensionType', '') == 'VRF_LITE' and proto.values == {} -%}
+          {%- set raw = candidate.get('extensionValues', '') -%}
           {%- set decoded = (raw | from_json) if raw is string and raw | length > 0 else raw -%}
           {%- if decoded is mapping -%}
-          {%- set found.values = decoded -%}
+          {%- set proto.values = decoded -%}
           {%- endif -%}
           {%- endif -%}
           {%- endfor -%}
-          {{ found.values }}
+          {%- set raw_values = switch.get('extensionValues', '') -%}
+          {%- set values = (raw_values | from_json) if raw_values is string and raw_values | length > 0 else raw_values -%}
+          {%- set raw_conn = values.get('VRF_LITE_CONN', '') if values is mapping else '' -%}
+          {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else raw_conn -%}
+          {%- set connections = conn_doc.get('VRF_LITE_CONN', []) if conn_doc is mapping else [] -%}
+          {%- set _ = state.update({record.get('vrfName', ''): {
+                'prototype': proto.values,
+                'current': (connections | first | default({})),
+                'multisite': ((values.get('MULTISITE_CONN') or '{"MULTISITE_CONN":[]}')
+                              if values is mapping else '{"MULTISITE_CONN":[]}'),
+                'freeform': switch.get('freeformConfig') or ''}}) -%}
+          {%- endfor -%}
+          {{ state }}
 
     - name: Fail when the controller offers no VRF-Lite extension
       ansible.builtin.assert:
         that:
-          - dc_vrf_lite_prototype | length > 0
+          - without_prototype | length == 0
         fail_msg: >-
           Nexus Dashboard offers {{ dc_vrf_lite_border_leaf }}
-          ({{ dc_vrf_lite_border_serial }}) no VRF-Lite extension, so there is
-          no neighbour ASN or peer template to build the attachment from. An
-          extension is offered only where a VRF-Lite inter-fabric link
-          terminates on {{ dc_vrf_lite_interface }}, and the controller builds
-          that link during a Recalculate and Deploy once the edge router is in
-          the External fabric. Run stage 05, then re-run this stage.
+          ({{ dc_vrf_lite_border_serial }}) no VRF-Lite extension for
+          {{ without_prototype | join(', ') }}, so there is no neighbour ASN or
+          peer template to build the attachment from. An extension is offered
+          only where a VRF-Lite inter-fabric link terminates on
+          {{ dc_vrf_lite_interface }}, and the controller builds that link
+          during a Recalculate and Deploy once the edge router is in the
+          External fabric. Run stage 05, then re-run this stage.
+      vars:
+        without_prototype: >-
+          {{ dc_vrf_lite_extensions | map(attribute='vrf')
+             | reject('in', dc_vrf_lite_state
+                            | dict2items
+                            | selectattr('value.prototype')
+                            | map(attribute='key') | list)
+             | list }}
 
     # ---------------------------------------------------------------- write
     - name: Fail when stage 02 has not attached the VRFs to the border leaf
@@ -326,14 +354,8 @@
           {%- set attachment = (record.get('lanAttachList', [])
                                 | selectattr('switchSerialNo', 'equalto', dc_vrf_lite_border_serial)
                                 | list | first | default({})) -%}
-          {%- set raw = attachment.get('extensionValues', '') -%}
-          {%- set values = (raw | from_json) if raw is string and raw | length > 0 else {} -%}
-          {%- set raw_conn = values.get('VRF_LITE_CONN', '') if values is mapping else '' -%}
-          {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else {} -%}
-          {%- set current = ((conn_doc.get('VRF_LITE_CONN', []) | first | default({}))
-                             if conn_doc is mapping else {}) -%}
-          {%- set multisite = (values.get('MULTISITE_CONN') or '{"MULTISITE_CONN":[]}')
-                              if values is mapping else '{"MULTISITE_CONN":[]}' -%}
+          {%- set state = dc_vrf_lite_state.get(ext.vrf, {}) -%}
+          {%- set current = state.get('current', {}) -%}
           {%- set declared_fields = {
                 'IF_NAME': dc_vrf_lite_interface,
                 'DOT1Q_ID': ext.dot1q | string,
@@ -341,7 +363,7 @@
                 'NEIGHBOR_IP': ext.neighbor_ipv4,
                 'PEER_VRF_NAME': ext.peer_vrf,
                 'MTU': dc_vrf_lite_mtu | string} -%}
-          {%- set desired = dc_vrf_lite_prototype | combine(declared_fields) -%}
+          {%- set desired = state.get('prototype', {}) | combine(declared_fields) -%}
           {%- set drift = [] -%}
           {%- for key, value in declared_fields.items() -%}
           {%- if current.get(key, '') | string != value | string -%}
@@ -358,9 +380,9 @@
                   'vlan': attachment.get('vlanId'),
                   'deployment': true,
                   'instanceValues': attachment.get('instanceValues') or '',
-                  'freeformConfig': attachment.get('freeformConfig') or '',
+                  'freeformConfig': state.get('freeform', ''),
                   'extensionValues': ({'VRF_LITE_CONN': ({'VRF_LITE_CONN': [desired]} | to_json),
-                                       'MULTISITE_CONN': multisite}) | to_json
+                                       'MULTISITE_CONN': state.get('multisite', '{\"MULTISITE_CONN\":[]}')}) | to_json
                 }]
               }) or '' -}}
           {%- endif -%}
