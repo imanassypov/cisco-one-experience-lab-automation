@@ -239,7 +239,10 @@
 
     - name: Show what will be attached
       ansible.builtin.debug:
-        msg: "{{ dc_vrf_lite_extensions | length }} VRF-Lite extension(s) on {{ dc_vrf_lite_border_leaf }} ({{ dc_vrf_lite_border_ip }}) {{ dc_vrf_lite_interface }}:\n{{ dc_vrf_lite_attachment_table }}"
+        msg: >-
+          {{ ['VRF-Lite extensions on ' ~ dc_vrf_lite_border_leaf ~ ' ('
+              ~ dc_vrf_lite_border_ip ~ '), interface ' ~ dc_vrf_lite_interface ~ ':']
+             + dc_vrf_lite_attachment_table }}
       vars:
         dc_vrf_lite_attachment_table: >-
           {%- set rows = ['| VRF | Dot1q | Local address | Neighbor |',
@@ -248,7 +251,7 @@
           {{- rows.append('| ' ~ ext.vrf ~ ' | ' ~ ext.dot1q ~ ' | '
                           ~ ext.ipv4_addr ~ ' | ' ~ ext.neighbor_ipv4 ~ ' |') or '' -}}
           {%- endfor -%}
-          {{ rows | join('\n') }}
+          {{ rows }}
 
     # ------------------------------------------------------------- precheck
     # These two tasks read exactly what the module will read, so that a missing
@@ -375,7 +378,11 @@
         dc_vrf_lite_proto_summary: >-
           {%- set lines = [] -%}
           {%- for prototype in dc_vrf_lite_prototypes -%}
-          {%- set values = prototype.get('extensionValues', {}) -%}
+          {%- set raw_values = prototype.get('extensionValues', {}) -%}
+          {%- set values = (raw_values | from_json)
+                           if raw_values is string and raw_values | length > 0
+                           else raw_values -%}
+          {%- set values = values if values is mapping else {} -%}
           {{- lines.append(
                 'interface=' ~ values.get('INTF_NAME', values.get('IF_NAME', 'unknown')) ~
                 ', dot1q=' ~ values.get('DOT1Q_ID', 'unknown') ~
