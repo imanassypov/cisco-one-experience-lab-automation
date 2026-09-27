@@ -1,7 +1,7 @@
-{# Evidence report for 06_verify_fabric.yml. Generated - do not edit by hand. #}
+{# Evidence report for 07_verify_fabric.yml. Generated - do not edit by hand. #}
 # DC fabric verification - {{ dc_fabric_name }}
 
-Generated {{ dc_verify_timestamp }} by `06_verify_fabric.yml`.
+Generated {{ dc_verify_timestamp }} by `07_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
 `host_vars/{{ inventory_hostname }}/vrfs.nac.yaml` and
@@ -35,11 +35,10 @@ every switch in its `vrf_attach_group`. Nexus Dashboard lists every switch
 that could carry the VRF, marking the ones it has not attached with
 `isLanAttached: false` and `lanAttachState: NA`. `NA` is not a fault and not
 a pending state, so those switches are excluded from "Attachment states" and
-named under "Not attached" instead - DC-Service-Leaf belongs there, because
-`vrfs.nac.yaml` deliberately leaves it out of the attach group. A switch that
+named under "Not attached" instead. A switch that
 *was* declared and is not among the attached ones is the real fault, and
 shows up under "Switches missing". An attachment stuck in `PENDING` means the
-intent was created but never pushed - re-run `05_recalculate_and_deploy.yml`.
+intent was created but never pushed - re-run `06_recalculate_and_deploy.yml`.
 
 ## Networks
 
@@ -58,6 +57,31 @@ Nexus Dashboard lists but has not attached come back as `NA` and are named
 under "Not attached" rather than judged; a declared pair that is missing from
 the attached set is what fails, under "Attachments missing".
 
+## VRF-Lite extensions
+
+| Extension | Declared | Attached | State | Interface seen | Dot1q seen | Neighbour seen | Match |
+|---|---|---|---|---|---|---|---|
+{% for row in dc_vrf_lite_rows | default([]) %}
+| {{ row.name }} | {{ row.declared }} | {{ 'yes' if row.attached else 'NO' }} | {{ row.state }} | {{ 'yes' if row.interface_seen else 'NO' }} | {{ 'yes' if row.dot1q_seen else 'NO' }} | {{ 'yes' if row.neighbor_seen else 'NO' }} | {{ 'yes' if row.ok else 'NO' }} |
+{% endfor %}
+{% if not (dc_vrf_lite_rows | default([])) %}
+No VRF-Lite extensions are declared in `group_vars/all/dc_vrf_lite.yml`, so
+none were checked.
+{% endif %}
+
+Each extension must be attached to the border leaf, in `DEPLOYED`, and its
+`extensionValues` must carry the declared interface, dot1q tag and neighbour
+address. The three "seen" columns are substring matches against that field,
+which Nexus Dashboard returns as a JSON document encoded into a string.
+
+A whole row reading `NO` with state `absent` almost always means stage 02 ran
+after stage 05: the create role uses `state: replaced` against a model that
+deliberately omits the border leaf, so it detaches every extension. Re-run
+`05_vrf_lite.yml`. A row that is attached and `DEPLOYED` but has a `NO` in one
+of the seen columns means the extension exists with different values than
+`dc_vrf_lite.yml` declares - someone edited it in the UI, or the controller
+allocated its own addresses because the declared ones were removed.
+
 ## Failures
 
 {% if dc_failed_rows | length > 0 %}
@@ -67,6 +91,9 @@ values side by side.
 {% for row in dc_failed_rows %}
 {% if row.observed_role is defined %}
 - **{{ row.name }}** ({{ row.ip }}) - {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
+{% elif row.interface_seen is defined %}
+- **{{ row.name }}** (VRF-Lite) - {% if not row.attached %}not attached to the border leaf at all; re-run `05_vrf_lite.yml`{% else %}{% set faults = [] %}{% if row.state != 'DEPLOYED' %}{{ faults.append('attachment state is ' ~ row.state ~ ', must be DEPLOYED') or '' }}{% endif %}{% if not row.interface_seen %}{{ faults.append('declared interface is absent from extensionValues') or '' }}{% endif %}{% if not row.dot1q_seen %}{{ faults.append('declared dot1q tag is absent from extensionValues') or '' }}{% endif %}{% if not row.neighbor_seen %}{{ faults.append('declared neighbour address is absent from extensionValues') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
+
 {% elif row.declared_id is defined %}
 - **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_id | string != row.declared_id | string %}{{ faults.append('has VNI ' ~ row.observed_id ~ ', declared as ' ~ row.declared_id) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('exists but is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attached switches report ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{% if row.missing_switches %}{{ faults.append('not attached on ' ~ row.missing_switches | join(', ')) or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
 
@@ -81,13 +108,15 @@ None.
 
 ## Not covered by this report
 
-- **VRF-Lite / external connectivity.** The guide extends MAIN, PROD and IOT
-  out of DC-Service-Leaf to the edge router over VRF-Lite. The Nexus as Code
-  data model has no key for that attachment, so the pipeline does not do it
-  and nothing here checks it. See the collection README's TODO.
-- **The External fabric and its edge router.** Both are a manual prerequisite
-  in this lab, created before the pipeline runs, so neither is this report's
-  to verify.
+- **The edge router's side of the VRF-Lite links.** The extensions on
+  DC-Service-Leaf are built by `05_vrf_lite.yml` and checked above, but the
+  matching sub-interfaces and BGP neighbours on DC-SITE11-CEDGE8Kv are not.
+  The External fabric is in Monitor Mode, so Nexus Dashboard never writes to
+  that router and has nothing to report about it. Its side of the three links
+  is pre-built by the pod, which is why the addresses in `dc_vrf_lite.yml`
+  are pinned rather than allocated.
+- **BGP adjacency state.** That the extension is `DEPLOYED` means the
+  controller pushed it, not that the neighbour came up.
 - **Data plane.** This is an intent-versus-controller comparison. It proves
   Nexus Dashboard deployed what was declared; it does not prove a server on
   MainNetwork1 can reach one on ProdNetwork1.

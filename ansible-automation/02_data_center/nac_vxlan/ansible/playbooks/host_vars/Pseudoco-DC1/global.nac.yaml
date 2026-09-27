@@ -53,6 +53,7 @@ vxlan:
 # from here.
 #
 # They are declared instead in inventory/group_vars/all/dc_advanced_settings.yml
-# and applied by playbooks/03_advanced_settings.yml, which writes them straight
-# to the controller. Keep them there, not here: this file is the Nexus as Code
-# model and the validate role rejects a key the schema does not know.
+# and applied by playbooks/03_fabric_advanced_settings.yml, which writes them
+# straight to the controller. Keep them there, not here: this file is the
+# Nexus as Code model and the validate role rejects a key the schema does not
+# know.

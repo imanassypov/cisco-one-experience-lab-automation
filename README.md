@@ -30,7 +30,7 @@ and run everything there. Start at [Getting started](#getting-started).
 - **[Lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-automation/)** — the full student walkthrough, published from [docs/](docs/) by GitHub Pages. The same file opens offline as [docs/index.html](docs/index.html)
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)
 - [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
-- [Release notes](release-notes/) — dated summary of what changed and what an operator should do differently. Read the newest file after a `git pull`.
+- [Release notes](release-notes/) — what changed and what an operator should do differently. Start with [`CHANGELOG.md`](release-notes/CHANGELOG.md), the consolidated history; any dated file beside it is the current day's working note.
 
 > **Guide images.** `docs/index.html` was exported from the course platform and
 > still points 312 images at a `one_cisco_lab_images/` folder that was never
@@ -185,7 +185,8 @@ git pull
 
 Plain git, no playbook. It fails rather than discarding local edits, so commit
 or revert first. Your `lab.yml`, `.vault` and `iosxe_images/` are gitignored
-and survive. Check [release-notes/](release-notes/) afterwards for what
+and survive. Check [release-notes/CHANGELOG.md](release-notes/CHANGELOG.md)
+afterwards for what
 changed — if the update moved a pinned collection or Python package, re-run
 `00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml` to apply
 it to `~/venv`.

@@ -7,13 +7,13 @@
 #
 # It runs between create and deploy on purpose. These are fabric parameters,
 # not switch configuration: they change what the controller will generate, so
-# they have to be in place before stage 05 generates it. Nothing here touches
+# they have to be in place before stage 06 generates it. Nothing here touches
 # a switch, and DEPLOY is false throughout.
 #
 # The values live in inventory/group_vars/all/dc_advanced_settings.yml. This
 # playbook holds none of its own - change the fabric by editing that file.
 #
-#   ansible-playbook playbooks/03_advanced_settings.yml
+#   ansible-playbook playbooks/03_fabric_advanced_settings.yml
 
 - name: Stage 03 - apply advanced fabric settings
   hosts: Pseudoco-DC1
@@ -56,8 +56,8 @@
         msg: >-
           Nexus Dashboard has no fabric named '{{ inventory_hostname }}', so
           there is nothing for this stage to configure. Run
-          playbooks/02_create.yml first - it is what creates the fabric. If
-          stage 02 has already run, check that the fabric name in
+          playbooks/02_create_dc_fabric.yml first - it is what creates the
+          fabric. If stage 02 has already run, check that the fabric name in
           host_vars/{{ inventory_hostname }}/global.nac.yaml still matches the
           inventory host name.
       when: >-
@@ -90,7 +90,7 @@
     # "Key <name> not found in fabric configuration" rather than being
     # silently dropped.
     #
-    # DEPLOY is false because this stage only stages intent. Stage 05 is what
+    # DEPLOY is false because this stage only stages intent. Stage 06 is what
     # pushes configuration to the switches.
     - name: Apply the Easy_Fabric parameters
       cisco.dcnm.dcnm_fabric:

@@ -10,7 +10,7 @@
 # without it.
 #
 # Create only *stages* the configuration on the controller. Nothing reaches a
-# switch until stage 05 deploys it - with one exception: importing a switch
+# switch until stage 06 deploys it - with one exception: importing a switch
 # into the fabric is itself a write, and the import is greenfield. The create
 # role's inventory template hardcodes preserve_config: false, so every switch
 # has its running configuration erased as it is imported. That matches the
@@ -20,7 +20,7 @@
 # To land only the fabric object - the guide's "Create a VXLAN Fabric" step,
 # the first thing section 4 has you do, before any switch is added to it:
 #
-#   ansible-playbook playbooks/02_create.yml --tags cr_manage_fabric
+#   ansible-playbook playbooks/02_create_dc_fabric.yml --tags cr_manage_fabric
 #
 # cr_manage_fabric is a real per-step tag inside the create role, so that run
 # creates the fabric and does nothing else. The pre-tasks below still run,

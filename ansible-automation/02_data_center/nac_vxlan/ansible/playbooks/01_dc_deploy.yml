@@ -11,12 +11,13 @@
 #   03  apply the fabric settings Nexus as Code cannot express - the VRF-Lite
 #       resources, the license tier, the telemetry toggle and the location
 #   04  create the External connectivity fabric and put it in Monitor Mode
-#   05  recalculate and deploy: push that intent to the switches
-#   06  verify the result against intent over the Nexus Dashboard API
+#   05  attach the VRF-Lite extensions on the border leaf, still as intent
+#   06  recalculate and deploy: push that intent to the switches
+#   07  verify the result against intent over the Nexus Dashboard API
 #
-# The numbering carries meaning: 02 through 06 are contiguous because they are
+# The numbering carries meaning: 02 through 07 are contiguous because they are
 # exactly the stages this orchestrator imports. Everything outside that range -
-# the 00 prerequisite described below, and 07 - is something you run by hand.
+# the 00 prerequisite described below, and 08 - is something you run by hand.
 # So the number on a playbook already tells you whether a plain run of this
 # file will touch it.
 #
@@ -41,9 +42,9 @@
 #
 # Two playbooks are deliberately absent:
 #   00_discover_dc_switch_serials.yml  prerequisite, see above
-#   07_remove.yml           destructive prune, run by hand with a confirm flag
+#   08_remove.yml           destructive prune, run by hand with a confirm flag
 #
-# Four things worth knowing before a plain run:
+# Five things worth knowing before a plain run:
 #   - This is a greenfield build and there is no confirmation prompt. Stage 02
 #     imports the five switches with preserveConfig false - hardcoded in
 #     cisco.nac_dc_vxlan's inventory template, not something the data model or
@@ -54,13 +55,22 @@
 #     than from a Nexus as Code model. It creates the External fabric in
 #     Monitor Mode and adds the IOS-XE edge router to it over REST, so that
 #     router must be reachable and have a vault entry.
-#   - Stage 05 changes running configuration and takes several minutes.
-#   - Stage 06 fails the run on any mismatch. Use
+#   - Stage 05 can sit and wait for up to two minutes. Nexus Dashboard
+#     correlates the CDP adjacency between the border leaf and the edge
+#     router asynchronously after stage 04 adds the router, and a VRF-Lite
+#     extension cannot be attached until it has. The stage retries rather
+#     than failing, so a pause with no output there is normal.
+#   - Stage 06 changes running configuration and takes several minutes.
+#   - Stage 07 fails the run on any mismatch. Use
 #     -e dc_verify_fail_on_mismatch=false to get the report without the
 #     failure.
 
-- import_playbook: 02_create.yml
-- import_playbook: 03_advanced_settings.yml
+# Intent is built by 02 to 05 and changes nothing on a switch. 06 is the only
+# stage that writes running configuration, so the VRF-Lite extensions are
+# staged before it and the whole external handoff lands in one deploy.
+- import_playbook: 02_create_dc_fabric.yml
+- import_playbook: 03_fabric_advanced_settings.yml
 - import_playbook: 04_external_fabric.yml
-- import_playbook: 05_recalculate_and_deploy.yml
-- import_playbook: 06_verify_fabric.yml
+- import_playbook: 05_vrf_lite.yml
+- import_playbook: 06_recalculate_and_deploy.yml
+- import_playbook: 07_verify_fabric.yml

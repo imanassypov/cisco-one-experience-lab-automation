@@ -1,0 +1,34 @@
+---
+# Stage 06 - push the staged intent down to the switches.
+#
+# Named after what it is in the UI: every "Recalculate and Deploy" click.
+# Stages 02 to 05 build intent on the controller and change nothing on a
+# switch; this is the stage that changes running configuration on DC-Leaf1,
+# DC-Leaf2, DC-SPINE-1, DC-SPINE-2 and DC-Service-Leaf.
+#
+# Because stage 05 has already staged the VRF-Lite extensions, this one
+# deploy pushes the whole external handoff at once: the parent interface
+# Nexus Dashboard prepared on the border leaf, the three dot1q
+# sub-interfaces, and their BGP neighbours. The guide reaches the same place
+# by deploying, editing each VRF and deploying again, which is an artefact of
+# driving the controller through a UI one dialog at a time.
+#
+# This stage used to need running twice. It no longer does. The reason for
+# the second run was never this stage: it was that the controller correlates
+# the CDP adjacency between the border leaf and the edge router
+# asynchronously after stage 04 adds the router, so a deploy fired seconds
+# later genuinely had nothing pending and honestly reported 0/5. Stage 05 now
+# waits for that correlation explicitly, with until/retries, so by the time
+# this stage runs the work is already there.
+#
+# Expect this to take several minutes and expect switches to show as
+# out-of-sync while it runs.
+
+- name: Stage 06 - recalculate and deploy the DC fabric
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+    - role: cisco.nac_dc_vxlan.dtc.deploy
