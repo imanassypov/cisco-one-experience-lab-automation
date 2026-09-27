@@ -122,30 +122,22 @@ dc_advanced_fabric_settings:
   # Deploy for Peer enabled."
   # https://registry.terraform.io/providers/CiscoDevNet/ndfc/latest/docs/data-sources/fabric
   #
-  # False here because the neighbour is not managed: the External fabric is in
-  # Monitor Mode and the edge router is pre-built by the pod, so there is no
-  # peer for the controller to generate configuration on.
-  AUTO_SYMMETRIC_VRF_LITE: false
-
-  # UI: Resources tab, "Auto Allocation of Unique IP on VRF Extension over
-  # VRF Lite IFC". Gives every VRF extension its own /30 out of the range
-  # below rather than reusing one subnet across VRFs.
+  # AUTO_SYMMETRIC_VRF_LITE and AUTO_UNIQUE_VRF_LITE_IP_PREFIX are deliberately
+  # ABSENT rather than set false. Both only govern IFCs the controller creates
+  # itself, and VRF_LITE_AUTOCONFIG above is Manual, so sending either is a
+  # contradiction the controller rejects outright:
   #
-  # False because this pod's addressing is not ours to choose. The edge router
-  # is pre-built and in Monitor Mode, carrying GigabitEthernet2.2/.3/.4 with
-  # dot1q 2/3/4 and 192.168.252.6, .10 and .14, so the border leaf has to take
-  # .5, .9 and .13 against those same tags. Left true, the controller allocates
-  # its own /30s per VRF in its own order - measured on 2026-09-27 it gave MAIN
-  # dot1q 3 and 192.168.252.8/30 where the router expects MAIN on dot1q 4 and
-  # .14 - and then rejects stage 06's declared values with HTTP 500
-  # "DOT1Q_ID[n] on Interface[Ethernet1/8] is allocated already". BGP could
-  # never come up against the controller's choice.
-  AUTO_UNIQUE_VRF_LITE_IP_PREFIX: false
+  #   AUTO_SYMMETRIC_VRF_LITE(False) requires VRF_LITE_AUTOCONFIG != Manual
+  #
+  # Declaring a value here to "make the intent explicit" therefore fails stage
+  # 03. The intent lives in dc_vrf_lite.yml instead, which declares the link
+  # and every address on it.
 
   # UI: Resources tab, "VRF Lite Subnet IP Range" and "VRF Lite Subnet Mask".
   # The pool the per-extension point-to-point links are cut from. The default
   # is 10.33.0.0/16, which overlaps nothing in this pod but is not the value
-  # the guide uses.
+  # the guide uses. Still declared under Manual: it bounds the range the
+  # addresses in dc_vrf_lite.yml are drawn from, and stage 08 reads it back.
   DCI_SUBNET_RANGE: 192.168.252.0/24
   DCI_SUBNET_TARGET_MASK: 30
 
