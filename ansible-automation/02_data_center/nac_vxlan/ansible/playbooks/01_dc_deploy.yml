@@ -1,76 +1,88 @@
 ---
-# Build the PseudoCo data center fabric end to end.
+# Build the PseudoCo data center fabric end to end. This playbook runs no
+# tasks of its own: import_playbook pulls in the other stages and runs them in
+# order, as if you had run them by hand.
+#
+# Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/01_dc_deploy.yml
 #
-# Stages, in apply order:
-#   02  create the whole intent: the fabric, the switches, their roles, the
-#       vPC pair, the port-channels, the VRFs, the networks and their
-#       attachments
-#   03  apply the fabric settings Nexus as Code cannot express - the VRF-Lite
-#       resources, the license tier, the telemetry toggle and the location
-#   04  create the External connectivity fabric and put it in Monitor Mode
-#   05  attach the VRF-Lite extensions on the border leaf, still as intent
-#   06  recalculate and deploy: push that intent to the switches
-#   07  verify the result against intent over the Nexus Dashboard API
-#
-# The numbering carries meaning: 02 through 07 are contiguous because they are
-# exactly the stages this orchestrator imports. Everything outside that range -
-# the 00 prerequisite described below, and 08 - is something you run by hand.
-# So the number on a playbook already tells you whether a plain run of this
-# file will touch it.
-#
-# Stages 03 and 04 both sit ahead of the deploy, for the same reason. Stage 03
-# changes fabric parameters, which are inputs to the configuration the
-# controller generates. Stage 04 creates the fabric on the far side of the
-# VRF-Lite handoff, which is what lets the controller resolve that handoff at
-# all. Run either one after stage 05 and the controller would be right while
-# the switches were a deploy behind.
-#
-# BEFORE THE FIRST RUN, get the serial numbers into the data model. This
-# orchestrator will not do it for you and stage 02 stops until you have:
+# Stage 00 is a prerequisite and is not imported here. It reads a serial number
+# off each switch over SSH and generates
+# playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml, and stage 02
+# refuses to start without that file. Run it once per pod, and again whenever
+# the pod hardware or the switch table changes:
 #
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 #
-# That stage reads a serial off each switch and generates
-# host_vars/Pseudoco-DC1/topology_switches.nac.yaml from the tracked .example
-# beside it. It is not imported here because it SSHes to the switches rather
-# than driving Nexus Dashboard, so it is the one stage that needs the switch
-# path up, and because it only needs running again when the pod hardware or
-# the switch table changes.
+# Stages, in apply order. This is not numeric order, and stage 06 runs twice:
 #
-# Two playbooks are deliberately absent:
-#   00_discover_dc_switch_serials.yml  prerequisite, see above
-#   08_remove.yml           destructive prune, run by hand with a confirm flag
+#   02  the whole fabric intent: the fabric, the switches, their roles, the
+#       vPC pair, the port-channels, the VRFs, the networks and their
+#       attachments
+#   03  the fabric settings Nexus as Code cannot express: the VRF-Lite
+#       resources, the license tier, the telemetry toggle and the location
+#   04  the External connectivity fabric, in Monitor Mode, with the IOS-XE
+#       edge router added to it
+#   06  first deploy: pushes the fabric to the switches, and makes the
+#       controller build the VRF-Lite inter-fabric link
+#   05  the VRF-Lite extensions on the border leaf, as intent
+#   06  second deploy: pushes those extensions to the border leaf
+#   07  verify the result against intent over the Nexus Dashboard API
 #
-# Five things worth knowing before a plain run:
-#   - This is a greenfield build and there is no confirmation prompt. Stage 02
-#     imports the five switches with preserveConfig false - hardcoded in
-#     cisco.nac_dc_vxlan's inventory template, not something the data model or
-#     a flag can change - so each switch has its running configuration erased
-#     as it joins the fabric. Point this at a pod you are willing to lose.
-#   - Stage 04 targets a different inventory host, External, and reads its
-#     settings from inventory/group_vars/all/dc_external_settings.yml rather
-#     than from a Nexus as Code model. It creates the External fabric in
-#     Monitor Mode and adds the IOS-XE edge router to it over REST, so that
-#     router must be reachable and have a vault entry.
-#   - Stage 05 can sit and wait for up to two minutes. Nexus Dashboard
-#     correlates the CDP adjacency between the border leaf and the edge
-#     router asynchronously after stage 04 adds the router, and a VRF-Lite
-#     extension cannot be attached until it has. The stage retries rather
-#     than failing, so a pause with no output there is normal.
-#   - Stage 06 changes running configuration and takes several minutes.
-#   - Stage 07 fails the run on any mismatch. Use
-#     -e dc_verify_fail_on_mismatch=false to get the report without the
-#     failure.
+# The deploy runs before stage 05 because stage 05 depends on it.
+#
+# Stage 05 can only add an extension where Nexus Dashboard is already offering
+# the border leaf one, and it offers one only where a VRF-Lite inter-fabric
+# link terminates. Nothing in this repository creates that link. The controller
+# creates it, because inventory/group_vars/all/dc_advanced_settings.yml sets
+# VRF_LITE_AUTOCONFIG to Back2Back&ToExternal, but it does so during a
+# Recalculate and Deploy and only once the edge router stage 04 adds is present
+# in the External fabric. So the first deploy is what produces the link, and
+# stage 05 has to follow it.
+#
+# The deploy runs again after stage 05 because stage 05 only stages intent.
+#
+# Stage 05 writes intent to the controller and changes no running
+# configuration. Without a deploy after it, the three dot1q sub-interfaces and
+# their BGP neighbours stay staged and never reach the switch. This is the
+# deploy, edit, deploy sequence the manual guide walks through in section 8.
+#
+# Four things to expect from a plain run:
+#   - It is a greenfield build with no confirmation prompt. Stage 02 imports
+#     the five switches with preserveConfig false, which erases each switch's
+#     running configuration as it joins the fabric. No flag changes that, so
+#     point this at a pod you are willing to rebuild.
+#   - Stage 04 targets the External inventory host and reads its settings from
+#     inventory/group_vars/all/dc_external_settings.yml rather than from a
+#     Nexus as Code model, so the edge router must answer SSH and have a vault
+#     entry.
+#   - Both deploys change running configuration and take several minutes.
+#     Switches show as out of sync while they run.
+#   - Stage 07 fails the run on any mismatch; add
+#     -e dc_verify_fail_on_mismatch=false for the report without the failure.
+#
+# On a re-run the inter-fabric link already exists, so the first deploy is not
+# creating it again. It is still needed: stage 02 runs dcnm_vrf with
+# state: replaced, which clears the VRF-Lite extension off the border leaf, and
+# the first deploy pushes that removal. Stage 05 then puts the extension back
+# and the second deploy restores it, so external connectivity is down for the
+# few minutes between the two deploys.
+#
+# Background: "What stage 05 needs from the controller" in the README.
 
-# Intent is built by 02 to 05 and changes nothing on a switch. 06 is the only
-# stage that writes running configuration, so the VRF-Lite extensions are
-# staged before it and the whole external handoff lands in one deploy.
 - import_playbook: 02_create_dc_fabric.yml
 - import_playbook: 03_fabric_advanced_settings.yml
 - import_playbook: 04_external_fabric.yml
-- import_playbook: 05_vrf_lite.yml
+
+# First deploy. Pushes the fabric, and gives the controller the Recalculate and
+# Deploy it needs before it will build the VRF-Lite inter-fabric link.
 - import_playbook: 06_recalculate_and_deploy.yml
+
+- import_playbook: 05_vrf_lite.yml
+
+# Second deploy. Pushes the sub-interfaces and BGP neighbours stage 05 staged.
+- import_playbook: 06_recalculate_and_deploy.yml
+
 - import_playbook: 07_verify_fabric.yml

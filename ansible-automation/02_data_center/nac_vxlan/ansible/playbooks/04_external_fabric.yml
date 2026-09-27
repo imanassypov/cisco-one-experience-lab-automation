@@ -2,118 +2,47 @@
 # Stage 04 - create the External connectivity fabric in Monitor Mode and add
 # the IOS-XE edge router to it.
 #
-# Guide section 7, "Create an External Fabric": a second fabric, ASN 65531,
-# Fabric Monitor Mode enabled, containing the IOS-XE edge router
-# DC-SITE11-CEDGE8Kv (198.18.133.14).
+# This is guide section 7: a second fabric, ASN 65531, with Fabric Monitor Mode
+# enabled, holding the edge router DC-SITE11-CEDGE8Kv (198.18.133.14). Monitor
+# Mode means Nexus Dashboard reads that router and never configures it, which
+# is what this lab wants - the router's side of the VRF-Lite handoff is
+# pre-built by the pod.
 #
-# This stage runs before the deploy because it builds the fabric on the far
-# side of the VRF-Lite handoff. If it ran after stage 06, the DC fabric would
-# be deployed against a peer fabric that did not yet exist.
+# The stage runs before the deploy because it builds the fabric on the far side
+# of that handoff. Run after stage 06, the DC fabric would have been deployed
+# against a peer fabric that did not yet exist.
 #
+# Settings come from inventory/group_vars/all/dc_external_settings.yml. The
+# stage is safe to re-run: every write is guarded by a read, so the fabric
+# converges with state merged and the router is added only when the fabric's
+# switch list does not already contain it.
+#
+# Two decisions shape the whole play.
+#
+# This fabric is not built from a Nexus as Code model. The collection's create
+# role runs a config-save after its inventory step, and on a fabric with no
+# switches the controller answers HTTP 500, "Fabric External cannot be deployed
+# without any switches". The fabric also holds no VRFs, networks or interfaces,
+# so there is nothing for the model to express.
+#
+# Every call here uses the Nexus Dashboard 4.x manage API under /api/v1/manage/
+# rather than the legacy NDFC API under /appcenter/. Only the manage API can
+# onboard a non-NX-OS device, which is also why cisco.dcnm's dcnm_inventory
+# cannot add this router. The two APIs do not share a schema:
+# snmpV3AuthProtocol is the string "md5" here and an integer on the legacy API,
+# which rejects the string with HTTP 400, "Cannot deserialize value of type int
+# from String md5".
+#
+# Run from the collection root, the directory holding ansible.cfg:
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/04_external_fabric.yml
 #
-# Overrides:
+# Useful override:
 #   -e dc_external_add_edge_router=false   create the fabric, skip the router
 #
-# Settings come from inventory/group_vars/all/dc_external_settings.yml.
-# The stage is safe to re-run: every write is guarded by a read, so the
-# fabric converges with state merged and the router is added only when the
-# fabric's switch list does not already contain it.
-#
-#
-# API CHOICE
-#
-# Every call here uses the Nexus Dashboard 4.x manage API under
-# /api/v1/manage/, not the legacy NDFC API under /appcenter/. The two are
-# separate services with separate schemas, and only the manage API can
-# onboard a non-NX-OS device. The schemas are not interchangeable:
-# snmpV3AuthProtocol is the string "md5" on the manage API and an integer on
-# the legacy one, and sending the string to the legacy endpoint returns
-# HTTP 400, "Cannot deserialize value of type int from String md5".
-#
-#
-# WHY NOT NEXUS AS CODE
-#
-# Two reasons, both observed on this pod:
-#
-#   - The collection's create role always runs a config-save after its
-#     inventory step. On a fabric with no switches the controller returns
-#     HTTP 500, "Fabric External cannot be deployed without any switches",
-#     so the role creates the fabric and then fails.
-#   - dc_external_fabric_general.j2 ties IS_READ_ONLY to the bootstrap
-#     setting rather than to Monitor Mode, emitting false when bootstrap is
-#     off and "" when it is on. It cannot emit true, so applying a Nexus as
-#     Code model to this fabric would take it out of Monitor Mode.
-#
-# There is also nothing for the collection to add here: no VRFs, no networks
-# and no interfaces. The fabric is therefore created with
-# cisco.dcnm.dcnm_fabric and the router with two REST calls.
-#
-#
-# WHY NOT dcnm_inventory
-#
-# The equivalent play would be:
-#
-#   cisco.dcnm.dcnm_inventory:
-#     fabric: External
-#     state: merged
-#     config:
-#       - seed_ip: 198.18.133.14
-#         auth_proto: MD5
-#         role: edge_router
-#         preserve_config: true
-#
-# Run against this fabric it fails with "Switch with IP 198.18.133.14 is not
-# reachable or is not a valid IP", although the router is reachable and the
-# credentials are correct. The sequence is:
-#
-#   1. update_create_params() builds a fixed payload - seedIP,
-#      snmpV3AuthProtocol, username, password, maxHops, cdpSecondTimeout,
-#      role, preserveConfig, discoveryCredForLan. There is no key for the
-#      device type.
-#   2. That payload is POSTed to the legacy endpoint
-#      /appcenter/.../fabrics/External/inventory/test-reachability, which
-#      returns HTTP 200 with reachable: true, auth: true, statusReason:
-#      "SNMPv3 Timeout", valid: false, selectable: false, and null
-#      serialNumber, platform and version. The SSH login succeeded, but
-#      without a device type the controller still required SNMPv3, so it
-#      read no device identity.
-#   3. get_diff_merge() expects a Name(SERIAL) pattern in deviceIndex and
-#      finds the bare IP "198.18.133.14", which produces the reported error.
-#
-# A newer collection release would not change this. platformType,
-# device_type, ios-xe and iosxe appear nowhere in cisco.dcnm 3.13.0, which is
-# also the tip of that collection's main branch, nor in cisco.nac_dc_vxlan.
-# Passing platformType to the legacy endpoint by hand has no effect either -
-# the endpoint ignores it.
-#
-# The role is not the problem: edge_router is a valid dcnm_inventory choice
-# and a recognised Nexus as Code role, and the controller assigns edgeRouter
-# here without being asked.
-#
-#
-# HOW THE ROUTER IS ADDED
-#
-# Two calls, matching the UI's Discover Switches and Add Switches steps:
-#
-#   1. POST /api/v1/manage/fabrics/<fabric>/actions/shallowDiscovery
-#      {seedIpCollection, platformType, snmpV3AuthProtocol, username,
-#       password, maxHop, discoveryCredForLan}
-#      Returns switches[] with hostname, ip, model, serialNumber,
-#      softwareVersion and a status of "manageable".
-#
-#   2. POST /api/v1/manage/fabrics/<fabric>/switches?ticketId=
-#      {platformType, preserveConfig, useCredentialForWrite, switches:[...]}
-#      Returns 202 with an empty body. The add is asynchronous, so this
-#      stage polls the fabric's switch list rather than relying on the 202.
-#
-# platformType is the API form of the UI's "Device type: IOS XE" dropdown,
-# and it selects the discovery protocol rather than labelling the device.
-# Cisco's External Connectivity Network guide states that "Cisco CSR 1000v is
-# discovered using SSH ... does not need SNMP support", and that "Starting
-# from NDFC release 12.1.3b, SNMP is not required for IOS-XE devices."
-# Omitting it makes the controller use the NX-OS SNMPv3 path, which produces
-# the HTTP 200 SNMPv3 Timeout response described above.
+# Background: "Scope" in the README, which carries both API payloads and why
+# dcnm_inventory fails on this device.
 
 - name: Stage 04 - create the External connectivity fabric
   hosts: External
@@ -124,8 +53,8 @@
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
     nd_fabric_switches: "/api/v1/manage/fabrics/{{ inventory_hostname }}/switches"
     dc_external_add_edge_router: true
-    # The add is asynchronous. The UI's own call completed in about 14
-    # seconds; these values allow five minutes.
+    # The add is asynchronous, so the last task polls for the result. The UI's
+    # own call completed in about 14 seconds; these values allow five minutes.
     dc_external_add_retries: 30
     dc_external_add_delay: 10
 
@@ -145,10 +74,10 @@
       tags: [always]
 
     # Existence is read from the fabric list rather than from a GET of the
-    # fabric itself. A GET of a non-existent fabric returns 4xx, which
-    # dcnm_rest converts into a module failure with no usable body, leaving
-    # no way to distinguish an absent fabric from a failed call. The list
-    # endpoint returns 200 in both cases.
+    # fabric itself, because a GET of a fabric that does not exist returns 4xx
+    # and dcnm_rest turns that into a module failure with no usable body -
+    # leaving no way to tell an absent fabric from a failed call. The list
+    # endpoint answers 200 either way.
     - name: List the fabrics on the controller
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -170,14 +99,14 @@
 
   tasks:
     # FABRIC_NAME, FABRIC_TYPE and DEPLOY are set here rather than in the
-    # settings file because they are fixed properties of this stage. BGP_AS
-    # is in the settings file, but dcnm_fabric requires it on every call for
-    # an External fabric.
+    # settings file because they are fixed properties of this stage. BGP_AS is
+    # in the settings file, but dcnm_fabric requires it on every call for an
+    # External fabric. DEPLOY is false because none of these values needs
+    # pushing to a device, and because a deploy on a switchless fabric returns
+    # HTTP 500. Monitor Mode is set in this same call, so the fabric is never
+    # briefly writable.
     #
-    # DEPLOY is false because none of these values needs pushing to a device,
-    # and because a deploy on a fabric with no switches returns HTTP 500.
-    #
-    # state: merged is non-destructive on Nexus Dashboard 4.x. The module
+    # state: merged is non-destructive on Nexus Dashboard 4.x: the module
     # rebuilds the update payload from the controller's own nvPairs before
     # overlaying these keys, so no other fabric setting is changed.
     - name: Create the External fabric with the declared settings
@@ -218,8 +147,12 @@
                | default({})).switches | default([])
               | map(attribute='fabricManagementIp') | list) }}
 
-    # Discovery is read-only. It queries the seed address and returns what
-    # it found without adding anything, so it is safe to re-run.
+    # Discovery is read-only: it queries the seed address and reports what it
+    # found without adding anything, so it is safe to re-run. platformType is
+    # the API form of the UI's "Device type: IOS XE" dropdown and selects the
+    # discovery protocol - leave it out and the controller uses the NX-OS
+    # SNMPv3 path, which this router does not answer. no_log keeps the vault
+    # credentials in the payload out of the run output.
     - name: Discover the edge router over SSH
       cisco.dcnm.dcnm_rest:
         method: POST
@@ -239,10 +172,10 @@
         - dc_external_add_edge_router | bool
         - not (dc_external_router_present | bool)
 
-    # The controller returns HTTP 200 even for an unusable candidate, so the
-    # status is checked explicitly before the add. A successful IOS-XE
-    # discovery reports "manageable"; an SNMPv3 fallback reports
-    # "SNMPv3 Timeout".
+    # The controller returns HTTP 200 even for a candidate it cannot use, so the
+    # status has to be read rather than inferred from the response code. A
+    # successful IOS-XE discovery reports "manageable" and carries a serial
+    # number; the SNMPv3 fallback reports "SNMPv3 Timeout" and no serial.
     - name: Require the discovered router to be manageable
       ansible.builtin.assert:
         that:
@@ -266,13 +199,14 @@
     # controller must read the router's running configuration rather than
     # replace it. useCredentialForWrite is false for the same reason.
     #
-    # No role is sent. The controller assigns edgeRouter to an IOS-XE device
-    # in an external connectivity fabric, which is the role the guide
-    # specifies.
+    # No role is sent. The controller assigns edgeRouter to an IOS-XE device in
+    # an external connectivity fabric, which is the role the guide specifies.
     #
-    # The switch entry is rebuilt key by key rather than passed through from
-    # the discovery response, which also contains status and statusReason
-    # (outputs, not inputs) and omits vdcMac (required by the add).
+    # model, softwareVersion and serialNumber come from the discovery above
+    # because they are pod-specific, but the switch entry is rebuilt key by key
+    # rather than passed through whole: the discovery response also carries
+    # status and statusReason, which are outputs rather than inputs, and omits
+    # vdcMac, which the add requires.
     - name: Add the edge router to the fabric
       cisco.dcnm.dcnm_rest:
         method: POST
@@ -304,8 +238,10 @@
         - dc_external_add_edge_router | bool
         - not (dc_external_router_present | bool)
 
-    # The add returns 202 with an empty body, which confirms only that the
-    # request was accepted. The switch list is polled for the outcome.
+    # The add returns HTTP 202 with an empty body, which confirms only that the
+    # request was accepted, so the outcome has to be polled. until/retries/delay
+    # repeat this GET until the router shows up in the fabric's switch list or
+    # the retries run out.
     - name: Wait for the edge router to appear in the fabric
       cisco.dcnm.dcnm_rest:
         method: GET

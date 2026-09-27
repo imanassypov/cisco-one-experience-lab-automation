@@ -1,130 +1,67 @@
 ---
-# READ-ONLY diagnostic for the stage 05 failure:
+# Read-only diagnostic for the stage 05 failure:
 #
 #   DcnmVrf.update_vrf_attach_vrf_lite_extensions: caller: push_diff_attach.
 #   No VRF LITE capable interfaces found on this switch.
 #   ip: 198.18.128.13, serial_number: 955T6I5X2D4
 #
-# NOT part of the pipeline. Deliberately unnumbered so nobody mistakes it for
-# a build stage. Every call is a GET. Nothing is created, modified, deployed
-# or saved, so it is safe to run at any point and safe to re-run.
+# Not part of the pipeline, and unnumbered so it cannot be mistaken for a build
+# stage. Every call is a GET: nothing is created, modified, deployed or saved,
+# so it is safe to run at any point and safe to re-run.
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/diagnose_vrf_lite.yml 2>&1 | tee /tmp/vrf-lite-diag.txt
 #
 # Send back the whole file. The decisive output is section 1.
 #
+# What is being measured. dcnm_vrf raises that error when the controller offers
+# the border leaf no extension prototype whose extensionType is VRF_LITE. It
+# reads that list from
 #
-# WHAT IS BEING MEASURED, AND WHY EXACTLY THIS
+#   GET /appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/
+#         <fabric>/vrfs/switches?vrf-names=<vrf>&serial-numbers=<serial>
 #
-# The error string exists in one place in cisco.dcnm 3.13.0
-# plugins/modules/dcnm_vrf.py, and the value that is empty when it is raised
-# can come from only one endpoint. Traced backwards:
+# as switchDetailsList[0].extensionPrototypeValues, and extensionType is the
+# only filter it applies - no interface name, no link state, no Back2Back
+# versus ToExternal distinction. Section 1 makes that exact call.
 #
-#   push_diff_attach (line 5039)
-#     line 5113  lite_objects = self.get_vrf_lite_objects(vrf_attach)
-#     line 5120  if not lite_objects.get("DATA"): return       <- silent, no error
-#     line 5126  lite = lite_objects["DATA"][0]["switchDetailsList"][0][
-#     line 5127      "extensionPrototypeValues"]
-#     line 5139  vrf_attach = self.update_vrf_attach_vrf_lite_extensions(vrf_attach, lite)
+# The prototype list is derived from the VRF-Lite inter-fabric connection (IFC)
+# on that interface, so the later sections ask whether such a link exists.
+# Section 2 prints every link in both fabrics with its templateName, which for a
+# VRF-Lite IFC is ext_fabric_setup; a link on any other template is not one,
+# however the deployed interface looks. The deployed parent interface settles
+# nothing by itself: "no switchport / mtu 9000 / description connected-to-..."
+# with no address and no encapsulation fits an IFC and a plain external link
+# converted to Layer 3 equally well.
 #
-#   update_vrf_attach_vrf_lite_extensions (line 4658)
-#     line 4715  ext_values = self.get_extension_values_from_lite_objects(lite)
-#     line 4717  if not ext_values:
-#     line 4721      msg += "No VRF LITE capable interfaces found on "
-#     line 4726      self.module.fail_json(msg=msg)
+# Two things the sections are shaped around:
 #
-#   get_extension_values_from_lite_objects (line 4576)
-#     line 4597  for item in lite:
-#     line 4598      if str(item.get("extensionType")) != "VRF_LITE": continue
-#     line 4600      extension_values_list.append(ast.literal_eval(item["extensionValues"]))
+#   - The module indexes switchDetailsList positionally, at [0], while it looks
+#     the same response up by serial number elsewhere, and the ip and serial in
+#     the error come from the request. So a response holding more than one
+#     switch record could name the border leaf while the empty list belonged to
+#     another switch. Section 1b prints every serial returned.
+#   - Absent and empty are different answers, so every section prints the whole
+#     record with debug var: rather than a summary. A probe built on .get() or
+#     Jinja default() cannot tell a missing key from a null or empty one. The
+#     summary lines point at the interesting part of the dump above them and
+#     ask "key present: true/false" where that distinction matters.
 #
-#   get_vrf_lite_objects (line 2417)
-#     line 2442  path = self.paths["GET_VRF_SWITCH"].format(fabric, vrfName, serialNumber)
-#     line 1047  GET_VRF_SWITCH =
-#       /appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{}/vrfs/switches
-#         ?vrf-names={}&serial-numbers={}
+# Every endpoint below is one a cisco.dcnm module uses, not an invented path.
+# There are no credentials in this file: the httpapi connection and the Nexus
+# Dashboard account come from inventory/group_vars/nd/connection.yml, which reads
+# them out of vault-encrypted Lab Topology/lab_access.yml.
 #
-# So the empty variable is ext_values, and it is empty if and only if the
-# extensionPrototypeValues list read at line 5126 contains no element whose
-# extensionType is the literal string VRF_LITE. At that point there is no
-# other filter: no interface name, no IFC subtype, no link state, no
-# Back2Back versus ToExternal distinction. Section 1 is that exact call.
-#
-# Four things already established from the source, which is why the sections
-# below are shaped the way they are:
-#
-#   1. extensionPrototypeValues is read in exactly ONE place in the whole
-#      5700-line module, at line 5126. Every other reader of this same
-#      response reads extensionValues, which is a different field: the
-#      CONFIGURED extension, not the AVAILABLE ones.
-#   2. The message we got is NOT the interface-mismatch message. That one is
-#      at line 4758, raised only after the playbook interface names are
-#      compared with the prototype IF_NAMEs at line 4743. Reaching line 4721
-#      instead means there is no VRF_LITE prototype at all, so this is not an
-#      Ethernet1/8-versus-eth1/8 spelling problem.
-#   3. It is also NOT a missing attachment. The module's own integration test
-#      tests/integration/targets/dcnm_vrf/tests/dcnm/standalone/merged.yaml
-#      TEST.4 (lines 280-330) deletes every VRF first (TEST.3e, line 269),
-#      then in ONE state: merged call creates a VRF and attaches it with a
-#      vrf_lite block to a switch that had no attachment at all, and asserts
-#      changed == true with three HTTP 200s. push_to_remote (line 5495) runs
-#      push_diff_create (line 5547) before push_diff_attach (line 5548), so
-#      at the moment of the failing GET the VRF exists and the attachment
-#      does not. The prototype list is therefore a property of the SWITCH and
-#      its inter-fabric link, not of the attachment.
-#   4. Line 5126 indexes switchDetailsList POSITIONALLY, at [0], while lines
-#      2600-2603, 3820-3823 and 3928 index the same response BY serial
-#      number. If this endpoint can return more than one switch record, line
-#      5126 can be reading a switch that is not the border leaf and still
-#      report the border leaf's ip and serial in the error, because those
-#      come from the request. Section 1b prints every serialNumber returned.
-#
-# The remaining candidate causes all live on the controller side, and section
-# 2 is what separates them: whether a VRF-Lite inter-fabric link exists on
-# Ethernet1/8 at all, and what its templateName is. cisco.dcnm calls the
-# VRF-Lite link template ext_fabric_setup (dcnm_links.py line 912). A link
-# on any other template is not a VRF-Lite IFC, no matter how the deployed
-# interface config looks.
-#
-# Note what the deployed parent-interface config does NOT prove. This:
-#
-#   interface ethernet1/8
-#     no switchport
-#     mtu 9000
-#     description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
-#     no shutdown
-#
-# has no ip address and no encapsulation, so it is consistent with an
-# ext_fabric_setup IFC AND with a plain discovered external link that was
-# converted to Layer 3. It does not discriminate between them. Section 2
-# does.
-#
-#
-# ABSENT IS NOT THE SAME AS EMPTY
-#
-# Every section prints the WHOLE record with ansible.builtin.debug var:,
-# not a summary. That is deliberate. A probe built on .get() or on Jinja
-# default() cannot tell a MISSING key from a key whose value is empty or
-# null, and this repository has already produced one false green that way
-# (goldenImages in the SWIM stage). The summary lines in 1b are there to
-# point at the interesting part of the raw dump above them, never to replace
-# it. Where the distinction matters the summary asks the question directly,
-# as "key present: true/false".
-#
-# Endpoints are not invented. Each is copied from a cisco.dcnm 3.13.0 module
-# and cited beside the task that uses it.
-#
-# Credentials: none in this file. The httpapi connection and the Nexus
-# Dashboard account come from inventory/group_vars/nd/connection.yml, which
-# reads them out of vault-encrypted Lab Topology/lab_access.yml, exactly as
-# 04_external_fabric.yml does for its direct REST calls.
+# Background: "What stage 05 needs from the controller" in the README, which
+# carries the full path through the module and the two explanations that turned
+# out to be wrong.
 
 - name: Diagnose the VRF-Lite precondition on the border leaf
   hosts: Pseudoco-DC1
   gather_facts: false
-  # Deliberately NOT any_errors_fatal. A section that returns 4xx is itself a
-  # finding, and the later sections are still worth collecting.
+  # any_errors_fatal is off on purpose, and every call below carries
+  # failed_when: false. A section that returns 4xx is itself a finding, and the
+  # later sections are still worth collecting.
   any_errors_fatal: false
 
   vars:
@@ -145,12 +82,8 @@
           - "VRFs: {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }}"
 
     # ================================================================ 0
-    # Inventory, so every serial used below is derived from the controller
-    # rather than pasted in.
-    #
-    # Endpoint: cisco.dcnm 3.13.0
-    # module_utils/network/dcnm/dcnm.py get_fabric_inventory_details(),
-    # lines 229-234.
+    # The fabric inventory, so every serial used below is read from the
+    # controller rather than pasted in.
     - name: "0a - DC fabric inventory, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -190,9 +123,12 @@
           {{ s.get('logicalName', '?') }} | {{ s.get('ipAddress', '?') }} | {{ s.get('serialNumber', '?') }} | role={{ s.get('switchRole', '?') }} | roleEnum={{ s.get('switchRoleEnum', '?') }} | cc={{ s.get('ccStatus', '?') }} | managable={{ s.get('managable', '?') }} | {{ s.get('model', '?') }}
           {% endfor %}
 
-    # is_border_switch() in dcnm_vrf.py line 4557 regex-matches \bborder\b
-    # against switchRole. The failing run got PAST that check (line 5103), so
-    # the role above should read Border. This is a cross-check, not a suspect.
+    # The role printed above should read Border. dcnm_vrf checks that itself
+    # before it looks for prototypes, and the failing run got past that check,
+    # so this is a cross-check rather than a suspect.
+    #
+    # Next the peer fabric's inventory, for the edge router's serial number that
+    # section 2d needs to look up the link by switch pair.
     - name: "0c - peer fabric inventory, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -218,10 +154,8 @@
         msg: "Edge router {{ dc_external_edge_router.ip }} serial: '{{ dc_diag_peer_serial }}'"
 
     # ================================================================ 1
-    # THE CALL THE MODULE MAKES. This is the whole question.
-    #
-    # Endpoint: dcnm_vrf.py GET_VRF_SWITCH line 1047, called from
-    # get_vrf_lite_objects() line 2442.
+    # The call the module makes, and the whole question. loop repeats it once
+    # per declared extension, and the results land in .results.
     - name: "1a - the module's own query, border serial only, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -238,8 +172,8 @@
       ansible.builtin.debug:
         var: dc_diag_vrf_switch.results
 
-    # The same responses, reduced to the facts that decide this. Printed in
-    # ADDITION to the raw dump above, never instead of it. Key presence is
+    # The same responses reduced to the facts that decide this, printed in
+    # addition to the raw dump above rather than instead of it. Key presence is
     # asked directly, because absent and empty are different answers.
     - name: "1b - what line 5126 would have read, per VRF"
       ansible.builtin.debug:
@@ -268,11 +202,11 @@
       loop_control:
         label: "{{ item.item.vrf }}"
 
-    # Same endpoint, every serial in the fabric. Two things this settles:
-    # whether the serial-numbers filter is honoured at all, and whether any
-    # OTHER switch in the fabric carries a VRF_LITE prototype. If one does,
-    # the link and the fabric settings are fine and the question becomes
-    # which switch record line 5126 reads.
+    # The same endpoint, asked for every serial in the fabric. Two things this
+    # settles: whether the serial-numbers filter is honoured at all, and whether
+    # any other switch carries a VRF_LITE prototype. If one does, the link and
+    # the fabric settings are fine and the question becomes which switch record
+    # the module read.
     - name: "1c - the same query for ALL serials in the fabric, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -305,9 +239,9 @@
         label: "{{ item.item.vrf }}"
 
     # ================================================================ 2
-    # The inter-fabric link. This is where the answer probably is.
-    #
-    # Endpoint: dcnm_links.py LINKS_GET_BY_FABRIC line 884.
+    # The inter-fabric link, which is where the answer most likely is. A
+    # VRF-Lite IFC has templateName ext_fabric_setup; anything else on that
+    # interface is a different kind of link.
     - name: "2a - every link in the DC fabric, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -353,9 +287,9 @@
           NO LINK RECORD on that interface. That alone explains the failure.
           {% endif %}
 
-    # Endpoint: dcnm_links.py LINKS_GET_BY_SWITCH_PAIR line 879, query string
-    # built at lines 2316-2321. The narrowest possible read of the one link
-    # stage 05 depends on.
+    # The narrowest possible read of the one link stage 05 depends on: both ends
+    # named by serial number and interface. Skipped when the edge router's
+    # serial could not be resolved above.
     - name: "2d - the border-leaf-to-edge-router link by switch pair, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -371,11 +305,9 @@
         var: dc_diag_link_pair
 
     # ================================================================ 3
-    # The parent interface and the policy attached to it, so we can see what
-    # actually produced the deployed "no switchport / mtu 9000 / description
+    # The parent interface and the policy attached to it, which shows what
+    # produced the deployed "no switchport / mtu 9000 / description
     # connected-to-..." block.
-    #
-    # Endpoint: dcnm_interface.py IF_WITH_SNO_IFNAME line 1927.
     - name: "3a - the parent interface record and its policy, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -389,17 +321,15 @@
         var: dc_diag_interface
 
     # ================================================================ 4
-    # Attachment state. As of this change the data model owns the border leaf
-    # attachment (DC-Service-Leaf is in vrf_attach_groups in
-    # playbooks/host_vars/Pseudoco-DC1/vrfs.nac.yaml), so after a stage 02
-    # run the border leaf should appear in lanAttachList for all three VRFs.
+    # Attachment state. The data model owns the border leaf's plain attachment -
+    # DC-Service-Leaf is in vrf_attach_groups in
+    # playbooks/host_vars/Pseudoco-DC1/vrfs.nac.yaml - so after a stage 02 run it
+    # should appear in lanAttachList for all three VRFs.
     #
-    # This is NOT the suspected cause - TEST.4 in the module's own integration
-    # suite proves a lite extension can be added with no prior attachment at
-    # all - but lanAttachState is worth having, and if the border leaf is
-    # missing here after a stage 02 run then the model change did not land.
-    #
-    # Endpoint: dcnm_vrf.py GET_VRF_ATTACH line 1046.
+    # A missing attachment is not the cause of the stage 05 error: the module can
+    # add an extension to a switch that has none. But if the border leaf is
+    # absent here after a stage 02 run, the model change did not land, and
+    # lanAttachState is worth having either way.
     - name: "4a - VRF attachments for the three VRFs, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -424,11 +354,9 @@
           {% endfor %}
 
     # ================================================================ 5
-    # Monitor Mode as the API reports it, for both fabrics. dcnm_links reads
-    # this exact endpoint (line 3772) and treats readonly true as "no changes
-    # allowed on the fabric".
-    #
-    # Endpoint: dcnm_links.py FABRIC_ACCESS_MODE line 887.
+    # Monitor Mode as the API reports it, for both fabrics. cisco.dcnm reads this
+    # same endpoint and treats readonly true as "no changes allowed on this
+    # fabric". Expect false for the DC fabric and true for the External one.
     - name: "5a - access mode of both fabrics, RAW"
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -445,9 +373,9 @@
         var: dc_diag_accessmode.results
 
     # ================================================================ 6
-    # No verdict is asserted. The point of this playbook is that the answer
-    # is not yet known, and a playbook that guessed would just be the rescue
-    # message that already sent us down the wrong path.
+    # No verdict is asserted, and that is the point: this playbook collects
+    # evidence rather than deciding what it means. The reading order below is
+    # what turns the raw dumps into an answer.
     - name: How to read this
       ansible.builtin.debug:
         msg:
