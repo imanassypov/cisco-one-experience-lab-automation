@@ -70,7 +70,7 @@ The orchestrator runs the stages in this order:
 02_create_dc_fabric.yml
 03_fabric_advanced_settings.yml
 04_external_fabric.yml
-05_recalculate_and_deploy.yml
+05_recalculate_config.yml
 06_vrf_lite.yml
 07_recalculate_and_deploy.yml
 08_verify_fabric.yml

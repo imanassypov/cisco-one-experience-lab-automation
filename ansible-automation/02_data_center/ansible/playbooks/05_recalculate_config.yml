@@ -1,0 +1,73 @@
+---
+# Stage 05 - recalculate the fabric configuration before VRF-Lite staging.
+#
+# This is the "Recalculate Config" half of the UI's "Recalculate and Deploy"
+# button and nothing else. It changes no running configuration on any switch;
+# stage 07 is the only stage in this collection that does.
+#
+# What it is for: stages 02 to 04 write intent, and the controller does not act
+# on new intent until it is asked to recalculate. Nexus Dashboard builds the
+# VRF-Lite inter-fabric link stage 06 depends on during that recalculation,
+# once the edge router stage 04 adds is in the External fabric. So this stage
+# exists to put that link in place before stage 06 asks for the extension
+# prototype derived from it.
+#
+# Why two calls rather than one:
+#   - config-save recalculates the intended configuration. On its own it leaves
+#     every switch still reporting In-Sync.
+#   - reading config-preview is what refreshes each switch's compliance state.
+#     Only after it does a switch with pending configuration read Out-of-Sync,
+#     which is the flag stage 07's deploy role selects on.
+# Skipping the second call fails silently: stage 07 finds nothing to deploy and
+# reports success while the configuration never reaches a switch.
+#
+# There is no module for either call. cisco.dcnm has no config-save module -
+# dcnm_fabric only does deleted/merged/query/replaced - and cisco.nd is the
+# Nexus Dashboard platform collection, with nothing for fabric config actions.
+# dcnm_rest is the supported route, and the same one stages 03 and 06 use.
+#
+# Run from the collection root, the directory holding ansible.cfg:
+#
+#   cd ansible-automation/02_data_center/ansible
+#   ansible-playbook playbooks/05_recalculate_config.yml
+
+- name: Stage 05 - recalculate the DC fabric configuration
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+
+  tasks:
+    - name: Recalculate the intended configuration
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-save"
+      changed_when: true
+
+    - name: Refresh each switch's compliance state
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-preview?forceShowRun=false&showBrief=true"
+      register: dc_recalculate_preview
+      changed_when: false
+
+    - name: Report which switches now have pending configuration
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['Compliance after recalculation:', '| Switch | State |',
+              '| --- | --- |']
+             + dc_recalculate_rows
+             + ['Stage 07 deploys every switch reading Out-of-Sync.'] }}
+      vars:
+        dc_recalculate_rows: >-
+          {%- set rows = [] -%}
+          {%- for switch in ((dc_recalculate_preview.response | default({})).DATA | default([])) -%}
+          {{- rows.append('| ' ~ switch.get('switchName', 'unknown') ~ ' | '
+                          ~ switch.get('status', 'unknown') ~ ' |') or '' -}}
+          {%- endfor -%}
+          {{ rows }}
