@@ -175,7 +175,7 @@ Two things to expect from a first run, both normal:
 | `02_create_dc_fabric.yml` | Creates the whole intent on the controller: fabric, switch import, roles, vPC pair, port-channels, VRFs, networks |
 | `03_fabric_advanced_settings.yml` | Applies the settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
 | `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode and adds the IOS-XE edge router to it |
-| `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Creates the inter-fabric connection required by stage 06 |
+| `05_recalculate_config.yml` | "Recalculate Config" only. Creates the inter-fabric connection required by stage 06; deploys nothing |
 | `06_vrf_lite.yml` | Adds the three VRF-Lite extensions to the border leaf's VRF attachments, from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only. Needs the connection created by stage 05 |
 | `07_recalculate_and_deploy.yml` | Second "Recalculate and Deploy". Pushes the extensions staged by stage 06 and is the **only** stage that changes running configuration |
 | `08_verify_fabric.yml` | Read-only check of the fabric against the declared model. Writes `evidence/stage08-verification.md` |
@@ -1323,7 +1323,7 @@ Reading the report:
 - A name under **"Switches missing"** or **"Attachments missing"** is a real
   fault: something declared did not attach.
 - An attached switch in **`PENDING`** means the intent exists on the
-  controller but was never pushed. Re-run `05_recalculate_and_deploy.yml`.
+  controller but was never pushed. Re-run `07_recalculate_and_deploy.yml`.
 - **`not determined` in the BGP session table is not a fault in the fabric.**
   It means this run could not read the border leaf, and the reason the
   transport gave is printed beside it. Those rows are excluded from the count
