@@ -1,0 +1,208 @@
+---
+# Stage 09 - tear the lab back down to a clean slate.
+#
+# DESTRUCTIVE. Nothing here is reversible by re-running it. It refuses to do
+# anything unless you pass the confirmation:
+#
+#   cd ansible-automation/02_data_center/ansible
+#   ansible-playbook playbooks/09_cleanup.yml -e dc_cleanup_confirm=CLEANUP_OK
+#
+# WHY THE LAST STEP EXISTS. Deleting a fabric removes the controller's intent,
+# and removing a switch from inventory removes the controller's claim on it -
+# but neither touches the switch's running configuration. The VRF-Lite
+# sub-interfaces stay on DC-Service-Leaf. When the next build re-imports that
+# switch, Nexus Dashboard discovers Ethernet1/8.2/.3/.4 and the dot1q tags they
+# already carry, and its resource manager allocates around what it found rather
+# than from an empty pool. That is the most likely reason a rebuilt fabric
+# comes up with TOP_DOWN_L3_DOT1Q entries already populated, in an order that
+# shifts between builds, before stage 06 has written anything.
+#
+# So the order matters and is not arbitrary:
+#   1. remove the switches from each fabric's inventory, so the controller
+#      stops managing them and will not push the config back,
+#   2. delete the fabrics, which removes the intent,
+#   3. only then strip the sub-interfaces off the switch itself.
+#
+# WHAT IT DOES NOT TOUCH. The edge router is pre-built by the pod and the
+# External fabric is in Monitor Mode, so its GigabitEthernet2.2/.3/.4 are left
+# exactly as they are - they are the fixed side of the handoff that this
+# collection's addressing has to match. Only the border leaf is cleaned, and
+# only the interfaces named in dc_vrf_lite.yml.
+#
+# Overlay state on the leaves - VRFs, VLANs, NVE - is also left alone. This
+# playbook undoes the VRF-Lite handoff, not the whole fabric.
+
+- name: Stage 09a - refuse to run without confirmation
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  any_errors_fatal: true
+
+  tasks:
+    - name: Require the confirmation string
+      ansible.builtin.assert:
+        that:
+          - dc_cleanup_confirm | default('') == 'CLEANUP_OK'
+        fail_msg: >-
+          09_cleanup.yml deletes both fabrics and edits switch configuration.
+          Re-run it with -e dc_cleanup_confirm=CLEANUP_OK if that is what you
+          want.
+        success_msg: >-
+          Confirmed. Removing switches from {{ dc_fabric_name }} and
+          {{ dc_external_fabric_name }}, deleting both fabrics, then stripping
+          {{ dc_vrf_lite_interface }} sub-interfaces from
+          {{ dc_vrf_lite_border_leaf }}.
+
+# ---------------------------------------------------------------------------
+# 1. Inventory
+#
+# state: deleted with no config removes every switch in the named fabric.
+# Doing this before the fabric delete means the controller releases the
+# switches cleanly rather than losing them along with the fabric.
+- name: Stage 09b - remove the switches from the DC fabric
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Remove every switch from {{ dc_fabric_name }}
+      cisco.dcnm.dcnm_inventory:
+        fabric: "{{ dc_fabric_name }}"
+        state: deleted
+      register: dc_cleanup_dc_inventory
+      vars:
+        ansible_command_timeout: 3000
+        ansible_connect_timeout: 3000
+
+    - name: Report the DC inventory result
+      ansible.builtin.debug:
+        msg: >-
+          {{ dc_fabric_name }} inventory cleared.
+          changed={{ dc_cleanup_dc_inventory.changed | default(false) }}.
+
+- name: Stage 09c - remove the router from the External fabric
+  hosts: External
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Remove every switch from {{ dc_external_fabric_name }}
+      cisco.dcnm.dcnm_inventory:
+        fabric: "{{ dc_external_fabric_name }}"
+        state: deleted
+      register: dc_cleanup_ext_inventory
+      vars:
+        ansible_command_timeout: 3000
+        ansible_connect_timeout: 3000
+
+    - name: Report the External inventory result
+      ansible.builtin.debug:
+        msg: >-
+          {{ dc_external_fabric_name }} inventory cleared. The edge router's own
+          configuration is untouched - it is in Monitor Mode and pre-built by
+          the pod.
+          changed={{ dc_cleanup_ext_inventory.changed | default(false) }}.
+
+# ---------------------------------------------------------------------------
+# 2. Fabrics
+- name: Stage 09d - delete both fabrics
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Delete both fabrics
+      cisco.dcnm.dcnm_fabric:
+        state: deleted
+        config:
+          - FABRIC_NAME: "{{ dc_external_fabric_name }}"
+          - FABRIC_NAME: "{{ dc_fabric_name }}"
+      register: dc_cleanup_fabrics
+
+    - name: Report the fabric result
+      ansible.builtin.debug:
+        msg: >-
+          Fabrics deleted.
+          changed={{ dc_cleanup_fabrics.changed | default(false) }}.
+
+# ---------------------------------------------------------------------------
+# 3. The switch itself
+#
+# Built from dc_vrf_lite.yml rather than hardcoded, so a tag added there is
+# cleaned up here without anyone remembering to.
+- name: Stage 09e - build the border leaf SSH group
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  any_errors_fatal: true
+
+  tasks:
+    - name: Add the border leaf to the SSH group
+      ansible.builtin.add_host:
+        name: "{{ dc_vrf_lite_border_leaf }}"
+        groups: dc_fabric_switches
+        ansible_host: >-
+          {{ (dc_switches
+              | selectattr('name', 'equalto', dc_vrf_lite_border_leaf)
+              | list | first).management_ipv4_address }}
+        dc_switch_role: border
+      changed_when: false
+
+- name: Stage 09f - strip the VRF-Lite sub-interfaces off the border leaf
+  hosts: dc_fabric_switches
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    # `no interface` removes each sub-interface outright. `default interface`
+    # then returns the parent to its out-of-the-box state, clearing the
+    # no switchport, the mtu and the description the fabric put on it - all of
+    # which the next build writes again from intent.
+    - name: Remove the sub-interfaces and default {{ dc_vrf_lite_interface }}
+      cisco.nxos.nxos_config:
+        lines: >-
+          {%- set cmds = [] -%}
+          {%- for ext in dc_vrf_lite_extensions -%}
+          {{- cmds.append('no interface ' ~ dc_vrf_lite_interface ~ '.' ~ ext.dot1q) or '' -}}
+          {%- endfor -%}
+          {{- cmds.append('default interface ' ~ dc_vrf_lite_interface) or '' -}}
+          {{ cmds }}
+      register: dc_cleanup_interface
+
+    - name: Save the configuration
+      cisco.nxos.nxos_config:
+        save_when: always
+
+    # Reading it back is the only proof the removal happened: nxos_config
+    # reports changed for a command the device accepted and ignored just as
+    # readily as for one that took effect.
+    - name: Read the interface back
+      cisco.nxos.nxos_command:
+        commands:
+          - show running-config interface
+      register: dc_cleanup_readback
+      changed_when: false
+
+    - name: Fail when a sub-interface survived
+      ansible.builtin.assert:
+        that:
+          - surviving | length == 0
+        fail_msg: >-
+          {{ surviving | join(', ') }} still present on
+          {{ dc_vrf_lite_border_leaf }} after the cleanup. Remove them by hand
+          before rebuilding, or the next build will discover the dot1q tags
+          they carry.
+        success_msg: >-
+          {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }} is back to
+          its default and carries no sub-interfaces. Safe to rebuild with
+          playbooks/00_discover_dc_switch_serials.yml then
+          playbooks/01_dc_deploy.yml.
+      vars:
+        surviving: >-
+          {%- set rows = [] -%}
+          {%- for line in dc_cleanup_readback.stdout[0].splitlines() -%}
+          {%- if line.startswith('interface ' ~ dc_vrf_lite_interface ~ '.') -%}
+          {{- rows.append(line | trim) or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ rows }}
