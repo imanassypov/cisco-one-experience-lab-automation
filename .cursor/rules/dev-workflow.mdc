@@ -108,6 +108,13 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 - On physical hardware the two serials coincide, which is why this stays hidden until a virtual pod.
 - The fabric can still look healthy with wrong serials in the model, because stage 02 discovers devices by **IP** and NDFC assigns its own serial. Only calls that send a serial break.
 
+## NDFC "Recalculate and Deploy" is two calls — verified live 2026-09-27
+
+- Writing intent through the API (a VRF attachment, even with `deployment: true`) does **not** make a switch Out-of-Sync. Every switch keeps `ccStatus: In-Sync`, `cisco.nac_dc_vxlan.dtc.deploy` filters on exactly that flag, finds nothing, and reports `all → skipped (no switches need deployment)` — while the configuration never reaches the switch. The deploy role contains no config-save or config-preview call of its own; grep it and you find none.
+- Both halves are required, in order: `POST .../rest/control/fabrics/<fabric>/config-save` recalculates the intended config (returns `Config save is completed`, but **still** leaves ccStatus In-Sync), then `GET .../rest/control/fabrics/<fabric>/config-preview?forceShowRun=false&showBrief=true` is what actually refreshes compliance. Only after the GET does the switch flip to Out-of-Sync and become deployable. Stages 05 and 07 now do both before the deploy role runs.
+- **Trap**: `POST .../config-deploy/<serials>?forceShowRun=false` returns HTTP 200 `"Configuration deployment completed for [...]"` even when nothing was pending. That 200 does not mean anything was applied — confirm on the device.
+- To see what NDFC intends before pushing: `GET .../config-preview/<serial>?forceShowRun=false&showBrief=false` returns `pendingConfig`, `expectedConfig`, `diff` and `status`.
+
 ## Assurance (`07_assurance/splunk_evpn`)
 
 - Splunk host `198.18.5.109` — mgmt/REST `:8089`, web `:8000`. **Two different vault accounts**: `Splunk Enterprise` is the web/REST admin, `splunk_server` is the Linux SSH account. They are not interchangeable.
