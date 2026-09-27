@@ -6,7 +6,7 @@ The automation is an alternative to the manual NDFC deployment in the student gu
 
 ## What the automation builds
 
-The `nac_vxlan/` track uses Cisco Nexus as Code (`cisco.nac_dc_vxlan`) with the `cisco.dcnm` collection. It automates the fabric-side work covered by sections 4 through 8 of the guide:
+The `ansible/` track uses Cisco Nexus as Code (`cisco.nac_dc_vxlan`) with the `cisco.dcnm` collection. It automates the fabric-side work covered by sections 4 through 8 of the guide:
 
 - The `Pseudoco-DC1` VXLAN EVPN fabric and its five switches.
 - The DC-Leaf1/DC-Leaf2 vPC pair and three server port-channels.
@@ -18,7 +18,7 @@ The edge router is already configured by the pod. The pipeline discovers it and 
 
 Other services in the data center, including Catalyst Center, ISE, WLC, and Splunk, are automated by the campus and assurance tracks.
 
-See [`nac_vxlan/ansible/README.md`](nac_vxlan/ansible/README.md) for the complete data-model walkthrough.
+See [`ansible/README.md`](ansible/README.md) for the complete data-model walkthrough.
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ The Python environment uses `ansible-core 2.17.14`. Stage 00 verifies the collec
 Run from the directory that contains `ansible.cfg`:
 
 ```bash
-cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 ansible-playbook playbooks/01_dc_deploy.yml
 ```
@@ -80,9 +80,9 @@ The stages now follow the execution order. Stage 05 creates the inter-fabric con
 
 ## Intent and configuration
 
-The `*.nac.yaml` files under `nac_vxlan/ansible/playbooks/host_vars/Pseudoco-DC1/` are the Nexus as Code model. They describe the fabric, switches, vPC, VRFs, networks, and endpoint attachments.
+The `*.nac.yaml` files under `ansible/playbooks/host_vars/Pseudoco-DC1/` are the Nexus as Code model. They describe the fabric, switches, vPC, VRFs, networks, and endpoint attachments.
 
-The files under `nac_vxlan/ansible/inventory/group_vars/all/` hold values that the current Nexus as Code model cannot express:
+The files under `ansible/inventory/group_vars/all/` hold values that the current Nexus as Code model cannot express:
 
 - `dc_switches.yml`: switch addresses, roles, and endpoint interfaces.
 - `dc_advanced_settings.yml`: fabric settings such as VRF-Lite deployment, license tier, telemetry, and location.
@@ -100,7 +100,7 @@ The model is the source of truth for the objects it describes. To change those o
 
 ## Verification
 
-Stage 08 is read-only and writes `nac_vxlan/ansible/evidence/stage08-verification.md`. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions.
+Stage 08 is read-only and writes `ansible/evidence/stage08-verification.md`. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions.
 
 It also reads BGP session state from DC-Service-Leaf over SSH when `dc_verify_bgp_sessions` is enabled. A reachable switch adds three BGP checks; an unreachable switch produces `not determined` rows rather than claiming that the sessions are down. The BGP check can be skipped with:
 
@@ -114,4 +114,4 @@ The report does not verify the edge router's configuration or data-plane traffic
 
 - `09_remove.yml` is a destructive prune and is not called by the orchestrator. It requires `-e dc_remove_confirm=REMOVE_OK`.
 
-For implementation details, see [`nac_vxlan/ansible/README.md`](nac_vxlan/ansible/README.md).
+For implementation details, see [`ansible/README.md`](ansible/README.md).
