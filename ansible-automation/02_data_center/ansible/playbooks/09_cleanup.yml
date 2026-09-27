@@ -286,7 +286,7 @@
     # not exist - "Invalid range at '^' marker" - and one rejected command
     # fails the whole task, so a teardown run after a build that never got as
     # far as writing the sub-interfaces would break here.
-    - name: Read {{ dc_vrf_lite_interface }} before changing it
+    - name: Read the running configuration of {{ dc_vrf_lite_interface }}
       cisco.nxos.nxos_command:
         commands:
           - show running-config interface
