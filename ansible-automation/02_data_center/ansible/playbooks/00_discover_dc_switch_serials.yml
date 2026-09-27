@@ -71,16 +71,36 @@
   ignore_unreachable: true
 
   tasks:
-    # gather_subset: min keeps this to `show version`, and Ansible exposes the
-    # serial number it finds there as the fact ansible_net_serialnum. Facts are
-    # stored per host, so the next play reads them out of hostvars[<switch>].
-    # ignore_errors lets a switch that fails the command be named in the report
-    # below instead of stopping the play here.
-    - name: Gather minimal facts
-      cisco.nxos.nxos_facts:
-        gather_subset: min
-      register: dc_switch_facts
+    # The serial must be the CHASSIS serial, because that is what Nexus
+    # Dashboard keys a switch on. `show version` reports the supervisor
+    # module's Processor Board ID, which nxos_facts exposes as
+    # ansible_net_serialnum - on a virtual Nexus 9000v those are two different
+    # numbers, and using the supervisor's makes every controller call fail with
+    # "getIDFromSN ... is null". On physical hardware they happen to match,
+    # which is why the difference is easy to miss.
+    #
+    # `| json` asks NX-OS for structured output, so the chassis row is selected
+    # by name rather than by scraping columns. ignore_errors lets a switch that
+    # fails the command be named in the report below instead of stopping here.
+    - name: Read the chassis serial number
+      cisco.nxos.nxos_command:
+        commands:
+          - show inventory | json
+      register: dc_switch_inventory
       ignore_errors: true
+      changed_when: false
+
+    # The name field arrives with literal quotes around it, as "Chassis", so
+    # this matches on the substring rather than on equality.
+    - name: Keep the chassis serial for the next play
+      ansible.builtin.set_fact:
+        dc_switch_serial: >-
+          {{ ((dc_switch_inventory.stdout | default([]) | first | default({})).TABLE_inv.ROW_inv
+              | default([], true)
+              | selectattr('name', 'defined')
+              | selectattr('name', 'search', 'Chassis')
+              | map(attribute='serialnum') | list | first | default('')) }}
+      when: dc_switch_inventory is succeeded
 
 - name: Stage 00c - generate the switch data model from the serial numbers
   hosts: localhost
@@ -107,13 +127,13 @@
             sw.name,
             sw.management_ipv4_address,
             sw.role,
-            hostvars[sw.name].ansible_net_serialnum | default('UNREACHABLE'))) or '' -}}
+            hostvars[sw.name].dc_switch_serial | default('', true) or 'UNREACHABLE')) or '' -}}
       {%- endfor -%}
       {{ rows }}
 
     dc_discovered_serials: >-
       {{ dc_switches | map(attribute='name')
-         | map('extract', hostvars, 'ansible_net_serialnum') | list }}
+         | map('extract', hostvars, 'dc_switch_serial') | list }}
 
     # The .example is a tracked input and its own header says so, which would
     # read wrongly at the top of the file this stage generates. So the copy
@@ -197,10 +217,10 @@
         path: "{{ dc_switch_model_path }}"
         regexp: >-
           ^([ \t]*- name: {{ item.name | regex_escape }}[ \t]*\n[ \t]*serial_number: )[^\n]*(\n[ \t]*role: )[^\n]*
-        replace: '\g<1>{{ hostvars[item.name].ansible_net_serialnum }}\g<2>{{ item.role }}'
+        replace: '\g<1>{{ hostvars[item.name].dc_switch_serial }}\g<2>{{ item.role }}'
       loop: "{{ dc_switches }}"
       loop_control:
-        label: "{{ item.name }} -> {{ hostvars[item.name].ansible_net_serialnum }}"
+        label: "{{ item.name }} -> {{ hostvars[item.name].dc_switch_serial }}"
 
     - name: Read the generated model back
       ansible.builtin.slurp:
@@ -231,12 +251,12 @@
         that:
           - (dc_generated_model_text | from_yaml).vxlan.topology.switches
             | selectattr('name', 'eq', item.name)
-            | selectattr('serial_number', 'eq', hostvars[item.name].ansible_net_serialnum)
+            | selectattr('serial_number', 'eq', hostvars[item.name].dc_switch_serial)
             | selectattr('role', 'eq', item.role)
             | list | length == 1
         fail_msg: >-
           {{ dc_switch_model_shown }} does not hold exactly one {{ item.name }}
-          entry carrying serial {{ hostvars[item.name].ansible_net_serialnum }}
+          entry carrying serial {{ hostvars[item.name].dc_switch_serial }}
           and role {{ item.role }}. Check that
           topology_switches.nac.yaml.example declares that switch once and only
           once.
