@@ -55,7 +55,7 @@ dc_advanced_fabric_settings:
   # is the one switch in dc_switches.yml with role: border, and the edge
   # router stage 04 adds is the one device with the edgeRouter role. The two
   # leaves and the two spines are outside the supported cases and are never
-  # touched by it. See "The wait that replaced the second deploy" in the
+  # touched by it. See "What stage 05 needs from the controller" in the
   # collection README.
   #
   # The ampersand is the controller's own spelling of the nvPair value, not a

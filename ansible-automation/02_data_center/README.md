@@ -46,10 +46,9 @@ ansible-playbook playbooks/01_dc_deploy.yml
 ```
 
 Two commands, and that is the whole build. This used to need a third - a
-second run of the deploy stage - and it no longer does. The asynchronous wait
-that made the second run necessary now happens inside stage 05, so one
-Recalculate and Deploy is enough. See [The wait that replaced the second
-deploy](#the-wait-that-replaced-the-second-deploy).
+second run of the deploy stage - and it no longer does, because the VRF-Lite
+extensions are staged before the deploy rather than after it. See [What stage
+05 needs from the controller](#what-stage-05-needs-from-the-controller).
 
 This track needs `cisco.nac_dc_vxlan`, `cisco.dcnm` and `cisco.nxos`, which
 are newer than the campus collections. If your `~/venv` predates this track,
@@ -112,56 +111,84 @@ the fabric on the far side of the VRF-Lite handoff.
 
 Stage 05 attaches the three VRF-Lite extensions on DC-Service-Leaf, one per
 VRF, from `nac_vxlan/ansible/inventory/group_vars/all/dc_vrf_lite.yml`. The
-data model cannot express these: a `vrf_attach_group` entry names a switch and
-nothing else, with no key for `EXTEND: VRF_LITE`, the sub-interface, the dot1q
-tag or the neighbour address. So the stage calls `cisco.dcnm.dcnm_vrf`
-directly, which does support `attach[].vrf_lite[]`. Two things about it are
-worth carrying: it uses `state: merged` so the leaf attachments stage 02 made
-survive, and it has to run after stage 02 on **every** pass, because stage
-02's create role runs `dcnm_vrf` with `state: replaced` against a model that
-deliberately omits the border leaf - so every create run detaches the
-extensions and stage 05 puts them back.
+guide's section 8 does this in two halves per VRF, and so does the pipeline.
+The plain attachment of the VRF to the border leaf is the first half, and the
+data model owns it: `DC-Service-Leaf` is listed in `vrfs.nac.yaml`'s
+`dc_leaves` attach group, so stage 02 makes it. The extension is the second
+half, and the data model cannot express it - a `vrf_attach_group` entry names
+a switch and nothing else, with no key for `EXTEND: VRF_LITE`, the
+sub-interface, the dot1q tag or the neighbour address. So stage 05 calls
+`cisco.dcnm.dcnm_vrf` directly, which does support `attach[].vrf_lite[]`.
+
+Two things about it are worth carrying. It uses `state: merged`, so the
+attachments stage 02 made survive. And it still has to run after stage 02 on
+**every** pass, for a narrower reason than it used to: stage 02's create role
+runs `dcnm_vrf` with `state: replaced`, and `replaced` with no `vrf_lite`
+block against an attachment that has one resets the extension. Stage 02 now
+maintains the attachment and only clears the extension, where before it
+removed both.
+
+Stage 05 needs one thing from the controller that no file here can supply: a
+VRF-Lite inter-fabric connection on `Ethernet1/8`, without which `dcnm_vrf`
+refuses with `No VRF LITE capable interfaces found on this switch`. The stage
+reads that precondition before writing and names it in the failure, and
+`nac_vxlan/ansible/playbooks/diagnose_vrf_lite.yml` is a read-only playbook
+that prints what the controller holds.
 
 Playbooks numbered outside that range are ones you run deliberately, by name:
 `00_discover_dc_switch_serials.yml` below it and `08_remove.yml` above it.
 
-## The wait that replaced the second deploy
+## What stage 05 needs from the controller
 
-**The pipeline no longer deploys twice.** It used to: the deploy stage, fired
-straight after `04_external_fabric.yml`, reported `0/5` switches to deploy
-back then, and a second run a minute later picked up
-exactly one switch, the border leaf, and deployed it in seconds. Nothing
-drifted in between and nobody touched a switch.
+**A VRF-Lite extension can only be attached where a VRF-Lite inter-fabric
+connection already terminates, and nothing in this repository creates one.**
+`cisco.dcnm`'s `dcnm_vrf` reads the extension prototypes Nexus Dashboard
+offers the border leaf and refuses with `No VRF LITE capable interfaces found
+on this switch` when the list holds nothing of type `VRF_LITE`. Stage 05 reads
+that same list itself, read-only, before writing, so the failure names the
+cause; `nac_vxlan/ansible/playbooks/diagnose_vrf_lite.yml` prints what the
+controller holds. The collection README traces it line by line.
 
-The reason for that is still true, and it is why the wait exists. **Nexus
-Dashboard correlates the CDP adjacency between the border leaf and the edge
-router asynchronously.** Adding the router in stage 04 returns HTTP 202 with
-an empty body; the controller onboards it and works out the adjacency
-afterwards, on its own schedule. Anything that depends on that adjacency and
-asks a question seconds later gets an honest nothing.
+Two explanations of that failure turned out to be wrong, and both are the sort
+that get re-derived, so they are recorded rather than deleted.
 
-What changed is where the waiting happens. A VRF-Lite extension cannot be
-attached until the inter-fabric link that `VRF_LITE_AUTOCONFIG` builds exists,
-and the controller builds that only once it has the adjacency - so stage 05
-retries its `dcnm_vrf` call with `until`/`retries`, six attempts twenty
-seconds apart, instead of failing. Raise it with
-`-e dc_vrf_lite_retries=12`. Because that wait happens while intent is being
-*staged*, stage 06 finds the work already there and one Recalculate and Deploy
-carries the parent interface, the three sub-interfaces and their BGP
-neighbours together.
+The first was timing. Nexus Dashboard genuinely does correlate the CDP
+adjacency between the border leaf and the edge router asynchronously - adding
+the router in stage 04 returns HTTP 202 with an empty body, and the controller
+works out the adjacency afterwards on its own schedule. That is why the
+pipeline used to need a second deploy: the first reported `0/5` switches and a
+run a minute later picked up the border leaf alone and deployed it in seconds,
+with nothing drifted and nobody touching a switch. Stage 05 therefore retried
+its `dcnm_vrf` call, six attempts twenty seconds apart, on the theory that the
+prototype would appear. It does not. On 2026-09-27 a full successful
+`06_recalculate_and_deploy.yml` - all five switches deployed, `check_sync`
+reporting `in_sync=True` - was followed by a stage 05 run that failed with the
+byte-identical error. The retry has been removed.
 
-Only the border leaf ever reacts, because Cisco scopes VRF-Lite
+The second was the data model. The guide attaches each VRF to the border leaf
+and *then* enables the extension, in two separate dialogs, and for a while
+only the second half was automated. That was a real gap and it is closed -
+`DC-Service-Leaf` is now in `vrf_attach_groups`, so stage 02 makes the plain
+attachment - but it was never the cause: `dcnm_vrf`'s own integration suite
+adds a lite extension to a switch with no attachment at all.
+
+Only the border leaf ever reacts to any of this, because Cisco scopes VRF-Lite
 autoconfiguration to *"Border role in the VXLAN fabric and Edge Router role in
 the connected external fabric device"*
 ([NDFC - VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html)).
 `DC-Service-Leaf` is the fabric's only `border` switch and `DC-SITE11-CEDGE8Kv`
 its only `edgeRouter`. The two leaves and two spines are outside that scope.
+The same article is also the leading suspect for the empty prototype list:
+*"Auto IFC is supported on Cisco Nexus devices only"*, and that edge router is
+an IOS-XE Catalyst 8000V.
 
-The habit worth keeping generalises past this stage: **"no changes" is a
-statement about one instant, not proof the fabric is finished.** Trust
+Two habits worth keeping generalise past this stage. **"No changes" is a
+statement about one instant, not proof the fabric is finished** - trust
 `check_sync -> in_sync=True` after a run that deployed something, or a clean
-`07_verify_fabric.yml`. And prefer waiting for a precondition in code over
-telling somebody to run a playbook twice.
+`07_verify_fabric.yml`. And **a retry loop cannot tell you whether a
+precondition is eventual or permanent**; read the precondition and assert on
+it, so a stage that cannot succeed says which API field is empty instead of
+waiting politely for two minutes.
 
 The two fabric settings behind all of this - `VRF_LITE_AUTOCONFIG` set to
 `Back2Back&ToExternal` and `AUTO_SYMMETRIC_VRF_LITE` set to `true`, both

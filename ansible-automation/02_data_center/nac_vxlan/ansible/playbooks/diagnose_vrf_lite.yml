@@ -1,0 +1,484 @@
+---
+# READ-ONLY diagnostic for the stage 05 failure:
+#
+#   DcnmVrf.update_vrf_attach_vrf_lite_extensions: caller: push_diff_attach.
+#   No VRF LITE capable interfaces found on this switch.
+#   ip: 198.18.128.13, serial_number: 955T6I5X2D4
+#
+# NOT part of the pipeline. Deliberately unnumbered so nobody mistakes it for
+# a build stage. Every call is a GET. Nothing is created, modified, deployed
+# or saved, so it is safe to run at any point and safe to re-run.
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   ansible-playbook playbooks/diagnose_vrf_lite.yml 2>&1 | tee /tmp/vrf-lite-diag.txt
+#
+# Send back the whole file. The decisive output is section 1.
+#
+#
+# WHAT IS BEING MEASURED, AND WHY EXACTLY THIS
+#
+# The error string exists in one place in cisco.dcnm 3.13.0
+# plugins/modules/dcnm_vrf.py, and the value that is empty when it is raised
+# can come from only one endpoint. Traced backwards:
+#
+#   push_diff_attach (line 5039)
+#     line 5113  lite_objects = self.get_vrf_lite_objects(vrf_attach)
+#     line 5120  if not lite_objects.get("DATA"): return       <- silent, no error
+#     line 5126  lite = lite_objects["DATA"][0]["switchDetailsList"][0][
+#     line 5127      "extensionPrototypeValues"]
+#     line 5139  vrf_attach = self.update_vrf_attach_vrf_lite_extensions(vrf_attach, lite)
+#
+#   update_vrf_attach_vrf_lite_extensions (line 4658)
+#     line 4715  ext_values = self.get_extension_values_from_lite_objects(lite)
+#     line 4717  if not ext_values:
+#     line 4721      msg += "No VRF LITE capable interfaces found on "
+#     line 4726      self.module.fail_json(msg=msg)
+#
+#   get_extension_values_from_lite_objects (line 4576)
+#     line 4597  for item in lite:
+#     line 4598      if str(item.get("extensionType")) != "VRF_LITE": continue
+#     line 4600      extension_values_list.append(ast.literal_eval(item["extensionValues"]))
+#
+#   get_vrf_lite_objects (line 2417)
+#     line 2442  path = self.paths["GET_VRF_SWITCH"].format(fabric, vrfName, serialNumber)
+#     line 1047  GET_VRF_SWITCH =
+#       /appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{}/vrfs/switches
+#         ?vrf-names={}&serial-numbers={}
+#
+# So the empty variable is ext_values, and it is empty if and only if the
+# extensionPrototypeValues list read at line 5126 contains no element whose
+# extensionType is the literal string VRF_LITE. At that point there is no
+# other filter: no interface name, no IFC subtype, no link state, no
+# Back2Back versus ToExternal distinction. Section 1 is that exact call.
+#
+# Four things already established from the source, which is why the sections
+# below are shaped the way they are:
+#
+#   1. extensionPrototypeValues is read in exactly ONE place in the whole
+#      5700-line module, at line 5126. Every other reader of this same
+#      response reads extensionValues, which is a different field: the
+#      CONFIGURED extension, not the AVAILABLE ones.
+#   2. The message we got is NOT the interface-mismatch message. That one is
+#      at line 4758, raised only after the playbook interface names are
+#      compared with the prototype IF_NAMEs at line 4743. Reaching line 4721
+#      instead means there is no VRF_LITE prototype at all, so this is not an
+#      Ethernet1/8-versus-eth1/8 spelling problem.
+#   3. It is also NOT a missing attachment. The module's own integration test
+#      tests/integration/targets/dcnm_vrf/tests/dcnm/standalone/merged.yaml
+#      TEST.4 (lines 280-330) deletes every VRF first (TEST.3e, line 269),
+#      then in ONE state: merged call creates a VRF and attaches it with a
+#      vrf_lite block to a switch that had no attachment at all, and asserts
+#      changed == true with three HTTP 200s. push_to_remote (line 5495) runs
+#      push_diff_create (line 5547) before push_diff_attach (line 5548), so
+#      at the moment of the failing GET the VRF exists and the attachment
+#      does not. The prototype list is therefore a property of the SWITCH and
+#      its inter-fabric link, not of the attachment.
+#   4. Line 5126 indexes switchDetailsList POSITIONALLY, at [0], while lines
+#      2600-2603, 3820-3823 and 3928 index the same response BY serial
+#      number. If this endpoint can return more than one switch record, line
+#      5126 can be reading a switch that is not the border leaf and still
+#      report the border leaf's ip and serial in the error, because those
+#      come from the request. Section 1b prints every serialNumber returned.
+#
+# The remaining candidate causes all live on the controller side, and section
+# 2 is what separates them: whether a VRF-Lite inter-fabric link exists on
+# Ethernet1/8 at all, and what its templateName is. cisco.dcnm calls the
+# VRF-Lite link template ext_fabric_setup (dcnm_links.py line 912). A link
+# on any other template is not a VRF-Lite IFC, no matter how the deployed
+# interface config looks.
+#
+# Note what the deployed parent-interface config does NOT prove. This:
+#
+#   interface ethernet1/8
+#     no switchport
+#     mtu 9000
+#     description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
+#     no shutdown
+#
+# has no ip address and no encapsulation, so it is consistent with an
+# ext_fabric_setup IFC AND with a plain discovered external link that was
+# converted to Layer 3. It does not discriminate between them. Section 2
+# does.
+#
+#
+# ABSENT IS NOT THE SAME AS EMPTY
+#
+# Every section prints the WHOLE record with ansible.builtin.debug var:,
+# not a summary. That is deliberate. A probe built on .get() or on Jinja
+# default() cannot tell a MISSING key from a key whose value is empty or
+# null, and this repository has already produced one false green that way
+# (goldenImages in the SWIM stage). The summary lines in 1b are there to
+# point at the interesting part of the raw dump above them, never to replace
+# it. Where the distinction matters the summary asks the question directly,
+# as "key present: true/false".
+#
+# Endpoints are not invented. Each is copied from a cisco.dcnm 3.13.0 module
+# and cited beside the task that uses it.
+#
+# Credentials: none in this file. The httpapi connection and the Nexus
+# Dashboard account come from inventory/group_vars/nd/connection.yml, which
+# reads them out of vault-encrypted Lab Topology/lab_access.yml, exactly as
+# 04_external_fabric.yml does for its direct REST calls.
+
+- name: Diagnose the VRF-Lite precondition on the border leaf
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  # Deliberately NOT any_errors_fatal. A section that returns 4xx is itself a
+  # finding, and the later sections are still worth collecting.
+  any_errors_fatal: false
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+    # Peer fabric name, as spelled in inventory/static_inventory.yml.
+    dc_diag_peer_fabric: External
+    # Override if the derived lookup in section 0 picks the wrong switch:
+    #   -e dc_diag_border_serial=955T6I5X2D4
+    dc_diag_border_serial: ""
+
+  tasks:
+    - name: Banner
+      ansible.builtin.debug:
+        msg:
+          - "VRF-Lite diagnostic. READ-ONLY: every call below is a GET."
+          - "Fabric: {{ dc_fabric_name }}. Peer fabric: {{ dc_diag_peer_fabric }}."
+          - "Border leaf: {{ dc_vrf_lite_border_leaf }}. Parent interface: {{ dc_vrf_lite_interface }}."
+          - "VRFs: {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }}"
+
+    # ================================================================ 0
+    # Inventory, so every serial used below is derived from the controller
+    # rather than pasted in.
+    #
+    # Endpoint: cisco.dcnm 3.13.0
+    # module_utils/network/dcnm/dcnm.py get_fabric_inventory_details(),
+    # lines 229-234.
+    - name: "0a - DC fabric inventory, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/inventory/switchesByFabric"
+      register: dc_diag_inventory
+      changed_when: false
+      failed_when: false
+
+    - name: "0a - DC fabric inventory, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_inventory
+
+    - name: Resolve the border leaf serial from the controller's own inventory
+      ansible.builtin.set_fact:
+        dc_diag_serial: >-
+          {{ dc_diag_border_serial
+             if (dc_diag_border_serial | length > 0)
+             else ((dc_diag_inventory.response | default({})).DATA | default([])
+                   | selectattr('logicalName', 'defined')
+                   | selectattr('logicalName', 'equalto', dc_vrf_lite_border_leaf)
+                   | map(attribute='serialNumber') | list | first | default('')) }}
+        dc_diag_all_serials: >-
+          {{ ((dc_diag_inventory.response | default({})).DATA | default([])
+              | selectattr('serialNumber', 'defined')
+              | map(attribute='serialNumber') | list) }}
+
+    - name: "0b - derived serials and switch roles"
+      ansible.builtin.debug:
+        msg: >-
+          {% set inv = (dc_diag_inventory.response | default({})).DATA | default([]) %}
+          BORDER SERIAL USED BELOW: '{{ dc_diag_serial }}'
+          {% if dc_diag_serial | length == 0 %}
+          *** EMPTY. Re-run with -e dc_diag_border_serial=955T6I5X2D4 and send section 0a. ***
+          {% endif %}
+          ALL SERIALS: {{ dc_diag_all_serials | join(',') }}
+          {% for s in inv %}
+          {{ s.get('logicalName', '?') }} | {{ s.get('ipAddress', '?') }} | {{ s.get('serialNumber', '?') }} | role={{ s.get('switchRole', '?') }} | roleEnum={{ s.get('switchRoleEnum', '?') }} | cc={{ s.get('ccStatus', '?') }} | managable={{ s.get('managable', '?') }} | {{ s.get('model', '?') }}
+          {% endfor %}
+
+    # is_border_switch() in dcnm_vrf.py line 4557 regex-matches \bborder\b
+    # against switchRole. The failing run got PAST that check (line 5103), so
+    # the role above should read Border. This is a cross-check, not a suspect.
+    - name: "0c - peer fabric inventory, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_diag_peer_fabric }}/inventory/switchesByFabric"
+      register: dc_diag_peer_inventory
+      changed_when: false
+      failed_when: false
+
+    - name: "0c - peer fabric inventory, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_peer_inventory
+
+    - name: Resolve the edge router serial
+      ansible.builtin.set_fact:
+        dc_diag_peer_serial: >-
+          {{ ((dc_diag_peer_inventory.response | default({})).DATA | default([])
+              | selectattr('ipAddress', 'defined')
+              | selectattr('ipAddress', 'equalto', dc_external_edge_router.ip)
+              | map(attribute='serialNumber') | list | first | default('')) }}
+
+    - name: "0d - edge router serial"
+      ansible.builtin.debug:
+        msg: "Edge router {{ dc_external_edge_router.ip }} serial: '{{ dc_diag_peer_serial }}'"
+
+    # ================================================================ 1
+    # THE CALL THE MODULE MAKES. This is the whole question.
+    #
+    # Endpoint: dcnm_vrf.py GET_VRF_SWITCH line 1047, called from
+    # get_vrf_lite_objects() line 2442.
+    - name: "1a - the module's own query, border serial only, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{ item.vrf }}&serial-numbers={{ dc_diag_serial }}
+      register: dc_diag_vrf_switch
+      changed_when: false
+      failed_when: false
+      loop: "{{ dc_vrf_lite_extensions }}"
+      loop_control:
+        label: "{{ item.vrf }}"
+
+    - name: "1a - the module's own query, RAW - output (READ THIS ONE)"
+      ansible.builtin.debug:
+        var: dc_diag_vrf_switch.results
+
+    # The same responses, reduced to the facts that decide this. Printed in
+    # ADDITION to the raw dump above, never instead of it. Key presence is
+    # asked directly, because absent and empty are different answers.
+    - name: "1b - what line 5126 would have read, per VRF"
+      ansible.builtin.debug:
+        msg: >-
+          {% set resp = item.response | default({}) %}
+          {% set data = resp.DATA | default([]) %}
+          {% set rec0 = data[0] if (data | length) > 0 else {} %}
+          {% set sdl = rec0.get('switchDetailsList', []) if rec0 is mapping else [] %}
+          {% set sw0 = sdl[0] if (sdl | length) > 0 else {} %}
+          VRF {{ item.item.vrf }}
+          RETURN_CODE: {{ resp.get('RETURN_CODE', 'CALL FAILED - see 1a') }}
+          DATA key present: {{ 'DATA' in resp }} / DATA length: {{ data | length }}
+          DATA[0] keys: {{ (rec0.keys() | list) if rec0 is mapping else 'no DATA[0]' }}
+          switchDetailsList key present at DATA[0]: {{ ('switchDetailsList' in rec0) if rec0 is mapping else 'n/a' }}
+          switchDetailsList length: {{ sdl | length }}
+          serialNumber of EVERY entry in switchDetailsList: {{ sdl | map(attribute='serialNumber') | list }}
+          switchDetailsList[0].serialNumber == border leaf: {{ (sw0.get('serialNumber', 'ABSENT') == dc_diag_serial) if sw0 is mapping else 'n/a' }}
+          switchDetailsList[0] keys: {{ (sw0.keys() | list) if sw0 is mapping else 'no switchDetailsList[0]' }}
+          extensionPrototypeValues KEY PRESENT: {{ ('extensionPrototypeValues' in sw0) if sw0 is mapping else 'n/a' }}
+          extensionPrototypeValues length: {{ (sw0.get('extensionPrototypeValues') or []) | length }}
+          extensionType of each prototype: {{ (sw0.get('extensionPrototypeValues') or []) | map(attribute='extensionType') | list }}
+          VRF_LITE prototypes (0 here is exactly why the module failed): {{ (sw0.get('extensionPrototypeValues') or []) | selectattr('extensionType', 'defined') | selectattr('extensionType', 'equalto', 'VRF_LITE') | list | length }}
+          extensionValues KEY PRESENT: {{ ('extensionValues' in sw0) if sw0 is mapping else 'n/a' }}
+          lanAttachState on this record: {{ sw0.get('lanAttachState', 'KEY ABSENT') if sw0 is mapping else 'n/a' }}
+      loop: "{{ dc_diag_vrf_switch.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.vrf }}"
+
+    # Same endpoint, every serial in the fabric. Two things this settles:
+    # whether the serial-numbers filter is honoured at all, and whether any
+    # OTHER switch in the fabric carries a VRF_LITE prototype. If one does,
+    # the link and the fabric settings are fine and the question becomes
+    # which switch record line 5126 reads.
+    - name: "1c - the same query for ALL serials in the fabric, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{ item.vrf }}&serial-numbers={{ dc_diag_all_serials | join(',') }}
+      register: dc_diag_vrf_switch_all
+      changed_when: false
+      failed_when: false
+      loop: "{{ dc_vrf_lite_extensions }}"
+      loop_control:
+        label: "{{ item.vrf }}"
+
+    - name: "1c - the same query for ALL serials, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_vrf_switch_all.results
+
+    - name: "1d - per-switch prototype summary from the all-serials query"
+      ansible.builtin.debug:
+        msg: >-
+          {% set resp = item.response | default({}) %}
+          {% set data = resp.DATA | default([]) %}
+          {% set rec0 = data[0] if (data | length) > 0 else {} %}
+          {% set sdl = rec0.get('switchDetailsList', []) if rec0 is mapping else [] %}
+          VRF {{ item.item.vrf }} - switchDetailsList length {{ sdl | length }}
+          {% for sw in sdl %}
+          {{ sw.get('serialNumber', '?') }} | protoKeyPresent={{ 'extensionPrototypeValues' in sw }} | protoTypes={{ (sw.get('extensionPrototypeValues') or []) | map(attribute='extensionType') | list }} | extValKeyPresent={{ 'extensionValues' in sw }} | lanAttachState={{ sw.get('lanAttachState', 'KEY ABSENT') }}
+          {% endfor %}
+      loop: "{{ dc_diag_vrf_switch_all.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.vrf }}"
+
+    # ================================================================ 2
+    # The inter-fabric link. This is where the answer probably is.
+    #
+    # Endpoint: dcnm_links.py LINKS_GET_BY_FABRIC line 884.
+    - name: "2a - every link in the DC fabric, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/links/fabrics/{{ dc_fabric_name }}"
+      register: dc_diag_links
+      changed_when: false
+      failed_when: false
+
+    - name: "2a - every link in the DC fabric, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_links
+
+    - name: "2b - one line per link, with templateName"
+      ansible.builtin.debug:
+        msg: >-
+          {% set links = (dc_diag_links.response | default({})).DATA | default([]) %}
+          {{ links | length }} link(s) in {{ dc_fabric_name }}. The VRF-Lite template is ext_fabric_setup.
+          {% for l in links %}
+          {% set s1 = l.get('sw1-info', {}) %}
+          {% set s2 = l.get('sw2-info', {}) %}
+          template={{ l.get('templateName', 'KEY ABSENT') }} | {{ s1.get('sw-sys-name', '?') }}[{{ s1.get('sw-serial-number', '?') }}] {{ s1.get('if-name', '?') }} ({{ s1.get('fabric-name', '?') }}) -> {{ s2.get('sw-sys-name', '?') }}[{{ s2.get('sw-serial-number', '?') }}] {{ s2.get('if-name', '?') }} ({{ s2.get('fabric-name', '?') }})
+          {% endfor %}
+
+    - name: "2c - the parent interface's link, does it exist and what template"
+      ansible.builtin.debug:
+        msg: >-
+          {% set links = (dc_diag_links.response | default({})).DATA | default([]) %}
+          {% set ns = namespace(found=[]) %}
+          {% for l in links %}
+          {% if l.get('sw1-info', {}).get('sw-serial-number') == dc_diag_serial and l.get('sw1-info', {}).get('if-name') == dc_vrf_lite_interface %}
+          {% set ns.found = ns.found + [l] %}
+          {% endif %}
+          {% if l.get('sw2-info', {}).get('sw-serial-number') == dc_diag_serial and l.get('sw2-info', {}).get('if-name') == dc_vrf_lite_interface %}
+          {% set ns.found = ns.found + [l] %}
+          {% endif %}
+          {% endfor %}
+          Links on {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }}: {{ ns.found | length }}
+          {% for l in ns.found %}
+          templateName={{ l.get('templateName', 'KEY ABSENT') }} is ext_fabric_setup: {{ l.get('templateName') == 'ext_fabric_setup' }}
+          FULL RECORD: {{ l | to_json }}
+          {% endfor %}
+          {% if ns.found | length == 0 %}
+          NO LINK RECORD on that interface. That alone explains the failure.
+          {% endif %}
+
+    # Endpoint: dcnm_links.py LINKS_GET_BY_SWITCH_PAIR line 879, query string
+    # built at lines 2316-2321. The narrowest possible read of the one link
+    # stage 05 depends on.
+    - name: "2d - the border-leaf-to-edge-router link by switch pair, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/control/links?switch1Sn={{ dc_diag_serial }}&switch2Sn={{ dc_diag_peer_serial }}&switch1IfName={{ dc_vrf_lite_interface }}&switch2IfName={{ dc_vrf_lite_peer_interface }}
+      register: dc_diag_link_pair
+      changed_when: false
+      failed_when: false
+      when: dc_diag_peer_serial | length > 0
+
+    - name: "2d - the link by switch pair, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_link_pair
+
+    # ================================================================ 3
+    # The parent interface and the policy attached to it, so we can see what
+    # actually produced the deployed "no switchport / mtu 9000 / description
+    # connected-to-..." block.
+    #
+    # Endpoint: dcnm_interface.py IF_WITH_SNO_IFNAME line 1927.
+    - name: "3a - the parent interface record and its policy, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/interface?serialNumber={{ dc_diag_serial }}&ifName={{ dc_vrf_lite_interface }}"
+      register: dc_diag_interface
+      changed_when: false
+      failed_when: false
+
+    - name: "3a - the parent interface record, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_interface
+
+    # ================================================================ 4
+    # Attachment state. As of this change the data model owns the border leaf
+    # attachment (DC-Service-Leaf is in vrf_attach_groups in
+    # playbooks/host_vars/Pseudoco-DC1/vrfs.nac.yaml), so after a stage 02
+    # run the border leaf should appear in lanAttachList for all three VRFs.
+    #
+    # This is NOT the suspected cause - TEST.4 in the module's own integration
+    # suite proves a lite extension can be added with no prior attachment at
+    # all - but lanAttachState is worth having, and if the border leaf is
+    # missing here after a stage 02 run then the model change did not land.
+    #
+    # Endpoint: dcnm_vrf.py GET_VRF_ATTACH line 1046.
+    - name: "4a - VRF attachments for the three VRFs, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/attachments?vrf-names={{ dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}
+      register: dc_diag_attachments
+      changed_when: false
+      failed_when: false
+
+    - name: "4a - VRF attachments, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_attachments
+
+    - name: "4b - is the border leaf attached, and in what state"
+      ansible.builtin.debug:
+        msg: >-
+          {% for v in (dc_diag_attachments.response | default({})).DATA | default([]) %}
+          VRF {{ v.get('vrfName', '?') }}
+          {% for a in v.get('lanAttachList') or [] %}
+          {{ a.get('switchName', '?') }}[{{ a.get('switchSerialNo', '?') }}] role={{ a.get('switchRole', '?') }} lanAttachState={{ a.get('lanAttachState', 'KEY ABSENT') }} isLanAttached={{ a.get('isLanAttached', 'KEY ABSENT') }} vlan={{ a.get('vlanId', '?') }} extensionValuesKeyPresent={{ 'extensionValues' in a }} extensionValues={{ a.get('extensionValues', 'KEY ABSENT') }}
+          {% endfor %}
+          {% endfor %}
+
+    # ================================================================ 5
+    # Monitor Mode as the API reports it, for both fabrics. dcnm_links reads
+    # this exact endpoint (line 3772) and treats readonly true as "no changes
+    # allowed on the fabric".
+    #
+    # Endpoint: dcnm_links.py FABRIC_ACCESS_MODE line 887.
+    - name: "5a - access mode of both fabrics, RAW"
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ item }}/accessmode"
+      register: dc_diag_accessmode
+      changed_when: false
+      failed_when: false
+      loop:
+        - "{{ dc_fabric_name }}"
+        - "{{ dc_diag_peer_fabric }}"
+
+    - name: "5a - access mode, RAW - output"
+      ansible.builtin.debug:
+        var: dc_diag_accessmode.results
+
+    # ================================================================ 6
+    # No verdict is asserted. The point of this playbook is that the answer
+    # is not yet known, and a playbook that guessed would just be the rescue
+    # message that already sent us down the wrong path.
+    - name: How to read this
+      ansible.builtin.debug:
+        msg:
+          - "Send back the WHOLE output, not a summary. The decisive part is 1a/1b."
+          - ""
+          - "Read 1b first, in this order:"
+          - "  1. 'serialNumber of EVERY entry in switchDetailsList'."
+          - "     Empty       -> the controller reports no switch record here."
+          - "     Not {{ dc_diag_serial }} -> line 5126's positional [0] read the"
+          - "                    wrong switch and the error was misattributed."
+          - "  2. 'extensionPrototypeValues KEY PRESENT' and its length."
+          - "     Key absent     -> the field the module reads does not exist on"
+          - "                       this controller's response at all, which would"
+          - "                       be an API-shape mismatch on ND 4.2.1.10."
+          - "     Present, len 0 -> the controller offers this switch no extension"
+          - "                       prototypes. Go to section 2."
+          - "  3. 'extensionType of each prototype'. A non-empty list without"
+          - "     VRF_LITE in it means some other extension type is offered, and"
+          - "     the name of that type is the finding."
+          - "  4. Compare with 1d. If another switch carries a VRF_LITE"
+          - "     prototype, the fabric settings are fine."
+          - ""
+          - "Then 2b/2c. If there is no link record on {{ dc_vrf_lite_interface }}, or the"
+          - "templateName is anything other than ext_fabric_setup, that is the"
+          - "cause: the interface is not part of a VRF-Lite IFC, so no prototype"
+          - "is offered, so the module cannot attach an extension - and no"
+          - "amount of recalculating, deploying or retrying will change it."
+          - ""
+          - "Then 5a. readonly should be false for {{ dc_fabric_name }} and true for"
+          - "{{ dc_diag_peer_fabric }}. If 2c shows no ext_fabric_setup link, the next"
+          - "question is whether Monitor Mode on {{ dc_diag_peer_fabric }} is why the"
+          - "controller never auto-created one - Cisco documents that auto IFC"
+          - "is supported on Nexus devices only and that a non-Nexus peer needs"
+          - "the IFC created manually, and this peer is an IOS-XE Catalyst 8000V."
