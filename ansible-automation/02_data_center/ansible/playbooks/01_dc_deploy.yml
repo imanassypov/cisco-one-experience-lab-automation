@@ -78,7 +78,7 @@
 
 # First deploy. Pushes the fabric, and gives the controller the Recalculate and
 # Deploy it needs before it will build the VRF-Lite inter-fabric link.
-- import_playbook: 05_recalculate_config.yml
+- import_playbook: 05_recalculate_and_deploy.yml
 
 - import_playbook: 06_vrf_lite.yml
 

@@ -1,24 +1,26 @@
 ---
-# Stage 05 - recalculate the fabric configuration before VRF-Lite staging.
+# Stage 05 - recalculate and deploy the fabric before VRF-Lite staging.
 #
-# This is the "Recalculate Config" half of the UI's "Recalculate and Deploy"
-# button and nothing else. It changes no running configuration on any switch;
-# stage 07 is the only stage in this collection that does.
+# Named after the UI action it performs: every "Recalculate and Deploy" click.
+# Stages 02 to 04 build intent on the controller and change nothing on a
+# switch; this is the first stage that changes running configuration on
+# DC-Leaf1, DC-Leaf2, DC-SPINE-1, DC-SPINE-2 and DC-Service-Leaf.
 #
-# What it is for: stages 02 to 04 write intent, and the controller does not act
-# on new intent until it is asked to recalculate. Nexus Dashboard builds the
-# VRF-Lite inter-fabric link stage 06 depends on during that recalculation,
-# once the edge router stage 04 adds is in the External fabric. So this stage
-# exists to put that link in place before stage 06 asks for the extension
-# prototype derived from it.
+# It has to deploy, not merely recalculate. Nexus Dashboard builds the VRF-Lite
+# inter-fabric link stage 06 depends on from the CDP adjacency it sees on
+# Ethernet1/8, and that adjacency only exists once the parent interface has
+# actually been configured on the border leaf. Recalculating alone leaves the
+# switches untouched, so on a fresh pod no link is built and stage 06 stops
+# with "offers no VRF-Lite extension". Measured on 2026-09-27: a build whose
+# stage 05 only recalculated failed exactly there.
 #
-# Why two calls rather than one:
+# Why the recalculation is two calls rather than one:
 #   - config-save recalculates the intended configuration. On its own it leaves
 #     every switch still reporting In-Sync.
 #   - reading config-preview is what refreshes each switch's compliance state.
 #     Only after it does a switch with pending configuration read Out-of-Sync,
-#     which is the flag stage 07's deploy role selects on.
-# Skipping the second call fails silently: stage 07 finds nothing to deploy and
+#     which is the flag the deploy role selects on.
+# Skipping the second call fails silently: the deploy finds nothing to do and
 # reports success while the configuration never reaches a switch.
 #
 # There is no module for either call. cisco.dcnm has no config-save module -
@@ -26,10 +28,14 @@
 # Nexus Dashboard platform collection, with nothing for fabric config actions.
 # dcnm_rest is the supported route, and the same one stages 03 and 06 use.
 #
+# Expect several minutes, and expect switches to show as out-of-sync while it
+# runs. Stage 07 performs the second deploy, after stage 06 stages the
+# extensions.
+#
 # Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/ansible
-#   ansible-playbook playbooks/05_recalculate_config.yml
+#   ansible-playbook playbooks/05_recalculate_and_deploy.yml
 
 - name: Stage 05 - recalculate the DC fabric configuration
   hosts: Pseudoco-DC1
@@ -62,7 +68,7 @@
           {{ ['Compliance after recalculation:', '| Switch | State |',
               '| --- | --- |']
              + dc_recalculate_rows
-             + ['Stage 07 deploys every switch reading Out-of-Sync.'] }}
+             + ['Every switch reading Out-of-Sync is deployed below.'] }}
       vars:
         dc_recalculate_rows: >-
           {%- set rows = [] -%}
@@ -71,3 +77,13 @@
                           ~ switch.get('status', 'unknown') ~ ' |') or '' -}}
           {%- endfor -%}
           {{ rows }}
+
+# A separate play so the deploy role runs after the recalculation above; roles
+# in a single play always run before that play's tasks.
+- name: Stage 05 - push the pending configuration
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.dtc.deploy
