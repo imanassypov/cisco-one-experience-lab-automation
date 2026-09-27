@@ -34,13 +34,13 @@
     - role: cisco.nac_dc_vxlan.validate
 
   tasks:
-    # The deploy role only pushes switches the controller already reports as
-    # Out-of-Sync, and intent written through the API does not move that flag by
-    # itself. config-save recalculates the intended configuration, and reading
-    # config-preview is what refreshes each switch's compliance state - the two
-    # halves of the UI's "Recalculate and Deploy" this stage is named for.
-    # Without them a staged change stays on the controller while every switch
-    # still reads In-Sync and this stage reports nothing to deploy.
+    # The deploy role below only pushes switches the controller already reports
+    # as Out-of-Sync, and intent written through the API does not move that flag
+    # by itself. config-save recalculates the intended configuration, and
+    # reading config-preview is what refreshes each switch's compliance state -
+    # the two halves of the UI action this stage is named for. Without them a
+    # staged change stays on the controller while every switch still reads
+    # In-Sync and the deploy reports nothing to do.
     - name: Recalculate the intended configuration
       cisco.dcnm.dcnm_rest:
         method: POST
@@ -53,6 +53,12 @@
         path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-preview?forceShowRun=false&showBrief=true"
       changed_when: false
 
-    - name: Deploy every switch the controller reports as out of sync
-      ansible.builtin.include_role:
-        name: cisco.nac_dc_vxlan.dtc.deploy
+# A separate play so the deploy role runs after the recalculation above; roles
+# in a single play always run before that play's tasks.
+- name: Stage 05 - push the pending configuration
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.dtc.deploy
