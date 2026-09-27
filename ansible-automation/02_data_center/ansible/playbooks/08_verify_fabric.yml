@@ -287,6 +287,41 @@
       changed_when: false
       when: dc_declared_vrfs | length > 0
 
+    # The attachments response carries no extensionValues at all, so the
+    # VRF-Lite comparison below has to read them from the switches endpoint -
+    # the same asymmetry stage 06 works around. Matching extensions against the
+    # attachments response reports every one of them as missing even when the
+    # controller has them and has deployed them.
+    - name: Read the VRF-Lite extensions in place
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{
+          dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}&serial-numbers={{
+          dc_device_serials[dc_vrf_lite_border_leaf] }}
+      register: dc_observed_vrf_switches
+      changed_when: false
+      when: dc_vrf_lite_extensions | default([]) | length > 0
+
+    # extensionValues nests JSON inside JSON. Unwrapping it to the connection
+    # list and re-encoding that gives a string whose quoting is predictable,
+    # which is what the substring comparison below relies on.
+    - name: Index the extensions by VRF
+      ansible.builtin.set_fact:
+        dc_vrf_lite_extension_values: >-
+          {%- set out = {} -%}
+          {%- for record in ((dc_observed_vrf_switches.response | default({})).DATA | default([])) -%}
+          {%- set switch = (record.get('switchDetailsList', []) | first | default({})) -%}
+          {%- set raw = switch.get('extensionValues', '') -%}
+          {%- set values = (raw | from_json) if raw is string and raw | length > 0 else raw -%}
+          {%- set raw_conn = values.get('VRF_LITE_CONN', '') if values is mapping else '' -%}
+          {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else raw_conn -%}
+          {%- set connections = conn_doc.get('VRF_LITE_CONN', []) if conn_doc is mapping else [] -%}
+          {%- set _ = out.update({record.get('vrfName', ''): (connections | to_json)}) -%}
+          {%- endfor -%}
+          {{ out }}
+      when: dc_vrf_lite_extensions | default([]) | length > 0
+
     - name: Read the network attachments
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -548,7 +583,7 @@
               | selectattr('switchName', 'defined')
               | selectattr('switchName', 'equalto', dc_vrf_lite_border_leaf)
               | list | first) | default({}) }}
-        extension_values: "{{ border_attachment.extensionValues | default('', true) }}"
+        extension_values: "{{ dc_vrf_lite_extension_values[item.vrf] | default('', true) }}"
         row:
           name: "VRF-Lite {{ item.vrf }} on {{ dc_vrf_lite_border_leaf }}"
           attached: "{{ border_attachment.isLanAttached | default(false, true) }}"
