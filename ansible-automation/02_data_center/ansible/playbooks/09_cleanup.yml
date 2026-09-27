@@ -135,20 +135,47 @@
 # ---------------------------------------------------------------------------
 # 3. Inventory
 #
-# state: deleted with no config removes every switch in the named fabric.
 # Doing this before the fabric delete means the controller releases the
 # switches cleanly rather than losing them along with the fabric.
+#
+# dcnm_inventory state: deleted is not used here. It issues a plain
+# DELETE /rest/control/fabrics/<fabric>/switches/<serial> with no force flag,
+# and a border leaf routinely refuses that call:
+#
+#   Failed to delete the switch[955T6I5X2D4/DC-Service-Leaf].
+#   Please check Anomalies for possible reasons.
+#
+# A border switch accumulates state the other roles do not - the inter-fabric
+# link, the VRF-Lite extensions, the dot1q reservations - so it is the one that
+# gets stuck. The plays above clear the known causes, and force=true covers the
+# rest rather than leaving the teardown to fail on an anomaly we cannot name.
 - name: Stage 09d - remove the switches from the DC fabric
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
 
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
   tasks:
-    - name: Remove every switch from {{ dc_fabric_name }}
-      cisco.dcnm.dcnm_inventory:
-        fabric: "{{ dc_fabric_name }}"
-        state: deleted
-      register: dc_cleanup_dc_inventory
+    - name: List the switches in {{ dc_fabric_name }}
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/inventory/switchesByFabric"
+      register: dc_cleanup_dc_switches
+      changed_when: false
+
+    - name: Force-remove every switch from {{ dc_fabric_name }}
+      cisco.dcnm.dcnm_rest:
+        method: DELETE
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/switches/{{ item.serialNumber }}?force=true"
+      loop: "{{ (dc_cleanup_dc_switches.response | default({})).DATA | default([], true) }}"
+      loop_control:
+        label: >-
+          {{ item.logicalName | default(item.serialNumber) }}
+          ({{ item.switchRole | default('role unknown') }})
+      register: dc_cleanup_dc_removed
+      changed_when: true
       vars:
         ansible_command_timeout: 3000
         ansible_connect_timeout: 3000
@@ -156,20 +183,41 @@
     - name: Report the DC inventory result
       ansible.builtin.debug:
         msg: >-
-          {{ dc_fabric_name }} inventory cleared.
-          changed={{ dc_cleanup_dc_inventory.changed | default(false) }}.
+          {{ dc_fabric_name }} inventory cleared -
+          {{ dc_cleanup_dc_removed.results | default([]) | length }} switch(es)
+          removed{{ ': ' ~ (dc_cleanup_dc_removed.results
+                            | map(attribute='item.logicalName')
+                            | select('defined') | join(', '))
+                    if dc_cleanup_dc_removed.results | default([]) | length > 0
+                    else ' - the fabric was already empty' }}.
 
 - name: Stage 09e - remove the router from the External fabric
   hosts: External
   gather_facts: false
   any_errors_fatal: true
 
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
   tasks:
-    - name: Remove every switch from {{ dc_external_fabric_name }}
-      cisco.dcnm.dcnm_inventory:
-        fabric: "{{ dc_external_fabric_name }}"
-        state: deleted
-      register: dc_cleanup_ext_inventory
+    - name: List the switches in {{ dc_external_fabric_name }}
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_external_fabric_name }}/inventory/switchesByFabric"
+      register: dc_cleanup_ext_switches
+      changed_when: false
+
+    - name: Force-remove every switch from {{ dc_external_fabric_name }}
+      cisco.dcnm.dcnm_rest:
+        method: DELETE
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_external_fabric_name }}/switches/{{ item.serialNumber }}?force=true"
+      loop: "{{ (dc_cleanup_ext_switches.response | default({})).DATA | default([], true) }}"
+      loop_control:
+        label: >-
+          {{ item.logicalName | default(item.serialNumber) }}
+          ({{ item.switchRole | default('role unknown') }})
+      register: dc_cleanup_ext_removed
+      changed_when: true
       vars:
         ansible_command_timeout: 3000
         ansible_connect_timeout: 3000
@@ -177,10 +225,10 @@
     - name: Report the External inventory result
       ansible.builtin.debug:
         msg: >-
-          {{ dc_external_fabric_name }} inventory cleared. The edge router's own
-          configuration is untouched - it is in Monitor Mode and pre-built by
-          the pod.
-          changed={{ dc_cleanup_ext_inventory.changed | default(false) }}.
+          {{ dc_external_fabric_name }} inventory cleared -
+          {{ dc_cleanup_ext_removed.results | default([]) | length }} device(s)
+          removed. The edge router's own configuration is untouched - it is in
+          Monitor Mode and pre-built by the pod.
 
 # ---------------------------------------------------------------------------
 # 4. Fabrics
@@ -233,6 +281,31 @@
   any_errors_fatal: true
 
   tasks:
+    # The removal list is read off the device rather than taken from intent.
+    # NX-OS rejects `no interface Ethernet1/8.2` when that sub-interface does
+    # not exist - "Invalid range at '^' marker" - and one rejected command
+    # fails the whole task, so a teardown run after a build that never got as
+    # far as writing the sub-interfaces would break here.
+    - name: Read {{ dc_vrf_lite_interface }} before changing it
+      cisco.nxos.nxos_command:
+        commands:
+          - show running-config interface
+      register: dc_cleanup_before
+      changed_when: false
+
+    - name: Work out which sub-interfaces are actually present
+      ansible.builtin.set_fact:
+        dc_cleanup_present: >-
+          {%- set found = [] -%}
+          {%- set lines = dc_cleanup_before.stdout[0].splitlines() -%}
+          {%- for ext in dc_vrf_lite_extensions -%}
+          {%- set name = dc_vrf_lite_interface ~ '.' ~ ext.dot1q -%}
+          {%- for line in lines if line.strip() == 'interface ' ~ name -%}
+          {{- found.append(name) or '' -}}
+          {%- endfor -%}
+          {%- endfor -%}
+          {{ found | unique | list }}
+
     # `no interface` removes each sub-interface outright. `default interface`
     # then returns the parent to its out-of-the-box state, clearing the
     # no switchport, the mtu and the description the fabric put on it - all of
@@ -241,8 +314,8 @@
       cisco.nxos.nxos_config:
         lines: >-
           {%- set cmds = [] -%}
-          {%- for ext in dc_vrf_lite_extensions -%}
-          {{- cmds.append('no interface ' ~ dc_vrf_lite_interface ~ '.' ~ ext.dot1q) or '' -}}
+          {%- for sub in dc_cleanup_present -%}
+          {{- cmds.append('no interface ' ~ sub) or '' -}}
           {%- endfor -%}
           {{- cmds.append('default interface ' ~ dc_vrf_lite_interface) or '' -}}
           {{ cmds }}
