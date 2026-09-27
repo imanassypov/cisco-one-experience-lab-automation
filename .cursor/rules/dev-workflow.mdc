@@ -100,6 +100,14 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 - CatC Command Runner returns the command itself as the first line of output. Most Genie parsers skip it, but the `show telemetry ietf subscription all` parser reads it as the whole output → `SchemaEmptyParserError` → the filter returns `{}` → every row reads `absent`. `genie_parse` now strips a leading line equal to the command. **The failure is silent**, because `SchemaEmptyParserError` is deliberately mapped to `{}` meaning "the device genuinely has nothing" — so a parser that suddenly sees nothing means: check the first line of the collected text.
 - Do not debug this from an SSH capture. Command Runner text and SSH text differ, and the difference is the bug. Pull the real thing: `POST /dna/intent/api/v1/network-device-poller/cli/read-request` → poll the task → `progress.fileId` → `GET /dna/intent/api/v1/file/{fileId}` → `[0].commandResponses.SUCCESS[cmd]`.
 
+## NDFC keys switches on the CHASSIS serial — verified live 2026-09-27
+
+- On a **virtual** Nexus 9000v, `show version` and `show inventory` report **different** serials. `show version`'s "Processor Board ID" is the **supervisor module** (`N9K-vSUP`, Slot 27); the chassis has its own. Measured on `DC-Service-Leaf` (198.18.128.13): board ID `9WLL3BKY6NQ`, chassis `955T6I5X2D4`. NDFC's inventory holds the **chassis** one.
+- `cisco.nxos.nxos_facts` exposes the board ID as `ansible_net_serialnum`. Stage 00 used it, so the whole generated `topology_switches.nac.yaml` carried supervisor serials that NDFC has never heard of. Fixed 2026-09-27 to parse `show inventory | json` → `TABLE_inv.ROW_inv` → the row whose `name` matches `Chassis` → `serialnum`. Note `name` arrives quoted as `"Chassis"`, so match on the substring, not equality.
+- **Symptom to recognise**: any `top-down/.../vrfs/switches` or similar call returns HTTP **500** with `Cannot invoke "java.lang.Long.longValue()" because the return value of "...InventoryUtil.getIDFromSN(String)" is null`. That is not a controller fault — it means the serial you sent is not in NDFC's inventory. Compare against `GET /rest/control/fabrics/<fabric>/inventory/switchesByFabric` before suspecting anything else.
+- On physical hardware the two serials coincide, which is why this stays hidden until a virtual pod.
+- The fabric can still look healthy with wrong serials in the model, because stage 02 discovers devices by **IP** and NDFC assigns its own serial. Only calls that send a serial break.
+
 ## Assurance (`07_assurance/splunk_evpn`)
 
 - Splunk host `198.18.5.109` — mgmt/REST `:8089`, web `:8000`. **Two different vault accounts**: `Splunk Enterprise` is the web/REST admin, `splunk_server` is the Linux SSH account. They are not interchangeable.
