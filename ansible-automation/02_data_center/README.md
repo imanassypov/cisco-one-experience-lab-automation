@@ -149,28 +149,34 @@ that same list itself, read-only, before writing, so the failure names the
 cause; `nac_vxlan/ansible/playbooks/diagnose_vrf_lite.yml` prints what the
 controller holds. The collection README traces it line by line.
 
-Two explanations of that failure turned out to be wrong, and both are the sort
-that get re-derived, so they are recorded rather than deleted.
+**The answer is that the deploy is what creates the link.** Nexus Dashboard
+builds the VRF-Lite inter-fabric connection itself, from
+`VRF_LITE_AUTOCONFIG`, during a Recalculate and Deploy, and only once the edge
+router stage 04 adds is in the External fabric. So `01_dc_deploy.yml` runs the
+deploy before stage 05 and again after it, and the numeric order of the files
+is not the run order. Verified on the pod: the same stage 05 command failed
+with an empty prototype list before any deploy and succeeded after one.
 
-The first was timing. Nexus Dashboard genuinely does correlate the CDP
-adjacency between the border leaf and the edge router asynchronously - adding
-the router in stage 04 returns HTTP 202 with an empty body, and the controller
-works out the adjacency afterwards on its own schedule. That is why the
-pipeline used to need a second deploy: the first reported `0/5` switches and a
-run a minute later picked up the border leaf alone and deployed it in seconds,
-with nothing drifted and nobody touching a switch. Stage 05 therefore retried
-its `dcnm_vrf` call, six attempts twenty seconds apart, on the theory that the
-prototype would appear. It does not. On 2026-09-27 a full successful
-`06_recalculate_and_deploy.yml` - all five switches deployed, `check_sync`
-reporting `in_sync=True` - was followed by a stage 05 run that failed with the
-byte-identical error. The retry has been removed.
+Two earlier explanations are worth recording, because both get re-derived.
+
+The first was timing, and it was half right. Nexus Dashboard does correlate
+the CDP adjacency between the border leaf and the edge router asynchronously -
+adding the router in stage 04 returns HTTP 202 with an empty body, and the
+controller works out the adjacency afterwards on its own schedule. Stage 05
+retried its `dcnm_vrf` call on the theory that the prototype would appear, and
+the retry was removed after one run in which a successful deploy was followed
+by a failing stage 05. That single observation looked decisive and was not:
+the prototype does appear after a deploy. What waiting alone cannot do is
+substitute for the deploy. The stage retries again now, and the pipeline runs
+the deploy first.
 
 The second was the data model. The guide attaches each VRF to the border leaf
 and *then* enables the extension, in two separate dialogs, and for a while
 only the second half was automated. That was a real gap and it is closed -
 `DC-Service-Leaf` is now in `vrf_attach_groups`, so stage 02 makes the plain
-attachment - but it was never the cause: `dcnm_vrf`'s own integration suite
-adds a lite extension to a switch with no attachment at all.
+attachment - but it was never the cause. The controller settles it: the two
+server leaves carry all three VRFs, attached and deployed, and are offered no
+prototype at all, while the border leaf alone is offered one.
 
 Only the border leaf ever reacts to any of this, because Cisco scopes VRF-Lite
 autoconfiguration to *"Border role in the VXLAN fabric and Edge Router role in
@@ -178,9 +184,12 @@ the connected external fabric device"*
 ([NDFC - VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html)).
 `DC-Service-Leaf` is the fabric's only `border` switch and `DC-SITE11-CEDGE8Kv`
 its only `edgeRouter`. The two leaves and two spines are outside that scope.
-The same article is also the leading suspect for the empty prototype list:
-*"Auto IFC is supported on Cisco Nexus devices only"*, and that edge router is
-an IOS-XE Catalyst 8000V.
+The same article says *"Auto IFC is supported on Cisco Nexus devices only"*,
+which did not hold here: the peer is an IOS-XE Catalyst 8000V and the
+controller auto-created the link anyway, with an IOS-XE peer template. What
+that guidance still governs is the far side - the controller will not
+configure the router, both because it is non-Nexus in Monitor Mode and because
+this lab wants it left alone.
 
 Two habits worth keeping generalise past this stage. **"No changes" is a
 statement about one instant, not proof the fabric is finished** - trust

@@ -43,17 +43,16 @@
 # the extensions exist, so a create-without-05 run fails rather than being
 # discovered later as broken external connectivity.
 #
-# WHAT THE STAGE ACTUALLY DEPENDS ON, which is not any of the above. The
-# module refuses to build an extension unless the controller already offers
-# the border leaf a VRF_LITE extension prototype on this interface:
-# push_diff_attach reads extensionPrototypeValues at dcnm_vrf.py line 5126 and
-# fails at line 4721 with "No VRF LITE capable interfaces found on this
-# switch" when no element of that list has extensionType VRF_LITE. That list
-# is derived from the VRF-Lite inter-fabric link (IFC), so the IFC has to
-# exist. It is NOT a timing or CDP-correlation matter: on 2026-09-27 a full,
-# successful 06_recalculate_and_deploy.yml (5/5 switches deployed, in_sync
-# true) was followed by a stage 05 run that failed with the byte-identical
-# error. Run playbooks/diagnose_vrf_lite.yml to see what the controller holds.
+# What the stage depends on, which is not any of the above. The module refuses
+# to build an extension unless Nexus Dashboard is already offering the border
+# leaf a VRF-Lite extension on this interface, and it fails with "No VRF LITE
+# capable interfaces found on this switch" when it is not. The offer comes
+# from the VRF-Lite inter-fabric link, and the controller builds that link
+# itself during a Recalculate and Deploy, once the edge router stage 04 adds
+# is in the External fabric. So stage 06 has to run before stage 05 on a fresh
+# build, and again after it to push the result. 01_dc_deploy.yml imports the
+# stages in that order. Run playbooks/diagnose_vrf_lite.yml to see what the
+# controller holds.
 #
 # The parent interface the sub-interfaces below sit on is prepared by the
 # controller, not declared here. It appears in the Pending Config dialog as:
@@ -107,6 +106,32 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 # peer_vrf is the VRF name on the router side. The router uses the same three
 # names as the fabric, so each row names itself.
 #
+# MTU on the three sub-interfaces, declared here because leaving it out breaks
+# the deploy.
+#
+# Nexus Dashboard builds each sub-interface from the VRF extension template
+# Default_VRF_Extension_Universal, which has a per-extension "Subinterface MTU"
+# field and falls back to 9216 when that field is empty. dcnm_vrf never fills
+# it in - its vrf_lite block accepts only peer_vrf, interface, ipv4_addr,
+# neighbor_ipv4, ipv6_addr, neighbor_ipv6 and dot1q - so the template takes the
+# fallback and asks for 9216.
+#
+# The parent Ethernet1/8 is 9000, which is the Link MTU on the inter-fabric
+# link, and the switch refuses a sub-interface larger than its parent:
+#
+#   Delivery failed with message: MTU of sub-interface greater than parent
+#   interface detected
+#
+# 9000 is also what the pod configured on the far end, DC-SITE11-CEDGE8Kv
+# GigabitEthernet2. Matching it matters more than matching the template: an IP
+# MTU mismatch across a routed link does not fail the deploy, it fails later on
+# large packets. So the sub-interfaces are pinned to the same 9000 rather than
+# the parent being raised to 9216.
+#
+# 05_vrf_lite.yml applies this after dcnm_vrf, over the attachments API,
+# because the module has no key for it.
+dc_vrf_lite_mtu: 9000
+
 # dot1q is a string, not an integer: dcnm_vrf declares it type: str. Quoting
 # it here keeps the playbook from relying on YAML's implicit int-to-str
 # coercion at module boundary.

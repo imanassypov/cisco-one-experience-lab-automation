@@ -1,29 +1,38 @@
 ---
 # Stage 07 - verify the deployed fabric against the declared intent.
 #
-# Nexus Dashboard API only. No SSH to 198.18.128.x, so this stage works even
-# when the VPN cannot reach the switches directly, and it is read-only, so it
-# is safe to re-run as often as you like while debugging.
+# Nexus Dashboard API only, and read-only. There is no SSH to 198.18.128.x, so
+# this stage works even when the VPN cannot reach the switches, and it is safe
+# to re-run as often as you like while debugging.
 #
 # What it compares:
-#   - every switch in inventory/group_vars/all/dc_switches.yml is in the fabric, with the
-#     role that was declared for it
-#   - every VRF in vrfs.nac.yaml exists and is attached to every switch in
-#     its vrf_attach_group
-#   - every network in networks.nac.yaml exists with the declared gateway,
-#     and is attached to the declared port-channels
+#   - every switch in inventory/group_vars/all/dc_switches.yml is in the
+#     fabric, holding the role declared for it
+#   - every VRF in vrfs.nac.yaml exists and is attached to every switch in its
+#     vrf_attach_group
+#   - every network in networks.nac.yaml exists with the declared gateway, and
+#     is attached to the declared port-channels
 #   - every VRF-Lite extension in inventory/group_vars/all/dc_vrf_lite.yml is
 #     attached and DEPLOYED on the border leaf, with the declared interface,
 #     dot1q tag and neighbour address. This is what catches a stage 02 re-run
-#     that silently detached the extensions stage 05 made
-#   - every attachment the controller reports as attached
-#     (isLanAttached: true) is DEPLOYED. Switches the controller lists but
-#     has not attached come back as NA and are not judged - see the comment
-#     in Compare VRFs.
+#     that cleared the extensions stage 05 made
+#   - every attachment the controller reports as attached (isLanAttached: true)
+#     is DEPLOYED. Switches the controller lists but has not attached come back
+#     as NA and are not judged - see the comment in Compare VRFs
 #
-# Writes evidence/stage07-verification.md and fails at the end on any mismatch.
-# Override with -e dc_verify_fail_on_mismatch=false to get the report without
-# the failure.
+# It writes evidence/stage07-verification.md and fails at the end on any
+# mismatch.
+#
+# Run from the collection root, the directory holding ansible.cfg:
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   ansible-playbook playbooks/07_verify_fabric.yml
+#
+# Useful override:
+#   -e dc_verify_fail_on_mismatch=false   write the report without failing the
+#                                         run
+#
+# Background: "What the verification stage proves" in the README.
 
 - name: Stage 07 - verify the DC fabric against intent
   hosts: Pseudoco-DC1
@@ -40,8 +49,9 @@
 
   tasks:
     # ------------------------------------------------------- declared intent
-    # Read from the same .nac.yaml files the create role consumes, so the
-    # report can never drift from what was deployed.
+    # Read from the same .nac.yaml files the create role consumes, so the report
+    # can never drift from what was deployed. include_vars loads a YAML file
+    # into a variable; delegate_to: localhost reads it from this machine.
     - name: Read the declared VRFs
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/vrfs.nac.yaml"
@@ -64,15 +74,15 @@
           {{ dc_declared_network_model.vxlan.overlay.network_attach_groups | default([]) }}
 
     # Naming no attach group at all is allowed: the object is attached to
-    # nothing, and the comparison tasks fail its row on attached | length > 0
-    # without help here. Naming one that does not exist is the dangerous case.
-    # selectattr matches nothing, so attach_group_switches is empty, and
-    # missing_switches and missing_attachments are then empty too - those arms
-    # of the verdict pass having proved nothing, and a VRF attached to one leaf
-    # of two is reported as a PASS. Caught before the first API call so a typo
-    # reads as a typo, and never gated on dc_verify_fail_on_mismatch: that flag
-    # means "report the mismatch instead of failing", and a model this stage
-    # cannot resolve produces no report worth showing.
+    # nothing, and the comparisons below fail its row without help here. Naming
+    # a group that does not exist is the dangerous case. The lookup then matches
+    # nothing, the declared switch list comes back empty, and the
+    # missing-switches and missing-attachments checks pass having proved nothing
+    # - so a VRF attached to one leaf of two would be reported as a pass.
+    # Checked before the first API call, so a typo reads as a typo. It is
+    # deliberately not gated on dc_verify_fail_on_mismatch: that flag means
+    # "report the mismatch instead of failing", and a model this stage cannot
+    # resolve produces no report worth showing.
     - name: Fail on an attach group that is named but never declared
       ansible.builtin.assert:
         that:
@@ -161,8 +171,10 @@
         dc_net_attach_observed: "{{ (dc_observed_network_attachments.response | default({})).DATA | default([]) }}"
 
     # ---------------------------------------------------------- comparisons
-    # Each comparison needs both sides of one object in scope at once, which
-    # is clearer as an explicit loop than as a chain of Jinja filters.
+    # Each comparison loops over the declared objects and appends one result row
+    # per object with set_fact, which saves a variable for later tasks. Both
+    # sides of an object have to be in scope at once, which is clearer as an
+    # explicit loop than as a chain of Jinja filters.
     - name: Compare each switch against intent
       ansible.builtin.set_fact:
         dc_switch_rows: "{{ dc_switch_rows | default([]) + [row] }}"
@@ -208,26 +220,22 @@
               | selectattr('vrfName', 'defined')
               | selectattr('vrfName', 'eq', item.name)
               | map(attribute='lanAttachList') | flatten | list) }}
-        # Nexus Dashboard enumerates every switch that COULD carry the VRF and
+        # Nexus Dashboard enumerates every switch that could carry the VRF and
         # reports the ones it does not with isLanAttached: false and
-        # lanAttachState: NA. NA is not a fault and not a pending state, so
-        # only the records the boolean calls attached are judged. Every field
-        # on an NA record is null, so anything read off one needs
-        # default(x, true).
+        # lanAttachState: NA. NA is neither a fault nor a pending state, so only
+        # the records the boolean calls attached are judged. Every field on an NA
+        # record is null, so anything read off one needs default(x, true) - the
+        # second argument makes default() substitute for an empty value as well
+        # as an undefined one.
         #
-        # DC-Service-Leaf is the switch this mattered for. vrfs.nac.yaml used
-        # to leave it out of every attach group, on the view that attaching it
-        # belonged to the VRF-Lite step - so it showed up here as NA on every
-        # VRF, and this check had nothing to say about it. Since 2026-09-27 it
-        # is in the dc_leaves attach group, so stage 02 attaches it, it lands
-        # in attach_group_switches like the two server leaves, and a missing
-        # attachment on the border leaf is now a real failure of
-        # missing_switches rather than a silently tolerated NA.
+        # The border leaf is in the dc_leaves attach group, so it appears here
+        # like the two server leaves and a missing attachment on it is a real
+        # missing_switches failure rather than a tolerated NA.
         #
-        # The VRF-Lite EXTENSION is still checked separately below. An attach
-        # group can name a switch but never an extension, so no amount of
-        # model-derived attachment checking can see whether the dot1q
-        # sub-interface and its BGP neighbour exist.
+        # The VRF-Lite extension is checked separately below. An attach group can
+        # name a switch but never an extension, so no amount of model-derived
+        # attachment checking can see whether the dot1q sub-interface and its BGP
+        # neighbour exist.
         attached: >-
           {{ attachments
              | selectattr('isLanAttached', 'defined')
@@ -246,13 +254,13 @@
           {{ (dc_declared_vrf_attach_groups
               | selectattr('name', 'eq', item.vrf_attach_group | default(''))
               | map(attribute='switches') | flatten | list) }}
-        # Ignoring the NA records would make the attachment check vacuous on
-        # its own - a VRF attached to nothing at all would look the same as
-        # one attached everywhere it was declared - so the declared attach
-        # group is checked against the attached set, the way the networks
-        # task checks its switch-and-port pairs. Declared hostnames keep
-        # their casing for the report and are compared case-insensitively,
-        # because Nexus Dashboard is inconsistent about it.
+        # Ignoring the NA records would make the check vacuous on its own - a VRF
+        # attached to nothing would look like one attached everywhere it was
+        # declared - so the declared attach group is compared against the set
+        # that is actually attached, the way the networks task compares its
+        # switch-and-port pairs. Declared hostnames keep their casing for the
+        # report and are compared case-insensitively, because Nexus Dashboard is
+        # inconsistent about it.
         attached_switches: >-
           {%- set names = [] -%}
           {%- for a in attached -%}
@@ -376,25 +384,20 @@
                and (missing_attachments | length == 0) }}
 
     # A VRF-Lite extension is the one part of the fabric that stage 02 can
-    # silently undo, and adding the border leaf to the model did not change
-    # that. Stage 02's create role runs dcnm_vrf with state: replaced, and a
-    # replaced want carrying no vrf_lite block against a have that has one
-    # takes dcnm_vrf.py lines 1543-1549 and pushes the change, resetting
-    # extensionValues to "". The attach group can name DC-Service-Leaf but
-    # can never name the extension, so a create run still strips what stage
-    # 05 made. Without this comparison that regression is invisible here -
-    # the VRF exists, all three leaves are attached and DEPLOYED, and
-    # external connectivity is simply gone. Checked whenever
-    # dc_vrf_lite_extensions is declared.
+    # silently undo: its create role runs dcnm_vrf with state: replaced, which
+    # clears extensionValues on an attachment whose extension the data model
+    # cannot describe. An attach group can name the border leaf but never the
+    # extension, so without this comparison the regression is invisible here -
+    # the VRF exists, all three leaves are attached and DEPLOYED, and external
+    # connectivity is simply gone.
     #
-    # extensionValues is a JSON document encoded INTO a string field, and its
-    # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, IP_MASK, NEIGHBOR_IP) are
-    # an NDFC implementation detail rather than a documented contract. So the
-    # three declared values are matched as substrings of the raw field rather
-    # than by walking a parsed structure: a schema change then costs a
-    # false failure that is obvious from the report, not a traceback or - far
-    # worse - a check that silently passes because a renamed key read as
-    # absent on both sides.
+    # extensionValues is a JSON document encoded into a string field, and its
+    # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, IP_MASK, NEIGHBOR_IP) are an
+    # NDFC implementation detail rather than a documented contract. So the three
+    # declared values are matched as substrings of the raw field rather than by
+    # walking a parsed structure. A schema change then costs a false failure
+    # that is obvious in the report, rather than a check that silently passes
+    # because a renamed key read as absent on both sides.
     - name: Compare the VRF-Lite extensions
       ansible.builtin.set_fact:
         dc_vrf_lite_rows: "{{ dc_vrf_lite_rows | default([]) + [row] }}"

@@ -1,22 +1,24 @@
 ---
-# Stage 08 - tear down fabric state that is no longer in the data model.
+# Stage 08 - delete fabric state that is no longer in the data model.
 #
-# DESTRUCTIVE AND NOT PART OF 01_dc_deploy.yml. Run it by hand, deliberately:
+# Destructive, and deliberately not imported by 01_dc_deploy.yml. Run it by
+# hand, with the confirmation flag:
 #
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/08_remove.yml -e dc_remove_confirm=REMOVE_OK
 #
 # The remove role deletes whatever exists on Nexus Dashboard but is absent from
-# playbooks/host_vars/Pseudoco-DC1/. That is how you decommission a network or a VRF: drop
-# its stanza from the model, then run this. It also means a run against a
-# half-written model deletes real fabric config, which is why every
-# *_delete_mode flag in inventory/group_vars/nd/nd.yml is false and this playbook has to
-# turn them on explicitly.
+# playbooks/host_vars/Pseudoco-DC1/. That is how a network or a VRF is
+# decommissioned: drop its stanza from the model, then run this. It also means a
+# run against a half-written model deletes real fabric configuration, which is
+# why every *_delete_mode flag in inventory/group_vars/nd/nd.yml is false and
+# this playbook has to turn on the ones it wants.
 #
-# Two flags stay off even here. inventory_delete_mode would evict switches from
-# the fabric, and link_vpc_delete_mode would break the vPC pair - neither is
-# something a routine prune should do, and a vPC pair cannot be edited back
-# into place, only recreated. Pass them as extra vars if you genuinely want a
-# full teardown.
+# The flags it leaves off matter as much as the ones it sets.
+# inventory_delete_mode would evict switches from the fabric, and
+# vpc_delete_mode and link_vpc_delete_mode would break the vPC pair, which
+# cannot be edited back into place and has to be recreated. Pass those as extra
+# vars only if a full teardown is what you want.
 
 - name: Stage 08 - remove fabric state absent from the data model
   hosts: Pseudoco-DC1
@@ -24,6 +26,9 @@
   any_errors_fatal: true
 
   vars:
+    # Each flag lets the remove role delete one class of object the model no
+    # longer declares. They are set here, for this play only, rather than in
+    # inventory/group_vars/nd/nd.yml, where they would apply to every stage.
     edge_connections_delete_mode: true
     interface_delete_mode: true
     link_fabric_delete_mode: true

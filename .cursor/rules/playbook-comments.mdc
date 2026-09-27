@@ -1,0 +1,96 @@
+---
+description: How to write comments in playbooks - plain, student-facing, no theatrics
+alwaysApply: true
+---
+
+# Playbook comments are teaching material, not a lab notebook
+
+**The reader is a network engineering student who knows networking and does
+not know Ansible.** They are reading the playbook to understand what each task
+does and why it is there. Write every comment for that person.
+
+This applies to all playbooks in this repository, and is enforced hardest in
+`ansible-automation/02_data_center/`.
+
+## What a comment must do
+
+- **Say what the task does, in plain language.** "Ask each switch for its
+  serial number over SSH" beats "invoke nxos_facts gather_subset".
+- **Explain the Ansible mechanism when it is not obvious.** A student has not
+  met `register`, `loop`, `when`, `until`/`retries`, `block`/`rescue`,
+  `set_fact`, `delegate_to` or `run_once` before. One short clause is enough:
+  "`register` saves the result so the next task can read it."
+- **Keep the fact that saves someone a day.** An exact error string, an API
+  path, a version number, a required header, a documented limit. These are the
+  reason the comment exists.
+- **Name the file a value comes from**, so the student knows where to edit.
+
+## What a comment must not do
+
+- **No theatrics.** No emphatic capitals for drama (`WHY THIS IS NOT IN THE
+  MODEL`, `THE ONE PRECONDITION THAT MATTERS`), no "the trap is", no "this
+  cost real time to find", no "read this slowly", no rhetorical questions, no
+  suspense.
+- **No debugging diary.** Which theories were wrong, what was believed on
+  which date, and what a past run proved are project history. They belong in
+  the README and the release notes, not above a task.
+- **No source-code archaeology.** Module internals and upstream line numbers
+  (`dcnm_vrf.py lines 5126-5127`) mean nothing to a student and go stale. Keep
+  the observable behaviour and the error string; put the line numbers in the
+  README.
+- **No arguing with the reader.** Not "do NOT re-run hoping for a different
+  answer". State the condition plainly: "Re-running does not help; the link
+  must exist first."
+- **No restating the task name.** If `- name:` already says it, the comment
+  adds nothing.
+
+## Form
+
+- Header comment per playbook: what it builds, what must run first, how to run
+  it, and the useful `-e` overrides. A short paragraph and a short list, not an
+  essay.
+- Inline comments sit above the task and run a few lines at most. Prefer a
+  clear `- name:` over a comment explaining an unclear one.
+- Plain sentences and normal capitalisation. Use bold sparingly or not at all;
+  these are code comments.
+- `ansible-automation/02_data_center/` is **pure ASCII**. No em dashes, no
+  curly quotes, no arrows. Check with `rg -n '[^\x00-\x7F]' <path>`, never with
+  BSD `grep`.
+
+## The same rules apply to anything the student reads on screen
+
+A comment is read by whoever opens the file. A `msg:` is read by everyone who
+runs the playbook, which is more people. So `assert` messages (`fail_msg`,
+`success_msg`), `fail` and `debug` messages, and `- name:` task names are held
+to this standard too, and in a failure path they matter more than the comments.
+
+A good failure message says what is wrong, where, and what to do next:
+
+```yaml
+fail_msg: >-
+  Nexus Dashboard is not offering {{ dc_vrf_lite_border_leaf }} a VRF-Lite
+  extension, so the attachment cannot be made. That means no VRF-Lite
+  inter-fabric link terminates on {{ dc_vrf_lite_interface }}. To see what
+  the controller does hold, run:
+  ansible-playbook playbooks/diagnose_vrf_lite.yml
+```
+
+Keep the controller's own error string when quoting it helps someone search
+for it. Drop the upstream line numbers, the dates, the disproved theories and
+the instructions not to try something. "Re-running does not help" is a fact a
+student can use; "Do NOT re-run hoping for a different answer" is scolding.
+
+## Where the long story goes instead
+
+Depth is not the enemy; misplaced depth is. The README is the right home for
+forensic detail, disproved theories, captured payloads and module internals,
+and it is where a comment should point when a student wants more:
+
+```yaml
+# The controller only offers this extension where a VRF-Lite inter-fabric
+# connection already exists, so the stage checks for one before writing.
+# Background: "What stage 05 needs from the controller" in the README.
+```
+
+Trimming a comment is only safe once the detail exists somewhere else. Confirm
+it is in the README before deleting it from a playbook.

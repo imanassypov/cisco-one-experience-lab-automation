@@ -567,6 +567,15 @@ back and asserts that every serial landed on the right switch and no
 placeholder survived. Stage 02 repeats the placeholder check independently,
 because the file is on disk and could be edited afterwards.
 
+Two mechanical details of that substitution are worth knowing before editing
+it. The backreferences in the `replace` task are written `\g<1>` and `\g<2>`
+rather than `\1` and `\2`, because a Nexus serial can start with a digit and
+`\1` followed by a digit reads as a two-digit group number. And an anchored
+regex that matches nothing is not an error to the `replace` module - it leaves
+the file alone and reports no change - which is why the stage slurps the
+finished file back and asserts on its contents instead of trusting the task
+results.
+
 This is also the only stage that needs the client VPN, since every other stage
 here talks solely to the controller API.
 
@@ -624,6 +633,16 @@ Three things worth knowing:
 - **A second run is a no-op.** Both halves compare before they write, so
   re-running reports `changed=0`. `DEPLOY` is false throughout and nothing here
   touches a switch.
+
+Two details of the second half, the read-modify-write on the fabric object. The
+`GET` has to run *after* the `dcnm_fabric` task rather than before it: the
+fabric object carries a camelCase mirror of the nvPairs, so a copy read first
+would put the old VRF-Lite values straight back when it is `PUT`. And the stage
+asserts that every declared property already exists on the object, because
+Nexus Dashboard would otherwise accept a `PUT` carrying a mistyped property name
+and ignore it, leaving a stage that reports success and changed nothing. On the
+nvPair half the controller does that work itself: a key the fabric template does
+not have fails the task with `Key <name> not found in fabric configuration`.
 
 **"Add Switches without Reload" is deliberately not here.** It is the
 `GRFIELD_DEBUG_FLAG` nvPair, and Nexus as Code does model it, as
@@ -703,10 +722,29 @@ border side rather than let the controller allocate both ends.
 ## What stage 05 needs from the controller
 
 **Stage 05 needs a VRF-Lite inter-fabric connection to already exist on
-`Ethernet1/8`. Nothing in this repository can create one, and no amount of
-waiting or re-deploying produces one.** That sentence is the whole of this
-section, and it replaces two earlier explanations that were wrong. Both are
-recorded below, because both are the sort of thing that gets re-derived.
+`Ethernet1/8`, and the stage 06 deploy is what creates it.** The controller
+builds the link itself from `VRF_LITE_AUTOCONFIG`, during a Recalculate and
+Deploy, once the edge router stage 04 adds is present in the External fabric.
+That is why `01_dc_deploy.yml` imports the deploy **before** stage 05 and again
+after it, rather than running the stages in numeric order.
+
+Confirmed on the pod on 2026-09-27. Stage 05 run before any deploy failed its
+precheck with `Prototype extensionType(s) returned: []`; run after a deploy it
+reported `Controller offers 1 VRF_LITE extension prototype(s)` and attached all
+three VRFs. The link the controller had built by then reads:
+
+```
+templateName        ext_fabric_setup
+SOURCE              Pseudoco-DC1_AUTO_CONFIG_IFC_VRFLITE_955T6I5X2D4
+AUTO_VRF_LITE_FLAG  true
+MTU                 9000
+NEIGHBOR_ASN        65531
+DC-Service-Leaf Ethernet1/8 (Pseudoco-DC1) -> DC-SITE11-CEDGE8Kv
+                GigabitEthernet2 (External)
+```
+
+The `SOURCE` and `AUTO_VRF_LITE_FLAG` values are the controller's own, so the
+link was auto-created rather than built by hand or by this repository.
 
 The symptom is this, from `05_vrf_lite.yml`:
 
@@ -754,6 +792,15 @@ follow:
   `extensionPrototypeValues` is a property of the switch and its inter-fabric
   connection, not of an attachment.
 
+One more property of that read matters if the diagnostic ever returns more than
+one switch record. `switchDetailsList` is indexed **positionally**, at `[0]`,
+where the module looks the same response up by serial number elsewhere, and the
+`ip` and `serial_number` in the error message come from the request rather than
+from the record. So a multi-record response could name the border leaf while the
+empty prototype list belonged to a different switch. Section 1b of
+`diagnose_vrf_lite.yml` prints every serial the response contains, which is what
+rules that out.
+
 `05_vrf_lite.yml` reads that same endpoint itself, read-only, before it writes
 anything, so the failure names the cause instead of the symptom. Skip it with
 `-e dc_vrf_lite_precheck=false` to see the module's own error.
@@ -777,32 +824,93 @@ settle: the parent interface appears there as `no switchport` / `mtu 9000` /
 `ip address` and no `encapsulation`, which is equally consistent with an IFC
 and with a plain discovered external link converted to Layer 3.
 
-The leading candidate is the one the previous section already documents from
-Cisco's own guidance: *"Auto IFC is supported on Cisco Nexus devices only"*
-and *"If the device in the External fabric is non-Nexus, you must create IFC
-manually"*, and `DC-SITE11-CEDGE8Kv` is an IOS-XE Catalyst 8000V. If that is
-the cause, the IFC has to be created explicitly - `cisco.dcnm.dcnm_links` with
-`template: ext_fabric_setup` is the module for it - which is a change to the
-pipeline's shape and not something to add without asking.
+**What Cisco's non-Nexus guidance does and does not mean here.** The
+guidelines quoted in the previous section - *"Auto IFC is supported on Cisco
+Nexus devices only"* and *"If the device in the External fabric is non-Nexus,
+you must create IFC manually"* - did **not** hold on this pod. The peer is an
+IOS-XE Catalyst 8000V, and Nexus Dashboard auto-created the IFC anyway, using
+an IOS-XE specific peer template, `ios_xe_Ext_VRF_Lite_Jython`. Treat the
+observed behaviour on ND 4.2.1 as authoritative over that guideline.
 
-**Two explanations that were wrong.** Both looked right and both cost time.
+What those quotes still govern is the **far side**. Cisco's non-Nexus
+walkthrough is about IOS-XR edge routers in *managed* mode and tells you to
+uncheck Fabric Monitor Mode so the controller can push configuration to the
+router. This lab does the opposite on purpose: `IS_READ_ONLY: true`, because
+the edge router is pre-built by the pod. So the controller will build and
+deploy the border-leaf half of the handoff and will never touch
+`DC-SITE11-CEDGE8Kv`.
 
-*Wrong: a CDP-correlation race.* Nexus Dashboard does correlate the adjacency
-between the border leaf and the edge router asynchronously, and that is real -
-see the evidence below. Stage 05 used to retry the `dcnm_vrf` call six times,
-twenty seconds apart, on the theory that the prototype would appear. It does
-not. On 2026-09-27 a full, successful `06_recalculate_and_deploy.yml` - 5/5
-switches deployed including the border leaf, `check_sync` reporting
-`in_sync=True` - was followed immediately by a stage 05 run that failed with
-the byte-identical error. The retry loop has been removed: it turned one
-useless failure into six.
+**One explanation that was wrong, and one that was half right.**
+
+*Half right: a CDP-correlation race.* Stage 05 used to retry the `dcnm_vrf`
+call, on the theory that the prototype would appear if it waited. The retry was
+removed on the strength of one run in which a successful deploy was followed by
+a failing stage 05 - which looked decisive and was not. The prototype does
+appear once a deploy has run, so the dependency on the deploy was real; what
+was wrong was the idea that *waiting alone*, without a deploy in between, would
+produce it. Stage 05 now does both: `01_dc_deploy.yml` runs the deploy first,
+and the stage's precheck retries for two minutes
+(`-e dc_vrf_lite_retries=12` to wait longer) to cover a run started while the
+controller is still finishing the link.
 
 *Wrong: a missing plain attachment.* The guide's section 8 has two
 Detach/Attach sliders per VRF and for a while only the second was accounted
 for, so the plain attachment looked like the missing precondition. It is a
 genuine gap in the data model and it has been closed - `DC-Service-Leaf` is
-now in `vrf_attach_groups` - but TEST.4 above shows it was never the cause of
-this error.
+now in `vrf_attach_groups` - but it was never the cause of this error. The
+controller proves it directly: DC-Leaf1 and DC-Leaf2 carry all three VRFs,
+attached and `DEPLOYED`, and both return an **empty** prototype list, while
+DC-Service-Leaf - the one switch the IFC terminates on - returns
+`['VRF_LITE']`. The prototype tracks the link, not the attachment.
+
+## The sub-interface MTU, and why it is declared
+
+**A deploy straight after stage 05 fails with `Delivery failed with message:
+MTU of sub-interface greater than parent interface detected`.** Three numbers
+explain it, and only one of them is ours to set.
+
+| Value | Where it comes from |
+|---|---|
+| Parent `Ethernet1/8` MTU **9000** | The `Link MTU` field on the auto-created IFC. Cisco labels it *"Interface MTU on both ends of VRF Lite IFC"*. The template default is 9216, so 9000 is what the controller derived for this link - and it matches `mtu 9000` on the router's `GigabitEthernet2`. |
+| Sub-interface MTU **9216** | The **fallback in the controller's own VRF extension template**. `Default_VRF_Extension_Universal` carries a per-extension `Subinterface MTU` field and renders `if (@ITEM.MTU != "") { mtu @ITEM.MTU } else { mtu 9216 }`. |
+| `dc_vrf_lite_mtu` **9000** | Declared by this repository, in `inventory/group_vars/all/dc_vrf_lite.yml`. |
+
+The 9216 is not a `cisco.dcnm` default and not a fabric setting. It is the
+template's `else` branch, taken because **`dcnm_vrf` never populates that
+field**. Its `vrf_lite` suboptions are exactly `peer_vrf`, `interface`,
+`ipv4_addr`, `neighbor_ipv4`, `ipv6_addr`, `neighbor_ipv6` and `dot1q`, and
+the list of properties it writes into `VRF_LITE_CONN` is `DOT1Q_ID`,
+`IF_NAME`, `IP_MASK`, `IPV6_MASK`, `IPV6_NEIGHBOR`, `NEIGHBOR_IP`,
+`PEER_VRF_NAME`. There is no MTU in either. The controller's own UI does not
+have this problem, because the prototype it offers carries `"MTU":"9000"` and
+the UI writes it through.
+
+**Why the sub-interfaces come down to 9000 rather than the parent going up to
+9216.** Raising the parent would make the deploy pass, and would leave
+`DC-Service-Leaf` at 9216 facing a router that is still at 9000, because
+Monitor Mode means the controller cannot correct the far end. An MTU mismatch
+across a routed link does not fail a deploy; it fails later, on large packets.
+Matching the value the pod already configured is the safer half of the trade,
+so the sub-interfaces are pinned to 9000.
+
+A note on where the constraint is written down: the public [Cisco Nexus 9000
+Series NX-OS Interfaces Configuration
+Guide](https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/configuration/interfaces/cisco-nexus-9000-series-nx-os-interfaces-configuration-guide-release-106x/m_configuring_layer_3_interfaces_9x.html)
+documents sub-interfaces and gives the configurable MTU range for a Layer 3
+interface or sub-interface as 576-9216, but it does not state that a
+sub-interface may not exceed its parent. The authority for that here is the
+switch itself, which rejected the configuration, and the controller repeated
+the rejection verbatim. Treat the error string as the evidence.
+
+`05_vrf_lite.yml` applies it after `dcnm_vrf` returns, with a `POST` to
+`top-down/fabrics/<fabric>/vrfs/attachments`. It reads the extension back
+first and edits it, rather than rebuilding it, because the controller enriches
+what the module wrote - `NEIGHBOR_ASN` and `AUTO_VRF_LITE_FLAG` are added
+server-side from the IFC, and a hand-built replacement would drop them. The
+VLAN and `instanceValues` come from the attachments endpoint, not from
+`vrfs/switches`, which reports the VLAN as `-1` and returns no instance
+values. The task only posts for a VRF whose MTU is not already the declared
+value, so a second run sends nothing.
 
 The rest of this section is the evidence for the asynchronous correlation and
 the Cisco framing around it, which still stand on their own.
@@ -1037,6 +1145,21 @@ states that *"Cisco CSR 1000v is discovered using SSH ... does not need SNMP
 support"* and that *"Starting from NDFC release 12.1.3b, SNMP is not required
 for IOS-XE devices."* Omitting it makes the controller use the NX-OS SNMPv3
 path, which produces the timeout above.
+
+Two further details shape how stage 04 checks its own work. The controller
+returns HTTP 200 even for a candidate it cannot use, so the discovery status has
+to be read rather than inferred from the response code: a successful IOS-XE
+discovery reports `manageable` and carries a serial number, while the SNMPv3
+fallback reports `SNMPv3 Timeout` and no serial. And the switch entry in the
+second call is rebuilt key by key rather than passed through from the discovery
+response, which also carries `status` and `statusReason` - outputs rather than
+inputs - and omits `vdcMac`, which the add requires.
+
+Whether the fabric already exists is read from the fabric *list* rather than
+from a `GET` of the fabric itself. A `GET` of a fabric that does not exist
+returns 4xx, and `dcnm_rest` turns that into a module failure with no usable
+body, leaving no way to tell an absent fabric from a failed call; the list
+endpoint answers 200 either way.
 
 Stage 04 is safe to re-run: the fabric converges with `state: merged`, and the
 router is discovered and added only when the fabric's switch list does not

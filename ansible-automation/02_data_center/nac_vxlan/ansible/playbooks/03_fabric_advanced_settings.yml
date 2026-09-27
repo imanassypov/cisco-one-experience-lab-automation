@@ -1,19 +1,28 @@
 ---
 # Stage 03 - apply the fabric settings Nexus as Code cannot express.
 #
-# Guide section 4, the Resources tab of the fabric settings. cisco.nac_dc_vxlan
-# 0.9.0 has no data model key for any of these, so stage 02 leaves them at
-# their Nexus Dashboard defaults. This stage closes that gap.
+# These are the guide's Resources-tab settings, which cisco.nac_dc_vxlan 0.9.0
+# has no data model key for, so stage 02 leaves them at their Nexus Dashboard
+# defaults. That matters: at the default, VRF Lite Deployment stays Manual, the
+# controller never auto-creates a VRF-Lite inter-fabric link, and external
+# connectivity cannot be built at all.
 #
-# It runs between create and deploy on purpose. These are fabric parameters,
-# not switch configuration: they change what the controller will generate, so
-# they have to be in place before stage 06 generates it. Nothing here touches
-# a switch, and DEPLOY is false throughout.
+# The declared values live in
+# inventory/group_vars/all/dc_advanced_settings.yml. This playbook holds none
+# of its own, so change the fabric by editing that file.
 #
-# The values live in inventory/group_vars/all/dc_advanced_settings.yml. This
-# playbook holds none of its own - change the fabric by editing that file.
+# The stage runs between create and deploy on purpose. These are fabric
+# parameters rather than switch configuration: they change what the controller
+# will generate, so they must be in place before stage 06 generates it. Nothing
+# here touches a switch, DEPLOY is false throughout, and a second run is a
+# no-op because both halves compare before they write.
 #
+# Run from the collection root, the directory holding ansible.cfg:
+#
+#   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/03_fabric_advanced_settings.yml
+#
+# Background: "Settings Nexus as Code cannot express" in the README.
 
 - name: Stage 03 - apply advanced fabric settings
   hosts: Pseudoco-DC1
@@ -28,17 +37,19 @@
     nd_fabric_path: "/api/v1/manage/fabrics/{{ inventory_hostname }}"
 
   pre_tasks:
-    # The ASN is not restated here. cisco.dcnm.dcnm_fabric makes BGP_AS a
-    # mandatory key for a VXLAN_EVPN fabric even when the ASN is not what you
-    # are changing, and the ASN already has one home: the Nexus as Code model
-    # that stage 02 built the fabric from. Reading it back off disk keeps that
-    # the only copy.
+    # dcnm_fabric makes BGP_AS a mandatory key on a VXLAN_EVPN fabric even when
+    # the ASN is not what you are changing. Rather than restate it here, it is
+    # read back out of the model stage 02 built the fabric from, so there is
+    # only ever one copy. include_vars loads a YAML file into a variable.
     - name: Read the fabric ASN out of the Nexus as Code model
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/global.nac.yaml"
         name: dc_nac_global
       tags: [always]
 
+    # failed_when: false lets the play continue even if the controller answers
+    # 4xx, so the next task can treat a missing fabric as a stage run out of
+    # order rather than as a broken call.
     - name: Look for the fabric on the controller
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -48,9 +59,9 @@
       failed_when: false
       tags: [always]
 
-    # Failing here is worth the few seconds it costs. dcnm_fabric's own error
-    # for a missing fabric is a key lookup deep inside the module, which reads
-    # like a bug in this playbook rather than a stage run out of order.
+    # Checked here because dcnm_fabric's own error for a missing fabric is a
+    # key lookup deep inside the module, which reads like a bug in this
+    # playbook rather than a stage run out of order.
     - name: Refuse to run against a fabric that does not exist
       ansible.builtin.fail:
         msg: >-
@@ -81,17 +92,15 @@
       tags: [always]
 
   tasks:
-    # state: merged is non-destructive on Nexus Dashboard 4.x, and not by
-    # accident: the module detects a 4.x controller and rebuilds the update
-    # payload from the controller's own nvPairs before overlaying these
-    # changes, because ND 4.x rejects a partial fabric update. So the
-    # settings Nexus as Code wrote in stage 02 are carried through untouched,
-    # and a key that the fabric template does not have fails the task with
-    # "Key <name> not found in fabric configuration" rather than being
-    # silently dropped.
+    # These five settings are fabric nvPairs, the same store Nexus as Code
+    # writes the rest of the fabric into.
     #
-    # DEPLOY is false because this stage only stages intent. Stage 06 is what
-    # pushes configuration to the switches.
+    # state: merged is non-destructive here. Nexus Dashboard 4.x rejects a
+    # partial fabric update, so the module rebuilds the whole payload from the
+    # controller's own nvPairs before overlaying the declared changes, and
+    # everything stage 02 wrote is carried through untouched. A key the fabric
+    # template does not have fails the task with "Key <name> not found in
+    # fabric configuration" rather than being silently dropped.
     - name: Apply the Easy_Fabric parameters
       cisco.dcnm.dcnm_fabric:
         state: merged
@@ -112,16 +121,16 @@
              if dc_advanced_fabric_result.changed
              else 'already matched the declared intent, nothing sent' }}.
 
-    # License Tier and Telemetry are not nvPairs - neither name appears
-    # anywhere in the 423 nvPairs of this fabric - so dcnm_fabric cannot
-    # reach them. They are properties of the Nexus Dashboard fabric object,
-    # which has no partial update: a PUT replaces the whole object. So this is
-    # a read-modify-write.
+    # The license tier, the telemetry toggle and the location are not nvPairs
+    # at all, so dcnm_fabric cannot reach them. They are properties of the
+    # Nexus Dashboard fabric object, which has no partial update - a PUT
+    # replaces the whole object - so the three tasks below are a
+    # read-modify-write of it.
     #
-    # The GET has to happen AFTER the dcnm_fabric task above, and that is the
-    # one non-obvious thing in this play. The fabric object carries a
-    # camelCase mirror of the nvPairs, so a copy read before dcnm_fabric ran
-    # would put the old VRF-Lite values straight back when it is PUT.
+    # This GET has to run after the dcnm_fabric task above. The fabric object
+    # carries a camelCase mirror of the nvPairs, so a copy read before
+    # dcnm_fabric ran would put the old VRF-Lite values straight back when it
+    # is PUT.
     - name: Read the Nexus Dashboard fabric object
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -134,10 +143,10 @@
         dc_nd_fabric_object: >-
           {{ (dc_nd_fabric_read.response | default({})).DATA | default({}) }}
 
-    # The same loud failure dcnm_fabric gives for an unknown nvPair. Without
-    # it, a mistyped property name would be added to the object by combine
-    # below, and Nexus Dashboard would most likely accept the PUT and ignore
-    # it - a stage that reports success and changes nothing.
+    # The same failure dcnm_fabric gives for an unknown nvPair, made by hand on
+    # this side. Without it a mistyped property name would simply be added to
+    # the object by combine below, and Nexus Dashboard would accept the PUT and
+    # ignore it, leaving a stage that reports success and changed nothing.
     - name: Require every declared property to exist on the fabric object
       ansible.builtin.assert:
         that:
@@ -160,8 +169,9 @@
                   | zip(dc_advanced_nd_fabric_settings.keys() | list
                         | map('extract', dc_nd_fabric_object) | list)) }}
 
-    # changed_when is explicit because dcnm_rest always reports changed
-    # false, whatever it did.
+    # when: skips the PUT entirely if the controller already holds the declared
+    # values. changed_when is set by hand because dcnm_rest always reports
+    # changed false, whatever it did.
     - name: Apply the license tier and the telemetry setting
       cisco.dcnm.dcnm_rest:
         method: PUT

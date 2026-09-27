@@ -1,39 +1,31 @@
 ---
-# Stage 00 - read the DC switch serial numbers off the switches and write the
-# switch half of the data model from them.
+# Stage 00 - read each switch's serial number over SSH and write the switch
+# half of the data model from it.
 #
 # cisco.nac_dc_vxlan identifies a switch by serial_number, not by hostname or
-# management IP, and rule 301 in its validate role fails the run outright if
-# any switch in the model lacks one. Serials are pod-specific hardware, so
-# they cannot be tracked in git. This stage reads them and generates
-# host_vars/<fabric>/topology_switches.nac.yaml, which is gitignored.
+# management address, and its validate role fails the run if a switch in the
+# model has no serial. Serials are one pod's hardware, so they are not tracked
+# in git. This stage reads them and generates
+# playbooks/host_vars/<fabric>/topology_switches.nac.yaml.
 #
-# The generated file is pure build output. Every run overwrites it without
-# asking and without keeping a backup, so never edit it: change the shape in
-# topology_switches.nac.yaml.example or the switch table in
-# inventory/group_vars/all/dc_switches.yml and run this stage again.
+# That generated file is gitignored build output: every run overwrites it with
+# no backup, so edits to it are lost. To change what it contains, edit one of
+# its two sources and run this stage again - topology_switches.nac.yaml.example
+# for the fabric's shape, or inventory/group_vars/all/dc_switches.yml for the
+# switch table.
 #
-# THIS TALKS TO THE SWITCHES, NOT TO NEXUS DASHBOARD. It SSHes to each
-# management address in dc_switches and runs cisco.nxos.nxos_facts, whose
-# default gather_subset of 'min' reads `show version` and parses the Processor
-# Board ID into ansible_net_serialnum. That has two consequences worth
-# knowing:
+# This is the only stage that talks to the switches rather than to Nexus
+# Dashboard, so it is the only one that needs the client VPN and SSH
+# reachability to 198.18.128.x. It is read-only on the switches: nxos_facts
+# issues show commands, and the generated file is the only thing written. It
+# does not need the fabric to exist, which is why it runs ahead of stage 02.
 #
-#   - It needs the VPN up and SSH reachability to 198.18.128.x. Everything
-#     else in this collection goes through the Nexus Dashboard API, so this
-#     is the only stage that will fail when the switch path is down.
-#   - It does NOT need the fabric to exist. The earlier version of this stage
-#     asked Nexus Dashboard to CDP-crawl from a seed, and that API is
-#     fabric-scoped, which is why the fabric had to be created first. Reading
-#     the switches directly removes that ordering constraint entirely, which
-#     is why this is stage 00 and runs ahead of the create stage rather than
-#     after it.
-#
-# Read-only with respect to the switches. nxos_facts issues show commands and
-# nothing else; the single file below is the only thing this stage writes.
+# Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
+#
+# Background: "Why serial discovery is a separate stage" in the README.
 
 - name: Stage 00a - build the switch group from the declared table
   hosts: localhost
@@ -55,10 +47,12 @@
           dc_switches list where every entry has a name,
           management_ipv4_address and role.
 
-    # The switch table is the single source of truth, so the group is built
-    # from it rather than repeated in static_inventory.yml, where the two
-    # could drift. dc_fabric_switches is declared empty there so that
-    # inventory/group_vars/dc_fabric_switches/ binds to these hosts.
+    # add_host creates inventory hosts while the play is running, and loop
+    # repeats the task once per row of the switch table. Building the group
+    # here rather than listing the switches in static_inventory.yml keeps
+    # dc_switches.yml the only place their names and addresses are written.
+    # The group is declared empty in static_inventory.yml so that
+    # inventory/group_vars/dc_fabric_switches/ still binds to these hosts.
     - name: Add each declared switch to the SSH group
       ansible.builtin.add_host:
         name: "{{ item.name }}"
@@ -77,6 +71,11 @@
   ignore_unreachable: true
 
   tasks:
+    # gather_subset: min keeps this to `show version`, and Ansible exposes the
+    # serial number it finds there as the fact ansible_net_serialnum. Facts are
+    # stored per host, so the next play reads them out of hostvars[<switch>].
+    # ignore_errors lets a switch that fails the command be named in the report
+    # below instead of stopping the play here.
     - name: Gather minimal facts
       cisco.nxos.nxos_facts:
         gather_subset: min
@@ -116,12 +115,11 @@
       {{ dc_switches | map(attribute='name')
          | map('extract', hostvars, 'ansible_net_serialnum') | list }}
 
-    # The .example header tells the reader that stage 00 consumes that file,
-    # which would be the wrong thing to find at the top of the file stage 00
-    # produces. Rather than water both headers down into something that reads
-    # correctly in neither place, the generator swaps this block in for the
-    # .example's own leading comment block. Keep the marker line: the
-    # post-write check below uses it to prove the swap happened.
+    # The .example is a tracked input and its own header says so, which would
+    # read wrongly at the top of the file this stage generates. So the copy
+    # below swaps this block in for the .example's leading comments. Keep the
+    # "GENERATED BY" line: the check at the end of the play looks for it to
+    # prove the swap happened.
     dc_generated_model_header: |
       ---
       # GENERATED BY 00_discover_dc_switch_serials.yml - do not edit this file.
@@ -154,10 +152,10 @@
           {{ ['%-18s %-16s %-8s %s' | format('SWITCH', 'MANAGEMENT IP', 'ROLE', 'SERIAL NUMBER')]
              + dc_serial_rows }}
 
-    # This runs before anything is written so that a switch we could not read
-    # can never end up as a placeholder in the model. Rule 301 only checks
-    # that serial_number is non-empty, so a placeholder or a wrong serial
-    # passes validation and fails much later inside the create role.
+    # Checked before anything is written, so a switch that did not answer can
+    # never leave a placeholder behind in the model. The validate role only
+    # checks that serial_number is non-empty, so a placeholder or a wrong
+    # serial passes validation and then fails deep inside the create role.
     - name: Require a serial for every declared switch
       ansible.builtin.assert:
         that:
@@ -184,17 +182,16 @@
         regexp: '\A---\n(?:#[^\n]*\n)+'
         replace: "{{ dc_generated_model_header }}"
 
-    # Anchored on the switch name rather than on position, so reordering the
-    # switches in either source cannot silently put a serial on the wrong box.
-    # The regex captures the two lines that follow `- name: <switch>` and
-    # rewrites only their values, which is why every comment and every
-    # port-channel in the .example survives the copy untouched. The role comes
-    # from dc_switches.yml because that table is the single source of truth
-    # for the switch list; substituting it is what stops the generated model
-    # drifting away from it.
+    # The replace module edits the file in place. Its regex is anchored on each
+    # switch's `- name:` line rather than on position, so reordering either
+    # source cannot put a serial on the wrong switch, and it rewrites only the
+    # two values that follow - every comment and port-channel copied from the
+    # .example survives. The role is substituted from dc_switches.yml so the
+    # generated model cannot drift away from that table.
     #
-    # The group references are the \g<N> form on purpose. Nexus serials can
-    # start with a digit, and the bare \1 form would then read as group 19.
+    # Backreferences are written \g<1> rather than \1 on purpose: a Nexus
+    # serial can start with a digit, and \1 followed by a digit would read as
+    # a two-digit group number.
     - name: Stamp each switch's discovered serial and declared role
       ansible.builtin.replace:
         path: "{{ dc_switch_model_path }}"
@@ -210,9 +207,10 @@
         src: "{{ dc_switch_model_path }}"
       register: dc_generated_model_raw
 
-    # An anchored regex that matches nothing is not an error to the replace
-    # module - it simply leaves the file alone and reports no change. So the
-    # only trustworthy check is on the written file itself.
+    # slurp reads the finished file back so the two checks below judge what was
+    # actually written. A regex that matches nothing is not an error to the
+    # replace module - it leaves the file alone and reports no change - so the
+    # file itself is the only trustworthy evidence.
     - name: Check no placeholder survived and every serial landed
       ansible.builtin.assert:
         that:
