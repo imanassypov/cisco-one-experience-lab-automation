@@ -40,17 +40,36 @@ vxlan:
         vrf_attach_group: dc_leaves
 
     vrf_attach_groups:
-      # Only the two server-facing leaves. DC-Service-Leaf is intentionally
-      # absent: the guide attaches the VRFs to it as part of the VRF-Lite
-      # step, which this model cannot express - an attachment here can name a
-      # switch but never the EXTEND: VRF_LITE extension, the sub-interface or
-      # the dot1q tag that go with it. Attaching it here anyway would give the
-      # border leaf the VRFs without the extension.
+      # Every switch that carries these three VRFs, the border leaf included.
       #
-      # Note for whoever automates VRF-Lite: the create role runs dcnm_vrf
-      # with state: replaced, so it will strip any attachment not listed here.
-      # A VRF-Lite stage has to run after create on every pass, not once.
+      # DC-Service-Leaf WAS deliberately omitted here until 2026-09-27, on the
+      # reasoning that an entry in this group can name a switch but never the
+      # EXTEND: VRF_LITE extension that goes with it, so attaching the border
+      # leaf from the model would give it the VRFs without the extension. That
+      # reasoning was wrong about the sequence. The manual guide's own section
+      # 8 walks through two separate Detach/Attach sliders per VRF: the first
+      # attaches the VRF to DC-Service-Leaf, and only then does the second,
+      # inside Edit Extension Details, enable the external L3 extension. The
+      # plain attachment is the first half of the job, not a broken version of
+      # it, and it is squarely inside what this model can express. So the
+      # model owns it, and 05_vrf_lite.yml adds the extension on top.
+      #
+      # WHAT THIS DOES NOT REMOVE. The create role runs dcnm_vrf with
+      # state: replaced, and a replaced want that carries no vrf_lite block
+      # against a have that has one takes the branch at dcnm_vrf.py lines
+      # 1543-1549 - `if replace: found = False` - and pushes the change, which
+      # strips the extension. Under merged the same comparison returns
+      # found = True and leaves it alone (line 1551). So stage 05 still has to
+      # run after stage 02 on every pass. What changed is the scope: stage 02
+      # now maintains the ATTACHMENT and only resets the EXTENSION, where
+      # before it removed both. 01_dc_deploy.yml already imports them in that
+      # order, and 07_verify_fabric.yml fails the run if the extension is
+      # missing, so a create-without-05 run is caught rather than discovered
+      # later as broken external connectivity.
       - name: dc_leaves
         switches:
           - hostname: DC-Leaf1
           - hostname: DC-Leaf2
+          # Border leaf. Carries the same three VRFs as the server leaves,
+          # plus the VRF-Lite extensions that 05_vrf_lite.yml adds.
+          - hostname: DC-Service-Leaf

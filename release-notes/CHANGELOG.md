@@ -163,9 +163,11 @@ reason these notes exist. Full history is in `git log`.
   border-leaf-to-edge-router CDP adjacency asynchronously, after the router add
   returns 202 with an empty body, so a deploy fired seconds later truthfully has
   nothing pending; clicking through the UI hides the delay because the wizard is
-  slower than the controller. **The pipeline no longer deploys twice** — that
-  wait is now explicit inside stage 05 as `until`/`retries`, six attempts twenty
-  seconds apart, extended with `-e dc_vrf_lite_retries=12`. The habit outlives
+  slower than the controller. **The pipeline no longer deploys twice**, because
+  stage 05 stages its extensions as intent before the deploy runs, so one
+  Recalculate and Deploy carries the lot. This asynchrony is real but it is
+  *not* what a stage 05 failure means — a retry loop was added here on that
+  theory and removed on 2026-09-27 when it was disproved. The habit outlives
   the fix: "no changes" means only that the controller had nothing pending when
   it was asked, and a switch appearing on a re-run is not drift but something
   the controller learned between passes. Trust `check_sync -> in_sync=True`

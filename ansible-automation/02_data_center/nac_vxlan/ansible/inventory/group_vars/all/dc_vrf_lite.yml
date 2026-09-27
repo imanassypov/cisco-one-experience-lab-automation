@@ -3,11 +3,18 @@
 # "Create VRF-Lite Connections to External".
 #
 # This file exists because the Nexus as Code data model cannot express a
-# VRF-Lite extension. A vrf_attach_group entry in vrfs.nac.yaml can name a
+# VRF-Lite EXTENSION. A vrf_attach_group entry in vrfs.nac.yaml can name a
 # switch and nothing else - there is no key for EXTEND: VRF_LITE, for the
 # sub-interface, for the dot1q tag or for the neighbour address. So the
 # extensions are declared here and applied by stage 05 with cisco.dcnm's
 # dcnm_vrf module directly, which does support attach[].vrf_lite[].
+#
+# The plain ATTACHMENT is a different matter and is NOT declared here. Since
+# 2026-09-27 DC-Service-Leaf is listed in vrfs.nac.yaml's dc_leaves attach
+# group, so the model owns the attachment and stage 05 only adds the extension
+# on top of it. That mirrors the manual guide, whose section 8 has two
+# separate Detach/Attach sliders per VRF: attach the VRF to the border leaf
+# first, then enable the external L3 extension inside Edit Extension Details.
 #
 # ORDERING. Stage 05 sits between 04 and the deploy, because attaching an
 # extension writes intent to the controller and touches no switch - the same
@@ -16,20 +23,37 @@
 # interface, the three dot1q sub-interfaces and their BGP neighbours all land
 # in a single Recalculate and Deploy.
 #
-# Stage 05 must run after stage 02 on EVERY pass, not once. The create role in
-# stage 02 runs dcnm_vrf with state: replaced, so it strips any attachment
-# vrfs.nac.yaml does not list - and vrfs.nac.yaml deliberately does not list
-# DC-Service-Leaf. A create run therefore removes whatever stage 05 attached,
-# and stage 05 puts it back. Stage 07 asserts the extensions exist so a
-# create-without-05 run is caught rather than discovered later as broken
-# external connectivity.
+# That ordering is safe, and the evidence is the module's own integration
+# test. tests/integration/targets/dcnm_vrf/tests/dcnm/standalone/merged.yaml
+# TEST.4 (lines 280-330) deletes every VRF first, then in ONE state: merged
+# call creates a VRF and attaches it with a vrf_lite block to a switch that
+# had no attachment at all - and asserts changed == true with three HTTP
+# 200s. Inside the module, push_to_remote (dcnm_vrf.py line 5495) runs
+# push_diff_create (5547) before push_diff_attach (5548), so at the moment the
+# extension is computed the VRF exists and the attachment does not. Neither an
+# existing attachment nor a completed deploy is a precondition for adding an
+# extension, so nothing here needs to move after stage 06.
 #
-# Stage 05 must also run after stage 04, and cannot run immediately after it.
-# The extension hangs off the inter-fabric link that VRF_LITE_AUTOCONFIG
-# builds, and the controller only builds that once it has detected the CDP
-# adjacency between the border leaf and the edge router - which it does
-# asynchronously, after stage 04's add returns HTTP 202 with an empty body.
-# Stage 05 waits that out with until/retries rather than failing.
+# Stage 05 must still run after stage 02 on every pass, but for a narrower
+# reason than before. Stage 02's create role runs dcnm_vrf with
+# state: replaced, and a replaced want with no vrf_lite against a have that
+# has one takes dcnm_vrf.py lines 1543-1549 and pushes the change, stripping
+# the extension; merged takes line 1551 and leaves it alone. So stage 02
+# maintains the attachment and resets only the extension. Stage 07 asserts
+# the extensions exist, so a create-without-05 run fails rather than being
+# discovered later as broken external connectivity.
+#
+# WHAT THE STAGE ACTUALLY DEPENDS ON, which is not any of the above. The
+# module refuses to build an extension unless the controller already offers
+# the border leaf a VRF_LITE extension prototype on this interface:
+# push_diff_attach reads extensionPrototypeValues at dcnm_vrf.py line 5126 and
+# fails at line 4721 with "No VRF LITE capable interfaces found on this
+# switch" when no element of that list has extensionType VRF_LITE. That list
+# is derived from the VRF-Lite inter-fabric link (IFC), so the IFC has to
+# exist. It is NOT a timing or CDP-correlation matter: on 2026-09-27 a full,
+# successful 06_recalculate_and_deploy.yml (5/5 switches deployed, in_sync
+# true) was followed by a stage 05 run that failed with the byte-identical
+# error. Run playbooks/diagnose_vrf_lite.yml to see what the controller holds.
 #
 # The parent interface the sub-interfaces below sit on is prepared by the
 # controller, not declared here. It appears in the Pending Config dialog as:
@@ -39,6 +63,12 @@
 #     mtu 9000
 #     description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
 #     no shutdown
+#
+# Note what that does NOT prove. It has no ip address and no encapsulation,
+# so it is equally consistent with an ext_fabric_setup VRF-Lite IFC and with
+# a plain discovered external link that the controller converted to Layer 3.
+# Only the link's templateName distinguishes them, which is why the
+# diagnostic prints it.
 
 # The border leaf that carries every extension, and the interface on it that
 # faces the edge router. Ethernet1/8 is not chosen here - Nexus Dashboard
@@ -48,6 +78,14 @@
 # deterministic and so stage 07 has something to assert against.
 dc_vrf_lite_border_leaf: DC-Service-Leaf
 dc_vrf_lite_interface: Ethernet1/8
+
+# The far end of the same physical link, on DC-SITE11-CEDGE8Kv. Detected over
+# CDP exactly as Ethernet1/8 is, and named in the controller's own generated
+# description (connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2). Nothing is
+# written to it - the External fabric is in Monitor Mode. It is declared
+# because playbooks/diagnose_vrf_lite.yml needs both ends to query the one
+# inter-fabric link by switch pair.
+dc_vrf_lite_peer_interface: GigabitEthernet2
 
 # WHY THE ADDRESSES ARE PINNED RATHER THAN LEFT TO THE CONTROLLER.
 #

@@ -215,14 +215,19 @@
         # on an NA record is null, so anything read off one needs
         # default(x, true).
         #
-        # DC-Service-Leaf is the switch this mattered for. vrfs.nac.yaml
-        # leaves it out of every attach group on purpose, because attaching
-        # it belongs to the VRF-Lite step - so before stage 05 existed it
-        # showed up here as NA on every VRF. Stage 05 now attaches it, so it
-        # normally arrives as a real DEPLOYED record and is judged like any
-        # other. It is still not in attach_group_switches, which is why the
-        # extension is checked separately below rather than through
-        # missing_switches.
+        # DC-Service-Leaf is the switch this mattered for. vrfs.nac.yaml used
+        # to leave it out of every attach group, on the view that attaching it
+        # belonged to the VRF-Lite step - so it showed up here as NA on every
+        # VRF, and this check had nothing to say about it. Since 2026-09-27 it
+        # is in the dc_leaves attach group, so stage 02 attaches it, it lands
+        # in attach_group_switches like the two server leaves, and a missing
+        # attachment on the border leaf is now a real failure of
+        # missing_switches rather than a silently tolerated NA.
+        #
+        # The VRF-Lite EXTENSION is still checked separately below. An attach
+        # group can name a switch but never an extension, so no amount of
+        # model-derived attachment checking can see whether the dot1q
+        # sub-interface and its BGP neighbour exist.
         attached: >-
           {{ attachments
              | selectattr('isLanAttached', 'defined')
@@ -371,12 +376,16 @@
                and (missing_attachments | length == 0) }}
 
     # A VRF-Lite extension is the one part of the fabric that stage 02 can
-    # silently undo: its create role runs dcnm_vrf with state: replaced
-    # against a model that deliberately omits DC-Service-Leaf, so a create
-    # run detaches every extension stage 05 made. Without this comparison
-    # that regression is invisible here - the VRF still exists, the two
-    # server leaves are still attached, and external connectivity is simply
-    # gone. Checked whenever dc_vrf_lite_extensions is declared.
+    # silently undo, and adding the border leaf to the model did not change
+    # that. Stage 02's create role runs dcnm_vrf with state: replaced, and a
+    # replaced want carrying no vrf_lite block against a have that has one
+    # takes dcnm_vrf.py lines 1543-1549 and pushes the change, resetting
+    # extensionValues to "". The attach group can name DC-Service-Leaf but
+    # can never name the extension, so a create run still strips what stage
+    # 05 made. Without this comparison that regression is invisible here -
+    # the VRF exists, all three leaves are attached and DEPLOYED, and
+    # external connectivity is simply gone. Checked whenever
+    # dc_vrf_lite_extensions is declared.
     #
     # extensionValues is a JSON document encoded INTO a string field, and its
     # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, IP_MASK, NEIGHBOR_IP) are

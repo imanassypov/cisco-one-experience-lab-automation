@@ -75,9 +75,13 @@ address. The three "seen" columns are substring matches against that field,
 which Nexus Dashboard returns as a JSON document encoded into a string.
 
 A whole row reading `NO` with state `absent` almost always means stage 02 ran
-after stage 05: the create role uses `state: replaced` against a model that
-deliberately omits the border leaf, so it detaches every extension. Re-run
-`05_vrf_lite.yml`. A row that is attached and `DEPLOYED` but has a `NO` in one
+after stage 05: the create role uses `state: replaced`, and the data model has
+no key for an extension, so a create run clears `extensionValues` even though
+it keeps the border leaf's attachment. Re-run `05_vrf_lite.yml`. If it then
+fails with `No VRF LITE capable interfaces found on this switch`, the
+controller is offering no VRF-Lite extension prototype at all - run
+`playbooks/diagnose_vrf_lite.yml`, which is read-only.
+A row that is attached and `DEPLOYED` but has a `NO` in one
 of the seen columns means the extension exists with different values than
 `dc_vrf_lite.yml` declares - someone edited it in the UI, or the controller
 allocated its own addresses because the declared ones were removed.
