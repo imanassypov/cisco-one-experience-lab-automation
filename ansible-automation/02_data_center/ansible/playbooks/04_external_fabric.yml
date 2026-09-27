@@ -369,7 +369,7 @@
             profile:
               ipv4_subnet: "{{ dc_vrf_lite_ifc.ipv4_addr }}"
               neighbor_ip: "{{ dc_vrf_lite_ifc.neighbor_ipv4 }}"
-              src_asn: "{{ dc_global_model.vxlan.global.bgp_asn }}"
+              src_asn: "{{ dc_global_model.vxlan.global.ibgp.bgp_asn }}"
               dst_asn: "{{ dc_external_fabric_settings.BGP_AS }}"
               mtu: "{{ dc_vrf_lite_ifc.mtu }}"
               # False because the far end is in Monitor Mode: the controller
