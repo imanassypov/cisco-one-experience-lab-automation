@@ -1,7 +1,7 @@
-{# Evidence report for 07_verify_fabric.yml. Generated - do not edit by hand. #}
+{# Evidence report for 08_verify_fabric.yml. Generated - do not edit by hand. #}
 # DC fabric verification - {{ dc_fabric_name }}
 
-Generated {{ dc_verify_timestamp }} by `07_verify_fabric.yml`.
+Generated {{ dc_verify_timestamp }} by `08_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
 `group_vars/all/dc_vrf_lite.yml`,
@@ -49,7 +49,7 @@ a pending state, so those switches are excluded from "Attachment states" and
 named under "Not attached" instead. A switch that
 *was* declared and is not among the attached ones is the real fault, and
 shows up under "Switches missing". An attachment stuck in `PENDING` means the
-intent was created but never pushed - re-run `06_recalculate_and_deploy.yml`.
+intent was created but never pushed - re-run `05_recalculate_and_deploy.yml`.
 
 ## Networks
 
@@ -88,14 +88,13 @@ which Nexus Dashboard returns as a JSON document encoded into a string.
 A whole row reading `NO` with state `absent` almost always means stage 02 ran
 after stage 05: the create role uses `state: replaced`, and the data model has
 no key for an extension, so a create run clears `extensionValues` even though
-it keeps the border leaf's attachment. Re-run `05_vrf_lite.yml`. If it then
-fails with `No VRF LITE capable interfaces found on this switch`, the
-controller is offering no VRF-Lite extension prototype at all - run
-`playbooks/diagnose_vrf_lite.yml`, which is read-only.
+it keeps the border leaf's attachment. Re-run `06_vrf_lite.yml`. If it then
+fails with `No VRF LITE capable interfaces found on this switch`, run
+`05_recalculate_and_deploy.yml` first, then retry stage 06.
 A row that is attached and `DEPLOYED` but has a `NO` in one
 of the seen columns means the extension exists with different values than
-`dc_vrf_lite.yml` declares - someone edited it in the UI, or the controller
-allocated its own addresses because the declared ones were removed.
+`dc_vrf_lite.yml` declares - reconcile those values before running stage 06
+again.
 
 ## VRF-Lite BGP sessions
 
@@ -130,7 +129,7 @@ as `neighbor_ipv4`, that it is up, and that the peer ASN in the table above is
 the AS the router really uses. `absent` is a different fault: the switch
 answered and has no session to that neighbour in that VRF at all, so the
 extension never reached the running configuration - re-run
-`05_vrf_lite.yml` and then `06_recalculate_and_deploy.yml`.
+`06_vrf_lite.yml` and then `05_recalculate_and_deploy.yml`.
 {% endif %}
 {% if dc_bgp_undetermined_rows | default([]) %}
 
@@ -154,10 +153,10 @@ values side by side.
 {% if row.observed_role is defined %}
 - **{{ row.name }}** ({{ row.ip }}) - {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
 {% elif row.expected_state is defined %}
-- **{{ row.name }}** (BGP session) - {% if row.observed_state == 'absent' %}{{ dc_vrf_lite_border_leaf }} has no BGP session to {{ row.neighbor }} in VRF {{ row.vrf }}, so the extension is not in its running configuration; re-run `05_vrf_lite.yml` then `06_recalculate_and_deploy.yml`{% else %}the session to {{ row.neighbor }} in VRF {{ row.vrf }} is `{{ row.observed_state }}`, not `Established`. The neighbour is configured on the leaf, since the leaf reports a session for it, so look next at the far end on DC-SITE11-CEDGE8Kv{% endif %}
+- **{{ row.name }}** (BGP session) - {% if row.observed_state == 'absent' %}{{ dc_vrf_lite_border_leaf }} has no BGP session to {{ row.neighbor }} in VRF {{ row.vrf }}, so the extension is not in its running configuration; re-run `06_vrf_lite.yml` then `05_recalculate_and_deploy.yml`{% else %}the session to {{ row.neighbor }} in VRF {{ row.vrf }} is `{{ row.observed_state }}`, not `Established`. The neighbour is configured on the leaf, since the leaf reports a session for it, so look next at the far end on DC-SITE11-CEDGE8Kv{% endif %}
 
 {% elif row.interface_seen is defined %}
-- **{{ row.name }}** (VRF-Lite) - {% if not row.attached %}not attached to the border leaf at all; re-run `05_vrf_lite.yml`{% else %}{% set faults = [] %}{% if row.state != 'DEPLOYED' %}{{ faults.append('attachment state is ' ~ row.state ~ ', must be DEPLOYED') or '' }}{% endif %}{% if not row.interface_seen %}{{ faults.append('declared interface is absent from extensionValues') or '' }}{% endif %}{% if not row.dot1q_seen %}{{ faults.append('declared dot1q tag is absent from extensionValues') or '' }}{% endif %}{% if not row.neighbor_seen %}{{ faults.append('declared neighbour address is absent from extensionValues') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
+- **{{ row.name }}** (VRF-Lite) - {% if not row.attached %}not attached to the border leaf at all; re-run `06_vrf_lite.yml`{% else %}{% set faults = [] %}{% if row.state != 'DEPLOYED' %}{{ faults.append('attachment state is ' ~ row.state ~ ', must be DEPLOYED') or '' }}{% endif %}{% if not row.interface_seen %}{{ faults.append('declared interface is absent from extensionValues') or '' }}{% endif %}{% if not row.dot1q_seen %}{{ faults.append('declared dot1q tag is absent from extensionValues') or '' }}{% endif %}{% if not row.neighbor_seen %}{{ faults.append('declared neighbour address is absent from extensionValues') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
 
 {% elif row.declared_id is defined %}
 - **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_id | string != row.declared_id | string %}{{ faults.append('has VNI ' ~ row.observed_id ~ ', declared as ' ~ row.declared_id) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('exists but is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attached switches report ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{% if row.missing_switches %}{{ faults.append('not attached on ' ~ row.missing_switches | join(', ')) or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
@@ -174,7 +173,7 @@ None.
 ## Not covered by this report
 
 - **The edge router's side of the VRF-Lite links.** The extensions on
-  DC-Service-Leaf are built by `05_vrf_lite.yml` and checked above, and the BGP
+  DC-Service-Leaf are built by `06_vrf_lite.yml` and checked above, and the BGP
   session table says whether the router answered, but nothing here is read from
   DC-SITE11-CEDGE8Kv itself. The External fabric is in Monitor Mode, so Nexus
   Dashboard never writes to that router and has nothing to report about it. Its

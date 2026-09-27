@@ -1,5 +1,5 @@
 ---
-# Stage 07 - verify the deployed fabric against the declared intent.
+# Stage 08 - verify the deployed fabric against the declared intent.
 #
 # Read-only throughout: API GETs to Nexus Dashboard and show commands on one
 # switch, so it is safe to re-run as often as you like while debugging.
@@ -31,13 +31,13 @@
 #     established, down, or not determined because the switch was unreachable.
 #     Not determined never counts as down and never fails the run
 #
-# It writes evidence/stage07-verification.md and fails at the end on any
+# It writes evidence/stage08-verification.md and fails at the end on any
 # mismatch.
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
-#   ansible-playbook playbooks/07_verify_fabric.yml
+#   ansible-playbook playbooks/08_verify_fabric.yml
 #
 # Useful overrides:
 #   -e dc_verify_fail_on_mismatch=false   write the report without failing the
@@ -180,7 +180,7 @@
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
-    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage07-verification.md') | realpath }}"
+    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification.md') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
@@ -689,7 +689,7 @@
 
     - name: Write the verification report
       ansible.builtin.template:
-        src: templates/stage07-verification.md.j2
+        src: templates/stage08-verification.md.j2
         dest: "{{ dc_evidence_path }}"
         mode: "0644"
       delegate_to: localhost

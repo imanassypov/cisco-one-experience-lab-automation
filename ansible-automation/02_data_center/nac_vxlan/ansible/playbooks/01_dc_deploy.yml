@@ -16,7 +16,7 @@
 #
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 #
-# Stages, in apply order. This is not numeric order, and stage 06 runs twice:
+# Stages, in apply order:
 #
 #   02  the whole fabric intent: the fabric, the switches, their roles, the
 #       vPC pair, the port-channels, the VRFs, the networks and their
@@ -25,26 +25,26 @@
 #       resources, the license tier, the telemetry toggle and the location
 #   04  the External connectivity fabric, in Monitor Mode, with the IOS-XE
 #       edge router added to it
-#   06  first deploy: pushes the fabric to the switches, and makes the
+#   05  first deploy: pushes the fabric to the switches, and makes the
 #       controller build the VRF-Lite inter-fabric link
-#   05  the VRF-Lite extensions on the border leaf, as intent
-#   06  second deploy: pushes those extensions to the border leaf
-#   07  verify the result against intent over the Nexus Dashboard API
+#   06  the VRF-Lite extensions on the border leaf, as intent
+#   07  second deploy: pushes those extensions to the border leaf
+#   08  verify the result against intent over the Nexus Dashboard API
 #
-# The deploy runs before stage 05 because stage 05 depends on it.
+# The deploy runs before stage 06 because stage 06 depends on it.
 #
-# Stage 05 can only add an extension where Nexus Dashboard is already offering
+# Stage 06 can only add an extension where Nexus Dashboard is already offering
 # the border leaf one, and it offers one only where a VRF-Lite inter-fabric
 # link terminates. Nothing in this repository creates that link. The controller
 # creates it, because inventory/group_vars/all/dc_advanced_settings.yml sets
 # VRF_LITE_AUTOCONFIG to Back2Back&ToExternal, but it does so during a
 # Recalculate and Deploy and only once the edge router stage 04 adds is present
 # in the External fabric. So the first deploy is what produces the link, and
-# stage 05 has to follow it.
+# stage 06 has to follow it.
 #
-# The deploy runs again after stage 05 because stage 05 only stages intent.
+# The deploy runs again after stage 06 because stage 06 only stages intent.
 #
-# Stage 05 writes intent to the controller and changes no running
+# Stage 06 writes intent to the controller and changes no running
 # configuration. Without a deploy after it, the three dot1q sub-interfaces and
 # their BGP neighbours stay staged and never reach the switch. This is the
 # deploy, edit, deploy sequence the manual guide walks through in section 8.
@@ -60,7 +60,7 @@
 #     entry.
 #   - Both deploys change running configuration and take several minutes.
 #     Switches show as out of sync while they run.
-#   - Stage 07 fails the run on any mismatch; add
+#   - Stage 08 fails the run on any mismatch; add
 #     -e dc_verify_fail_on_mismatch=false for the report without the failure.
 #
 # On a re-run the inter-fabric link already exists, so the first deploy is not
@@ -70,7 +70,7 @@
 # and the second deploy restores it, so external connectivity is down for the
 # few minutes between the two deploys.
 #
-# Background: "What stage 05 needs from the controller" in the README.
+# Background: "What stage 06 needs from the controller" in the README.
 
 - import_playbook: 02_create_dc_fabric.yml
 - import_playbook: 03_fabric_advanced_settings.yml
@@ -78,11 +78,11 @@
 
 # First deploy. Pushes the fabric, and gives the controller the Recalculate and
 # Deploy it needs before it will build the VRF-Lite inter-fabric link.
-- import_playbook: 06_recalculate_and_deploy.yml
+- import_playbook: 05_recalculate_and_deploy.yml
 
-- import_playbook: 05_vrf_lite.yml
+- import_playbook: 06_vrf_lite.yml
 
 # Second deploy. Pushes the sub-interfaces and BGP neighbours stage 05 staged.
-- import_playbook: 06_recalculate_and_deploy.yml
+- import_playbook: 07_recalculate_and_deploy.yml
 
-- import_playbook: 07_verify_fabric.yml
+- import_playbook: 08_verify_fabric.yml
