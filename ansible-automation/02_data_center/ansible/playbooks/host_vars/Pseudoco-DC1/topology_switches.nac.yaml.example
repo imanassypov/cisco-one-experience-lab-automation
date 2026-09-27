@@ -2,7 +2,7 @@
 # Shape reference for the switch topology. This file is tracked in git and is
 # read by exactly one thing: the generator in stage 00.
 #
-#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   cd ansible-automation/02_data_center/ansible
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 #
 # Stage 00 SSHes to the switches, reads ansible_net_serialnum from

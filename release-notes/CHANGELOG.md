@@ -7,7 +7,7 @@ strings, version numbers and API paths are kept deliberately — they are the
 reason these notes exist. Full history is in `git log`.
 
 - **02_data_center — the DC VXLAN EVPN fabric is now automated, built on Cisco Nexus as Code.** *2026-09-25 to 2026-09-27.* A one-paragraph stub became a working
-  pipeline at `nac_vxlan/ansible/` that builds the DC fabric end to end,
+  pipeline at `ansible/` that builds the DC fabric end to end,
   covering the guide's **NDFC - DC Fabric Deployment** sections 4 through 8: the
   `Pseudoco-DC1` fabric and its five switches, the DC-Leaf1/DC-Leaf2 vPC pair,
   the three server port-channels, the MAIN / PROD / IOT VRFs and networks with
@@ -92,7 +92,7 @@ reason these notes exist. Full history is in `git log`.
   supported case
   ([Cisco VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html)).
   The DC fabric side is automated end to end. Details in
-  [the DC collection README](../ansible-automation/02_data_center/nac_vxlan/ansible/README.md).
+  [the DC collection README](../ansible-automation/02_data_center/ansible/README.md).
 
 - **02_data_center — the Nexus Dashboard failures that did not announce themselves.** *2026-09-25 to 2026-09-27.* Each cost real debugging time because the
   controller reported success, or named the wrong thing in its failure.

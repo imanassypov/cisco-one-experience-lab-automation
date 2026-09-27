@@ -22,7 +22,7 @@
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
-#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   cd ansible-automation/02_data_center/ansible
 #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 #
 # Background: "Why serial discovery is a separate stage" in the README.
@@ -135,7 +135,7 @@
       # what port-channels they carry), inventory/group_vars/all/dc_switches.yml
       # for the switch table (names, management addresses, roles).
       #
-      #   cd ansible-automation/02_data_center/nac_vxlan/ansible
+      #   cd ansible-automation/02_data_center/ansible
       #   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
       #
       # This file is gitignored. Serial numbers are the hardware of one dCloud
@@ -255,5 +255,5 @@
           - "It is gitignored, because the serials belong to this pod alone."
           - ""
           - "Next:"
-          - "  cd ansible-automation/02_data_center/nac_vxlan/ansible"
+          - "  cd ansible-automation/02_data_center/ansible"
           - "  ansible-playbook playbooks/01_dc_deploy.yml"

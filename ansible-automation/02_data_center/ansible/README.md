@@ -146,7 +146,7 @@ Run from **this directory**, the one holding `ansible.cfg`. The paths in
 working directory, so running from `playbooks/` breaks authentication.
 
 ```bash
-cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 ansible-playbook playbooks/00_discover_dc_switch_serials.yml   # once, first
 ansible-playbook playbooks/01_dc_deploy.yml
 ```

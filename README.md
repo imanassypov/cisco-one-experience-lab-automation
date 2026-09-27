@@ -46,7 +46,7 @@ Playbooks live under `ansible-automation/`. Numbered folders follow lab-build or
 | --- | --- | --- |
 | [00_scriptserver_bootstrap](ansible-automation/00_scriptserver_bootstrap/) | Kali Linux script server (`198.18.134.12`) | Implemented |
 | [01_campus](ansible-automation/01_campus/) | Campus — [sda](ansible-automation/01_campus/sda/) stub, [evpn](ansible-automation/01_campus/evpn/) in progress | In progress |
-| [02_data_center](ansible-automation/02_data_center/) | Data center — [nac_vxlan](ansible-automation/02_data_center/nac_vxlan/ansible/): the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard (`ndfc.corp.pseudoco.com`) | Implemented |
+| [02_data_center](ansible-automation/02_data_center/) | Data center — [ansible](ansible-automation/02_data_center/ansible/): the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard (`ndfc.corp.pseudoco.com`) | Implemented |
 | [03_dmz](ansible-automation/03_dmz/) | DMZ and Secure Access connector | Stub |
 | [04_remote_dc](ansible-automation/04_remote_dc/) | Remote DC / Nexus fabric | Stub |
 | [05_sdwan](ansible-automation/05_sdwan/) | SD-WAN fabric and controllers | Stub |
@@ -148,7 +148,7 @@ with first-run setup and then serves as the per-stage reference.
 | --- | --- | --- | --- |
 | 1 | **Campus EVPN** — builds the BGP EVPN/VXLAN fabric through Catalyst Center, stages 01–12 | [README — Before you begin](ansible-automation/01_campus/evpn/ansible/README.md#before-you-begin) — first-run setup, steps 1–7 | [README — Pipeline order](ansible-automation/01_campus/evpn/ansible/README.md#pipeline-order) — per-stage detail, expected output, troubleshooting |
 | 2 | **EVPN assurance with Splunk** — streams fabric telemetry into Splunk and installs the dashboards | [SETUP_GUIDE.md](ansible-automation/07_assurance/splunk_evpn/SETUP_GUIDE.md) — deployment walkthrough | [README.md](ansible-automation/07_assurance/splunk_evpn/README.md) — architecture and reference |
-| 3 | **DC fabric with Nexus as Code** — builds the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard, stages 00–06 | [README.md](ansible-automation/02_data_center/nac_vxlan/ansible/README.md) — running it, the data model, and the traps | [02_data_center/README.md](ansible-automation/02_data_center/README.md) — how the DC tracks fit together |
+| 3 | **DC fabric with Nexus as Code** — builds the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard, stages 00–06 | [README.md](ansible-automation/02_data_center/ansible/README.md) — running it, the data model, and the traps | [02_data_center/README.md](ansible-automation/02_data_center/README.md) — how the DC tracks fit together |
 
 Assurance depends on the fabric being up: the telemetry subscriptions it
 consumes are pushed by EVPN stage 10, so run the campus collection first.

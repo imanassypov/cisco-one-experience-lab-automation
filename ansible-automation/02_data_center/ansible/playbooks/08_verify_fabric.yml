@@ -36,7 +36,7 @@
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
-#   cd ansible-automation/02_data_center/nac_vxlan/ansible
+#   cd ansible-automation/02_data_center/ansible
 #   ansible-playbook playbooks/08_verify_fabric.yml
 #
 # Useful overrides:

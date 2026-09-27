@@ -10279,7 +10279,7 @@ dc_vrf_lite_extensions:
   <div class="page-card-body"><h3>DC Infrastructure as Code — Step 4 of 9</h3>
 <h4>Running it</h4>
 <p>First, make sure stage 00 bootstrap has installed the pinned Python packages and Ansible collections. A script server staged before the DC track existed may not have the required collections. Pull the latest checkout and run:</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 git -C ~/cisco-one-experience-lab-automation pull
 ansible-playbook ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml</pre>
 <p>The bootstrap verifies <code>cisco.dcnm 3.13.0</code>, <code>cisco.nac_dc_vxlan 0.9.0</code>, <code>cisco.nxos 10.2.0</code>, and the supporting collection pins. It also runs <code>pip check</code>. Re-running the bootstrap is the supported way to repair an older virtual environment.</p>
@@ -10502,7 +10502,7 @@ ansible_connect_timeout: 1000</pre>
 <p>Which raises the obvious question: if the collection guards against this, why did the run get as far as failing? Because of the seam between the two collections described in <a href="#page-dc-automation">card 1</a>. Nexus as Code does not call the <code>cisco.dcnm</code> modules the way a playbook would — it drives them itself, from one consolidated action plugin, and routes only <code>dcnm_vrf</code> and <code>dcnm_network</code> through their own. <code>dcnm_inventory</code> therefore never sees its own precondition check, and you get the bare 30-second <code>ConnectionError</code> with no hint that a timeout setting exists. That is the honest cost of a collection that sits on top of another one: you inherit its capabilities, and you can quietly lose its guard rails.</p>
 <div class="admonition">
 <p>💡 <strong>On a checkout from before this fix, set it for one run.</strong> Same two variables, passed on the command line. Run it from the directory holding <code>ansible.cfg</code>, not from <code>playbooks/</code>.</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 ansible-playbook playbooks/02_create_dc_fabric.yml -e ansible_command_timeout=1000 -e ansible_connect_timeout=1000</pre>
 </div>
 <p>If you already hit this, you do not need to tear anything down. The run created the fabric object before it died at the inventory step, and Nexus Dashboard most likely carried on discovering the switches server-side after Ansible stopped listening — check the fabric's <strong>Switches</strong> tab and you may well find them already there. The inventory step runs <code>state: merged</code>, which only ever adds, so re-running converges whether the switches arrived or not. Deleting the fabric and starting over costs you the wipe-and-rediscover cycle for no gain.</p>
@@ -10528,7 +10528,7 @@ fatal: [Pseudoco-DC1]: FAILED! =&gt; "Create pipeline failed at step 'interface_
 <p>If you want the authoritative answer rather than the inference, the controller keeps one. NDFC records this failure as an alarm under the <code>lan_fabric_errors</code> policy, naming the template that actually blew up — Nexus Dashboard, <strong>Events</strong> / <strong>Alarms</strong>, filtered to the time of your run.</p>
 <div class="admonition">
 <p>⚠️ <strong>A <code>git pull</code> is not enough to pick this fix up.</strong> The descriptions that reach NDFC come from <code>topology_switches.nac.yaml.example</code>, because stage 00 is what copies it over the generated <code>topology_switches.nac.yaml</code>, substituting only serial numbers and roles. That generated file is gitignored build output, so the copy on your script server still carries the old em dashes until you regenerate it. Pull, then <strong>re-run stage 00</strong> — and remember stage 00 is the one stage that SSHes to <code>198.18.128.x</code>, so your <strong>client VPN must be up</strong>. Run all of this from the directory holding <code>ansible.cfg</code>, not from <code>playbooks/</code>.</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 git -C ~/cisco-one-experience-lab-automation pull
 ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 ansible-playbook playbooks/01_dc_deploy.yml</pre>
@@ -10549,7 +10549,7 @@ ROLLBACK_RESULT: SUCCESS - Attempted rollback of the task has succeeded</pre>
 <p>The fix is to pin the VLANs the GUI would have proposed, so that nothing has to be guessed at submit time. Each of the three networks in <code>networks.nac.yaml</code> now carries an explicit <code>vlan_id</code> from the fabric's L2 VLAN range 2300-2999: MainNetwork1 <code>2300</code>, ProdNetwork1 <code>2301</code>, IOTNetwork1 <code>2302</code>. The three VRFs in <code>vrfs.nac.yaml</code> are allocated by the same mechanism against the L3 range 2000-2299, so they are pinned for the same reason rather than left to chance: MAIN <code>2000</code>, PROD <code>2001</code>, IOT <code>2002</code>. These are the values you would have arrived at by clicking through section 6 in order. Declaring them costs nothing, and it is what makes the run repeatable — which is the point of writing the fabric down in the first place.</p>
 <div class="admonition">
 <p>💡 <strong>For this fix, a plain <code>git pull</code> is the whole thing.</strong> Unlike the port-channel descriptions above, <code>vrfs.nac.yaml</code> and <code>networks.nac.yaml</code> are hand-written source that the create role reads straight off disk. Stage 00 neither generates nor overwrites them, so there is nothing to regenerate and no need for your client VPN to reach the switches. Pull, then re-run the stage from the directory holding <code>ansible.cfg</code>, not from <code>playbooks/</code>.</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 git -C ~/cisco-one-experience-lab-automation pull
 ansible-playbook playbooks/02_create_dc_fabric.yml</pre>
 </div>
@@ -10566,7 +10566,7 @@ ansible-playbook playbooks/02_create_dc_fabric.yml</pre>
   <div class="page-card-body"><h3>DC Infrastructure as Code — Step 9 of 9</h3>
 <h4>Reading the verification report</h4>
 <p>Stage 07 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller and writes a file; it changes nothing:</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 ansible-playbook playbooks/08_verify_fabric.yml</pre>
 <p>A healthy fabric ends with <code>failed=0</code>. The controller portion has fourteen checks: five switches, three VRFs, three networks, and three VRF-Lite extensions. When the optional SSH check is enabled and the border leaf answers, the report also evaluates three BGP session checks, for seventeen checks total. If the switch is unreachable, those rows are reported as <code>not determined</code> and are not counted as up or down.</p>
 <pre>ok: [Pseudoco-DC1] =&gt; {
@@ -10604,7 +10604,7 @@ ansible-playbook playbooks/08_verify_fabric.yml</pre>
 <p>💡 <strong>If the stage dies with <code>'None' has no attribute 'split'</code>, your checkout is behind.</strong> The failure looks like this, at <code>TASK [Compare networks]</code>, and it is a bug in the stage rather than anything wrong with your fabric — the controller returns an empty field as <code>null</code> and an older copy of the playbook did not expect it. A plain <code>git pull</code> is the whole fix: nothing is regenerated, no VPN to the switches is needed, and the stage changes nothing, so run it again.</p>
 <pre>fatal: [Pseudoco-DC1]: FAILED! =&gt; {"msg": "The task includes an option with an undefined variable..
 'None' has no attribute 'split'"}</pre>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/nac_vxlan/ansible
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 git -C ~/cisco-one-experience-lab-automation pull
 ansible-playbook playbooks/08_verify_fabric.yml</pre>
 </div>
@@ -10612,7 +10612,7 @@ ansible-playbook playbooks/08_verify_fabric.yml</pre>
 <p>💡 <strong>If stage 07 refuses to start, the typo is in your own YAML.</strong> Each VRF and network names an attach group, and if that name matches no group declared in the same file the stage stops before its first API call — opening with <code>DATA MODEL ERROR, not a fabric fault</code> and naming the object, the group it asked for and the groups that do exist. No new report is written, and an older evidence file remains unchanged, so read the <code>Generated</code> line at the top before trusting it. <code>-e dc_verify_fail_on_mismatch=false</code> does not bypass this validation; it only softens a mismatch found after the model is resolved. Fix the spelling or declare the group, then run the stage again.</p>
 </div>
 <hr>
-<p>Full documentation, including every deviation from upstream and the traps found while building it, lives in the repository at <code>ansible-automation/02_data_center/nac_vxlan/ansible/README.md</code>. The failures from <a href="#page-dc-failures">card 8</a> are in its <strong>Four things in these files that are not obvious from reading them</strong> and <strong>Rules for editing the model</strong> sections, the edge-router and Monitor Mode reasoning is under <strong>Scope</strong>, and the stage 05 precondition, with the exact <code>dcnm_vrf</code> line numbers behind it, is under <strong>What stage 05 needs from the controller</strong>.</p>
+<p>Full documentation, including every deviation from upstream and the traps found while building it, lives in the repository at <code>ansible-automation/02_data_center/ansible/README.md</code>. The failures from <a href="#page-dc-failures">card 8</a> are in its <strong>Four things in these files that are not obvious from reading them</strong> and <strong>Rules for editing the model</strong> sections, the edge-router and Monitor Mode reasoning is under <strong>Scope</strong>, and the stage 05 precondition, with the exact <code>dcnm_vrf</code> line numbers behind it, is under <strong>What stage 05 needs from the controller</strong>.</p>
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
