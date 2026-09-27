@@ -153,15 +153,19 @@
     # One sub-interface per dot1q tag on one parent interface. Two rows
     # sharing a tag silently collapse into one sub-interface on the switch
     # and the second VRF is left unreachable, which is a slow thing to find.
+    # NOTE: this variable cannot be called "tags". That is a reserved task
+    # keyword, so Ansible consumes the vars entry as the directive and the
+    # expression below then fails with "'tags' is undefined".
     - name: Fail on a duplicate dot1q tag
       ansible.builtin.assert:
         that:
-          - tags | length == tags | unique | length
+          - dot1q_tags | length == dot1q_tags | unique | length
         fail_msg: >-
-          DATA MODEL ERROR. dc_vrf_lite.yml reuses a dot1q tag ({{ tags | join(', ') }}).
-          Every extension on {{ dc_vrf_lite_interface }} needs its own tag.
+          DATA MODEL ERROR. dc_vrf_lite.yml reuses a dot1q tag
+          ({{ dot1q_tags | join(', ') }}). Every extension on
+          {{ dc_vrf_lite_interface }} needs its own tag.
       vars:
-        tags: "{{ dc_vrf_lite_extensions | map(attribute='dot1q') | list }}"
+        dot1q_tags: "{{ dc_vrf_lite_extensions | map(attribute='dot1q') | list }}"
 
     # ------------------------------------------------------ build and apply
     - name: Build the dcnm_vrf configuration
