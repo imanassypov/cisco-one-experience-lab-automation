@@ -317,8 +317,8 @@
         success_msg: >-
           Controller offers {{ dc_vrf_lite_prototypes | length }} VRF_LITE
           extension prototype(s) on {{ dc_vrf_lite_border_leaf }}
-          ({{ dc_vrf_lite_border_serial }}), on interface(s)
-          {{ dc_vrf_lite_proto_ifs | join(', ') | default('unnamed', true) }}.
+          ({{ dc_vrf_lite_border_serial }}):
+          {{ dc_vrf_lite_proto_summary | join('; ') | default('details unavailable', true) }}.
           Proceeding.
         fail_msg: >-
           Nexus Dashboard is not offering {{ dc_vrf_lite_border_leaf }}
@@ -349,8 +349,19 @@
         dc_vrf_lite_proto_types: >-
           {{ (dc_vrf_lite_switch_record.extensionPrototypeValues | default([], true))
              | map(attribute='extensionType') | list }}
-        dc_vrf_lite_proto_ifs: >-
-          {{ dc_vrf_lite_prototypes | map(attribute='extensionValues') | list }}
+        dc_vrf_lite_proto_summary: >-
+          {%- set lines = [] -%}
+          {%- for prototype in dc_vrf_lite_prototypes -%}
+          {%- set values = prototype.get('extensionValues', {}) -%}
+          {{- lines.append(
+                'interface=' ~ values.get('INTF_NAME', values.get('IF_NAME', 'unknown')) ~
+                ', dot1q=' ~ values.get('DOT1Q_ID', 'unknown') ~
+                ', local=' ~ values.get('IP_MASK', 'unknown') ~
+                ', peer=' ~ values.get('NEIGHBOR_IP', 'unknown') ~
+                ', peer_as=' ~ values.get('NEIGHBOR_ASN', 'unknown') ~
+                ', template=' ~ values.get('VRF_LITE_JYTHON_TEMPLATE', 'unknown')) or '' -}}
+          {%- endfor -%}
+          {{ lines }}
       when:
         - dc_vrf_lite_precheck | bool
         - dc_vrf_lite_border_serial | length > 0
@@ -384,29 +395,38 @@
           {%- set rows = [] -%}
           {%- set records = ((dc_vrf_lite_existing_attachments.response | default({})).DATA | default([])) -%}
           {%- for ext in dc_vrf_lite_extensions -%}
-          {%- set vrf_record = (records | selectattr('vrfName', 'equalto', ext.vrf) | list | first) | default({}) -%}
-          {%- set attachment = (vrf_record.lanAttachList | default([])
-                                | selectattr('switchSerialNo', 'equalto', dc_vrf_lite_border_serial)
-                                | list | first) | default({}) -%}
+          {%- set exact = [] -%}
+          {%- set existing_for_vrf = [] -%}
+          {%- set collisions = [] -%}
+          {%- for record in records -%}
+          {%- set record_vrf = record.get('vrfName', '') | string | lower -%}
+          {%- for attachment in record.get('lanAttachList', []) -%}
+          {%- if attachment.get('switchSerialNo', '') | string == dc_vrf_lite_border_serial | string -%}
           {%- set raw_values = attachment.get('extensionValues', '') -%}
           {%- set values = (raw_values | from_json) if raw_values is string and raw_values | length > 0 else {} -%}
           {%- set raw_connections = values.get('VRF_LITE_CONN', '{}') if values is mapping else '{}' -%}
           {%- set connection_data = (raw_connections | from_json) if raw_connections is string and raw_connections | length > 0 else {} -%}
           {%- set connections = connection_data.get('VRF_LITE_CONN', []) if connection_data is mapping else [] -%}
-          {%- set exact = [] -%}
+          {%- if record_vrf == ext.vrf | string | lower and connections | length > 0 -%}
+          {{- existing_for_vrf.extend(connections) or '' -}}
+          {%- endif -%}
           {%- for conn in connections -%}
-          {%- if (conn.get('IF_NAME', conn.get('INTF_NAME', '')) | lower == dc_vrf_lite_interface | lower)
-                  and conn.get('DOT1Q_ID', '') | string == ext.dot1q | string
-                  and conn.get('IP_MASK', '') == ext.ipv4_addr
-                  and conn.get('NEIGHBOR_IP', '') == ext.neighbor_ipv4
-                  and conn.get('PEER_VRF_NAME', '') == ext.peer_vrf -%}
+          {%- set same_link = (conn.get('IF_NAME', conn.get('INTF_NAME', '')) | string | lower == dc_vrf_lite_interface | string | lower)
+                              and conn.get('DOT1Q_ID', '') | string == ext.dot1q | string
+                              and conn.get('IP_MASK', '') == ext.ipv4_addr
+                              and conn.get('NEIGHBOR_IP', '') == ext.neighbor_ipv4 -%}
+          {%- if same_link and record_vrf == ext.vrf | string | lower and conn.get('PEER_VRF_NAME', '') | string | lower == ext.peer_vrf | string | lower -%}
           {{- exact.append(conn) or '' -}}
+          {%- elif same_link -%}
+          {{- collisions.append({'owner': record.get('vrfName', 'unknown'), 'connection': conn}) or '' -}}
           {%- endif -%}
           {%- endfor -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- endfor -%}
           {{- rows.append({'vrf': ext.vrf,
-                           'state': 'exact' if exact | length > 0 else ('missing' if connections | length == 0 else 'conflict'),
-                           'connections': connections,
-                           'attachment': attachment}) or '' -}}
+                           'state': 'exact' if exact | length > 0 else ('conflict' if existing_for_vrf | length > 0 or collisions | length > 0 else 'missing'),
+                           'collision_owners': collisions | map(attribute='owner') | list}) or '' -}}
           {%- endfor -%}
           {{ rows }}
       when: dc_vrf_lite_border_serial | default('') | length > 0
