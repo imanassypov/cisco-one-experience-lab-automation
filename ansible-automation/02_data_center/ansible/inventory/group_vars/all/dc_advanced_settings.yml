@@ -113,12 +113,26 @@ dc_advanced_fabric_settings:
   # neighbor devices. If set, auto created VRF Lite IFC links will have Auto
   # Deploy for Peer enabled."
   # https://registry.terraform.io/providers/CiscoDevNet/ndfc/latest/docs/data-sources/fabric
-  AUTO_SYMMETRIC_VRF_LITE: true
+  #
+  # False here because the neighbour is not managed: the External fabric is in
+  # Monitor Mode and the edge router is pre-built by the pod, so there is no
+  # peer for the controller to generate configuration on.
+  AUTO_SYMMETRIC_VRF_LITE: false
 
   # UI: Resources tab, "Auto Allocation of Unique IP on VRF Extension over
   # VRF Lite IFC". Gives every VRF extension its own /30 out of the range
   # below rather than reusing one subnet across VRFs.
-  AUTO_UNIQUE_VRF_LITE_IP_PREFIX: true
+  #
+  # False because this pod's addressing is not ours to choose. The edge router
+  # is pre-built and in Monitor Mode, carrying GigabitEthernet2.2/.3/.4 with
+  # dot1q 2/3/4 and 192.168.252.6, .10 and .14, so the border leaf has to take
+  # .5, .9 and .13 against those same tags. Left true, the controller allocates
+  # its own /30s per VRF in its own order - measured on 2026-09-27 it gave MAIN
+  # dot1q 3 and 192.168.252.8/30 where the router expects MAIN on dot1q 4 and
+  # .14 - and then rejects stage 06's declared values with HTTP 500
+  # "DOT1Q_ID[n] on Interface[Ethernet1/8] is allocated already". BGP could
+  # never come up against the controller's choice.
+  AUTO_UNIQUE_VRF_LITE_IP_PREFIX: false
 
   # UI: Resources tab, "VRF Lite Subnet IP Range" and "VRF Lite Subnet Mask".
   # The pool the per-extension point-to-point links are cut from. The default
