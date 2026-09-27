@@ -54,12 +54,51 @@
           {{ dc_vrf_lite_border_leaf }}.
 
 # ---------------------------------------------------------------------------
-# 1. Inventory
+# 1. The inter-fabric link
+#
+# This has to go before the switches do. The border leaf is an endpoint of it,
+# and the controller will not delete a switch that a link still references:
+#
+#   Failed to delete the switch[955T6I5X2D4/DC-Service-Leaf].
+#   Please check Anomalies for possible reasons.
+#
+# Stage 04 creates this link from the data model, so stage 09 removes the same
+# one, identified the same way.
+- name: Stage 09b - remove the VRF-Lite inter-fabric link
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Delete the link on {{ dc_vrf_lite_interface }}
+      cisco.dcnm.dcnm_links:
+        state: deleted
+        src_fabric: "{{ dc_fabric_name }}"
+        config:
+          - dst_fabric: "{{ dc_external_fabric_name }}"
+            src_interface: "{{ dc_vrf_lite_interface }}"
+            dst_interface: "{{ dc_vrf_lite_peer_interface }}"
+            src_device: "{{ dc_vrf_lite_border_leaf }}"
+            dst_device: "{{ dc_external_edge_router.hostname }}"
+      register: dc_cleanup_link
+      failed_when: false
+
+    - name: Report the link result
+      ansible.builtin.debug:
+        msg: >-
+          Inter-fabric link removed.
+          changed={{ dc_cleanup_link.changed | default(false) }}.
+          {{ 'The controller reported: ' ~ (dc_cleanup_link.msg | string)
+             if dc_cleanup_link.failed | default(false)
+             else '' }}
+
+# ---------------------------------------------------------------------------
+# 2. Inventory
 #
 # state: deleted with no config removes every switch in the named fabric.
 # Doing this before the fabric delete means the controller releases the
 # switches cleanly rather than losing them along with the fabric.
-- name: Stage 09b - remove the switches from the DC fabric
+- name: Stage 09c - remove the switches from the DC fabric
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -80,7 +119,7 @@
           {{ dc_fabric_name }} inventory cleared.
           changed={{ dc_cleanup_dc_inventory.changed | default(false) }}.
 
-- name: Stage 09c - remove the router from the External fabric
+- name: Stage 09d - remove the router from the External fabric
   hosts: External
   gather_facts: false
   any_errors_fatal: true
@@ -105,7 +144,7 @@
 
 # ---------------------------------------------------------------------------
 # 2. Fabrics
-- name: Stage 09d - delete both fabrics
+- name: Stage 09e - delete both fabrics
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -130,7 +169,7 @@
 #
 # Built from dc_vrf_lite.yml rather than hardcoded, so a tag added there is
 # cleaned up here without anyone remembering to.
-- name: Stage 09e - build the border leaf SSH group
+- name: Stage 09f - build the border leaf SSH group
   hosts: localhost
   gather_facts: false
   connection: local
@@ -148,7 +187,7 @@
         dc_switch_role: border
       changed_when: false
 
-- name: Stage 09f - strip the VRF-Lite sub-interfaces off the border leaf
+- name: Stage 09g - strip the VRF-Lite sub-interfaces off the border leaf
   hosts: dc_fabric_switches
   gather_facts: false
   any_errors_fatal: true
