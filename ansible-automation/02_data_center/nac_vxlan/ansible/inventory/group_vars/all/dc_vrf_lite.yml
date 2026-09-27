@@ -51,8 +51,8 @@
 # itself during a Recalculate and Deploy, once the edge router stage 04 adds
 # is in the External fabric. So stage 06 has to run before stage 05 on a fresh
 # build, and again after it to push the result. 01_dc_deploy.yml imports the
-# stages in that order. Run playbooks/diagnose_vrf_lite.yml to see what the
-# controller holds.
+# stages in that order. If the precondition is missing, stage 06 reports that
+# stage 05 must run first.
 #
 # The parent interface the sub-interfaces below sit on is prepared by the
 # controller, not declared here. It appears in the Pending Config dialog as:
@@ -66,8 +66,8 @@
 # Note what that does NOT prove. It has no ip address and no encapsulation,
 # so it is equally consistent with an ext_fabric_setup VRF-Lite IFC and with
 # a plain discovered external link that the controller converted to Layer 3.
-# Only the link's templateName distinguishes them, which is why the
-# diagnostic prints it.
+# Only the link's templateName distinguishes them; stage 06 reports when the
+# required prototype is absent.
 
 # The border leaf that carries every extension, and the interface on it that
 # faces the edge router. Ethernet1/8 is not chosen here - Nexus Dashboard
@@ -82,8 +82,8 @@ dc_vrf_lite_interface: Ethernet1/8
 # CDP exactly as Ethernet1/8 is, and named in the controller's own generated
 # description (connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2). Nothing is
 # written to it - the External fabric is in Monitor Mode. It is declared
-# because playbooks/diagnose_vrf_lite.yml needs both ends to query the one
-# inter-fabric link by switch pair.
+# because the declared peer interface documents the other end of the
+# inter-fabric link.
 dc_vrf_lite_peer_interface: GigabitEthernet2
 
 # WHY THE ADDRESSES ARE PINNED RATHER THAN LEFT TO THE CONTROLLER.
@@ -145,7 +145,7 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 # two ends disagreeing: packets the leaf is willing to send would be too big
 # for the router to accept, and they would be dropped rather than fragmented.
 #
-# 05_vrf_lite.yml applies this after dcnm_vrf, over the attachments API,
+# 06_vrf_lite.yml applies this after dcnm_vrf, over the attachments API,
 # because the module has no key for it.
 dc_vrf_lite_mtu: 1500
 

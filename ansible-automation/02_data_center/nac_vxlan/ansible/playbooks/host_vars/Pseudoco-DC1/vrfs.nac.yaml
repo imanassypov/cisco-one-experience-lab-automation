@@ -52,7 +52,7 @@ vxlan:
       # inside Edit Extension Details, enable the external L3 extension. The
       # plain attachment is the first half of the job, not a broken version of
       # it, and it is squarely inside what this model can express. So the
-      # model owns it, and 05_vrf_lite.yml adds the extension on top.
+      # model owns it, and 06_vrf_lite.yml adds the extension on top.
       #
       # WHAT THIS DOES NOT REMOVE. The create role runs dcnm_vrf with
       # state: replaced, and a replaced want that carries no vrf_lite block
@@ -63,7 +63,7 @@ vxlan:
       # run after stage 02 on every pass. What changed is the scope: stage 02
       # now maintains the ATTACHMENT and only resets the EXTENSION, where
       # before it removed both. 01_dc_deploy.yml already imports them in that
-      # order, and 07_verify_fabric.yml fails the run if the extension is
+      # order, and 08_verify_fabric.yml fails the run if the extension is
       # missing, so a create-without-05 run is caught rather than discovered
       # later as broken external connectivity.
       - name: dc_leaves
@@ -71,5 +71,5 @@ vxlan:
           - hostname: DC-Leaf1
           - hostname: DC-Leaf2
           # Border leaf. Carries the same three VRFs as the server leaves,
-          # plus the VRF-Lite extensions that 05_vrf_lite.yml adds.
+          # plus the VRF-Lite extensions that 06_vrf_lite.yml adds.
           - hostname: DC-Service-Leaf

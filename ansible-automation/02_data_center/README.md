@@ -70,13 +70,13 @@ The orchestrator runs the stages in this order:
 02_create_dc_fabric.yml
 03_fabric_advanced_settings.yml
 04_external_fabric.yml
-06_recalculate_and_deploy.yml
-05_vrf_lite.yml
-06_recalculate_and_deploy.yml
-07_verify_fabric.yml
+05_recalculate_and_deploy.yml
+06_vrf_lite.yml
+07_recalculate_and_deploy.yml
+08_verify_fabric.yml
 ```
 
-The file numbers do not show the complete execution order. The first deploy creates the inter-fabric connection required by stage 05. Stage 05 then adds the three VRF-Lite extensions, and the second deploy pushes those extensions to DC-Service-Leaf.
+The stages now follow the execution order. Stage 05 creates the inter-fabric connection required by stage 06. Stage 06 then adds the three VRF-Lite extensions, and stage 07 pushes those extensions to DC-Service-Leaf.
 
 ## Intent and configuration
 
@@ -95,24 +95,23 @@ The model is the source of truth for the objects it describes. To change those o
 
 - Stage 02 imports all five switches with `preserve_config: false`. This erases their existing running configuration without prompting. Use a pod that is safe to rebuild.
 - Stage 02 can remain silent for several minutes while Nexus Dashboard discovers the switches. Do not interrupt that request unless it has clearly exceeded the expected time.
-- Stage 05 requires Nexus Dashboard to offer a VRF-Lite inter-fabric connection on `Ethernet1/8`. The first deploy creates that connection. The read-only `playbooks/diagnose_vrf_lite.yml` playbook shows the controller state when the precondition is missing.
+- Stage 06 requires Nexus Dashboard to offer a VRF-Lite inter-fabric connection on `Ethernet1/8`. Stage 05 creates that connection. If the precondition is missing, stage 06 reports the required deployment order.
 - The External edge router is not configured by this repository. Its side of the VRF-Lite links must remain consistent with the fixed values in `dc_vrf_lite.yml`.
 
 ## Verification
 
-Stage 07 is read-only and writes `nac_vxlan/ansible/evidence/stage07-verification.md`. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions.
+Stage 08 is read-only and writes `nac_vxlan/ansible/evidence/stage08-verification.md`. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions.
 
 It also reads BGP session state from DC-Service-Leaf over SSH when `dc_verify_bgp_sessions` is enabled. A reachable switch adds three BGP checks; an unreachable switch produces `not determined` rows rather than claiming that the sessions are down. The BGP check can be skipped with:
 
 ```bash
-ansible-playbook playbooks/07_verify_fabric.yml -e dc_verify_bgp_sessions=false
+ansible-playbook playbooks/08_verify_fabric.yml -e dc_verify_bgp_sessions=false
 ```
 
 The report does not verify the edge router's configuration or data-plane traffic. Those remain outside the pipeline's ownership.
 
 ## Other playbooks
 
-- `08_remove.yml` is a destructive prune and is not called by the orchestrator. It requires `-e dc_remove_confirm=REMOVE_OK`.
-- `diagnose_vrf_lite.yml` is a read-only diagnostic and is not a pipeline stage.
+- `09_remove.yml` is a destructive prune and is not called by the orchestrator. It requires `-e dc_remove_confirm=REMOVE_OK`.
 
 For implementation details, see [`nac_vxlan/ansible/README.md`](nac_vxlan/ansible/README.md).

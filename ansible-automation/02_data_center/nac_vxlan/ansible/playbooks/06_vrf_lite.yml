@@ -1,5 +1,5 @@
 ---
-# Stage 05 - extend MAIN, PROD and IOT out of the border leaf with VRF-Lite.
+# Stage 06 - extend MAIN, PROD and IOT out of the border leaf with VRF-Lite.
 #
 # Guide section 8 gives each VRF two Detach/Attach sliders. The first attaches
 # the VRF itself to DC-Service-Leaf, and the data model owns that half: the
@@ -29,39 +29,37 @@
 #     terminates on the parent interface, and it builds that link itself during
 #     a Recalculate and Deploy, once the edge router stage 04 adds is in the
 #     External fabric. Without it dcnm_vrf fails with "No VRF LITE capable
-#     interfaces found on this switch". So run 06_recalculate_and_deploy.yml
+#     interfaces found on this switch". So run 05_recalculate_and_deploy.yml
 #     first, then this stage, then the deploy again. 01_dc_deploy.yml already
 #     imports the stages in that order.
 #
 # The precheck below reads that condition before writing, and retries for a
 # short while in case a deploy has only just finished. When it still fails, the
-# read-only diagnostic prints what the controller holds:
-#
-#     ansible-playbook playbooks/diagnose_vrf_lite.yml
+# task reports that stage 05 must run before this stage.
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
-#   ansible-playbook playbooks/05_vrf_lite.yml
+#   ansible-playbook playbooks/06_vrf_lite.yml
 #
 # Useful overrides:
 #   -e dc_vrf_lite_deploy=true      deploy now rather than leaving the push to
-#                                   stage 06
+#                                   stage 05
 #   -e dc_vrf_lite_precheck=false   skip the precondition read and let dcnm_vrf
 #                                   report its own error
 #   -e dc_vrf_lite_retries=12       wait longer for the controller to offer the
 #                                   extension
 #
-# Background: "What stage 05 needs from the controller" in the README.
+# Background: "What stage 06 needs from the controller" in the README.
 
-- name: Stage 05 - attach the VRF-Lite extensions on the border leaf
+- name: Stage 06 - attach the VRF-Lite extensions on the border leaf
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
 
   vars:
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
-    # Stage the attachments on the controller and leave the push to stage 06,
+    # Stage the attachments on the controller and leave the push to stage 07,
     # the same way stages 02 and 03 stage everything else. Setting this true is
     # only useful when re-attaching extensions to a fabric that is otherwise
     # already deployed.
@@ -247,7 +245,7 @@
           {{ dc_vrf_lite_interface }}:
           {% for ext in dc_vrf_lite_extensions %}
           {{ ext.vrf }} dot1q {{ ext.dot1q }} {{ ext.ipv4_addr }} -> {{ ext.neighbor_ipv4 }}{{ '; ' if not loop.last else '' }}
-          {%- endfor %}
+          {% endfor %}
 
     # ------------------------------------------------------------- precheck
     # These two tasks read exactly what the module will read, so that a missing
@@ -295,12 +293,12 @@
       changed_when: false
       failed_when: false
       until: >-
-        {{ (((((dc_vrf_lite_probe.response | default({})).DATA | default([])
-               | first | default({})).switchDetailsList | default([])
-              | first | default({})).extensionPrototypeValues | default([], true))
-             | selectattr('extensionType', 'defined')
-             | selectattr('extensionType', 'equalto', 'VRF_LITE')
-             | list | length) > 0 }}
+         (((((dc_vrf_lite_probe.response | default({})).DATA | default([])
+           | first | default({})).switchDetailsList | default([])
+          | first | default({})).extensionPrototypeValues | default([], true))
+         | selectattr('extensionType', 'defined')
+         | selectattr('extensionType', 'equalto', 'VRF_LITE')
+         | list | length) > 0
       retries: "{{ dc_vrf_lite_retries }}"
       delay: "{{ dc_vrf_lite_delay }}"
       when:
@@ -333,13 +331,10 @@
           link itself during a Recalculate and Deploy, once the edge router is
           in the External fabric, so the usual cause is that stage 06 has not
           run since stage 04 added it. Run the deploy, then this stage again:
-          ansible-playbook playbooks/06_recalculate_and_deploy.yml
+          ansible-playbook playbooks/05_recalculate_and_deploy.yml
           This check already waited
           {{ (dc_vrf_lite_retries | int) * (dc_vrf_lite_delay | int) }}s for the
           link to appear; raise that with -e dc_vrf_lite_retries=12.
-          To see what the controller holds, run the read-only diagnostic and
-          read section 2:
-          ansible-playbook playbooks/diagnose_vrf_lite.yml
           To skip this check and see the module's own error instead,
           re-run with -e dc_vrf_lite_precheck=false.
       vars:
@@ -370,6 +365,84 @@
         - dc_vrf_lite_precheck | bool
         - dc_vrf_lite_border_serial | default('') | length == 0
 
+    # A previous dcnm_vrf call can have committed one or more attachments
+    # before a later row failed. Reading the attachment list before posting is
+    # therefore required for idempotency: the prototype query above only says
+    # that VRF-Lite is possible, not that each declared extension is absent.
+    - name: Read existing VRF-Lite attachments before merging
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: >-
+          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/attachments?vrf-names={{ dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}
+      register: dc_vrf_lite_existing_attachments
+      changed_when: false
+      when: dc_vrf_lite_border_serial | default('') | length > 0
+
+    - name: Classify existing VRF-Lite attachments
+      ansible.builtin.set_fact:
+        dc_vrf_lite_reconciliation: >-
+          {%- set rows = [] -%}
+          {%- set records = ((dc_vrf_lite_existing_attachments.response | default({})).DATA | default([])) -%}
+          {%- for ext in dc_vrf_lite_extensions -%}
+          {%- set vrf_record = (records | selectattr('vrfName', 'equalto', ext.vrf) | list | first) | default({}) -%}
+          {%- set attachment = (vrf_record.lanAttachList | default([])
+                                | selectattr('switchSerialNo', 'equalto', dc_vrf_lite_border_serial)
+                                | list | first) | default({}) -%}
+          {%- set raw_values = attachment.get('extensionValues', '') -%}
+          {%- set values = (raw_values | from_json) if raw_values is string and raw_values | length > 0 else {} -%}
+          {%- set raw_connections = values.get('VRF_LITE_CONN', '{}') if values is mapping else '{}' -%}
+          {%- set connection_data = (raw_connections | from_json) if raw_connections is string and raw_connections | length > 0 else {} -%}
+          {%- set connections = connection_data.get('VRF_LITE_CONN', []) if connection_data is mapping else [] -%}
+          {%- set exact = [] -%}
+          {%- for conn in connections -%}
+          {%- if (conn.get('IF_NAME', conn.get('INTF_NAME', '')) | lower == dc_vrf_lite_interface | lower)
+                  and conn.get('DOT1Q_ID', '') | string == ext.dot1q | string
+                  and conn.get('IP_MASK', '') == ext.ipv4_addr
+                  and conn.get('NEIGHBOR_IP', '') == ext.neighbor_ipv4
+                  and conn.get('PEER_VRF_NAME', '') == ext.peer_vrf -%}
+          {{- exact.append(conn) or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{- rows.append({'vrf': ext.vrf,
+                           'state': 'exact' if exact | length > 0 else ('missing' if connections | length == 0 else 'conflict'),
+                           'connections': connections,
+                           'attachment': attachment}) or '' -}}
+          {%- endfor -%}
+          {{ rows }}
+      when: dc_vrf_lite_border_serial | default('') | length > 0
+
+    - name: Fail when an existing VRF-Lite extension conflicts with intent
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_conflicts | length == 0
+        fail_msg: >-
+          DATA MODEL CONFLICT, not a missing prototype. Nexus Dashboard already
+          has a VRF-Lite extension for {{ dc_vrf_lite_conflicts | map(attribute='vrf') | join(', ') }}
+          on {{ dc_vrf_lite_border_leaf }}, but its interface, dot1q tag, IP
+          address, neighbor, or peer VRF differs from dc_vrf_lite.yml. The
+          playbook will not overwrite an existing extension. Reconcile the
+          controller or the declared values before re-running stage 06.
+      vars:
+        dc_vrf_lite_conflicts: >-
+          {{ dc_vrf_lite_reconciliation | default([])
+             | selectattr('state', 'equalto', 'conflict') | list }}
+      when: dc_vrf_lite_reconciliation is defined
+
+    - name: Select only missing VRF-Lite extensions for the module merge
+      ansible.builtin.set_fact:
+        dc_vrf_lite_config_to_apply: >-
+          {{ dc_vrf_lite_config
+             | selectattr('vrf_name', 'in',
+                          dc_vrf_lite_reconciliation | selectattr('state', 'equalto', 'missing')
+                          | map(attribute='vrf') | list)
+             | list }}
+      when: dc_vrf_lite_reconciliation is defined
+
+    - name: Use the complete configuration when attachment readback is unavailable
+      ansible.builtin.set_fact:
+        dc_vrf_lite_config_to_apply: "{{ dc_vrf_lite_config }}"
+      when: dc_vrf_lite_config_to_apply is not defined
+
     # --------------------------------------------------------------- write
     # block groups tasks so that rescue can run if one of them fails. Here the
     # rescue turns the controller's message into an explanation of what it
@@ -379,30 +452,24 @@
         # The precheck above has already waited for the extension to be on
         # offer, so this call does not retry: if it fails here, the cause is
         # what the controller says it is rather than something still settling.
-        - name: Merge the VRF-Lite attachments on {{ dc_vrf_lite_border_leaf }}
+        - name: Merge missing VRF-Lite attachments on {{ dc_vrf_lite_border_leaf }}
           cisco.dcnm.dcnm_vrf:
             fabric: "{{ dc_fabric_name }}"
             state: merged
             deploy: "{{ dc_vrf_lite_deploy | bool }}"
-            config: "{{ dc_vrf_lite_config }}"
+            config: "{{ dc_vrf_lite_config_to_apply }}"
           register: dc_vrf_lite_result
+          when: dc_vrf_lite_config_to_apply | length > 0
 
       rescue:
         - name: Explain what the controller refused
           ansible.builtin.fail:
             msg: >-
               VRF-Lite attachment failed on {{ dc_vrf_lite_border_leaf }}.
-              "No VRF LITE capable interfaces found on this switch" means
-              Nexus Dashboard is offering no VRF-Lite extension on
-              {{ dc_vrf_lite_interface }}, which is the case until a VRF-Lite
-              inter-fabric link terminates there. The controller builds that
-              link during a Recalculate and Deploy, once the edge router is in
-              the External fabric, so run stage 06 and then this stage again:
-              ansible-playbook playbooks/06_recalculate_and_deploy.yml
-              To see what the controller holds, run the read-only diagnostic
-              and read section 2:
-              ansible-playbook playbooks/diagnose_vrf_lite.yml
               Controller error: {{ ansible_failed_result.msg | default('see above') }}
+              If the error says "No VRF LITE capable interfaces found", run
+              stage 05 first so Nexus Dashboard can create the inter-fabric
+              link, then re-run stage 06.
 
     # ------------------------------------------------- sub-interface MTU
     # dcnm_vrf has no key for the sub-interface MTU, and the controller's VRF
@@ -503,5 +570,5 @@
           VRF-Lite {{ 'staged and deployed' if (dc_vrf_lite_deploy | bool) else 'staged on the controller' }}
           for {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }}
           on {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }}.
-          changed={{ dc_vrf_lite_result.changed }}.
+          changed={{ dc_vrf_lite_result.changed | default(false) }}.
           {{ 'Stage 06 will push it to the switch.' if not (dc_vrf_lite_deploy | bool) else '' }}

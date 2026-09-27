@@ -1,31 +1,28 @@
 ---
-# Stage 06 - push the staged intent down to the switches.
+# Stage 05 - recalculate and deploy the fabric before VRF-Lite staging.
 #
 # Named after the UI action it performs: every "Recalculate and Deploy" click.
 # Stages 02 to 05 build intent on the controller and change nothing on a
 # switch; this is the stage that changes running configuration on DC-Leaf1,
 # DC-Leaf2, DC-SPINE-1, DC-SPINE-2 and DC-Service-Leaf.
 #
-# Because stage 05 has already staged the VRF-Lite extensions, this one deploy
-# pushes the whole external handoff at once: the parent interface Nexus
-# Dashboard prepared on the border leaf, the three dot1q sub-interfaces, and
-# their BGP neighbours. The guide reaches the same place by deploying, editing
-# each VRF and deploying again, which is an artefact of driving the controller
-# through a UI one dialog at a time.
+# This first deploy pushes the fabric and makes Nexus Dashboard build the
+# VRF-Lite inter-fabric link required by stage 06. Stage 07 performs the second
+# deploy after the extensions have been staged.
 #
 # The validate role re-checks the data model, then the deploy role asks the
 # controller which switches have pending configuration and deploys those.
 # Expect several minutes, and expect switches to show as out-of-sync while it
 # runs. Note that "no switches need deployment" describes the moment the
-# controller was asked rather than proving the fabric is complete; stage 07 is
+# controller was asked rather than proving the fabric is complete; stage 08 is
 # what settles that.
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/nac_vxlan/ansible
-#   ansible-playbook playbooks/06_recalculate_and_deploy.yml
+#   ansible-playbook playbooks/05_recalculate_and_deploy.yml
 
-- name: Stage 06 - recalculate and deploy the DC fabric
+- name: Stage 05 - recalculate and deploy the DC fabric
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
