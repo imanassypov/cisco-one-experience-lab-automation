@@ -196,8 +196,6 @@ Useful overrides:
 
 - `--tags cr_manage_fabric` narrows stage 02 to the fabric object alone, which
   is the guide's "Create a VXLAN Fabric" step on its own
-- `-e dc_vrf_lite_precheck=false` skips stage 05's read-only precondition check
-  and lets `dcnm_vrf` report its own error instead
 - `-e dc_verify_fail_on_mismatch=false` has stage 07 write its report without
   failing the run
 - `-e dc_verify_bgp_sessions=false` has stage 07 skip the one check that needs
@@ -357,7 +355,7 @@ dc_vrf_lite_interface: Ethernet1/8       # detected over CDP, declared for deter
 dc_vrf_lite_extensions:
   - vrf: PROD
     peer_vrf: PROD                       # the VRF name on the router side
-    dot1q: "2"                           # a string: dcnm_vrf declares type: str
+    dot1q: "2"                           # a string: the controller stores it as one
     ipv4_addr: 192.168.252.5/30          # the leaf's sub-interface
     neighbor_ipv4: 192.168.252.6         # the router's side, pre-built by the pod
 ```
@@ -415,13 +413,13 @@ explained, and each is already commented in the file it belongs to.
   two-step job, which is exactly how the guide does it: section 8 has two
   Detach/Attach sliders per VRF, one for the attachment and one, inside Edit
   Extension Details, for the extension. So the model owns the attachment and
-  stage 05 adds the extension on top with `dcnm_vrf` directly. Until
+  stage 06 adds the extension on top with a direct `POST`. Until
   2026-09-27 the border leaf was left out here on the view that an attachment
   without its extension was worse than none; it is not, it is the first half
-  of the job, and leaving it out made the attachment something stage 05 had
+  of the job, and leaving it out made the attachment something stage 06 had
   to keep re-creating. Note what did **not** change: stage 02 runs `dcnm_vrf`
   with `state: replaced`, and `replaced` against an attachment whose
-  extension the model cannot describe resets that extension, so **stage 05
+  extension the model cannot describe resets that extension, so **stage 06
   still has to run after stage 02 on every pass**. It just no longer has to
   put the attachment back as well.
 
@@ -506,17 +504,16 @@ detaches anything the model does not list.
 Nexus Dashboard, attached to DC-Leaf1, DC-Leaf2 and DC-Service-Leaf - and
 `PENDING`, because nothing has been pushed.
 
-**5. Extended.** Stage 05 reads `dc_vrf_lite.yml`, reads `vrf_id` and
-`vlan_id` back out of `vrfs.nac.yaml` so it cannot contradict step 1, and
-calls `dcnm_vrf` again - this time with `state: merged`, naming only
-DC-Service-Leaf, and carrying the `attach[].vrf_lite[]` structure the data
-model has no keys for: `Ethernet1/8`, dot1q `2`, `192.168.252.5/30`,
-neighbour `192.168.252.6`. `merged` is what leaves the other two attachments
-from step 4 alone, and what leaves this one's extension alone on a re-run.
-Before that it checks, read-only, that the controller is offering the border
-leaf a VRF-Lite extension prototype at all - see [What stage 05 needs from
-the controller](#what-stage-05-needs-from-the-controller). Still nothing on a
-switch.
+**5. Extended.** Stage 06 reads `dc_vrf_lite.yml`, reads the prototype the
+controller offers on `Ethernet1/8` for the neighbour ASN and the peer's Jython
+template, and reads the attachment stage 02 made for its VLAN and instance
+values. It merges the declared values over the prototype - `Ethernet1/8`,
+dot1q `2`, `192.168.252.5/30`, neighbour `192.168.252.6`, plus the
+sub-interface MTU - and posts all three VRFs to the attachments endpoint in a
+single payload, naming only DC-Service-Leaf. The other two attachments from
+step 4 are untouched because they are not in the payload, and a re-run sends
+nothing because each declared field is compared against the controller first.
+Still nothing on a switch.
 
 **6. Deployed.** Stage 06 runs `cisco.nac_dc_vxlan.dtc.deploy`, which asks the
 controller which switches have pending configuration and deploys them. PROD's
@@ -851,7 +848,7 @@ the data model declares `PROD`, so the VRF names are compared
 case-insensitively. Either mistake produces `absent` on a healthy fabric
 rather than an error.
 
-## What stage 05 needs from the controller
+## What stage 06 needs from the controller
 
 **Stage 05 needs a VRF-Lite inter-fabric connection to already exist on
 `Ethernet1/8`, and the stage 06 deploy is what creates it.** The controller
@@ -933,16 +930,14 @@ follow:
   `extensionPrototypeValues` is a property of the switch and its inter-fabric
   connection, not of an attachment.
 
-The precheck in `06_vrf_lite.yml` reads the controller response before writing,
-so a missing `VRF_LITE` prototype is reported as an ordering problem rather
-than as a generic module failure. It can be skipped with
-`-e dc_vrf_lite_precheck=false` when troubleshooting the module directly.
+When that prototype is missing there is no neighbour ASN and no peer template
+to build the payload from, so stage 06 stops and says so, naming the ordering
+problem it actually is: run stage 05 first.
 
 The prototype is derived from the VRF-Lite inter-fabric link. A pending parent
 interface with `no switchport`, `mtu 9000`, and a CDP description does not prove
 that the link is VRF-Lite; the controller must offer a `VRF_LITE` prototype on
-`Ethernet1/8`. Stage 05 creates that link, and stage 06 checks it before adding
-the extensions.
+`Ethernet1/8`, and stage 05 is what creates that link.
 
 **What Cisco's non-Nexus guidance does and does not mean here.** The
 guidelines quoted in the previous section - *"Auto IFC is supported on Cisco
@@ -968,10 +963,9 @@ removed on the strength of one run in which a successful deploy was followed by
 a failing stage 05 - which looked decisive and was not. The prototype does
 appear once a deploy has run, so the dependency on the deploy was real; what
 was wrong was the idea that *waiting alone*, without a deploy in between, would
-produce it. Stage 05 now does both: `01_dc_deploy.yml` runs the deploy first,
-and the stage's precheck retries for two minutes
-(`-e dc_vrf_lite_retries=12` to wait longer) to cover a run started while the
-controller is still finishing the link.
+produce it. `01_dc_deploy.yml` settles this by ordering the stages
+`05, 06, 07`, so the deploy that builds the link always runs before stage 06
+asks for the extension.
 
 *Wrong: a missing plain attachment.* The guide's section 8 has two
 Detach/Attach sliders per VRF and for a while only the second was accounted
@@ -1002,7 +996,8 @@ field**. Its `vrf_lite` suboptions are exactly `peer_vrf`, `interface`,
 `ipv4_addr`, `neighbor_ipv4`, `ipv6_addr`, `neighbor_ipv6` and `dot1q`, and
 the list of properties it writes into `VRF_LITE_CONN` is `DOT1Q_ID`,
 `IF_NAME`, `IP_MASK`, `IPV6_MASK`, `IPV6_NEIGHBOR`, `NEIGHBOR_IP`,
-`PEER_VRF_NAME`. There is no MTU in either. The controller's own UI does not
+`PEER_VRF_NAME`. There is no MTU in either. That gap is the reason stage 06
+posts the attachment itself instead of calling the module. The controller's own UI does not
 have this problem, because the prototype it offers carries `"MTU":"9000"` and
 the UI writes it through.
 
@@ -1093,11 +1088,12 @@ switch itself, which rejected the configuration, and the controller repeated
 the rejection verbatim. Treat the error string as the evidence. 1500 is
 comfortably inside that range, so the switch accepts it.
 
-`06_vrf_lite.yml` applies it after `dcnm_vrf` returns, with a `POST` to
-`top-down/fabrics/<fabric>/vrfs/attachments`. It reads the extension back
-first and edits it, rather than rebuilding it, because the controller enriches
-what the module wrote - `NEIGHBOR_ASN` and `AUTO_VRF_LITE_FLAG` are added
-server-side from the IFC, and a hand-built replacement would drop them. The
+`06_vrf_lite.yml` sends it in the same payload as the rest of the extension,
+with a single `POST` to `top-down/fabrics/<fabric>/vrfs/attachments`. It starts
+from the prototype the controller offers rather than building a connection from
+nothing, because the controller enriches the prototype from the IFC -
+`NEIGHBOR_ASN` and `AUTO_VRF_LITE_FLAG` are server-side, and a hand-built
+replacement would drop them. The
 VLAN and `instanceValues` come from the attachments endpoint, not from
 `vrfs/switches`, which reports the VLAN as `-1` and returns no instance
 values. The task only posts for a VRF whose MTU is not already the declared
@@ -1477,10 +1473,13 @@ because that model cannot express them: a `vrf_attach_group` entry names a
 switch and nothing else, with no key for `EXTEND: VRF_LITE`, the
 sub-interface, the dot1q tag or the neighbour address. The model does the half
 it can - `DC-Service-Leaf` is in the `dc_leaves` attach group, so stage 02
-attaches the three VRFs to it - and stage 05 drops to `cisco.dcnm`'s
-`dcnm_vrf` directly, which does support `attach[].vrf_lite[]`, for the other
-half. That split is the guide's own: section 8 has two Detach/Attach sliders
-per VRF, one for the attachment and one for the extension.
+attaches the three VRFs to it - and stage 06 posts the extension to the
+controller's attachments endpoint for the other half. `dcnm_vrf` does support
+`attach[].vrf_lite[]`, but it writes only seven extension fields and so cannot
+carry the sub-interface MTU or the neighbour ASN, and it hardcodes the Nexus
+Jython template where this pod's IOS-XE peer needs its own. That split is the
+guide's own: section 8 has two Detach/Attach sliders per VRF, one for the
+attachment and one for the extension.
 
 The intent is still declared in git, in
 `inventory/group_vars/all/dc_vrf_lite.yml`. It restates only what the model
@@ -1532,8 +1531,8 @@ Two ordering constraints, both enforced by `01_dc_deploy.yml`:
   router to it. It does *not* need to run after stage 06: the module's own
   TEST.4 adds an extension to a switch with no attachment and nothing
   deployed. What it does need is for the IFC to exist, which is a controller
-  precondition rather than an ordering one - see [What stage 05 needs from
-  the controller](#what-stage-05-needs-from-the-controller).
+  precondition rather than an ordering one - see [What stage 06 needs from
+  the controller](#what-stage-06-needs-from-the-controller).
 
 Stage 05 uses `state: merged`, not `replaced`, so the DC-Leaf1 and DC-Leaf2
 attachments made by stage 02 survive. Stage 07 re-checks every attachment, so
