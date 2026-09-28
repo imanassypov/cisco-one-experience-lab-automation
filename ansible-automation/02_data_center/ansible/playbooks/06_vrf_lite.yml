@@ -54,6 +54,7 @@
 
   vars:
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+    dc_rm_root: /appcenter/cisco/ndfc/api/v1/lan-fabric/rest/resource-manager
 
   tasks:
     # --------------------------------------------------- declared intent
@@ -228,6 +229,140 @@
           declares no serial_number for {{ dc_vrf_lite_border_leaf }}. Re-run
           playbooks/00_discover_dc_switch_serials.yml, which reads the serials
           off the switches and regenerates that file.
+
+    # ------------------------------------------------- claim the dot1q tags
+    # Nexus Dashboard allocates a dot1q ID per VRF out of the TOP_DOWN_L3_DOT1Q
+    # pool, scoped to this border leaf, and it does so DURING the attachment
+    # POST below: it reserves a tag for every VRF in the payload before it
+    # applies the values that payload declares. The order is its own, and when
+    # it disagrees with the declared order the POST dies half way through with
+    #
+    #   Id[3]is already allocated to MAIN        (HTTP 500)
+    #
+    # because the POST is not atomic - the first VRF is written, then the next
+    # asks for a tag one of its neighbours is already squatting on. In the
+    # failure that named MAIN, two of the three allocations carried
+    # allocatedFlag false and timestamps 2 seconds AHEAD of the one that
+    # succeeded: reservations the controller had just made for itself.
+    #
+    # So the tags are claimed here first, from the data model, with
+    # isManual=true. Once every declared ID is already held by the VRF that
+    # declares it, the controller has nothing left to choose and the POST below
+    # simply writes what it was given. Re-running changes nothing, because a
+    # reservation that already matches is neither released nor recreated.
+    - name: Read the dot1q pool for the border leaf
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ dc_rm_root }}/fabric/{{ dc_fabric_name }}/pools/TOP_DOWN_L3_DOT1Q"
+      register: dc_vrf_lite_pool_read
+      changed_when: false
+
+    # Only allocations on this border leaf, in this pool, whose entity is one of
+    # the declared VRFs are considered. Anything else in the pool belongs to
+    # another switch or another feature and is left alone.
+    - name: Work out which dot1q tags are already held as declared
+      ansible.builtin.set_fact:
+        dc_vrf_lite_pool_held: >-
+          {%- set held = [] -%}
+          {%- for e in dc_vrf_lite_extensions -%}
+          {%- for r in ((dc_vrf_lite_pool_read.response | default({})).DATA | default([]))
+                if r.get('allocatedScopeValue', '') == dc_vrf_lite_border_serial
+                   and r.get('entityName', '') == e.vrf
+                   and (r.get('allocatedIp', '') | string) == (e.dot1q | string) -%}
+          {{- held.append(e.vrf) or '' -}}
+          {%- endfor -%}
+          {%- endfor -%}
+          {{ held }}
+        dc_vrf_lite_pool_stale: >-
+          {%- set stale = [] -%}
+          {%- set declared = {} -%}
+          {%- for e in dc_vrf_lite_extensions -%}
+          {{- declared.update({e.vrf: e.dot1q | string}) or '' -}}
+          {%- endfor -%}
+          {%- for r in ((dc_vrf_lite_pool_read.response | default({})).DATA | default([]))
+                if r.get('allocatedScopeValue', '') == dc_vrf_lite_border_serial
+                   and r.get('entityName', '') in declared
+                   and (r.get('allocatedIp', '') | string) != declared[r.get('entityName', '')] -%}
+          {{- stale.append(r.get('id')) or '' -}}
+          {%- endfor -%}
+          {{ stale }}
+
+    - name: Release the reservations that do not match intent
+      cisco.dcnm.dcnm_rest:
+        method: DELETE
+        path: "{{ dc_rm_root }}/resources?id={{ dc_vrf_lite_pool_stale | join(',') }}"
+      when: dc_vrf_lite_pool_stale | length > 0
+
+    # The bulk endpoint answers 207 Multi-Status when it accepts a mixed batch,
+    # which is a success here and has to be allowed alongside 200.
+    - name: Reserve the declared dot1q tags
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ dc_rm_root }}/createResource?isManual=true"
+        data: "{{ dc_vrf_lite_reservation | to_json }}"
+      vars:
+        dc_vrf_lite_reservation:
+          fabricName: "{{ dc_fabric_name }}"
+          Body:
+            resources: >-
+              {%- set out = [] -%}
+              {%- for e in dc_vrf_lite_extensions if e.vrf not in dc_vrf_lite_pool_held -%}
+              {{- out.append({
+                   'entityName': e.vrf,
+                   'isPreAllocated': true,
+                   'poolName': 'TOP_DOWN_L3_DOT1Q',
+                   'vrfName': 'default',
+                   'resourceValue': e.dot1q | string,
+                   'scopeDetails': {
+                     'scopeType': 'DeviceInterface',
+                     'switchId': dc_vrf_lite_border_serial,
+                     'interfaceName': dc_vrf_lite_interface}}) or '' -}}
+              {%- endfor -%}
+              {{ out }}
+      register: dc_vrf_lite_pool_create
+      failed_when: >-
+        (dc_vrf_lite_pool_create.response.RETURN_CODE | default(0) | int)
+        not in [200, 207]
+      when: (dc_vrf_lite_extensions | rejectattr('vrf', 'in', dc_vrf_lite_pool_held) | list) | length > 0
+
+    - name: Read the dot1q pool back
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ dc_rm_root }}/fabric/{{ dc_fabric_name }}/pools/TOP_DOWN_L3_DOT1Q"
+      register: dc_vrf_lite_pool_confirm
+      changed_when: false
+
+    - name: Fail when a declared dot1q tag is still not held
+      ansible.builtin.assert:
+        that:
+          - unheld | length == 0
+        fail_msg: >-
+          {{ unheld | join(', ') }} could not be reserved in TOP_DOWN_L3_DOT1Q on
+          {{ dc_vrf_lite_border_leaf }} ({{ dc_vrf_lite_border_serial }}).
+          Attaching the extensions now would let the controller pick its own
+          tags, so this stops here. Check the pool under Resource Manager for
+          an allocation of the same ID to another entity.
+        success_msg: >-
+          {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }} hold
+          the declared dot1q tags
+          ({{ dc_vrf_lite_extensions | map(attribute='dot1q') | join(', ') }}).
+      vars:
+        reread: "{{ (dc_vrf_lite_pool_confirm.response | default({})).DATA | default([]) }}"
+        unheld: >-
+          {%- set missing = [] -%}
+          {%- for e in dc_vrf_lite_extensions -%}
+          {%- set found = [] -%}
+          {%- for r in reread
+                if r.get('allocatedScopeValue', '') == dc_vrf_lite_border_serial
+                   and r.get('entityName', '') == e.vrf
+                   and (r.get('allocatedIp', '') | string) == (e.dot1q | string) -%}
+          {{- found.append(r) or '' -}}
+          {%- endfor -%}
+          {%- if found | length == 0 -%}
+          {{- missing.append(e.vrf ~ '=' ~ e.dot1q) or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ missing }}
 
     # ----------------------------------------------------- read the current
     # The controller's prototype carries the fields only it knows: the
