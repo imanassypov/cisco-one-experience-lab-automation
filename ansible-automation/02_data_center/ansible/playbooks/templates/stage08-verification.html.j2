@@ -1,0 +1,416 @@
+{#- Formal verification report. Monochrome, print-friendly, no external assets, -#}
+{#- because it is read on the script server or copied to a laptop offline.      -#}
+{#- Companion to stage08-verification.md.j2 - same data, audit presentation.    -#}
+{% set n_fail = dc_failed_rows | default([]) | length %}
+{% set n_total = dc_total_checks | int %}
+{% set n_pass = n_total - n_fail %}
+{% set bgp_nv = dc_bgp_undetermined_rows | default([]) | length %}
+{% set sub_nv = dc_subif_undetermined_rows | default([]) | length %}
+{% set n_nv = bgp_nv + sub_nv %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intent Verification Report &mdash; Stage 08</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5f6b76; --rule:#d5d9dd; --rule-strong:#9aa3ac; --shade:#f4f5f6; }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:#fff; color:var(--ink);
+    font:15px/1.6 "Segoe UI", Helvetica, Arial, sans-serif;
+    font-variant-numeric:tabular-nums;
+  }
+  .page { max-width:960px; margin:0 auto; padding:56px 48px 72px; }
+  a { color:inherit; text-decoration:none; border-bottom:1px solid var(--rule-strong); }
+  a:hover { border-bottom-color:var(--ink); }
+
+  .doc-title { font-size:26px; font-weight:600; letter-spacing:-.2px; margin:0; }
+  .doc-sub { color:var(--muted); font-size:14px; margin:6px 0 0; }
+  .rule { border:0; border-top:2px solid var(--ink); margin:20px 0 0; }
+
+  h2 { font-size:15px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       margin:44px 0 14px; padding-bottom:7px; border-bottom:1px solid var(--rule-strong); }
+  h3 { font-size:15px; font-weight:600; margin:30px 0 10px; }
+  p { margin:0 0 12px; }
+  .muted { color:var(--muted); }
+  .small { font-size:13px; }
+
+  table { width:100%; border-collapse:collapse; margin:0 0 16px; font-size:14px; }
+  caption { text-align:left; color:var(--muted); font-size:13px; padding-bottom:6px; }
+  th, td { text-align:left; padding:7px 12px 7px 0; border-bottom:1px solid var(--rule);
+           vertical-align:top; }
+  thead th { border-bottom:1px solid var(--rule-strong); font-weight:600; font-size:12px;
+             letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  tbody tr:last-child td { border-bottom:1px solid var(--rule-strong); }
+  td.status { white-space:nowrap; width:1%; padding-right:24px; }
+  .exception td { background:var(--shade); }
+  .exception td.status { font-weight:600; }
+
+  code, .mono { font-family:ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size:13px; }
+  code { background:none; padding:0; }
+
+  dl.meta { display:grid; grid-template-columns:200px 1fr; gap:0; margin:0;
+            border-top:1px solid var(--rule); font-size:14px; }
+  dl.meta dt { padding:7px 0; color:var(--muted); border-bottom:1px solid var(--rule); }
+  dl.meta dd { padding:7px 0; margin:0; border-bottom:1px solid var(--rule); }
+
+  ol.toc { margin:0; padding-left:20px; font-size:14px; }
+  ol.toc li { margin:4px 0; }
+  ol.toc ol { padding-left:20px; margin:4px 0; }
+
+  .statement { border-left:3px solid var(--ink); padding:2px 0 2px 16px; margin:0 0 18px;
+               font-size:15px; }
+  .backlink { font-size:12px; color:var(--muted); font-weight:400; letter-spacing:0;
+              text-transform:none; margin-left:10px; }
+  .backlink a { border-bottom:none; }
+  footer { margin-top:48px; padding-top:14px; border-top:1px solid var(--rule);
+           color:var(--muted); font-size:12px; }
+
+  @media print {
+    .page { padding:0; max-width:none; }
+    a { border-bottom:none; }
+    h2 { page-break-after:avoid; }
+    table, tr { page-break-inside:avoid; }
+    .toc-section { page-break-after:always; }
+  }
+</style>
+</head>
+<body>
+<div class="page" id="top">
+
+<p class="doc-title">Intent Verification Report</p>
+<p class="doc-sub">Data centre VXLAN EVPN fabric &mdash; pipeline stage 08</p>
+<hr class="rule">
+
+<h2>Document control</h2>
+<dl class="meta">
+  <dt>Report generated</dt><dd>{{ dc_verify_timestamp }}</dd>
+  <dt>Produced by</dt><dd><code>playbooks/08_verify_fabric.yml</code></dd>
+  <dt>Fabric</dt><dd><code>{{ dc_fabric_name }}</code></dd>
+  <dt>Controller</dt><dd><code>{{ ansible_host }}</code></dd>
+  <dt>Intent sources</dt>
+  <dd><code>group_vars/all/dc_switches.yml</code>, <code>group_vars/all/dc_vrf_lite.yml</code>,
+      <code>host_vars/{{ inventory_hostname }}/vrfs.nac.yaml</code> and
+      <code>host_vars/{{ inventory_hostname }}/networks.nac.yaml</code></dd>
+  <dt>Evidence collection</dt>
+  <dd>Nexus Dashboard REST over <code>httpapi</code>; border leaf read over SSH, with
+      <code>show interface</code> parsed by pyATS/Genie</dd>
+  <dt>Devices in scope</dt><dd>{{ dc_switch_rows | default([]) | length }}</dd>
+  <dt>Controls evaluated</dt><dd>{{ n_total }}</dd>
+  <dt>Assessment</dt>
+  <dd>{% if n_fail > 0 %}Non-conformant &mdash; {{ n_fail }} exception(s){% else %}Conformant &mdash; no exceptions{% endif %}</dd>
+</dl>
+
+<h2>Contents</h2>
+<div class="toc-section">
+<ol class="toc">
+  <li><a href="#s1">Conclusion</a></li>
+  <li><a href="#s2">Scope</a></li>
+  <li><a href="#s3">Basis of verification</a></li>
+  <li><a href="#s4">Findings</a>
+    <ol>
+      <li><a href="#f1">Switches</a></li>
+      <li><a href="#f2">VRFs</a></li>
+      <li><a href="#f3">Networks</a></li>
+      <li><a href="#f4">VRF-Lite extensions</a></li>
+      <li><a href="#f5">VRF-Lite sub-interfaces</a></li>
+      <li><a href="#f6">VRF-Lite BGP sessions</a></li>
+    </ol>
+  </li>
+  <li><a href="#s5">Limitations of scope</a></li>
+</ol>
+</div>
+
+<h2 id="s1">1. Conclusion</h2>
+{% if n_fail > 0 %}
+<p class="statement">
+  The deployed fabric does <strong>not</strong> conform to the declared intent.
+  {{ n_fail }} of {{ n_total }} evaluated controls returned an exception.
+  Details are recorded in section 4.
+</p>
+{% else %}
+<p class="statement">
+  The deployed fabric conforms to the declared intent. All
+  {{ n_pass }} evaluated controls passed, with no exceptions.
+</p>
+{% endif %}
+
+<table>
+  <caption>Table 1 &mdash; Summary of results</caption>
+  <thead><tr><th>Outcome</th><th>Controls</th><th>Basis</th></tr></thead>
+  <tbody>
+    <tr><td>Pass</td><td>{{ n_pass }}</td>
+        <td class="muted">Observed value equals the declared value</td></tr>
+    <tr><td>Exception</td><td>{{ n_fail }}</td>
+        <td class="muted">Observed value differs from the declared value</td></tr>
+    <tr><td>Not verified</td><td>{{ n_nv }}</td>
+        <td class="muted">The border leaf did not answer; no opinion expressed</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s2">2. Scope</h2>
+<p>
+  The switches below were assessed. Each is held in the Nexus Dashboard
+  inventory for <code>{{ dc_fabric_name }}</code> and was addressed through the
+  controller's API using its management address.
+</p>
+<table>
+  <caption>Table 2 &mdash; Devices in scope</caption>
+  <thead><tr><th>Management address</th><th>Switch</th><th>Serial</th><th>Role declared</th></tr></thead>
+  <tbody>
+  {% for row in dc_switch_rows | default([]) %}
+    <tr><td class="mono">{{ row.ip }}</td><td class="mono">{{ row.name }}</td>
+        <td class="mono">{{ row.serial }}</td><td>{{ row.declared_role }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2 id="s3">3. Basis of verification</h2>
+<p>
+  Declared intent was taken from the repository, and observed state from two
+  independent sources. Every finding except sections 4.5 and 4.6 is read from
+  the Nexus Dashboard API, needs no device SSH, and is therefore valid even
+  when the switch management addresses are unreachable from the host running
+  this stage.
+</p>
+<p>
+  Sections 4.5 and 4.6 are read from <code>{{ dc_vrf_lite_border_leaf }}</code>
+  itself over SSH, because the controller holds no API that reports either the
+  running configuration of a sub-interface or routing protocol state. Where
+  that switch could not be reached, the affected controls are reported as
+  <em>not verified</em> and excluded from the counts in section 1 rather than
+  being recorded as failures.
+</p>
+<table>
+  <caption>Table 3 &mdash; Evidence relied upon</caption>
+  <thead><tr><th style="width:30%">Finding</th><th>Source</th><th>Method</th></tr></thead>
+  <tbody>
+    <tr><td>Switches</td><td class="mono">rest/control/fabrics/.../inventory</td><td>Controller API</td></tr>
+    <tr><td>VRFs</td><td class="mono">rest/top-down/fabrics/.../vrfs</td><td>Controller API</td></tr>
+    <tr><td>Networks</td><td class="mono">rest/top-down/fabrics/.../networks</td><td>Controller API</td></tr>
+    <tr><td>VRF-Lite extensions</td><td class="mono">rest/top-down/fabrics/.../vrfs/switches</td><td>Controller API</td></tr>
+    <tr><td>Sub-interfaces</td><td class="mono">show interface {{ dc_vrf_lite_interface }}.&lt;dot1q&gt;</td><td>SSH, parsed by pyATS/Genie</td></tr>
+    <tr><td>BGP sessions</td><td class="mono">show bgp sessions vrf &lt;vrf&gt;</td><td>SSH, NX-OS JSON output</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s4">4. Findings</h2>
+<p>
+  Each row states one declared value and the corresponding value observed.
+  Comparison is exact equality against a named field. Rows marked
+  <strong>Exception</strong> are shaded.
+</p>
+
+<h3 id="f1">4.1 Switches
+  <span class="backlink">{{ dc_switch_rows | default([]) | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 4 &mdash; Inventory and role</caption>
+  <thead><tr><th>Switch</th><th>Result</th><th>Role declared</th><th>Role observed</th><th>Mode</th><th>Compliance</th></tr></thead>
+  <tbody>
+  {% for row in dc_switch_rows | default([]) %}
+    <tr{% if not row.ok %} class="exception"{% endif %}>
+      <td class="mono">{{ row.name }}</td>
+      <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
+      <td>{{ row.declared_role }}</td><td>{{ row.observed_role }}</td>
+      <td>{{ row.mode }}</td><td>{{ row.cc_status }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small muted">
+  A switch raises an exception when Nexus Dashboard holds no inventory record at
+  its management address, or when the role it carries is not the role declared
+  for it.
+</p>
+
+<h3 id="f2">4.2 VRFs
+  <span class="backlink">{{ dc_vrf_rows | default([]) | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 5 &mdash; VRFs and their attachments</caption>
+  <thead><tr><th>VRF</th><th>Result</th><th>VNI declared</th><th>VNI observed</th><th>Attached to</th><th>Missing</th><th>States</th></tr></thead>
+  <tbody>
+  {% for row in dc_vrf_rows | default([]) %}
+    <tr{% if not row.ok %} class="exception"{% endif %}>
+      <td class="mono">{{ row.name }}</td>
+      <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
+      <td class="mono">{{ row.declared_id }}</td><td class="mono">{{ row.observed_id }}</td>
+      <td>{{ row.declared_switches | join(', ') if row.declared_switches else 'none' }}</td>
+      <td>{{ row.missing_switches | join(', ') if row.missing_switches else 'none' }}</td>
+      <td>{{ row.attach_states | join(', ') if row.attach_states else 'none' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small muted">
+  A VRF must exist with the declared VNI and be attached, in <code>DEPLOYED</code>,
+  to every switch in its <code>vrf_attach_group</code>. An attachment stuck in
+  <code>PENDING</code> means the intent was created but never pushed.
+</p>
+
+<h3 id="f3">4.3 Networks
+  <span class="backlink">{{ dc_network_rows | default([]) | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 6 &mdash; Networks, gateways and attachments</caption>
+  <thead><tr><th>Network</th><th>Result</th><th>VRF</th><th>Gateway declared</th><th>Gateway observed</th><th>Missing attachments</th></tr></thead>
+  <tbody>
+  {% for row in dc_network_rows | default([]) %}
+    <tr{% if not row.ok %} class="exception"{% endif %}>
+      <td class="mono">{{ row.name }}</td>
+      <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
+      <td class="mono">{{ row.observed_vrf }}</td>
+      <td class="mono">{{ row.declared_gateway }}</td><td class="mono">{{ row.observed_gateway }}</td>
+      <td>{{ row.missing_attachments | map('replace', '|', ' ') | join(', ') if row.missing_attachments else 'none' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small muted">
+  Each declared port-channel must be attached on every switch it was declared
+  on, with every attachment in <code>DEPLOYED</code>, so a network that reached
+  one leaf but not its vPC peer raises an exception rather than passing.
+</p>
+
+<h3 id="f4">4.4 VRF-Lite extensions
+  <span class="backlink">{{ dc_vrf_lite_rows | default([]) | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
+</h3>
+<table>
+  <caption>Table 7 &mdash; Extensions held by the controller</caption>
+  <thead><tr><th style="width:26%">Extension</th><th>Result</th><th>Declared</th><th>Attached</th><th>State</th></tr></thead>
+  <tbody>
+  {% for row in dc_vrf_lite_rows | default([]) %}
+    <tr{% if not row.ok %} class="exception"{% endif %}>
+      <td>{{ row.name }}</td>
+      <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
+      <td class="mono">{{ row.declared }}</td>
+      <td>{{ 'yes' if row.attached else 'no' }}</td>
+      <td>{{ row.state }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small muted">
+  Each extension must be attached to the border leaf, in <code>DEPLOYED</code>,
+  and its <code>extensionValues</code> must carry the declared interface, dot1q
+  tag and neighbour address.
+</p>
+
+<h3 id="f5">4.5 VRF-Lite sub-interfaces
+  <span class="backlink">{{ dc_subif_rows | default([]) | selectattr('determined') | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
+</h3>
+{% if dc_subif_rows | default([]) | selectattr('determined') | list %}
+<table>
+  <caption>Table 8 &mdash; Sub-interfaces as configured on {{ dc_vrf_lite_border_leaf }}</caption>
+  <thead><tr><th style="width:26%">Sub-interface</th><th>Result</th><th>Declared</th><th>Oper</th><th>Dot1q</th><th>Address</th><th>MTU</th></tr></thead>
+  <tbody>
+  {% for row in dc_subif_rows | default([]) | selectattr('determined') %}
+    <tr{% if not row.ok %} class="exception"{% endif %}>
+      <td class="mono">{{ row.name }}</td>
+      <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
+      <td class="mono">{{ row.declared }}</td>
+      <td>{{ row.oper_status }}</td>
+      <td>{{ 'yes' if row.dot1q_ok else 'NO' }}</td>
+      <td>{{ 'yes' if row.address_ok else 'NO' }}</td>
+      <td>{{ 'yes' if row.mtu_ok else 'NO' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small muted">
+  Section 4.4 is what the controller believes; this is what the switch runs.
+  Extensions <code>DEPLOYED</code> on the controller with no sub-interface here
+  means the deploy did not reach the switch.
+</p>
+{% else %}
+<p class="muted">
+  Not verified. <code>{{ dc_vrf_lite_border_leaf }}</code> was not read, so none
+  of the sub-interfaces were assessed.
+</p>
+{% endif %}
+
+<h3 id="f6">4.6 VRF-Lite BGP sessions
+  <span class="backlink">{{ dc_bgp_rows | default([]) | selectattr('determined') | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
+</h3>
+{% if not (dc_verify_bgp_sessions | bool) %}
+<p class="muted">
+  Not verified. This run was made with <code>-e dc_verify_bgp_sessions=false</code>,
+  so the border leaf was not read.
+</p>
+{% elif not (dc_vrf_lite_rows | default([])) %}
+<p class="muted">
+  No VRF-Lite extensions are declared, so there are no sessions to assess.
+</p>
+{% else %}
+<table>
+  <caption>Table 9 &mdash; eBGP sessions observed on {{ dc_vrf_lite_border_leaf }}</caption>
+  <thead><tr><th>VRF</th><th>Result</th><th>Neighbour</th><th>Peer ASN</th><th>State expected</th><th>State observed</th></tr></thead>
+  <tbody>
+  {% for row in dc_bgp_rows | default([]) %}
+    <tr{% if row.determined and not row.ok %} class="exception"{% endif %}>
+      <td class="mono">{{ row.vrf }}</td>
+      <td class="status">{{ 'Not verified' if not row.determined else ('Pass' if row.ok else 'Exception') }}</td>
+      <td class="mono">{{ row.neighbor }}</td>
+      <td class="mono">{{ row.peer_as }}</td>
+      <td>{{ row.expected_state }}</td>
+      <td>{{ row.observed_state }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="small muted">
+  This is the only finding that describes the fabric rather than the
+  controller's intent for it. <code>Established</code> is the only state that
+  means external connectivity works. <code>Idle</code> and <code>Active</code>
+  both point at the far end, whose side of these links is pre-built by the pod
+  and which Nexus Dashboard never writes to.
+</p>
+{% endif %}
+
+<h2 id="s5">5. Limitations of scope</h2>
+{% if n_nv > 0 %}
+<p>
+  The controls below could not be evaluated, because
+  <code>{{ dc_vrf_lite_border_leaf }}</code> did not answer:
+  {{ dc_bgp_undetermined_reason }}. No opinion is expressed on them, and they
+  are excluded from the counts in section 1.
+</p>
+<table>
+  <caption>Table 10 &mdash; Controls not evaluated</caption>
+  <thead><tr><th>Control</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for row in dc_subif_rows | default([]) | rejectattr('determined') %}
+    <tr><td>{{ row.name }}</td><td class="muted">Sub-interface not read</td></tr>
+  {% endfor %}
+  {% for row in dc_bgp_rows | default([]) | rejectattr('determined') %}
+    <tr><td>BGP session {{ row.vrf }} to {{ row.neighbor }}</td><td class="muted">Session state not read</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">
+  None. Every declared control was evaluated against observed evidence.
+</p>
+{% endif %}
+<p class="small muted">
+  Outside the scope of this report in all cases: the edge router's side of the
+  VRF-Lite links, which is pre-built by the pod and which Nexus Dashboard never
+  writes to; the fabric underlay and the EVPN overlay, since the session table
+  covers only the three VRF-Lite eBGP sessions; and the data plane, since
+  nothing here sends a packet between two workloads.
+</p>
+
+<footer>
+  This assessment is read-only: it issues Nexus Dashboard GET requests and
+  <code>show</code> commands only, and makes no change to any device.
+  {{ n_total }} control(s) evaluated across
+  {{ dc_switch_rows | default([]) | length }} switch(es) in
+  <code>{{ dc_fabric_name }}</code>.
+</footer>
+
+</div>
+</body>
+</html>
