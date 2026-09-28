@@ -49,12 +49,13 @@
 # through with "Id[3]is already allocated to MAIN"; see the comment on that
 # block in playbooks/06_vrf_lite.yml.
 #
-# The parent interface the sub-interfaces below sit on is prepared by the
-# controller, not declared here. It appears in the Pending Config dialog as:
+# The parent interface the sub-interfaces below sit on is built by the
+# controller from dc_vrf_lite_ifc, not declared per sub-interface here. It
+# appears in the Pending Config dialog as:
 #
 #   interface ethernet1/8
 #     no switchport
-#     mtu 9000
+#     mtu 1500
 #     description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
 #     no shutdown
 #
@@ -155,8 +156,9 @@ dc_vrf_lite_ifc:
 # neighbor_ipv4, ipv6_addr, neighbor_ipv6 and dot1q - so the template takes the
 # fallback and asks for 9216.
 #
-# The parent Ethernet1/8 is 9000, which is the Link MTU on the inter-fabric
-# link, and the switch refuses a sub-interface larger than its parent:
+# The parent Ethernet1/8 takes its MTU from dc_vrf_lite_ifc.mtu above, which
+# becomes Link MTU on the inter-fabric link, and the switch refuses a
+# sub-interface larger than its parent:
 #
 #   Delivery failed with message: MTU of sub-interface greater than parent
 #   interface detected
