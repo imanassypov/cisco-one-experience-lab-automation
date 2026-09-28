@@ -87,20 +87,6 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .page-card-body table th{background:var(--cisco-dark);color:#fff;padding:8px 12px;text-align:left}
 .page-card-body table td{padding:7px 12px;border:1px solid var(--ws-border)}
 .page-card-body table tr:nth-child(even) td{background:var(--ws-panel)}
-/* Divergence blocks: a four-column table of prose wraps into unreadable
-   slivers, so each comparison is its own block and the two sides stack
-   instead of narrowing once the viewport drops below ~700px. */
-.dvg-item{border:1px solid var(--ws-border);border-radius:var(--ws-radius);margin:16px 0;overflow:hidden}
-.dvg-topic{background:var(--cisco-dark);color:#fff;font-weight:700;padding:9px 14px;font-size:14.5px}
-.dvg-pair{display:flex;flex-wrap:wrap}
-.dvg-pair>div{flex:1 1 320px;padding:12px 15px;font-size:14px;line-height:1.6}
-.dvg-manual{background:#fff8ed;border-left:4px solid var(--ws-warning)}
-.dvg-auto{background:#edf7f3;border-left:4px solid var(--ws-success)}
-.dvg-label{display:block;font-weight:700;font-size:11px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
-.dvg-manual .dvg-label{color:#a85c00}
-.dvg-auto .dvg-label{color:var(--ws-success)}
-.dvg-why{background:var(--ws-panel);border-top:1px solid var(--ws-border);padding:11px 15px;font-size:13.5px;line-height:1.6}
-.dvg-why b{color:var(--cisco-dark);text-transform:uppercase;font-size:11px;letter-spacing:.07em;margin-right:6px}
 .page-card-body pre{background:var(--ws-panel);color:var(--ws-body);border:1px solid var(--ws-border);border-radius:var(--ws-radius);padding:14px 16px;margin:12px 0;overflow:auto;white-space:pre-wrap;word-wrap:break-word;font-family:var(--ws-mono);font-size:87.5%}
 .page-card-body code{color:#db1a74;font-size:87.5%;font-family:var(--ws-mono);word-wrap:break-word}
 .page-card-body pre code{color:inherit;font-size:inherit;white-space:inherit}
@@ -10069,47 +10055,40 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <p>The same fabric is described in this repository as a small set of YAML files and built by a repeatable pipeline. The useful lesson is the boundary between the data model, the additional Ansible variables, and the controller operations that apply them.</p>
 <hr>
 <h4 id="where-the-pipeline-diverges">Where this pipeline deliberately diverges from the manual steps</h4>
-<p>Both tracks finish with the same fabric, the same three VRFs and the same external connectivity. They do <strong>not</strong> get there by the same route, and five of the differences are deliberate design decisions rather than accidents of tooling. If you have worked through the manual sections, read these before you read the rest of the track — otherwise the pipeline will look like it is doing the wrong thing in several places.</p>
-<div class="dvg-item">
-<div class="dvg-topic">Who builds the VRF-Lite link</div>
-<div class="dvg-pair">
-<div class="dvg-manual"><span class="dvg-label">Manual sections</span>Section 4 sets <strong>VRF Lite Deployment</strong> to <code>Back2BackAndToExternal</code>, and Nexus Dashboard auto-creates the IFC during a Recalculate and Deploy.</div>
-<div class="dvg-auto"><span class="dvg-label">This pipeline</span><code>VRF_LITE_AUTOCONFIG</code> is <code>Manual</code>. Stage 04 creates the link itself, with <code>dcnm_links</code> and the <code>ext_fabric_setup</code> template.</div>
-</div>
-<div class="dvg-why"><b>Why</b>An auto-created IFC picks its own addresses and its own dot1q tags. The edge router is pre-built and in Monitor Mode, so its addresses and tags cannot move to meet the controller's choice.</div>
-</div>
-<div class="dvg-item">
-<div class="dvg-topic">VRF-Lite addressing and dot1q tags</div>
-<div class="dvg-pair">
-<div class="dvg-manual"><span class="dvg-label">Manual sections</span>Section 8: <em>"IP addresses are allocated from the VRF Lite sub-interface address pool defined in the Fabric Settings"</em> — you read back whatever the controller chose.</div>
-<div class="dvg-auto"><span class="dvg-label">This pipeline</span>Every address, tag and MTU is declared in <code>dc_vrf_lite.yml</code>. Stage 06 also <em>claims</em> the three dot1q tags out of the <code>TOP_DOWN_L3_DOT1Q</code> pool before it attaches anything.</div>
-</div>
-<div class="dvg-why"><b>Why</b>The router's <code>GigabitEthernet2.2/.3/.4</code> are fixed at dot1q 2, 3 and 4 and <code>192.168.252.6</code>, <code>.10</code> and <code>.14</code>. Anything the controller allocates for itself is a coin toss against those, and a mismatch leaves the leaf configured and the session dead.</div>
-</div>
-<div class="dvg-item">
-<div class="dvg-topic">Attaching the border leaf</div>
-<div class="dvg-pair">
-<div class="dvg-manual"><span class="dvg-label">Manual sections</span>Section 8 does both <strong>Detach/Attach</strong> sliders in one place: attach the VRF, then enable the extension inside <strong>Edit Extension Details</strong>.</div>
-<div class="dvg-auto"><span class="dvg-label">This pipeline</span>Split across two stages. The plain attachment is a <code>vrf_attach_group</code> entry the model owns in stage 02; the extension is stage 06.</div>
-</div>
-<div class="dvg-why"><b>Why</b>The Nexus as Code model can name a switch in an attach group and nothing else. It has no key for <code>EXTEND: VRF_LITE</code>, the sub-interface, the tag or the neighbour, so the second half has to be applied separately. <a href="#page-dc-stage05">Card 7</a></div>
-</div>
-<div class="dvg-item">
-<div class="dvg-topic">Serial numbers</div>
-<div class="dvg-pair">
-<div class="dvg-manual"><span class="dvg-label">Manual sections</span>Switches are discovered from a seed IP, and you never type a serial number.</div>
-<div class="dvg-auto"><span class="dvg-label">This pipeline</span><code>00_discover_dc_switch_serials.yml</code> SSHes to each switch first and generates <code>topology_switches.nac.yaml</code>.</div>
-</div>
-<div class="dvg-why"><b>Why</b>The data model identifies a switch by serial, and Nexus Dashboard keys on the <strong>chassis</strong> serial. It cannot be read from an empty controller, and on these virtual switches it is not the one <code>show version</code> prints. <a href="#page-dc-serials">Card 3</a></div>
-</div>
-<div class="dvg-item">
-<div class="dvg-topic">Knowing it worked</div>
-<div class="dvg-pair">
-<div class="dvg-manual"><span class="dvg-label">Manual sections</span>You look at the Nexus Dashboard UI and see everything green.</div>
-<div class="dvg-auto"><span class="dvg-label">This pipeline</span><code>08_verify_fabric.yml</code> compares the controller <em>and</em> the switch against the declared model, and writes <code>evidence/stage08-verification.md</code>.</div>
-</div>
-<div class="dvg-why"><b>Why</b>A green UI is the controller agreeing with itself. The report checks intent against what <code>DC-Service-Leaf</code> is actually running, parsed with pyATS/Genie, because the two can disagree. <a href="#page-dc-verify">Card 9</a></div>
-</div>
+<p>Both tracks finish with the same fabric, the same three VRFs and the same external connectivity. They do <strong>not</strong> get there by the same route, and four of the differences are deliberate design decisions rather than accidents of tooling. If you have worked through the manual sections, read this table before you read the rest of the track — otherwise the pipeline will look like it is doing the wrong thing in several places.</p>
+<table>
+<tr><th>Topic</th><th>Manual sections</th><th>This pipeline</th><th>Why the difference</th></tr>
+<tr>
+<td><strong>Who builds the VRF-Lite link</strong></td>
+<td>Section 4 sets <strong>VRF Lite Deployment</strong> to <code>Back2BackAndToExternal</code>, and Nexus Dashboard auto-creates the IFC during a Recalculate and Deploy</td>
+<td><code>VRF_LITE_AUTOCONFIG</code> is <code>Manual</code>. Stage 04 creates the link itself with <code>dcnm_links</code> and the <code>ext_fabric_setup</code> template</td>
+<td>An auto-created IFC picks its own addresses and its own dot1q tags. The edge router is pre-built and in Monitor Mode, so its addresses and tags cannot move to meet the controller's choice</td>
+</tr>
+<tr>
+<td><strong>VRF-Lite addressing and dot1q tags</strong></td>
+<td>Section 8: <em>"IP addresses are allocated from the VRF Lite sub-interface address pool defined in the Fabric Settings"</em> — you read back what the controller chose</td>
+<td>Every address, tag and MTU is declared in <code>dc_vrf_lite.yml</code>. Stage 06 also <em>claims</em> the three dot1q tags out of the <code>TOP_DOWN_L3_DOT1Q</code> pool before it attaches anything</td>
+<td>The router's <code>GigabitEthernet2.2/.3/.4</code> are fixed at dot1q 2/3/4 and <code>192.168.252.6/.10/.14</code>. Anything the controller allocates for itself is a coin toss against those, and a mismatch leaves the leaf configured and the session dead</td>
+</tr>
+<tr>
+<td><strong>Attaching the border leaf</strong></td>
+<td>Section 8 does both <strong>Detach/Attach</strong> sliders in one place: attach the VRF, then enable the extension inside <strong>Edit Extension Details</strong></td>
+<td>Split across two stages. The plain attachment is a <code>vrf_attach_group</code> entry the model owns in stage 02; the extension is stage 06</td>
+<td>The Nexus as Code model can name a switch in an attach group and nothing else. It has no key for <code>EXTEND: VRF_LITE</code>, the sub-interface, the tag or the neighbour, so the second half has to be applied separately. <a href="#page-dc-stage05">Card 7</a></td>
+</tr>
+<tr>
+<td><strong>Serial numbers</strong></td>
+<td>Switches are discovered from a seed IP; you never type a serial</td>
+<td><code>00_discover_dc_switch_serials.yml</code> SSHes to each switch first and generates <code>topology_switches.nac.yaml</code></td>
+<td>The data model identifies a switch by serial, and Nexus Dashboard keys on the <strong>chassis</strong> serial. It cannot be read from an empty controller, and on these virtual switches it is not the one <code>show version</code> prints. <a href="#page-dc-serials">Card 3</a></td>
+</tr>
+<tr>
+<td><strong>Knowing it worked</strong></td>
+<td>You look at the UI and see everything green</td>
+<td><code>08_verify_fabric.yml</code> compares the controller <em>and</em> the switch against the declared model and writes <code>evidence/stage08-verification.md</code></td>
+<td>A green UI is the controller agreeing with itself. The report checks intent against what <code>DC-Service-Leaf</code> is actually running, parsed with pyATS/Genie, because the two can disagree. <a href="#page-dc-verify">Card 9</a></td>
+</tr>
+</table>
 <p>Two things that look like divergences and are not. The pipeline unchecks <strong>Preserve Config</strong> exactly as section 4 does, so the switch import is greenfield on both paths and erases the running configuration either way. And both paths end with the same two <strong>Recalculate and Deploy</strong> actions in the same order — the pipeline simply names them stage 05 and stage 07 and refuses to let you forget the second one.</p>
 <hr>
 <h4>What Nexus as Code actually is</h4>
