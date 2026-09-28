@@ -76,7 +76,7 @@ The orchestrator runs the stages in this order:
 08_verify_fabric.yml
 ```
 
-The stages now follow the execution order. Stage 05 creates the inter-fabric connection required by stage 06. Stage 06 then adds the three VRF-Lite extensions, and stage 07 pushes those extensions to DC-Service-Leaf.
+The stages follow the execution order. Stage 04 creates the VRF-Lite inter-fabric link that stage 06 needs, and stage 05 deploys it, which is what makes Nexus Dashboard offer stage 06 a prototype to build on. Stage 06 then adds the three VRF-Lite extensions, and stage 07 pushes those extensions to DC-Service-Leaf.
 
 ## Intent and configuration
 
@@ -95,12 +95,12 @@ The model is the source of truth for the objects it describes. To change those o
 
 - Stage 02 imports all five switches with `preserve_config: false`. This erases their existing running configuration without prompting. Use a pod that is safe to rebuild.
 - Stage 02 can remain silent for several minutes while Nexus Dashboard discovers the switches. Do not interrupt that request unless it has clearly exceeded the expected time.
-- Stage 06 requires Nexus Dashboard to offer a VRF-Lite inter-fabric connection on `Ethernet1/8`. Stage 05 creates that connection. If the precondition is missing, stage 06 reports the required deployment order.
+- Stage 06 requires Nexus Dashboard to offer a VRF-Lite extension prototype on `Ethernet1/8`. Stage 04 creates the link and stage 05 deploys it; the prototype appears only once both have run. If the precondition is missing, stage 06 reports the required deployment order.
 - The External edge router is not configured by this repository. Its side of the VRF-Lite links must remain consistent with the fixed values in `dc_vrf_lite.yml`.
 
 ## Verification
 
-Stage 08 is read-only and writes `ansible/evidence/stage08-verification.md`. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions.
+Stage 08 is read-only and writes `ansible/evidence/stage08-verification.md` together with `stage08-verification.html`, the same findings laid out as a formal report. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions, and it also reads DC-Service-Leaf itself: the three sub-interfaces are parsed from `show interface` with pyATS/Genie and compared on dot1q tag, address and MTU.
 
 It also reads BGP session state from DC-Service-Leaf over SSH when `dc_verify_bgp_sessions` is enabled. A reachable switch adds three BGP checks; an unreachable switch produces `not determined` rows rather than claiming that the sessions are down. The BGP check can be skipped with:
 
@@ -112,6 +112,6 @@ The report does not verify the edge router's configuration or data-plane traffic
 
 ## Other playbooks
 
-- `09_remove.yml` is a destructive prune and is not called by the orchestrator. It requires `-e dc_remove_confirm=REMOVE_OK`.
+- `09_cleanup.yml` is a destructive teardown and is not called by the orchestrator. It requires `-e dc_cleanup_confirm=CLEANUP_OK`. It removes the overlays, the inter-fabric link, the switches and both fabrics, in that order, and then defaults `Ethernet1/8` on the border leaf so the sub-interfaces it built do not survive into the next run.
 
 For implementation details, see [`ansible/README.md`](ansible/README.md).
