@@ -104,9 +104,17 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 dc_vrf_lite_ifc:
   ipv4_addr: 192.168.252.1/30
   neighbor_ipv4: 192.168.252.2
-  # The parent interface MTU. Every sub-interface has to stay at or below it,
-  # which is what dc_vrf_lite_mtu further down respects.
-  mtu: 9000
+  # The parent interface MTU, which becomes Link MTU on the IFC. Set to match
+  # GigabitEthernet2 on the router, which is at the IOS-XE default of 1500 and
+  # carries no mtu line of its own. The controller's own convention for an IFC
+  # is 9000, and that works - the parent carries no address and no untagged
+  # traffic, so nothing can generate a frame the router would drop - but it
+  # leaves the two ends of one wire disagreeing. Matching them means a future
+  # untagged service on this link cannot inherit a silent mismatch.
+  #
+  # Every sub-interface has to stay at or below this; dc_vrf_lite_mtu further
+  # down is 1500, so the two are equal rather than nested.
+  mtu: 1500
 
 # WHY THE ADDRESSES ARE PINNED RATHER THAN LEFT TO THE CONTROLLER.
 #
