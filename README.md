@@ -16,7 +16,11 @@ flowchart LR
   Laptop -->|"commit and push"| GitHub
   GitHub -->|"git clone by the student"| Script
   Script -->|"00: stage + bootstrap itself"| Script
-  Script -->|"01_campus and later ansible-playbook"| Lab["Lab devices"]
+  Script -->|"01_campus/evpn"| CatC["Catalyst Center"]
+  Script -->|"02_data_center"| ND["Nexus Dashboard"]
+  Script -->|"07_assurance"| Splunk["Splunk"]
+  CatC --> Campus["Campus fabric: 9300s, WLC, APs"]
+  ND --> DC["DC fabric: Pseudoco-DC1 Nexus switches"]
 ```
 
 **Authors** work in `ansible-automation/` on a laptop and push to `origin/main`:
