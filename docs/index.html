@@ -10574,15 +10574,24 @@ ansible_connect_timeout: 1000</pre>
   </div>
   <div class="page-card-body"><h3>DC Infrastructure as Code — Step 9 of 9</h3>
 <h4>Reading the verification report</h4>
-<p>Stage 07 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller and writes a file; it changes nothing:</p>
+<p>Stage 08 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller, reads the border leaf, and writes two files; it changes nothing:</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
 ansible-playbook playbooks/08_verify_fabric.yml</pre>
-<p>A healthy fabric ends with <code>failed=0</code>. The controller portion has fourteen checks: five switches, three VRFs, three networks, and three VRF-Lite extensions. When the border leaf answers over SSH the report adds three sub-interface checks, parsed from <code>show interface</code> with pyATS/Genie, and three BGP session checks — twenty checks in total. If the switch is unreachable, those rows are reported as <code>not determined</code> and are not counted either way.</p>
+<p><strong>What it actually checks.</strong> Every other stage in this pipeline writes intent and trusts the controller's answer. This one compares three things that are allowed to disagree: what you <em>declared</em> in the repository, what Nexus Dashboard <em>holds</em>, and what <code>DC-Service-Leaf</code> is <em>running</em>. A green controller is only the middle of those three, which is why the stage also opens an SSH session to the border leaf.</p>
+<ul>
+<li><strong>From the controller API</strong> &mdash; five switches, three VRFs, three networks and three VRF-Lite extensions. Fourteen checks, and none of them needs the switch management range to be reachable.</li>
+<li><strong>From the switch over SSH</strong> &mdash; three sub-interface checks, parsed out of <code>show interface</code> with pyATS/Genie and compared on dot1q tag, address and MTU, plus three BGP session checks. Twenty checks in total.</li>
+</ul>
+<p>If the border leaf cannot be reached, those six rows read <code>not determined</code> and are excluded from the count rather than being reported as failures &mdash; the run does not claim a session is down when it simply could not look.</p>
 <pre>ok: [Pseudoco-DC1] =&gt; {
-    "msg": "All 17 evaluated check(s) match the declared intent."
+    "msg": "All 20 evaluated check(s) match the declared intent."
 }
 
-  **17 of 17 evaluated check(s) match intent.**</pre>
+  **20 of 20 evaluated check(s) match intent.**</pre>
+<p><strong>Two files, same findings.</strong> <code>evidence/stage08-verification.md</code> is the markdown you read in a terminal, and <code>evidence/stage08-verification.html</code> is the same result laid out as a formal assessment &mdash; conclusion, scope, basis of verification, findings, limitations of scope &mdash; with exceptions shaded so they are findable on a page you are scrolling. It matches the campus track's stage 12 report, and it prints cleanly if you need to hand it to someone.</p>
+<div class="admonition">
+<p>&#128196; <strong><a href="stage08-verification-sample.html" target="_blank" rel="noopener">Open a sample verification report</a></strong> &mdash; a real run against this pod, all twenty checks passing. Your own copy is written to <code>ansible/evidence/</code> on the script server every time stage 08 runs; that directory is gitignored, so it is yours and never travels with the repository.</p>
+</div>
 <p>The VRF table is where a first reading usually goes wrong, so it is worth looking at a passing one before you ever see a failing one:</p>
 <pre>| VRF  | ID declared | ID observed | Switches declared  | Switches missing | Not attached | Attachment states            | Match |
 | ---- | ----------- | ----------- | ------------------ | ---------------- | ------------ | ---------------------------- | ----- |
