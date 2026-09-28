@@ -36,11 +36,11 @@ and run everything there. Start at [Getting started](#getting-started).
 - [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
 - [Release notes](release-notes/) — what changed and what an operator should do differently. Start with [`CHANGELOG.md`](release-notes/CHANGELOG.md), the consolidated history; any dated file beside it is the current day's working note.
 
-> **Guide images.** `docs/index.html` was exported from the course platform and
-> still points 312 images at a `one_cisco_lab_images/` folder that was never
-> committed, so those render broken. The diagrams and screenshots under
-> [docs/automation_images/](docs/automation_images/) — every visual in the
-> Infrastructure-as-Code sections — resolve normally.
+> **Guide images.** Every image in `docs/index.html` now resolves from
+> [docs/automation_images/](docs/automation_images/), so the guide renders
+> complete both on GitHub Pages and offline. Seven placeholders remain, marked
+> with a `data-missing` attribute: those screenshots were never exported from
+> the course platform and have no source to restore from.
 
 ## Collection layout
 
