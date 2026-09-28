@@ -148,16 +148,37 @@ with first-run setup and then serves as the per-stage reference.
 | --- | --- | --- | --- |
 | 1 | **Campus EVPN** — builds the BGP EVPN/VXLAN fabric through Catalyst Center, stages 01–12 | [README — Before you begin](ansible-automation/01_campus/evpn/ansible/README.md#before-you-begin) — first-run setup, steps 1–7 | [README — Pipeline order](ansible-automation/01_campus/evpn/ansible/README.md#pipeline-order) — per-stage detail, expected output, troubleshooting |
 | 2 | **EVPN assurance with Splunk** — streams fabric telemetry into Splunk and installs the dashboards | [SETUP_GUIDE.md](ansible-automation/07_assurance/splunk_evpn/SETUP_GUIDE.md) — deployment walkthrough | [README.md](ansible-automation/07_assurance/splunk_evpn/README.md) — architecture and reference |
-| 3 | **DC fabric with Nexus as Code** — builds the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard, stages 00–06 | [README.md](ansible-automation/02_data_center/ansible/README.md) — running it, the data model, and the traps | [02_data_center/README.md](ansible-automation/02_data_center/README.md) — how the DC tracks fit together |
+| 3 | **DC fabric with Nexus as Code** — builds the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard, stages 00–09 | [README.md](ansible-automation/02_data_center/ansible/README.md) — running it, the data model, and the traps | [02_data_center/README.md](ansible-automation/02_data_center/README.md) — how the DC tracks fit together |
+
+Each collection also has a walkthrough in the [lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-automation/). The DC track is covered twice there, deliberately: **NDFC - DC Fabric Deployment — Manual Provisioning** clicks the fabric together in the Nexus Dashboard UI, and **NDFC - DC Fabric Deployment — Infrastructure as Code** builds the same fabric from this repository in nine cards. They are alternatives — do one or the other. Card 1 of the IaC track opens with a table of exactly where the pipeline diverges from the manual steps, and why.
 
 Assurance depends on the fabric being up: the telemetry subscriptions it
 consumes are pushed by EVPN stage 10, so run the campus collection first.
 
 The DC collection is independent of the other two — it talks only to Nexus
-Dashboard and the Nexus switches — so it can be run at any point. Two things
-to know before you do: it is a greenfield build that wipes all five switches
-as it imports them, with no confirmation prompt, and the VRF-Lite connections
-to the IOS-XE edge router are still manual.
+Dashboard and the Nexus switches — so it can be run at any point. Three things
+to know before you do:
+
+- **It is a greenfield build.** Stage 02 imports all five switches with
+  `preserveConfig` false, which erases each running configuration as it joins
+  the fabric, and there is no confirmation prompt. Point it at a pod you are
+  willing to rebuild. The manual path in the guide does the same thing, at the
+  same step.
+- **`01_dc_deploy.yml` runs the whole thing**, importing stages 02–08 in order,
+  after you have run `00_discover_dc_switch_serials.yml` once per pod. That
+  prerequisite reads a chassis serial off each switch over SSH, so your client
+  VPN has to be up for it.
+- **Stage 08 verifies and stage 09 tears down.** The verification stage checks
+  the controller *and* the border leaf against the declared model and writes
+  `evidence/stage08-verification.md` alongside an HTML copy; it fails the run on
+  any mismatch. `09_cleanup.yml` removes everything it built, including the
+  sub-interfaces on the switch, and needs `-e dc_cleanup_confirm=CLEANUP_OK`.
+
+External connectivity is fully automated: the VRF-Lite inter-fabric link and
+the three per-VRF extensions to the IOS-XE edge router are declared in
+`group_vars/all/dc_vrf_lite.yml` and applied by stages 04 and 06. The router
+itself is never written to — it is pre-built by the pod and its fabric is in
+Monitor Mode.
 
 Two things in the campus collection are worth knowing before you start:
 
