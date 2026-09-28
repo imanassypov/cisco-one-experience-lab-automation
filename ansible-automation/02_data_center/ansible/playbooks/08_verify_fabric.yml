@@ -218,6 +218,9 @@
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
     dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification.md') | realpath }}"
+    # Same data, audit presentation. The campus collection's stage 12 writes the
+    # pair the same way, and this one matches its layout so the two read alike.
+    dc_evidence_html_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification.html') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
@@ -819,12 +822,22 @@
       vars:
         dc_verify_timestamp: "{{ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ') }}"
 
+    - name: Write the verification report as HTML
+      ansible.builtin.template:
+        src: templates/stage08-verification.html.j2
+        dest: "{{ dc_evidence_html_path }}"
+        mode: "0644"
+      delegate_to: localhost
+      vars:
+        dc_verify_timestamp: "{{ now(utc=true).strftime('%Y-%m-%d %H:%M:%S') }} UTC"
+
     - name: Report the outcome
       ansible.builtin.debug:
         msg: >-
           {{ dc_total_checks | int - dc_failed_rows | length }} of
           {{ dc_total_checks }} check(s) match the declared intent.
-          Report: {{ dc_evidence_path }}
+          Markdown: {{ dc_evidence_path }}.
+          HTML: {{ dc_evidence_html_path }}
 
     # Said out loud rather than left to the report, because a run that could not
     # read the switch still ends in a green "all checks match" for everything it
