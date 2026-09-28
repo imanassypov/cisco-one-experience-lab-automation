@@ -174,12 +174,12 @@ Two things to expect from a first run, both normal:
 | `01_dc_deploy.yml` | Orchestrator. Imports 02 to 08 in order |
 | `02_create_dc_fabric.yml` | Creates the whole intent on the controller: fabric, switch import, roles, vPC pair, port-channels, VRFs, networks |
 | `03_fabric_advanced_settings.yml` | Applies the settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
-| `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode and adds the IOS-XE edge router to it |
-| `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric, which is what makes the controller build the inter-fabric connection stage 06 needs |
-| `06_vrf_lite.yml` | Adds the three VRF-Lite extensions to the border leaf's VRF attachments, from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only. Needs the connection created by stage 05 |
+| `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode, adds the IOS-XE edge router to it, and builds the VRF-Lite inter-fabric link that stage 06 needs |
+| `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric, which configures the parent interface of that link - the point at which the controller starts offering stage 06 a prototype |
+| `06_vrf_lite.yml` | Claims the declared dot1q tags out of `TOP_DOWN_L3_DOT1Q`, then adds the three VRF-Lite extensions to the border leaf's VRF attachments, from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
 | `07_recalculate_and_deploy.yml` | Second "Recalculate and Deploy". Pushes the extensions staged by stage 06 and is the **only** stage that changes running configuration |
-| `08_verify_fabric.yml` | Read-only check of the fabric against the declared model. Writes `evidence/stage08-verification.md` |
-| `09_remove.yml` | Destructive prune. Needs `-e dc_remove_confirm=REMOVE_OK` |
+| `08_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes `evidence/stage08-verification.md` |
+| `09_cleanup.yml` | Destructive teardown: overlays, inter-fabric link, switches, both fabrics, then the sub-interfaces on the border leaf. Needs `-e dc_cleanup_confirm=CLEANUP_OK` |
 
 The numbering tells you who runs a playbook. Stages 02 to 08 are contiguous
 because they are exactly what `01_dc_deploy.yml` imports. Stage 00 sits below
@@ -187,10 +187,12 @@ that range because it is the prerequisite you run yourself, once per pod, and
 09 sits above it because it is deliberately outside the orchestrated run.
 
 Stages 03 and 04 run before the first deploy because their settings and
-External fabric are inputs to the inter-fabric connection. Stage 06 runs
-after stage 05 because it needs the connection to exist. Stage 07 then carries
-the parent interface, the three dot1q sub-interfaces and their BGP neighbours
-to the border leaf. The execution order is `02, 03, 04, 05, 06, 07, 08`.
+External fabric are inputs to the inter-fabric link, and stage 04 is what
+creates that link. Stage 06 runs after stage 05 because the controller will not
+offer it a prototype until the link's parent interface has been configured on
+the switch. Stage 07 then carries the three dot1q sub-interfaces and their BGP
+neighbours to the border leaf. The execution order is `02, 03, 04, 05, 06, 07,
+08`.
 
 Useful overrides:
 
@@ -214,7 +216,7 @@ Useful overrides:
 | `inventory/group_vars/all/dc_switches.yml` | The switch table: names, management addresses, roles, endpoint port-channels |
 | `inventory/group_vars/all/dc_advanced_settings.yml` | The fabric settings Nexus as Code has no key for, applied by stage 03 |
 | `inventory/group_vars/all/dc_external_settings.yml` | The whole External fabric: ASN and Monitor Mode, applied by stage 04 |
-| `inventory/group_vars/all/dc_vrf_lite.yml` | The three VRF-Lite extensions out of the border leaf, applied by stage 05 |
+| `inventory/group_vars/all/dc_vrf_lite.yml` | The three VRF-Lite extensions out of the border leaf, and the addressing of the inter-fabric link they sit on. Applied by stages 04 and 06 |
 | `inventory/group_vars/nd/nd.yml`, `nd/connection.yml` | The controller: `httpapi` transport, vault-sourced credentials, the two 1000s timeouts, and the remove-role delete flags |
 
 **The definitions live in two distinct places, and the boundary is the single
@@ -331,9 +333,7 @@ them external connectivity cannot be built at all.
 
 ```yaml
 dc_advanced_fabric_settings:             # nvPairs, applied with dcnm_fabric
-  VRF_LITE_AUTOCONFIG: "Back2Back&ToExternal"   # default Manual creates no IFC
-  AUTO_SYMMETRIC_VRF_LITE: true
-  AUTO_UNIQUE_VRF_LITE_IP_PREFIX: true
+  VRF_LITE_AUTOCONFIG: "Manual"          # we build the IFC ourselves, in stage 04
   DCI_SUBNET_RANGE: 192.168.252.0/24
   DCI_SUBNET_TARGET_MASK: 30
 
@@ -585,7 +585,7 @@ its own, so changing the fabric means editing that file.
 
 | Setting | Declared as | Value |
 |---|---|---|
-| VRF Lite Deployment | `VRF_LITE_AUTOCONFIG` | `Back2Back&ToExternal` |
+| VRF Lite Deployment | `VRF_LITE_AUTOCONFIG` | `Manual` |
 | Auto Deploy for Peer | `AUTO_SYMMETRIC_VRF_LITE` | `true` |
 | Auto Allocation of Unique IP on VRF Extension | `AUTO_UNIQUE_VRF_LITE_IP_PREFIX` | `true` |
 | VRF Lite Subnet IP Range | `DCI_SUBNET_RANGE` | `192.168.252.0/24` |
@@ -644,20 +644,35 @@ model cannot express.
 
 ### The two VRF-Lite settings, as Cisco defines them
 
-These two are the reason stage 03 exists, and the first of them is what stage
-05 depends on and stage 06 pushes. Both are on the fabric's Resources tab.
+These two are the reason stage 03 exists. Both are on the fabric's Resources
+tab.
 
-**`VRF_LITE_AUTOCONFIG: "Back2Back&ToExternal"`** is the UI's **VRF Lite
-Deployment** field. Cisco's Nexus Dashboard 4.2.1 fabric settings reference
-defines it as: *"Specify the VRF Lite method for extending inter fabric
-connections. The VRF Lite Subnet IP Range field specifies resources reserved
-for IP address used for VRF Lite when VRF Lite IFCs are auto-created. If you
-select Back2Back&ToExternal, then VRF Lite IFCs are auto-created."*
+**`VRF_LITE_AUTOCONFIG: "Manual"`** is the UI's **VRF Lite Deployment** field.
+Cisco's Nexus Dashboard 4.2.1 fabric settings reference defines it as:
+*"Specify the VRF Lite method for extending inter fabric connections. The VRF
+Lite Subnet IP Range field specifies resources reserved for IP address used for
+VRF Lite when VRF Lite IFCs are auto-created. If you select
+Back2Back&ToExternal, then VRF Lite IFCs are auto-created."*
 ([Editing Data Center VXLAN Fabric Settings, Release 4.2.1](https://www.cisco.com/c/en/us/td/docs/dcn/nd/4x/articles-421/editing-fabric-settings-data-center-vxlan.html))
 The VRF Lite article is more specific about what gets connected to what:
 *"Use this option to automatically configure VRF Lite IFCs between a border
 switch and the edge or core switches in external fabric or between
 back-to-back border switches in VXLAN EVPN fabric."*
+
+**This collection deliberately does not use that automation.** It was set to
+`Back2Back&ToExternal` until 2026-09-27, and the reason for changing it is the
+whole point of the setting: auto-created IFCs get controller-chosen addresses
+and controller-chosen dot1q tags. The edge router on this pod is pre-built and
+in Monitor Mode, so its `GigabitEthernet2.2/.3/.4` addresses and tags are
+fixed and cannot be moved to meet the controller. Every value has to come from
+the data model instead, so stage 04 creates the IFC itself with `dcnm_links`
+and the `ext_fabric_setup` template, and stage 06 claims the dot1q tags before
+attaching. Under `Manual` the controller creates nothing of its own.
+
+Two companion settings went with it. `AUTO_SYMMETRIC_VRF_LITE` and
+`AUTO_UNIQUE_VRF_LITE_IP_PREFIX` are not merely unnecessary under `Manual` -
+the controller rejects them, so they are absent from
+`dc_advanced_settings.yml` rather than set to `false`.
 ([NDFC - VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html))
 The default is `Manual`, under which no IFC is ever auto-created and external
 connectivity cannot be built at all.
@@ -850,17 +865,20 @@ rather than an error.
 
 ## What stage 06 needs from the controller
 
-**Stage 05 needs a VRF-Lite inter-fabric connection to already exist on
-`Ethernet1/8`, and the stage 06 deploy is what creates it.** The controller
-builds the link itself from `VRF_LITE_AUTOCONFIG`, during a Recalculate and
-Deploy, once the edge router stage 04 adds is present in the External fabric.
-That is why `01_dc_deploy.yml` imports the deploy **before** stage 05 and again
-after it, rather than running the stages in numeric order.
+**Stage 06 needs a VRF-Lite inter-fabric link to already exist on
+`Ethernet1/8`, and it needs that link's parent interface to have been
+configured on the switch.** Stage 04 creates the link; stage 05 deploys it.
+That is why `01_dc_deploy.yml` puts a deploy between them.
 
-Confirmed on the pod on 2026-09-27. Stage 05 run before any deploy failed its
-precheck with `Prototype extensionType(s) returned: []`; run after a deploy it
-reported `Controller offers 1 VRF_LITE extension prototype(s)` and attached all
-three VRFs. The link the controller had built by then reads:
+The symptom when the precondition is missing is
+`Prototype extensionType(s) returned: []` from stage 06's precheck; once
+stage 05 has run it reports `Controller offers 1 VRF_LITE extension
+prototype(s)` and attaches all three VRFs.
+
+**This used to be the controller's job, and no longer is.** Until 2026-09-27
+`VRF_LITE_AUTOCONFIG` was `Back2Back&ToExternal` and Nexus Dashboard built the
+link itself during a Recalculate and Deploy. The link it produced carried its
+own provenance:
 
 ```
 templateName        ext_fabric_setup
@@ -868,20 +886,28 @@ SOURCE              Pseudoco-DC1_AUTO_CONFIG_IFC_VRFLITE_955T6I5X2D4
 AUTO_VRF_LITE_FLAG  true
 MTU                 9000
 NEIGHBOR_ASN        65531
-DC-Service-Leaf Ethernet1/8 (Pseudoco-DC1) -> DC-SITE11-CEDGE8Kv
-                GigabitEthernet2 (External)
 ```
 
-The `SOURCE` and `AUTO_VRF_LITE_FLAG` values are the controller's own, so the
-link was auto-created rather than built by hand or by this repository.
+That worked, but it chose its own addresses out of `DCI_SUBNET_RANGE` and its
+own dot1q tags, and neither can be negotiated with a pre-built edge router in
+Monitor Mode. So the setting is `Manual` now and stage 04 builds the link from
+`dc_vrf_lite_ifc`. A link created that way carries no `SOURCE` and has
+`AUTO_VRF_LITE_FLAG` unset - that pair is how you tell which kind you are
+looking at.
 
-The symptom is this, from `06_vrf_lite.yml`:
+Historical note, because the failure text is distinctive. Stage 06 used to use
+`dcnm_vrf`, which refuses to build an extension without a prototype and says
+so like this:
 
 ```
 DcnmVrf.update_vrf_attach_vrf_lite_extensions: caller: push_diff_attach.
 No VRF LITE capable interfaces found on this switch.
 ip: 198.18.128.13, serial_number: 955T6I5X2D4
 ```
+
+Stage 06 posts to the attachments endpoint directly now, for the reasons in
+[dc_vrf_lite.yml](inventory/group_vars/all/dc_vrf_lite.yml), so that message no
+longer appears - but the precondition it was complaining about is unchanged.
 
 **Every `dcnm_vrf.py` line number in this README is against `cisco.dcnm`
 3.13.0**, which is what `collections/requirements.yml` pins and what the

@@ -6,53 +6,48 @@
 # VRF-Lite EXTENSION. A vrf_attach_group entry in vrfs.nac.yaml can name a
 # switch and nothing else - there is no key for EXTEND: VRF_LITE, for the
 # sub-interface, for the dot1q tag or for the neighbour address. So the
-# extensions are declared here and applied by stage 05 with cisco.dcnm's
-# dcnm_vrf module directly, which does support attach[].vrf_lite[].
+# extensions are declared here and applied by stage 06.
+#
+# Stage 06 does NOT use dcnm_vrf. That module's vrf_lite block accepts only
+# DOT1Q_ID, IF_NAME, IP_MASK, IPV6_MASK, IPV6_NEIGHBOR, NEIGHBOR_IP and
+# PEER_VRF_NAME - it has no key for MTU, and it hardcodes the Jython template
+# to Ext_VRF_Lite_Jython, which is wrong for an IOS-XE peer. Stage 06 posts to
+# rest/top-down/fabrics/<fabric>/vrfs/attachments directly instead, starting
+# from the prototype the controller offers so that the neighbour ASN and the
+# template come from the inter-fabric link rather than from a guess.
 #
 # The plain ATTACHMENT is a different matter and is NOT declared here. Since
 # 2026-09-27 DC-Service-Leaf is listed in vrfs.nac.yaml's dc_leaves attach
-# group, so the model owns the attachment and stage 05 only adds the extension
+# group, so the model owns the attachment and stage 06 only adds the extension
 # on top of it. That mirrors the manual guide, whose section 8 has two
 # separate Detach/Attach sliders per VRF: attach the VRF to the border leaf
 # first, then enable the external L3 extension inside Edit Extension Details.
 #
-# ORDERING. Stage 05 sits between 04 and the deploy, because attaching an
-# extension writes intent to the controller and touches no switch - the same
-# thing stages 02, 03 and 04 do. Stage 06 is the only stage that changes
-# running configuration, so staging the extensions before it means the parent
-# interface, the three dot1q sub-interfaces and their BGP neighbours all land
-# in a single Recalculate and Deploy.
+# ORDERING. Stage 06 sits between the two deploys. It writes intent to the
+# controller and touches no switch, the same thing stages 02, 03 and 04 do, so
+# the three dot1q sub-interfaces and their BGP neighbours all land in the
+# second Recalculate and Deploy, which is stage 07.
 #
-# That ordering is safe, and the evidence is the module's own integration
-# test. tests/integration/targets/dcnm_vrf/tests/dcnm/standalone/merged.yaml
-# TEST.4 (lines 280-302) deletes every VRF first, then in ONE state: merged
-# call creates a VRF and attaches it with a vrf_lite block to a switch that
-# had no attachment at all - and asserts changed == true with three HTTP
-# 200s. Inside the module, push_to_remote (dcnm_vrf.py line 5495) runs
-# push_diff_create (5547) before push_diff_attach (5548), so at the moment the
-# extension is computed the VRF exists and the attachment does not. Neither an
-# existing attachment nor a completed deploy is a precondition for adding an
-# extension, so nothing here needs to move after stage 06.
+# Stage 06 must run after stage 02 on every pass. Stage 02's create role runs
+# dcnm_vrf with state: replaced, and a replaced want with no vrf_lite against a
+# have that has one takes dcnm_vrf.py lines 1543-1549 and pushes the change,
+# stripping the extension; merged takes line 1551 and leaves it alone. So
+# stage 02 maintains the attachment and resets only the extension. Stage 08
+# asserts the extensions exist, so a create-without-06 run fails rather than
+# being discovered later as broken external connectivity.
 #
-# Stage 05 must still run after stage 02 on every pass, but for a narrower
-# reason than before. Stage 02's create role runs dcnm_vrf with
-# state: replaced, and a replaced want with no vrf_lite against a have that
-# has one takes dcnm_vrf.py lines 1543-1549 and pushes the change, stripping
-# the extension; merged takes line 1551 and leaves it alone. So stage 02
-# maintains the attachment and resets only the extension. Stage 07 asserts
-# the extensions exist, so a create-without-05 run fails rather than being
-# discovered later as broken external connectivity.
+# What stage 06 depends on, which is not any of the above. The controller will
+# not offer a VRF-Lite extension on this interface until a VRF-Lite
+# inter-fabric link terminates there and the parent interface has actually been
+# configured on the switch. Stage 04 creates the link from dc_vrf_lite_ifc
+# below; stage 05 deploys it. So stage 05 has to run before stage 06 on a fresh
+# build. If the prototype is missing, stage 06 says so and names stage 05.
 #
-# What the stage depends on, which is not any of the above. The module refuses
-# to build an extension unless Nexus Dashboard is already offering the border
-# leaf a VRF-Lite extension on this interface, and it fails with "No VRF LITE
-# capable interfaces found on this switch" when it is not. The offer comes
-# from the VRF-Lite inter-fabric link, and the controller builds that link
-# itself during a Recalculate and Deploy, once the edge router stage 04 adds
-# is in the External fabric. So stage 06 has to run before stage 05 on a fresh
-# build, and again after it to push the result. 01_dc_deploy.yml imports the
-# stages in that order. If the precondition is missing, stage 06 reports that
-# stage 05 must run first.
+# The dot1q tags below are also CLAIMED by stage 06 before it attaches
+# anything, out of the TOP_DOWN_L3_DOT1Q pool. Left to itself the controller
+# allocates its own tags during the attachment POST and the run dies half way
+# through with "Id[3]is already allocated to MAIN"; see the comment on that
+# block in playbooks/06_vrf_lite.yml.
 #
 # The parent interface the sub-interfaces below sit on is prepared by the
 # controller, not declared here. It appears in the Pending Config dialog as:
