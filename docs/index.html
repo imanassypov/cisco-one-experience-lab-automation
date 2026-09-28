@@ -87,6 +87,18 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .page-card-body table th{background:var(--cisco-dark);color:#fff;padding:8px 12px;text-align:left}
 .page-card-body table td{padding:7px 12px;border:1px solid var(--ws-border)}
 .page-card-body table tr:nth-child(even) td{background:var(--ws-panel)}
+/* Layer chain. The two-column ASCII form this replaced relied on monospace
+   alignment, which pre-wrap destroys as soon as the card narrows. */
+.chain{margin:14px 0}
+.chain-step{display:flex;flex-wrap:wrap;column-gap:16px;row-gap:3px;align-items:baseline;border-left:4px solid var(--chain-accent);background:var(--chain-bg);border-radius:var(--ws-radius);padding:10px 14px}
+.chain-what{flex:2 1 330px;font-family:var(--ws-mono);font-size:13px;line-height:1.55;word-break:break-word}
+.chain-role{flex:1 1 200px;font-size:13.5px;color:#55606b;line-height:1.55}
+.chain-arrow{color:#aab3bc;font-size:13px;line-height:1;margin:4px 0 4px 20px}
+.chain-model{--chain-accent:#0091bd;--chain-bg:#edf9ff}
+.chain-nac{--chain-accent:#7a5cff;--chain-bg:#f4f1ff}
+.chain-dcnm{--chain-accent:#007a5e;--chain-bg:#edf7f3}
+.chain-api{--chain-accent:#ff9000;--chain-bg:#fff8ed}
+.chain-dev{--chain-accent:#07182d;--chain-bg:#eef1f5}
 .page-card-body pre{background:var(--ws-panel);color:var(--ws-body);border:1px solid var(--ws-border);border-radius:var(--ws-radius);padding:14px 16px;margin:12px 0;overflow:auto;white-space:pre-wrap;word-wrap:break-word;font-family:var(--ws-mono);font-size:87.5%}
 .page-card-body code{color:#db1a74;font-size:87.5%;font-family:var(--ws-mono);word-wrap:break-word}
 .page-card-body pre code{color:inherit;font-size:inherit;white-space:inherit}
@@ -10095,13 +10107,19 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <p>The automation uses <a href="https://netascode.cisco.com/docs/data_models/vxlan/overview/"><strong>Cisco Nexus as Code</strong></a> (<code>cisco.nac_dc_vxlan</code>), and the most useful way to hold it in your head is this: <strong>it is a declarative layer over the <code>cisco.dcnm</code> module collection, and it has no transport of its own.</strong> It reads a YAML data model off disk, works out which <code>cisco.dcnm</code> module calls produce the fabric that model describes, and drives those modules itself. You never write an API call, and you never write per-device configuration.</p>
 <p>The distinction from using <code>cisco.dcnm</code> on its own matters. That collection gives you one module per Nexus Dashboard object — create a fabric, add inventory, pair a vPC, attach a network — so automating this section with it directly would mean writing out the same sequence of steps you would click in the UI, in the same order, with the same dependencies to get right. Nexus as Code inverts that. You declare the fabric you want and it works out the calls. There is no "add switch" step in the data model; there is a list of switches.</p>
 <p>This is the whole chain, and it is the one thing on this page worth memorising:</p>
-<pre>playbooks/host_vars/Pseudoco-DC1/*.nac.yaml    the declarative data model
-  -&gt; cisco.nac_dc_vxlan.validate               reads the model off disk, checks it
-  -&gt; cisco.nac_dc_vxlan.dtc.create | dtc.deploy  renders module calls
-  -&gt; cisco.dcnm.dcnm_fabric | dcnm_inventory | dcnm_interface
-     | dcnm_vrf | dcnm_network                 one module per controller object
-  -&gt; Nexus Dashboard REST over httpapi         ndfc.corp.pseudoco.com:443
-  -&gt; DC-Leaf1/2, DC-SPINE-1/2, DC-Service-Leaf  198.18.128.101-102, .11-.13</pre>
+<div class="chain">
+<div class="chain-step chain-model"><div class="chain-what">playbooks/host_vars/Pseudoco-DC1/*.nac.yaml</div><div class="chain-role">the declarative data model</div></div>
+<div class="chain-arrow">&#9660;</div>
+<div class="chain-step chain-nac"><div class="chain-what">cisco.nac_dc_vxlan.validate</div><div class="chain-role">reads the model off disk and checks it</div></div>
+<div class="chain-arrow">&#9660;</div>
+<div class="chain-step chain-nac"><div class="chain-what">cisco.nac_dc_vxlan.dtc.create<br>cisco.nac_dc_vxlan.dtc.deploy</div><div class="chain-role">renders the module calls</div></div>
+<div class="chain-arrow">&#9660;</div>
+<div class="chain-step chain-dcnm"><div class="chain-what">cisco.dcnm.dcnm_fabric &middot; dcnm_inventory &middot; dcnm_interface &middot; dcnm_vrf &middot; dcnm_network</div><div class="chain-role">one module per controller object</div></div>
+<div class="chain-arrow">&#9660;</div>
+<div class="chain-step chain-api"><div class="chain-what">Nexus Dashboard REST over httpapi</div><div class="chain-role">ndfc.corp.pseudoco.com:443</div></div>
+<div class="chain-arrow">&#9660;</div>
+<div class="chain-step chain-dev"><div class="chain-what">DC-Leaf1/2 &middot; DC-SPINE-1/2 &middot; DC-Service-Leaf</div><div class="chain-role">198.18.128.101-102, .11-.13</div></div>
+</div>
 <p>Two consequences of that shape matter more than any piece of syntax:</p>
 <ul>
 <li><strong>The model is the source of truth.</strong> Re-running the pipeline converges the controller onto whatever the YAML currently says, so the way to change the fabric is to change the model and run it again — not to click something and hope you remember to write it down afterwards.</li>
