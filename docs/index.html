@@ -94,6 +94,8 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .chain-what{flex:2 1 330px;font-family:var(--ws-mono);font-size:13px;line-height:1.55;word-break:break-word}
 .chain-role{flex:1 1 200px;font-size:13.5px;color:#55606b;line-height:1.55}
 .chain-arrow{color:#aab3bc;font-size:13px;line-height:1;margin:4px 0 4px 20px}
+.chain-stack{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+.chain-tag{display:inline-block;font-weight:700;color:var(--chain-accent);margin-right:6px}
 .chain-model{--chain-accent:#0091bd;--chain-bg:#edf9ff}
 .chain-nac{--chain-accent:#7a5cff;--chain-bg:#f4f1ff}
 .chain-dcnm{--chain-accent:#007a5e;--chain-bg:#edf7f3}
@@ -10158,9 +10160,11 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
   <div class="page-card-body"><h3>DC Infrastructure as Code — Step 2 of 9</h3>
 <h4>Two places, one boundary</h4>
 <p>Everything this pipeline builds is declared in one of two directories, and telling them apart is the single most useful thing you can take from this track:</p>
-<pre>playbooks/host_vars/Pseudoco-DC1/*.nac.yaml   (a) the Nexus as Code data model
-inventory/group_vars/all/dc_*.yml             (b) everything the model cannot say
-inventory/group_vars/nd/*.yml                     the controller connection</pre>
+<div class="chain-stack">
+<div class="chain-step chain-model"><div class="chain-what">playbooks/host_vars/Pseudoco-DC1/*.nac.yaml</div><div class="chain-role"><span class="chain-tag">(a)</span>the Nexus as Code data model</div></div>
+<div class="chain-step chain-dcnm"><div class="chain-what">inventory/group_vars/all/dc_*.yml</div><div class="chain-role"><span class="chain-tag">(b)</span>everything the model cannot say</div></div>
+<div class="chain-step chain-api"><div class="chain-what">inventory/group_vars/nd/*.yml</div><div class="chain-role">the controller connection</div></div>
+</div>
 <p><strong>(a) is the declarative model, and the collection owns its schema.</strong> The <code>validate</code> role reads these six files off disk and checks them; <code>dtc.create</code> and <code>dtc.deploy</code> turn what survives into <code>cisco.dcnm</code> module calls. No API name, no module name and no controller field appears in any of them.</p>
 <p><strong>(b) is plain Ansible variables, and the playbooks own them.</strong> Nothing inside the collection reads them. They exist because <code>cisco.nac_dc_vxlan</code> 0.9.0 has no key for what they declare, so stages 03, 04 and 05 read them and call <code>dcnm_fabric</code>, <code>dcnm_rest</code> and <code>dcnm_vrf</code> directly. Their values are therefore spelled the way the <strong>controller</strong> spells them — <code>VRF_LITE_AUTOCONFIG</code>, <code>IS_READ_ONLY</code>, <code>licenseTier</code> — because that is what goes on the wire.</p>
 <div class="admonition">
