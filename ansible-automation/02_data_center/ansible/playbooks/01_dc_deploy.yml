@@ -24,23 +24,26 @@
 #   03  the fabric settings Nexus as Code cannot express: the VRF-Lite
 #       resources, the license tier, the telemetry toggle and the location
 #   04  the External connectivity fabric, in Monitor Mode, with the IOS-XE
-#       edge router added to it
-#   05  first deploy: pushes the fabric to the switches, and makes the
-#       controller build the VRF-Lite inter-fabric link
+#       edge router added to it, and the VRF-Lite inter-fabric link between
+#       the border leaf and that router
+#   05  first deploy: pushes the fabric to the switches
 #   06  the VRF-Lite extensions on the border leaf, as intent
 #   07  second deploy: pushes those extensions to the border leaf
-#   08  verify the result against intent over the Nexus Dashboard API
+#   08  verify the result, against Nexus Dashboard and against the switch
 #
 # The deploy runs before stage 06 because stage 06 depends on it.
 #
 # Stage 06 can only add an extension where Nexus Dashboard is already offering
 # the border leaf one, and it offers one only where a VRF-Lite inter-fabric
-# link terminates. Nothing in this repository creates that link. The controller
-# creates it, because inventory/group_vars/all/dc_advanced_settings.yml sets
-# VRF_LITE_AUTOCONFIG to Back2Back&ToExternal, but it does so during a
-# Recalculate and Deploy and only once the edge router stage 04 adds is present
-# in the External fabric. So the first deploy is what produces the link, and
-# stage 06 has to follow it.
+# link terminates. Stage 04 creates that link explicitly, with dcnm_links and
+# the ext_fabric_setup template, from dc_vrf_lite_ifc in
+# inventory/group_vars/all/dc_vrf_lite.yml. Nothing is left to the controller:
+# dc_advanced_settings.yml sets VRF_LITE_AUTOCONFIG to Manual, so Nexus
+# Dashboard never invents a link or picks an address of its own.
+#
+# The link still needs a deploy before the extension can be attached, because
+# the controller only offers the prototype once the parent interface has been
+# configured on the switch. So the first deploy has to come first.
 #
 # The deploy runs again after stage 06 because stage 06 only stages intent.
 #
@@ -63,12 +66,17 @@
 #   - Stage 08 fails the run on any mismatch; add
 #     -e dc_verify_fail_on_mismatch=false for the report without the failure.
 #
-# On a re-run the inter-fabric link already exists, so the first deploy is not
-# creating it again. It is still needed: stage 02 runs dcnm_vrf with
-# state: replaced, which clears the VRF-Lite extension off the border leaf, and
-# the first deploy pushes that removal. Stage 05 then puts the extension back
-# and the second deploy restores it, so external connectivity is down for the
-# few minutes between the two deploys.
+# To tear it all down again, including the sub-interfaces stage 07 wrote onto
+# the border leaf, run:
+#
+#   ansible-playbook playbooks/09_cleanup.yml -e dc_cleanup_confirm=CLEANUP_OK
+#
+# On a re-run the inter-fabric link already exists, so stage 04 converges it
+# rather than creating it. The first deploy is still needed: stage 02 runs
+# dcnm_vrf with state: replaced, which clears the VRF-Lite extension off the
+# border leaf, and the first deploy pushes that removal. Stage 06 then puts the
+# extension back and the second deploy restores it, so external connectivity is
+# down for the few minutes between the two deploys.
 #
 # Background: "What stage 06 needs from the controller" in the README.
 
@@ -76,13 +84,14 @@
 - import_playbook: 03_fabric_advanced_settings.yml
 - import_playbook: 04_external_fabric.yml
 
-# First deploy. Pushes the fabric, and gives the controller the Recalculate and
-# Deploy it needs before it will build the VRF-Lite inter-fabric link.
+# First deploy. Pushes the fabric, and configures the parent interface of the
+# inter-fabric link - which is what makes the controller offer stage 06 a
+# VRF-Lite prototype to build on.
 - import_playbook: 05_recalculate_and_deploy.yml
 
 - import_playbook: 06_vrf_lite.yml
 
-# Second deploy. Pushes the sub-interfaces and BGP neighbours stage 05 staged.
+# Second deploy. Pushes the sub-interfaces and BGP neighbours stage 06 staged.
 - import_playbook: 07_recalculate_and_deploy.yml
 
 - import_playbook: 08_verify_fabric.yml
