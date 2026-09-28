@@ -790,7 +790,7 @@ DC-Service-Leaf# show running-config interface Ethernet1/8
 interface Ethernet1/8
   description connected-to-DC-SITE11-CEDGE8Kv-GigabitEthernet2
   no switchport
-  mtu 9000
+  mtu 1500
   no shutdown
 
 DC-Service-Leaf# show ip interface brief vrf all | include 192.168.252
@@ -961,9 +961,9 @@ to build the payload from, so stage 06 stops and says so, naming the ordering
 problem it actually is: run stage 05 first.
 
 The prototype is derived from the VRF-Lite inter-fabric link. A pending parent
-interface with `no switchport`, `mtu 9000`, and a CDP description does not prove
+interface with `no switchport`, an MTU and a CDP description does not prove
 that the link is VRF-Lite; the controller must offer a `VRF_LITE` prototype on
-`Ethernet1/8`, and stage 05 is what creates that link.
+`Ethernet1/8`, and stage 04 is what creates that link.
 
 **What Cisco's non-Nexus guidance does and does not mean here.** The
 guidelines quoted in the previous section - *"Auto IFC is supported on Cisco
@@ -1011,7 +1011,7 @@ explain it, and only one of them is ours to set.
 
 | Value | Where it comes from |
 |---|---|
-| Parent `Ethernet1/8` MTU **9000** | The `Link MTU` field on the auto-created IFC. Cisco labels it *"Interface MTU on both ends of VRF Lite IFC"*. The template default is 9216, so 9000 is what the controller derived for this link. It is a controller-side number and, despite the field's name, it is **not** what the router carries. |
+| Parent `Ethernet1/8` MTU **1500** | The `Link MTU` field on the IFC, set from `dc_vrf_lite_ifc.mtu`. Cisco labels it *"Interface MTU on both ends of VRF Lite IFC"*, but it is a controller-side number and, despite the field's name, it is not a reading of the router. It is declared as 1500 here so the parent matches `GigabitEthernet2`; left to the controller it derives 9000. |
 | Sub-interface MTU **9216** | The **fallback in the controller's own VRF extension template**. `Default_VRF_Extension_Universal` carries a per-extension `Subinterface MTU` field and renders `if (@ITEM.MTU != "") { mtu @ITEM.MTU } else { mtu 9216 }`. |
 | Router IP MTU **1500** | What `DC-SITE11-CEDGE8Kv` actually carries on `GigabitEthernet2` and on all three of its dot1q sub-interfaces. Measured on the pod, not inferred. |
 | `dc_vrf_lite_mtu` **1500** | Declared by this repository, in `inventory/group_vars/all/dc_vrf_lite.yml`, to match the router. |
@@ -1024,12 +1024,12 @@ the list of properties it writes into `VRF_LITE_CONN` is `DOT1Q_ID`,
 `IF_NAME`, `IP_MASK`, `IPV6_MASK`, `IPV6_NEIGHBOR`, `NEIGHBOR_IP`,
 `PEER_VRF_NAME`. There is no MTU in either. That gap is the reason stage 06
 posts the attachment itself instead of calling the module. The controller's own UI does not
-have this problem, because the prototype it offers carries `"MTU":"9000"` and
-the UI writes it through.
+have this problem, because the prototype it offers carries the link's own MTU
+and the UI writes it through.
 
-**Why the value is 1500, and why it is not 9000.** The parent's 9000 rules
-9216 out, but it does not choose a value: anything from 576 up to 9000 is
-accepted by the switch. What chooses it is the router, because a routed link
+**Why the value is 1500.** The parent rules 9216 out, but a parent on its own
+does not choose a value: anything from 576 up to the parent's MTU is accepted
+by the switch. What chooses it is the router, because a routed link
 only works if both ends agree on how large an IP packet may be, and the
 router is the end this repository cannot change.
 
@@ -1071,13 +1071,12 @@ and defines its `MTU is` field as *"MTU value set on the interface, in
 bytes"*.
 
 Monitor Mode means Nexus Dashboard can never raise the router to meet a
-larger value, so 9000 on our side would be a real mismatch rather than a
-conservative choice. The earlier version of this section claimed 9000 matched
-`mtu 9000` on the router's `GigabitEthernet2`. It does not, and never did;
-that 9000 was the controller's `Link MTU` on the inter-fabric link, read
-across as if it were the router's interface MTU. The two are different
-things, and the field name *"Interface MTU on both ends of VRF Lite IFC"* is
-what made the confusion easy.
+larger value, so anything above 1500 on our side would be a real mismatch
+rather than a conservative choice. Note that the controller's `Link MTU` on
+the inter-fabric link and the router's interface MTU are different things, and
+the field name *"Interface MTU on both ends of VRF Lite IFC"* makes them easy
+to confuse. `dc_vrf_lite_ifc.mtu` sets the first; only the router can tell you
+the second.
 
 **How a 1500-versus-9000 mismatch would have presented, had it shipped.** Not
 as a failed deploy, and not as a dead BGP session either.
