@@ -290,7 +290,9 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>NDFC - DC Fabric Deployment — Infrastructure as Code</div>
-  <ul class="nav-pages hidden"><li><a href="#page-dc-automation">1. Why Automate the DC Fabric</a></li>
+  <ul class="nav-pages hidden"><li><a href="#page-dc-overview">Overview</a></li>
+<li><a href="#page-dc-environment">Environment Details</a></li>
+<li><a href="#page-dc-automation">1. Why Automate the DC Fabric</a></li>
 <li><a href="#page-dc-model">2. Where the Definitions Live</a></li>
 <li><a href="#page-dc-serials">3. Serial Discovery</a></li>
 <li><a href="#page-dc-run">4. Run the Pipeline</a></li>
@@ -10029,6 +10031,18 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 </div><div class="section-anchor" id="section-9500">
   <div class="section-header"><h2>NDFC - DC Fabric Deployment — Infrastructure as Code</h2></div>
   <div class="page-card">
+  <div class="page-card-header"><span>📄</span>
+    <h3 id="page-dc-overview" class="page-anchor">Overview</h3>
+  </div>
+  <div class="page-card-body"><p>This track uses Ansible and Nexus as Code to build the <strong>Pseudoco-DC1 VXLAN EVPN fabric</strong>, including its switches, server connections, MAIN/PROD/IOT segments, and external connectivity. It reaches the same fabric outcome as the manual workflow, using a version-controlled model and pipeline instead of configuring objects in Nexus Dashboard.</p>
+<p>For the design goals and what the fabric provides, see the <a href="#page-8208">Manual Provisioning Overview</a>.</p></div>
+</div><div class="page-card">
+  <div class="page-card-header"><span>📄</span>
+    <h3 id="page-dc-environment" class="page-anchor">Environment Details</h3>
+  </div>
+  <div class="page-card-body"><p>The target is the same five-switch data center fabric used by the manual track, with three server workloads aligned to the MAIN, PROD, and IOT VRFs and VRF-Lite connectivity to an external network. The pipeline discovers the switches and applies the declared fabric configuration through Nexus Dashboard.</p>
+<p>For the physical and logical topology diagrams, see <a href="#page-8209">Manual Provisioning Environment Details</a>.</p></div></div>
+  <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
     <h3 id="page-dc-automation" class="page-anchor">1. Why Automate the DC Fabric</h3>
   </div>
@@ -10323,7 +10337,16 @@ ansible-playbook ~/cisco-one-experience-lab-automation/ansible-automation/00_scr
 <p>Then read the serials off the switches, which also writes the data model, and run the pipeline:</p>
 <pre>ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 ansible-playbook playbooks/01_dc_deploy.yml</pre>
-<p>After stage 00 bootstrap, run serial discovery and then the orchestrator. The orchestrator imports the playbooks in this order: <code>02_create_dc_fabric.yml</code>, <code>03_fabric_advanced_settings.yml</code>, <code>04_external_fabric.yml</code>, <code>05_recalculate_and_deploy.yml</code>, <code>06_vrf_lite.yml</code>, <code>07_recalculate_and_deploy.yml</code>, and <code>08_verify_fabric.yml</code>. Stage 04 creates the inter-fabric link, stage 06 adds the extensions, and stage 07 pushes them to the border leaf.</p>
+<p>After stage 00 bootstrap, run serial discovery and then the orchestrator. It imports these playbooks in order:</p>
+<div class="flow">
+<div class="flow-step chain-nac"><div class="flow-num">1</div><div class="flow-body"><span class="flow-where">stage 02</span><span class="flow-title"><code>02_create_dc_fabric.yml</code></span>Create the fabric, import and configure switches, build the vPC and port-channels, and declare the VRFs and networks.</div></div>
+<div class="flow-step chain-model"><div class="flow-num">2</div><div class="flow-body"><span class="flow-where">stage 03</span><span class="flow-title"><code>03_fabric_advanced_settings.yml</code></span>Apply the advanced fabric settings needed by the deployment.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-where">stage 04</span><span class="flow-title"><code>04_external_fabric.yml</code></span>Define the external fabric and create the inter-fabric link.</div></div>
+<div class="flow-step chain-dev"><div class="flow-num">4</div><div class="flow-body"><span class="flow-where">stage 05</span><span class="flow-title"><code>05_recalculate_and_deploy.yml</code></span>First deploy: configure the link's parent interface on the border leaf so Nexus Dashboard can offer the VRF-Lite extension prototype.</div></div>
+<div class="flow-step chain-nac"><div class="flow-num">5</div><div class="flow-body"><span class="flow-where">stage 06</span><span class="flow-title"><code>06_vrf_lite.yml</code></span>Add the VRF-Lite extensions. This runs after stage 05 because the parent interface must already exist on the switch.</div></div>
+<div class="flow-step chain-dev"><div class="flow-num">6</div><div class="flow-body"><span class="flow-where">stage 07</span><span class="flow-title"><code>07_recalculate_and_deploy.yml</code></span>Second deploy: push the extensions and their sub-interfaces to the border leaf.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">7</div><div class="flow-body"><span class="flow-where">stage 08</span><span class="flow-title"><code>08_verify_fabric.yml</code></span>Verify the deployed fabric against the declared model and write the evidence report.</div></div>
+</div>
 <p><strong>Read that order twice: stage 05 deploys first, stage 06 stages the extensions, and stage 07 deploys again.</strong> Stage 06 needs Nexus Dashboard to already be offering the border leaf a VRF-Lite extension prototype on <code>Ethernet1/8</code>, and that exists only once the inter-fabric link stage 04 created has had its parent interface configured on the switch. Stage 05 is what configures it. If the prototype is missing, stage 06 reports that stage 05 must run first.</p>
 <p>One stage builds everything, and that is worth saying plainly, because it does not mirror the order you clicked through by hand. <code>02_create_dc_fabric.yml</code> creates the fabric object, imports and roles the five switches, pairs the vPC, lays down the port-channels and declares the VRFs and networks — all of sections 4, 5 and 6 in a single run. Giving the fabric object a stage of its own would be misleading rather than useful, because Nexus as Code drives the whole data model through one create role: a playbook that ran that role and filtered nothing would perform the entire build whatever its name promised.</p>
 <p>When that stage finishes, open the fabric's <strong>Inventory</strong> tab and you are looking at your own data model reflected back at you:</p>
