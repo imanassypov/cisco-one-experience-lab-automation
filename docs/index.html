@@ -10201,7 +10201,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
         switches:
           - hostname: DC-Leaf1   # DC-Service-Leaf is deliberately absent
           - hostname: DC-Leaf2</pre>
-<p>Look hard at that attach group, because it is the model's entire vocabulary for an attachment: <strong>a hostname, and nothing else.</strong> There is no key for the VRF-Lite extension you configured by hand in section 8 — no sub-interface, no dot1q tag, no neighbour address. That single limitation is why file (b) has to exist, and it comes back three more times on this page.</p>
+<p>A <strong>VRF attachment</strong> is the association that places a VRF on a switch. Here, <code>vrf_attach_group: dc_leaves</code> points to a named list of switches; each <code>hostname</code> in that list identifies a switch where PROD is attached. The model can say which switches get the VRF, but it cannot configure the separate VRF-Lite extension from section 8 — its sub-interface, dot1q tag, or neighbour address. That limitation is why file (b) has to exist, and it comes back three more times on this page.</p>
 <p>A network, from <code>networks.nac.yaml</code>, where an attach group can also name ports:</p>
 <pre>vxlan:
   overlay:
