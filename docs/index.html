@@ -63,6 +63,10 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .nav-pages li a{display:block;padding:.5rem;margin:1px 0 1px .5rem;color:#000;text-decoration:none;font-size:.8125rem;line-height:1.4;border:1px solid transparent;border-radius:.5rem;transition:background-color .15s,color .15s}
 .nav-pages li a:hover{color:#000;background:#eceef0}
 .nav-pages li a.active{background:var(--cisco-dark);color:#fff;border-color:var(--cisco-dark)}
+.nav-pages li a.iac{display:flex;align-items:flex-start;gap:6px;color:#7b3cb8;background:#f4ecfb;border-left:3px solid #7b3cb8}
+.nav-pages li a.iac:hover{color:#7b3cb8;background:#ebdff7}
+.nav-pages li a.iac .nav-icon{width:14px;height:14px;flex:0 0 14px;margin-top:2px}
+.nav-pages li a.iac.active{background:#f4ecfb;color:#7b3cb8;border-color:#7b3cb8;font-weight:700}
 #main{margin-left:var(--sidebar-w);flex:1;min-height:100vh}
 #topbar{background:#fff;border-bottom:2px solid var(--cisco-blue);padding:12px 32px;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px}
 #topbar .cisco-logo{font-weight:900;font-size:18px;color:var(--cisco-dark);letter-spacing:1px}
@@ -153,6 +157,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Environment Preparation</div>
   <ul class="nav-pages hidden"><li><a href="#page-7946">1. Familiarize Yourself with the Jumphost </a></li>
 <li><a href="#page-7947">2. Activate Duo Admin Account</a></li>
+<li><a class="iac" href="#page-9002"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Choose your own Secure Network Adventure</div>
@@ -171,8 +176,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>EVPN Fabric and WLC — Infrastructure as Code</div>
-  <ul class="nav-pages hidden"><li><a href="#page-9002">1. Prepare Workstation &amp; Script Server</a></li>
-<li><a href="#page-9003">2. Run the Pipeline</a></li>
+  <ul class="nav-pages hidden"><li><a href="#page-9003">2. Run the Pipeline</a></li>
 <li><a href="#page-9004">3. Verify Intent &amp; Evidence Report</a></li>
 <li><a href="#page-9005">4. Understanding the Template Model</a></li>
 <li><a href="#page-9006">5. Extending the Fabric via Git</a></li>
@@ -1047,7 +1051,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </div>
 </div><div class="section-anchor" id="section-2186">
   <div class="section-header"><h2>Environment Preparation</h2><div class="section-summary"><p dir="ltr" style="text-align: left;"></p>
-<p><span lang="EN-GB">In this scenario you will familiarize yourself with the dCloud Lab environment and activate the Duo account associated with the lab. The steps outlined in this section will be performed from one of the Jump Hosts and AD1 Server. </span></p>
+<p><span lang="EN-GB">In this section you will familiarize yourself with the dCloud Lab environment and prepare for the work ahead. The first two cards use the Jump Hosts and AD1 Server; the optional third card prepares an Ansible script server for the automated EVPN path.</span></p>
 <p></p>
 <p></p></div></div>
   <div class="page-card">
@@ -1169,7 +1173,334 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </div>
 </div>
 </div>
-<div class="box py-3 branchbuttoncontainer horizontal">
+<div class="page-card">
+  <div class="page-card-header"><span>🤖</span>
+    <h3 id="page-9002" class="page-anchor">3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</h3>
+  </div>
+  <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 8</h3>
+<p>This card prepares the script server for the guide's Ansible-based Infrastructure as Code (IaC) automation. You will connect to the server, clone the repository, and bootstrap the Ansible runtime, Galaxy collections, and required dependencies. Nothing here configures the fabric; complete this setup once before running either IaC path.</p>
+<div class="admonition warning">
+<p>🛑 <strong>This setup supports both IaC alternatives in this guide: Campus EVPN and DC EVPN.</strong> If you plan to use either one, complete this preparation once. If you are following only manual provisioning paths, you can skip it.</p>
+</div>
+<p>Card for card, this is what replaces what:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 46%;">Manual Provisioning card</th><th style="width: 54%;">Infrastructure as Code equivalent</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="#page-7583">1. EVPN Fabric Provisioning</a> — paste IOS-XE CLI into each switch over SSH</td><td><a href="#page-9003">2. Run the EVPN + Catalyst Center Pipeline</a> — stage 06 uploads the templates, stage 10 renders and deploys them per device</td></tr>
+<tr><td><a href="#page-7584">2. EVPN Catalyst Center Discovery / Templates</a> — discover devices and build templates in the GUI</td><td><a href="#page-9003">2. Run the EVPN + Catalyst Center Pipeline</a> — stages 01 to 08 create the sites, credentials, discovery jobs, profiles and provisioning through the REST API</td></tr>
+<tr><td><a href="#page-7585">4. Configure &amp; Test WLC</a> — build the SSID and policies on the 9800 by hand</td><td><a href="#page-9003">2. Run the pipeline</a> (stages 07 and 08) then <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a></td></tr>
+<tr><td><em>No manual equivalent</em></td><td><a href="#page-9004">3. Verify Intent &amp; Evidence Report</a> — machine-checked proof the fabric matches the design. The manual path has no comparable step</td></tr>
+</tbody>
+</table>
+<p>The remaining cards in this track — the template model, extending the fabric through Git, and intent verification — have no manual counterpart at all. They exist to show you <em>why</em> a network team would work this way, not just how.</p>
+<hr>
+<h4>The whole journey, at a glance</h4>
+<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. This card is the grey line at the top — the other three come later.</p>
+<p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
+<p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
+<ul>
+<li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
+<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
+<li><strong>The orchestrator runs all twelve stages.</strong> Two of them are worth knowing about before you start it: stage 09 reboots the switches, and stage 11 blocks for up to ten minutes waiting for an access point to boot.</li>
+</ul>
+<hr>
+<h4>One machine does the work</h4>
+<p>Everything in this track runs on the <strong>script server</strong> — a Kali Linux host inside the pod. Your laptop only runs the VPN client and an SSH session. Nothing is installed on it.</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr>
+<th style="width: 22%;">Machine</th>
+<th style="width: 26%;">Address</th>
+<th style="width: 52%;">What runs here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Your laptop</strong></td>
+<td>local</td>
+<td>Cisco Secure Client and an SSH terminal. That is all — you install nothing.</td>
+</tr>
+<tr>
+<td><strong>Script server</strong><br>(Kali Linux)</td>
+<td><code>198.18.134.12</code>, user <code>cisco</code></td>
+<td>You clone the repository here and run everything here, including stages 01 – 12. It is the only host with network reachability to Catalyst Center.</td>
+</tr>
+</tbody>
+</table>
+<p>The script server bootstraps <em>itself</em> from the repository you clone onto it: it fixes DNS, installs packages, builds a Python environment, and installs the Ansible collections.</p>
+<hr>
+<h4>Before you begin</h4>
+<ul>
+<li>An active dCloud <strong>PseudoCo / Cisco One</strong> session, powered on</li>
+<li>Cisco Secure Client (AnyConnect) connected to the dCloud session</li>
+<li>An SSH client — nothing else is needed on your laptop</li>
+<li>Your <strong>dCloud POD number</strong>, from the lab printout — ask a proctor if you cannot find it</li>
+</ul>
+<p>Catalyst Center in this pod is version <strong>3.1.5</strong>, reachable at <code>cat-center.corp.pseudoco.com</code>.</p>
+<hr>
+<h4>Step 1 — Confirm the VPN, then SSH in</h4>
+<p>Everything downstream depends on this. Run it first, from your laptop:</p>
+<pre>nc -z -G 5 198.18.134.12 22 &amp;&amp; echo reachable</pre>
+<p>If you do not see <code>reachable</code>, your VPN is not up. Reconnect Cisco Secure Client before continuing — no amount of retrying the later steps will help.</p>
+<p><img class="img-fluid" src="automation_images/a1-vpn-connected.png" alt="Cisco Secure Client showing AnyConnect VPN connected to dcloud-rtp-anyconnect.cisco.com, with Zero Trust Access enrolled and Umbrella active" width="560" height="615"></p>
+<p>Now connect. <strong>Every remaining command in this track runs inside this SSH session.</strong></p>
+<pre>ssh cisco@198.18.134.12</pre>
+<div class="admonition">
+<p>👀 <strong>No Cisco Secure Client on your laptop? You can still do the whole lab.</strong> Some corporate builds will not let you install a VPN client. dCloud gives you a way in that needs nothing but a browser.</p>
+<p>In your dCloud session, open the <strong>Servers</strong> view, pick <strong>Jumphost1</strong>, and choose <strong>Web RDP</strong>. That opens a full Windows desktop inside a browser tab — the jump host is already inside the lab network, so no VPN is involved. The credentials for it are on the Jumphost1 panel itself, and also in <a href="#page-7940"><strong>Environment Access</strong></a>.</p>
+<p><img class="img-fluid" src="automation_images/a1-jumphost-web-rdp.png" alt="dCloud Servers view showing the Jumphost1 panel with the Web RDP and VM Console buttons" width="560" height="718"></p>
+<p>From that desktop, open a terminal and SSH to the script server exactly as above:</p>
+<pre>ssh cisco@198.18.134.12</pre>
+<p>Everything from Step 2 onward is identical — you are simply typing it in a browser tab instead of your own terminal. Two things to expect: copy and paste between your laptop and the remote desktop can be awkward, and the session will drop if you leave it idle for a long time, so reconnect and <code>cd</code> back to the pipeline directory if that happens.</p>
+</div>
+<hr>
+<h4>Step 2 — Clone the repository onto the script server</h4>
+<pre>git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap</pre>
+<p>You can clone anywhere you like — every path in the automation is worked out from where the playbooks live, so the home directory is just a convention.</p>
+<hr>
+<h4>Step 3 — Stage the box</h4>
+<p>There is a chicken-and-egg problem here: you cannot use Ansible to install Ansible. A small shell script does the minimum needed to break that cycle — base packages plus a Python environment at <code>~/venv</code> containing <code>ansible-core</code>.</p>
+<pre>./stage-script-server.sh</pre>
+<p><code>sudo</code> will ask for the <code>cisco</code> account password. The script is safe to re-run, and it refuses to run on anything but Linux — so if you run it on your laptop out of habit, it stops and tells you the SSH command you actually wanted.</p>
+<p>It prompts once for your <strong>dCloud POD number</strong> — the integer from your lab printout — and writes it into <code>lab.yml</code>. That is the only lab-specific value you have to supply anywhere in this track. Pod 7 becomes SSID <code>PSEUDOCO-POD07</code>; the zero padding is not cosmetic, because the SSID has to match a pre-configured group policy on the shared controller.</p>
+<div class="admonition">
+<p>👀 <strong>Cannot find your POD number?</strong> Ask a proctor before guessing. Entering someone else's pod pushes your SSID onto their controller.</p>
+</div>
+<p>It installs a pinned, reproducible set of packages so every student runs the same versions:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 40%;">Package</th><th style="width: 20%;">Version</th><th style="width: 40%;">Why</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ansible-core</code></td><td>2.17.14</td><td>The automation engine</td></tr>
+<tr><td><code>paramiko</code></td><td>3.5.1</td><td>SSH transport used by other collections</td></tr>
+<tr><td><code>ansible-pylibssh</code></td><td>1.4.0</td><td>SSH transport for <code>network_cli</code>, used to read the DC switch serials</td></tr>
+<tr><td><code>netaddr</code></td><td>1.3.0</td><td>IP address maths inside templates</td></tr>
+<tr><td><code>catalystcentersdk</code></td><td>3.1.3.0.1</td><td>Catalyst Center API client</td></tr>
+<tr><td><code>dnacentersdk</code></td><td>2.10.6</td><td>Required by the <code>cisco.dnac</code> collection</td></tr>
+</tbody>
+</table>
+<p><img class="img-fluid" src="automation_images/a1-stage-script.png" alt="stage-script-server.sh on the script server: base packages present, virtualenv created at /home/cisco/venv, pinned packages installed, ansible core 2.17.14 staged, .vault created, and the dCloud POD number prompt answered with 5" width="865" height="530"></p>
+<p>The script also writes the <strong>vault password file</strong> for you, at <code>.vault</code> in the repository root. The lab stores its credentials in an encrypted file, <code>Lab Topology/lab_access.yml</code>, and <code>.vault</code> holds the passphrase that opens it. Confirm it works:</p>
+<pre>cd ~/cisco-one-experience-lab-automation
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
+<p>If that prints YAML, every playbook in the repository can authenticate, and you will never be asked for a device password again.</p>
+<div class="admonition warning">
+<p>🛑 <strong>Do not copy this credential pattern into production.</strong> Here the encrypted file <em>and</em> the passphrase that opens it both live in the repository, so the encryption protects nothing — it is a convenience for a disposable lab whose passwords are already public demo values. The mechanism itself is worth stealing; the key handling is not. In real work the passphrase comes from a secret store and never touches the repo.</p>
+</div>
+<hr>
+<h4>Step 4 — Bootstrap the script server</h4>
+<p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 12 needs to parse device output.</p>
+<p>Call them by their full path. <code>~/venv/bin</code> is not on your <code>PATH</code> yet — putting it there is one of the jobs of the second playbook.</p>
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
+
+~/venv/bin/ansible-playbook playbooks/00_preflight.yml
+~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml</pre>
+<div class="admonition">
+<p>👀 <strong>Now reload your shell — this step catches nearly everyone.</strong> The second playbook adds <code>~/venv/bin</code> to your <code>PATH</code>, but it does that by writing to your shell startup files. A shell that is already open never re-reads those files, so in <em>this</em> session <code>ansible-playbook</code> is still not found. The bootstrap worked; your shell simply has not caught up.</p>
+<pre>exec $SHELL -l
+ansible-playbook --version</pre>
+<p>Opening a new SSH session does the same thing. Once <code>ansible-playbook --version</code> answers, you can drop the <code>~/venv/bin/</code> prefix for the rest of the lab — every later command in this guide assumes you have done this.</p>
+</div>
+<div class="admonition warning">
+<p>🛑 <strong>If your shell says <code>ansible-playbook: command not found</code></strong> and offers to install <code>ansible-core</code> with apt, answer <strong>no</strong>. That installs an unpinned Ansible outside the virtual environment, at a different version from every other student. Reload your shell as above, or use the full <code>~/venv/bin/</code> path.</p>
+</div>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 32%;">Playbook</th><th style="width: 68%;">What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>00_preflight.yml</code></td><td>Read-only. Confirms you are on the Linux script server, the checkout is complete, the vault passphrase actually decrypts, and <code>sudo</code> works — so a mistake is caught before anything is changed.</td></tr>
+<tr><td><code>01_bootstrap_script_server.yml</code></td><td>Fixes DNS so <code>cat-center.corp.pseudoco.com</code> resolves, installs system packages, completes the <code>~/venv</code> environment, puts the Ansible binaries on <code>PATH</code>, and installs the Cisco collections.</td></tr>
+<tr><td><code>git pull</code></td><td>Not a playbook, and not needed today. Run it in the checkout later if a proctor tells you a lab fix has been published. Re-run <code>01_bootstrap_script_server.yml</code> afterwards, since a published fix may also add a pinned Python package or collection.</td></tr>
+</tbody>
+</table>
+<p>Look for <code>failed=0</code> in the <code>PLAY RECAP</code> at the end of each run. Just above it, <code>01</code> prints an evidence block — proof of what it actually changed, rather than a claim that it worked:</p>
+<p><img class="img-fluid" src="automation_images/a1-bootstrap-complete.png" alt="The bootstrap evidence block: ansible core 2.17.14 running from /home/cisco/venv, the three PATH binaries, DNS resolving cat-center.corp.pseudoco.com to 198.18.5.100, the vault password file path, and the installed Cisco collection versions" width="865" height="462"></p>
+<p>Read it as a checklist. The <code>ansible</code> binaries resolve inside <code>~/venv</code> rather than a system copy; <code>cat-center.corp.pseudoco.com</code> resolves, so the DNS fix took; the vault password file exists where the playbooks expect it; and the pinned Cisco collections are installed at the versions the stages were written against.</p>
+<p>These playbooks target this same host over a <strong>local</strong> connection — there is no SSH hop and no remote password involved.</p>
+<hr>
+<h4>Step 5 — Stage the IOS-XE software images</h4>
+<p>Stage 09 upgrades the switches, and it has nothing to install until you put the image files on the script server yourself. They are not in the repository: each <code>.bin</code> is well over a gigabyte and GitHub refuses anything above 100 MB, so they are supplied by hand, the same way <code>.vault</code> and <code>lab.yml</code> are.</p>
+<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. Step 4 has already done the work for that: nginx is installed, it is listening on port <strong>8080</strong>, and it is serving <code>/var/www/iosxe-images</code> — a folder the bootstrap deliberately created owned by <em>your</em> login account, not root, so that you can copy into it without <code>sudo</code>.</p>
+<p>So copy the two files — the upgrade image <em>and</em> the rollback image — straight into that folder. From your laptop:</p>
+<pre>scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+    cisco@198.18.134.12:/var/www/iosxe-images/</pre>
+<p>Expect this to take a while — that is roughly 2.6 GB over the VPN. When it finishes, they are already being served. <strong>There is no publish step and no playbook to re-run</strong>; nginx serves whatever is in that folder.</p>
+<p>The filenames must match <code>settings.json</code> character for character:</p>
+<pre>/var/www/iosxe-images/
+├── cat9k_iosxe.26.01.02.SPA.bin   ← the upgrade image
+└── cat9k_iosxe.17.12.08.SPA.bin   ← the rollback image</pre>
+<p>Now prove Catalyst Center will be able to fetch what it is about to be pointed at. Run this on the script server:</p>
+<pre>curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
+# HTTP/1.1 200 OK</pre>
+<p><code>200 OK</code> means stage 09 will work. <code>404</code> means the filename does not match what you copied. Connection refused means nginx is not running — re-run Step 4.</p>
+<div class="admonition">
+<p>👀 <strong>There is a second way, and you may have already used it.</strong> The bootstrap also copies any <code>.bin</code> it finds in <code>iosxe_images/</code> at the root of the checkout into that same web root. That exists so you can stage the images <em>before</em> the first bootstrap run and have everything ready in one pass. If you did that, they are already published and this step is done.</p>
+<p>Coming at it after Step 4, as you are here, copying straight to <code>/var/www/iosxe-images</code> is simpler: one transfer instead of two, and it does not leave a second 2.6 GB copy sitting in the checkout. The two routes do not conflict — the bootstrap only ever adds files to the web root, it never clears it, so re-running it later will not remove anything you copied by hand.</p>
+</div>
+<h5>Where each of those paths is defined</h5>
+<p>Nothing here is hard-coded in one place — the folder nginx serves, the optional staging folder in the checkout, and the URL Catalyst Center is given are separate settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 26%;">Setting</th><th style="width: 26%;">Value</th><th style="width: 48%;">File, and what it controls</th></tr>
+</thead>
+<tbody>
+<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td><code>ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code><br>The folder you copied into, and the one nginx serves.</td></tr>
+<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td>Same file — the optional pre-bootstrap staging folder. Anything here is copied to the web root when the bootstrap runs.</td></tr>
+<tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on.</td></tr>
+<tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>ansible-automation/01_campus/evpn/Settings/settings.json</code>, in the <code>swim</code> block of the <code>Site-105</code> project.<br>What Catalyst Center is told to download from.</td></tr>
+<tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>swim</code> block — these must match your filenames character for character.</td></tr>
+</tbody>
+</table>
+<p>Rather than take the table's word for it, print the live values from your own checkout:</p>
+<pre>cd ~/cisco-one-experience-lab-automation
+
+grep -nE 'script_server_image_(source_dir|root|http_port)' \
+  ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml
+
+grep -nE '"(image_base_url|image_file|rollback_image_file)"' \
+  ansible-automation/01_campus/evpn/Settings/settings.json</pre>
+<p>Stage 09 joins the last two together to build the download URL. In <code>ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml</code> it is literally:</p>
+<pre>{{ item.image_base_url }}/{{ item.image_file }}</pre>
+<p>So a typo in either half produces the same symptom — Catalyst Center reports that it could not import the image — and the <code>curl</code> above is the quickest way to tell which half is wrong.</p>
+<div class="admonition">
+<p>🔎 <strong>Why the images are served from the script server rather than downloaded from cisco.com.</strong> Catalyst Center would normally import software straight from Cisco's catalogue, and in this pod that does not work: every image is rejected with <code>NCSW10375 "not the latest or suggested image from cisco"</code> — including builds Cisco's own catalogue flags as recommended — and <code>software.cisco.com</code> answers HTTP 403 from inside the lab. Serving the file locally sidesteps the catalogue completely, which has a useful side effect: <em>any</em> image can be used, not only the handful Cisco currently suggests.</p>
+</div>
+<div class="admonition warning">
+<p>🛑 <strong>Skipping this has a delayed cost.</strong> Nothing fails now. Stage 09 fails later, part-way through a pipeline run, after the fabric is already built. If you have no images to hand, decide now: either stage them, or plan to run the pipeline with <code>-e swim_activate=false</code>.</p>
+</div>
+<hr>
+<h4>Step 6 — Move to the pipeline directory</h4>
+<p>Open a fresh shell so the new <code>PATH</code> takes effect, then change into the pipeline folder:</p>
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+ansible-playbook --version</pre>
+<p>Ansible is now on <code>PATH</code> without activating anything. If that command is not found, <code>source ~/venv/bin/activate</code> still works.</p>
+<div class="admonition warning">
+<p>🛑 <strong>The working-directory rule.</strong> Every pipeline command from here on must be run from that exact directory. Ansible only reads <code>ansible.cfg</code> from the current directory, and <em>that</em> file is what supplies the inventory, the roles path, the vault password file, and the credential plugin. Run a playbook from anywhere else and you will get <code>Lab access vault not found</code> — that error almost always means you are in the wrong folder, not that anything is broken.</p>
+</div>
+<hr>
+<h4>Step 7 — Confirm your pod number</h4>
+<p>Every student runs the same repository against a different pod, so the values that differ live in exactly <strong>one</strong> file. The staging script already wrote your pod number into it, so this is a check rather than an edit:</p>
+<pre>grep lab_pod_id inventory/group_vars/all/lab.yml</pre>
+<p>Edit it only if you entered the wrong pod, or later when you come back to add access point MACs:</p>
+<pre>vi inventory/group_vars/all/lab.yml</pre>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 22%;">Variable</th><th style="width: 20%;">Value</th><th style="width: 58%;">Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>lab_pod_id</code></td><td>Your pod number</td><td>Set for you in Step 3. It becomes your SSID — pod 7 produces <code>PSEUDOCO-POD07</code>. Stages that read the settings file <strong>fail</strong> if it is still <code>REPLACE_ME</code>, which is deliberate: it stops you pushing your SSID onto another student's controller.</td></tr>
+<tr><td><code>lab_ap_macs</code></td><td><code>[]</code></td><td>Leave it empty for now. You will fill this in much later, in <a href="#page-9007">the wireless card</a>, once an access point has registered.</td></tr>
+</tbody>
+</table>
+<hr>
+<h4>Step 8 — Confirm the inventory loads</h4>
+<p>This check is worth doing: it proves Ansible can read the inventory and unlock the vault before you run a stage that talks to Catalyst Center. It changes nothing — <code>ansible-inventory</code> only reads files.</p>
+<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 6. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 5, go back first:</p>
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+ansible-inventory --graph</pre>
+<p>You should see a single host:</p>
+<pre>@all:
+  |--@ungrouped:
+  |--@catalyst_center:
+  |  |--catalyst_center_api</pre>
+<p>The empty <code>@ungrouped</code> line is normal — Ansible always creates that group, and nothing in this lab belongs to it.</p>
+<div class="admonition">
+<p>🛑 <strong>If you get this instead, you are in the wrong directory:</strong></p>
+<pre>[WARNING]: No inventory was parsed, only implicit localhost is available
+@all:
+  |--@ungrouped:</pre>
+<p>Nothing is broken and nothing needs reinstalling. Ansible simply did not find <code>ansible.cfg</code>, so it fell back to a default with no inventory. Check where you are with <code>pwd</code> — the prompt above the command shows the answer too. The <code>cd</code> above fixes it. The same applies to every <code>ansible-playbook</code> command in this track: they all run from that one directory.</p>
+</div>
+<p>That single host surprises people. It is correct — the playbooks do not SSH to the switches. Every action goes through the Catalyst Center REST API, including the verification stage, which uses Catalyst Center's Command Runner to collect <code>show</code> output. Catalyst Center is the only thing Ansible talks to.</p>
+<hr>
+<h4>How credentials reach the playbooks</h4>
+<p>You never type a device password, and no password appears in any playbook. Nothing about this is magic — it is four small pieces, and it is worth understanding, because the same pattern solves the "where do I keep the passwords" problem in real work.</p>
+<p>The short version: <code>ansible.cfg</code> tells Ansible where the passphrase is and which extra code to run; that code finds one encrypted file, decrypts it, and hands its contents to every play as a single variable named <code>lab_access</code>; the inventory then picks individual fields out of that variable.</p>
+<h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
+<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 6. Three lines matter here:</p>
+<pre>[defaults]
+inventory           = inventory/static_inventory.yml
+vault_password_file = ../../../../.vault
+vars_plugins        = ../../../plugins/vars</pre>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead>
+<tr><th style="width: 26%;">Setting</th><th style="width: 74%;">What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>inventory</code></td><td>The host list — in this lab, the single <code>catalyst_center_api</code> host you just printed with <code>ansible-inventory --graph</code>.</td></tr>
+<tr><td><code>vault_password_file</code></td><td>Points four levels up, to <code>.vault</code> in the repository root. That file holds one line: the passphrase. Ansible reads it automatically, which is why you are never prompted.</td></tr>
+<tr><td><code>vars_plugins</code></td><td>A folder of extra code Ansible should run before any task, to supply variables. This lab ships exactly one piece, described next.</td></tr>
+</tbody>
+</table>
+<p>Those paths are <strong>relative</strong>. That is the real reason every command in this track runs from the pipeline directory — step outside it and Ansible finds none of the three.</p>
+<h5>2. <code>plugins/vars/lab_access.py</code> — the piece that fetches the secrets</h5>
+<p>A <em>vars plugin</em> is a small piece of Python whose only job is to hand variables to Ansible before the first task runs. You do not call it and it is not a playbook step; Ansible runs it on its own. This one is about fifty lines and does four things:</p>
+<ol>
+<li>Starts in the directory you ran from and <strong>walks up</strong> the folder tree, up to twelve levels, looking for a folder called <code>Lab Topology</code> containing <code>lab_access.yml</code>.</li>
+<li>Asks Ansible to load that file. Because <code>ansible.cfg</code> already supplied the passphrase, Ansible decrypts it in memory. Nothing is ever written back to disk in the clear.</li>
+<li>Checks the decrypted result really is a list of entries under a top-level <code>lab_access:</code> key, and stops with a clear error if it is not.</li>
+<li>Returns it as one variable, <code>lab_access</code>, visible to every play in every collection.</li>
+</ol>
+<p>Why walk up the tree rather than use a fixed path? Because the encrypted file lives once, at the top of the repository, while playbooks run from several different collection folders — campus, assurance, bootstrap. Walking up means no collection has to know how deep it sits, and there is only ever one copy of the credentials to look after.</p>
+<div class="admonition">
+<p>👀 <strong>If a playbook stops with <code>Lab access vault not found</code></strong>, the plugin walked twelve levels up and never found the file. In practice that means you are running from outside the repository. <code>cd</code> back into <code>01_campus/evpn/ansible</code> and try again.</p>
+</div>
+<h5>3. <code>Lab Topology/lab_access.yml</code> — the encrypted answer key</h5>
+<p>Committed to git, this file is unreadable. The first line tells you why:</p>
+<pre>$ANSIBLE_VAULT;1.1;AES256
+38396561366265623539346434333831316639383866623264363262323139...</pre>
+<p>Decrypted, it is ordinary YAML. Each entry is one system in this pod — the structure below is the tracked schema file, <code>lab_access.yml.example</code>, which carries the same keys with the passwords blanked out:</p>
+<pre>lab_access:
+
+  # Kali box every playbook runs from
+  script_server:
+    access: "ssh: 198.18.134.12"
+    username: cisco
+    password: REPLACE_ME
+
+  # Operator jump hosts (RDP)
+  Jumphost1:
+    access: "RDP: 198.18.133.36"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # Drives every stage of the campus pipeline via the Intent API
+  "Catalyst Center":
+    access: "https://cat-center.corp.pseudoco.com"
+    username: REPLACE_ME
+    password: REPLACE_ME
+
+  # Campus EVPN fabric switches. enable_password is required here and
+  # nowhere else - IOS-XE privilege 15.
+  Site_105-Leaf1:
+    access: "ssh: 198.18.128.22"
+    username: REPLACE_ME
+    password: REPLACE_ME
+    enable_password: REPLACE_ME</pre>
+<p><strong>These entries are this guide, written down as data.</strong> Every key name and every <code>access</code> value comes straight from the access tables in <a href="#page-7940"><strong>Environment Access</strong></a> earlier in this guide — the same jump host addresses, the same management URLs, the same switch IPs. Only the username, password and <code>enable_password</code> fields are held back and encrypted. Read that section and this file side by side and you are looking at the same information twice: once for you, once for the automation.</p>
+<p>Keys are matched <strong>exactly as written</strong>, including spaces and capitals, which is why several are quoted. Rename one and the lookup quietly returns nothing rather than raising an error, so the mismatch shows up later as a puzzling authentication failure.</p>
+<h5>4. The inventory picks out the fields it needs</h5>
+<p>Finally, the inventory turns entries in that variable into the settings each stage uses. Nothing here is a secret — it is a reference to one:</p>
+<pre>catc_username: "{{ lab_access['Catalyst Center'].username }}"
+catc_password: "{{ lab_access['Catalyst Center'].password }}"
+catc_host: cat-center.corp.pseudoco.com</pre>
+<p>You can read the decrypted file yourself at any time, without ever creating a plaintext copy:</p>
+<pre>cd ~/cisco-one-experience-lab-automation
+ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault</pre>
+<p>This is a pattern worth stealing for real work: secrets encrypted at rest, committed alongside the code so they never drift apart from it, and decrypted only at run time by whoever holds the passphrase.</p>
+<div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
+<div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
+<!-- Body -->
+<div style="padding: 18px 20px; color: #2e2e2e;">
+<p>Your script server is ready and your pod number is set. Next, go to <a href="#page-9001"><strong>EVPN: Choose Your Provisioning Path</strong></a>. If you choose the automated path, continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
+</div>
+</div></div>
+</div><div class="box py-3 branchbuttoncontainer horizontal">
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭 Complete</span></div>
 <!-- Body (Add your content here) -->
@@ -1782,7 +2113,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <li>Learn the Catalyst Center template model that scales past three switches</li>
 </ul>
 <p><strong>What you need:</strong> the dCloud VPN, a terminal, and your POD number from the lab printout.</p>
-<p><strong>Start here:</strong> <a href="#page-9002">1. Prepare Your Workstation &amp; Script Server</a></p>
+<p><strong>Start here:</strong> <a href="#page-9002">Environment Preparation 3: Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></p>
 </div>
 </div>
 <hr>
@@ -1850,7 +2181,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
 <p>Building it by hand? Continue to <a href="#page-7583"><strong>EVPN Fabric and WLC — Manual Provisioning</strong></a>.</p>
-<p>Building it as code? Continue to <a href="#page-9002"><strong>EVPN Fabric and WLC — Infrastructure as Code</strong></a>.</p>
+<p>Building it as code? If you have not prepared the script server yet, start with <a href="#page-9002"><strong>Environment Preparation 3: Infrastructure as Code — Script Server Preparation (Ansible)</strong></a>. Then continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
 <p>Both tracks finish at the same place: an EVPN fabric and a working wireless SSID. Pick one and stay on it — running both against the same pod will produce confusing results.</p>
 </div>
 </div></div>
@@ -2997,341 +3328,13 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
   <div class="section-header"><h2>EVPN Fabric and WLC — Infrastructure as Code</h2></div>
   <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-9002" class="page-anchor">1. Prepare Your Workstation &amp; Script Server</h3>
-  </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 8</h3>
-<p>This card gets you from a freshly connected VPN session to a script server that is ready to run the EVPN pipeline. You will SSH in, clone the repository onto that host, and let it bootstrap itself. Nothing here touches the fabric yet — every command in this card is safe to re-run.</p>
-<div class="admonition warning">
-<p>🛑 <strong>This track is an alternative to the manual sections above, not an addition to them.</strong> Everything in <em>EVPN Fabric and WLC — Infrastructure as Code</em> builds the <strong>same fabric and the same wireless service</strong> as <em>EVPN Fabric and WLC — Manual Provisioning</em>. Same three Catalyst 9300 switches, same VRFs, VLANs and VNIs, same SSID on the same 9800 controller. Only the method differs: there you type the configuration, here you describe it once and let the pipeline apply it.</p>
-<p><strong>Do one or the other, never both.</strong> Both paths configure the same devices in the same pod. If you have already worked through <a href="#page-7583">1. EVPN Fabric Provisioning</a>, skip this entire track and carry on to Macro / Micro Segmentation. If you have not started either, <a href="#page-9001">EVPN: Choose Your Provisioning Path</a> compares them properly.</p>
-</div>
-<p>Card for card, this is what replaces what:</p>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 46%;">Manual Provisioning card</th><th style="width: 54%;">Infrastructure as Code equivalent</th></tr>
-</thead>
-<tbody>
-<tr><td><a href="#page-7583">1. EVPN Fabric Provisioning</a> — paste IOS-XE CLI into each switch over SSH</td><td><a href="#page-9003">2. Run the EVPN + Catalyst Center Pipeline</a> — stage 06 uploads the templates, stage 10 renders and deploys them per device</td></tr>
-<tr><td><a href="#page-7584">2. EVPN Catalyst Center Discovery / Templates</a> — discover devices and build templates in the GUI</td><td><a href="#page-9003">2. Run the EVPN + Catalyst Center Pipeline</a> — stages 01 to 08 create the sites, credentials, discovery jobs, profiles and provisioning through the REST API</td></tr>
-<tr><td><a href="#page-7585">4. Configure &amp; Test WLC</a> — build the SSID and policies on the 9800 by hand</td><td><a href="#page-9003">2. Run the pipeline</a> (stages 07 and 08) then <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a></td></tr>
-<tr><td><em>No manual equivalent</em></td><td><a href="#page-9004">3. Verify Intent &amp; Evidence Report</a> — machine-checked proof the fabric matches the design. The manual path has no comparable step</td></tr>
-</tbody>
-</table>
-<p>The remaining cards in this track — the template model, extending the fabric through Git, and intent verification — have no manual counterpart at all. They exist to show you <em>why</em> a network team would work this way, not just how.</p>
-<hr>
-<h4>The whole journey, at a glance</h4>
-<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. This card is the grey line at the top — the other three come later.</p>
-<p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
-<p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
-<ul>
-<li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
-<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
-<li><strong>The orchestrator runs all twelve stages.</strong> Two of them are worth knowing about before you start it: stage 09 reboots the switches, and stage 11 blocks for up to ten minutes waiting for an access point to boot.</li>
-</ul>
-<hr>
-<h4>One machine does the work</h4>
-<p>Everything in this track runs on the <strong>script server</strong> — a Kali Linux host inside the pod. Your laptop only runs the VPN client and an SSH session. Nothing is installed on it.</p>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr>
-<th style="width: 22%;">Machine</th>
-<th style="width: 26%;">Address</th>
-<th style="width: 52%;">What runs here</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Your laptop</strong></td>
-<td>local</td>
-<td>Cisco Secure Client and an SSH terminal. That is all — you install nothing.</td>
-</tr>
-<tr>
-<td><strong>Script server</strong><br>(Kali Linux)</td>
-<td><code>198.18.134.12</code>, user <code>cisco</code></td>
-<td>You clone the repository here and run everything here, including stages 01 – 12. It is the only host with network reachability to Catalyst Center.</td>
-</tr>
-</tbody>
-</table>
-<p>The script server bootstraps <em>itself</em> from the repository you clone onto it: it fixes DNS, installs packages, builds a Python environment, and installs the Ansible collections.</p>
-<hr>
-<h4>Before you begin</h4>
-<ul>
-<li>An active dCloud <strong>PseudoCo / Cisco One</strong> session, powered on</li>
-<li>Cisco Secure Client (AnyConnect) connected to the dCloud session</li>
-<li>An SSH client — nothing else is needed on your laptop</li>
-<li>Your <strong>dCloud POD number</strong>, from the lab printout — ask a proctor if you cannot find it</li>
-</ul>
-<p>Catalyst Center in this pod is version <strong>3.1.5</strong>, reachable at <code>cat-center.corp.pseudoco.com</code>.</p>
-<hr>
-<h4>Step 1 — Confirm the VPN, then SSH in</h4>
-<p>Everything downstream depends on this. Run it first, from your laptop:</p>
-<pre>nc -z -G 5 198.18.134.12 22 &amp;&amp; echo reachable</pre>
-<p>If you do not see <code>reachable</code>, your VPN is not up. Reconnect Cisco Secure Client before continuing — no amount of retrying the later steps will help.</p>
-<p><img class="img-fluid" src="automation_images/a1-vpn-connected.png" alt="Cisco Secure Client showing AnyConnect VPN connected to dcloud-rtp-anyconnect.cisco.com, with Zero Trust Access enrolled and Umbrella active" width="560" height="615"></p>
-<p>Now connect. <strong>Every remaining command in this track runs inside this SSH session.</strong></p>
-<pre>ssh cisco@198.18.134.12</pre>
-<div class="admonition">
-<p>👀 <strong>No Cisco Secure Client on your laptop? You can still do the whole lab.</strong> Some corporate builds will not let you install a VPN client. dCloud gives you a way in that needs nothing but a browser.</p>
-<p>In your dCloud session, open the <strong>Servers</strong> view, pick <strong>Jumphost1</strong>, and choose <strong>Web RDP</strong>. That opens a full Windows desktop inside a browser tab — the jump host is already inside the lab network, so no VPN is involved. The credentials for it are on the Jumphost1 panel itself, and also in <a href="#page-7940"><strong>Environment Access</strong></a>.</p>
-<p><img class="img-fluid" src="automation_images/a1-jumphost-web-rdp.png" alt="dCloud Servers view showing the Jumphost1 panel with the Web RDP and VM Console buttons" width="560" height="718"></p>
-<p>From that desktop, open a terminal and SSH to the script server exactly as above:</p>
-<pre>ssh cisco@198.18.134.12</pre>
-<p>Everything from Step 2 onward is identical — you are simply typing it in a browser tab instead of your own terminal. Two things to expect: copy and paste between your laptop and the remote desktop can be awkward, and the session will drop if you leave it idle for a long time, so reconnect and <code>cd</code> back to the pipeline directory if that happens.</p>
-</div>
-<hr>
-<h4>Step 2 — Clone the repository onto the script server</h4>
-<pre>git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
-cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap</pre>
-<p>You can clone anywhere you like — every path in the automation is worked out from where the playbooks live, so the home directory is just a convention.</p>
-<hr>
-<h4>Step 3 — Stage the box</h4>
-<p>There is a chicken-and-egg problem here: you cannot use Ansible to install Ansible. A small shell script does the minimum needed to break that cycle — base packages plus a Python environment at <code>~/venv</code> containing <code>ansible-core</code>.</p>
-<pre>./stage-script-server.sh</pre>
-<p><code>sudo</code> will ask for the <code>cisco</code> account password. The script is safe to re-run, and it refuses to run on anything but Linux — so if you run it on your laptop out of habit, it stops and tells you the SSH command you actually wanted.</p>
-<p>It prompts once for your <strong>dCloud POD number</strong> — the integer from your lab printout — and writes it into <code>lab.yml</code>. That is the only lab-specific value you have to supply anywhere in this track. Pod 7 becomes SSID <code>PSEUDOCO-POD07</code>; the zero padding is not cosmetic, because the SSID has to match a pre-configured group policy on the shared controller.</p>
-<div class="admonition">
-<p>👀 <strong>Cannot find your POD number?</strong> Ask a proctor before guessing. Entering someone else's pod pushes your SSID onto their controller.</p>
-</div>
-<p>It installs a pinned, reproducible set of packages so every student runs the same versions:</p>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 40%;">Package</th><th style="width: 20%;">Version</th><th style="width: 40%;">Why</th></tr>
-</thead>
-<tbody>
-<tr><td><code>ansible-core</code></td><td>2.17.14</td><td>The automation engine</td></tr>
-<tr><td><code>paramiko</code></td><td>3.5.1</td><td>SSH transport used by other collections</td></tr>
-<tr><td><code>ansible-pylibssh</code></td><td>1.4.0</td><td>SSH transport for <code>network_cli</code>, used to read the DC switch serials</td></tr>
-<tr><td><code>netaddr</code></td><td>1.3.0</td><td>IP address maths inside templates</td></tr>
-<tr><td><code>catalystcentersdk</code></td><td>3.1.3.0.1</td><td>Catalyst Center API client</td></tr>
-<tr><td><code>dnacentersdk</code></td><td>2.10.6</td><td>Required by the <code>cisco.dnac</code> collection</td></tr>
-</tbody>
-</table>
-<p><img class="img-fluid" src="automation_images/a1-stage-script.png" alt="stage-script-server.sh on the script server: base packages present, virtualenv created at /home/cisco/venv, pinned packages installed, ansible core 2.17.14 staged, .vault created, and the dCloud POD number prompt answered with 5" width="865" height="530"></p>
-<p>The script also writes the <strong>vault password file</strong> for you, at <code>.vault</code> in the repository root. The lab stores its credentials in an encrypted file, <code>Lab Topology/lab_access.yml</code>, and <code>.vault</code> holds the passphrase that opens it. Confirm it works:</p>
-<pre>cd ~/cisco-one-experience-lab-automation
-ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
-<p>If that prints YAML, every playbook in the repository can authenticate, and you will never be asked for a device password again.</p>
-<div class="admonition warning">
-<p>🛑 <strong>Do not copy this credential pattern into production.</strong> Here the encrypted file <em>and</em> the passphrase that opens it both live in the repository, so the encryption protects nothing — it is a convenience for a disposable lab whose passwords are already public demo values. The mechanism itself is worth stealing; the key handling is not. In real work the passphrase comes from a secret store and never touches the repo.</p>
-</div>
-<hr>
-<h4>Step 4 — Bootstrap the script server</h4>
-<p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 12 needs to parse device output.</p>
-<p>Call them by their full path. <code>~/venv/bin</code> is not on your <code>PATH</code> yet — putting it there is one of the jobs of the second playbook.</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
-
-~/venv/bin/ansible-playbook playbooks/00_preflight.yml
-~/venv/bin/ansible-playbook playbooks/01_bootstrap_script_server.yml</pre>
-<div class="admonition">
-<p>👀 <strong>Now reload your shell — this step catches nearly everyone.</strong> The second playbook adds <code>~/venv/bin</code> to your <code>PATH</code>, but it does that by writing to your shell startup files. A shell that is already open never re-reads those files, so in <em>this</em> session <code>ansible-playbook</code> is still not found. The bootstrap worked; your shell simply has not caught up.</p>
-<pre>exec $SHELL -l
-ansible-playbook --version</pre>
-<p>Opening a new SSH session does the same thing. Once <code>ansible-playbook --version</code> answers, you can drop the <code>~/venv/bin/</code> prefix for the rest of the lab — every later command in this guide assumes you have done this.</p>
-</div>
-<div class="admonition warning">
-<p>🛑 <strong>If your shell says <code>ansible-playbook: command not found</code></strong> and offers to install <code>ansible-core</code> with apt, answer <strong>no</strong>. That installs an unpinned Ansible outside the virtual environment, at a different version from every other student. Reload your shell as above, or use the full <code>~/venv/bin/</code> path.</p>
-</div>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 32%;">Playbook</th><th style="width: 68%;">What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>00_preflight.yml</code></td><td>Read-only. Confirms you are on the Linux script server, the checkout is complete, the vault passphrase actually decrypts, and <code>sudo</code> works — so a mistake is caught before anything is changed.</td></tr>
-<tr><td><code>01_bootstrap_script_server.yml</code></td><td>Fixes DNS so <code>cat-center.corp.pseudoco.com</code> resolves, installs system packages, completes the <code>~/venv</code> environment, puts the Ansible binaries on <code>PATH</code>, and installs the Cisco collections.</td></tr>
-<tr><td><code>git pull</code></td><td>Not a playbook, and not needed today. Run it in the checkout later if a proctor tells you a lab fix has been published. Re-run <code>01_bootstrap_script_server.yml</code> afterwards, since a published fix may also add a pinned Python package or collection.</td></tr>
-</tbody>
-</table>
-<p>Look for <code>failed=0</code> in the <code>PLAY RECAP</code> at the end of each run. Just above it, <code>01</code> prints an evidence block — proof of what it actually changed, rather than a claim that it worked:</p>
-<p><img class="img-fluid" src="automation_images/a1-bootstrap-complete.png" alt="The bootstrap evidence block: ansible core 2.17.14 running from /home/cisco/venv, the three PATH binaries, DNS resolving cat-center.corp.pseudoco.com to 198.18.5.100, the vault password file path, and the installed Cisco collection versions" width="865" height="462"></p>
-<p>Read it as a checklist. The <code>ansible</code> binaries resolve inside <code>~/venv</code> rather than a system copy; <code>cat-center.corp.pseudoco.com</code> resolves, so the DNS fix took; the vault password file exists where the playbooks expect it; and the pinned Cisco collections are installed at the versions the stages were written against.</p>
-<p>These playbooks target this same host over a <strong>local</strong> connection — there is no SSH hop and no remote password involved.</p>
-<hr>
-<h4>Step 5 — Stage the IOS-XE software images</h4>
-<p>Stage 09 upgrades the switches, and it has nothing to install until you put the image files on the script server yourself. They are not in the repository: each <code>.bin</code> is well over a gigabyte and GitHub refuses anything above 100 MB, so they are supplied by hand, the same way <code>.vault</code> and <code>lab.yml</code> are.</p>
-<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. Step 4 has already done the work for that: nginx is installed, it is listening on port <strong>8080</strong>, and it is serving <code>/var/www/iosxe-images</code> — a folder the bootstrap deliberately created owned by <em>your</em> login account, not root, so that you can copy into it without <code>sudo</code>.</p>
-<p>So copy the two files — the upgrade image <em>and</em> the rollback image — straight into that folder. From your laptop:</p>
-<pre>scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
-    cisco@198.18.134.12:/var/www/iosxe-images/</pre>
-<p>Expect this to take a while — that is roughly 2.6 GB over the VPN. When it finishes, they are already being served. <strong>There is no publish step and no playbook to re-run</strong>; nginx serves whatever is in that folder.</p>
-<p>The filenames must match <code>settings.json</code> character for character:</p>
-<pre>/var/www/iosxe-images/
-├── cat9k_iosxe.26.01.02.SPA.bin   ← the upgrade image
-└── cat9k_iosxe.17.12.08.SPA.bin   ← the rollback image</pre>
-<p>Now prove Catalyst Center will be able to fetch what it is about to be pointed at. Run this on the script server:</p>
-<pre>curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
-# HTTP/1.1 200 OK</pre>
-<p><code>200 OK</code> means stage 09 will work. <code>404</code> means the filename does not match what you copied. Connection refused means nginx is not running — re-run Step 4.</p>
-<div class="admonition">
-<p>👀 <strong>There is a second way, and you may have already used it.</strong> The bootstrap also copies any <code>.bin</code> it finds in <code>iosxe_images/</code> at the root of the checkout into that same web root. That exists so you can stage the images <em>before</em> the first bootstrap run and have everything ready in one pass. If you did that, they are already published and this step is done.</p>
-<p>Coming at it after Step 4, as you are here, copying straight to <code>/var/www/iosxe-images</code> is simpler: one transfer instead of two, and it does not leave a second 2.6 GB copy sitting in the checkout. The two routes do not conflict — the bootstrap only ever adds files to the web root, it never clears it, so re-running it later will not remove anything you copied by hand.</p>
-</div>
-<h5>Where each of those paths is defined</h5>
-<p>Nothing here is hard-coded in one place — the folder nginx serves, the optional staging folder in the checkout, and the URL Catalyst Center is given are separate settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 26%;">Setting</th><th style="width: 26%;">Value</th><th style="width: 48%;">File, and what it controls</th></tr>
-</thead>
-<tbody>
-<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td><code>ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code><br>The folder you copied into, and the one nginx serves.</td></tr>
-<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td>Same file — the optional pre-bootstrap staging folder. Anything here is copied to the web root when the bootstrap runs.</td></tr>
-<tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on.</td></tr>
-<tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>ansible-automation/01_campus/evpn/Settings/settings.json</code>, in the <code>swim</code> block of the <code>Site-105</code> project.<br>What Catalyst Center is told to download from.</td></tr>
-<tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>swim</code> block — these must match your filenames character for character.</td></tr>
-</tbody>
-</table>
-<p>Rather than take the table's word for it, print the live values from your own checkout:</p>
-<pre>cd ~/cisco-one-experience-lab-automation
-
-grep -nE 'script_server_image_(source_dir|root|http_port)' \
-  ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml
-
-grep -nE '"(image_base_url|image_file|rollback_image_file)"' \
-  ansible-automation/01_campus/evpn/Settings/settings.json</pre>
-<p>Stage 09 joins the last two together to build the download URL. In <code>ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml</code> it is literally:</p>
-<pre>{{ item.image_base_url }}/{{ item.image_file }}</pre>
-<p>So a typo in either half produces the same symptom — Catalyst Center reports that it could not import the image — and the <code>curl</code> above is the quickest way to tell which half is wrong.</p>
-<div class="admonition">
-<p>🔎 <strong>Why the images are served from the script server rather than downloaded from cisco.com.</strong> Catalyst Center would normally import software straight from Cisco's catalogue, and in this pod that does not work: every image is rejected with <code>NCSW10375 "not the latest or suggested image from cisco"</code> — including builds Cisco's own catalogue flags as recommended — and <code>software.cisco.com</code> answers HTTP 403 from inside the lab. Serving the file locally sidesteps the catalogue completely, which has a useful side effect: <em>any</em> image can be used, not only the handful Cisco currently suggests.</p>
-</div>
-<div class="admonition warning">
-<p>🛑 <strong>Skipping this has a delayed cost.</strong> Nothing fails now. Stage 09 fails later, part-way through a pipeline run, after the fabric is already built. If you have no images to hand, decide now: either stage them, or plan to run the pipeline with <code>-e swim_activate=false</code>.</p>
-</div>
-<hr>
-<h4>Step 6 — Move to the pipeline directory</h4>
-<p>Open a fresh shell so the new <code>PATH</code> takes effect, then change into the pipeline folder:</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-playbook --version</pre>
-<p>Ansible is now on <code>PATH</code> without activating anything. If that command is not found, <code>source ~/venv/bin/activate</code> still works.</p>
-<div class="admonition warning">
-<p>🛑 <strong>The working-directory rule.</strong> Every pipeline command from here on must be run from that exact directory. Ansible only reads <code>ansible.cfg</code> from the current directory, and <em>that</em> file is what supplies the inventory, the roles path, the vault password file, and the credential plugin. Run a playbook from anywhere else and you will get <code>Lab access vault not found</code> — that error almost always means you are in the wrong folder, not that anything is broken.</p>
-</div>
-<hr>
-<h4>Step 7 — Confirm your pod number</h4>
-<p>Every student runs the same repository against a different pod, so the values that differ live in exactly <strong>one</strong> file. The staging script already wrote your pod number into it, so this is a check rather than an edit:</p>
-<pre>grep lab_pod_id inventory/group_vars/all/lab.yml</pre>
-<p>Edit it only if you entered the wrong pod, or later when you come back to add access point MACs:</p>
-<pre>vi inventory/group_vars/all/lab.yml</pre>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 22%;">Variable</th><th style="width: 20%;">Value</th><th style="width: 58%;">Notes</th></tr>
-</thead>
-<tbody>
-<tr><td><code>lab_pod_id</code></td><td>Your pod number</td><td>Set for you in Step 3. It becomes your SSID — pod 7 produces <code>PSEUDOCO-POD07</code>. Stages that read the settings file <strong>fail</strong> if it is still <code>REPLACE_ME</code>, which is deliberate: it stops you pushing your SSID onto another student's controller.</td></tr>
-<tr><td><code>lab_ap_macs</code></td><td><code>[]</code></td><td>Leave it empty for now. You will fill this in much later, in <a href="#page-9007">the wireless card</a>, once an access point has registered.</td></tr>
-</tbody>
-</table>
-<hr>
-<h4>Step 8 — Confirm the inventory loads</h4>
-<p>This check is worth doing: it proves Ansible can read the inventory and unlock the vault before you run a stage that talks to Catalyst Center. It changes nothing — <code>ansible-inventory</code> only reads files.</p>
-<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 6. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 5, go back first:</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
-ansible-inventory --graph</pre>
-<p>You should see a single host:</p>
-<pre>@all:
-  |--@ungrouped:
-  |--@catalyst_center:
-  |  |--catalyst_center_api</pre>
-<p>The empty <code>@ungrouped</code> line is normal — Ansible always creates that group, and nothing in this lab belongs to it.</p>
-<div class="admonition">
-<p>🛑 <strong>If you get this instead, you are in the wrong directory:</strong></p>
-<pre>[WARNING]: No inventory was parsed, only implicit localhost is available
-@all:
-  |--@ungrouped:</pre>
-<p>Nothing is broken and nothing needs reinstalling. Ansible simply did not find <code>ansible.cfg</code>, so it fell back to a default with no inventory. Check where you are with <code>pwd</code> — the prompt above the command shows the answer too. The <code>cd</code> above fixes it. The same applies to every <code>ansible-playbook</code> command in this track: they all run from that one directory.</p>
-</div>
-<p>That single host surprises people. It is correct — the playbooks do not SSH to the switches. Every action goes through the Catalyst Center REST API, including the verification stage, which uses Catalyst Center's Command Runner to collect <code>show</code> output. Catalyst Center is the only thing Ansible talks to.</p>
-<hr>
-<h4>How credentials reach the playbooks</h4>
-<p>You never type a device password, and no password appears in any playbook. Nothing about this is magic — it is four small pieces, and it is worth understanding, because the same pattern solves the "where do I keep the passwords" problem in real work.</p>
-<p>The short version: <code>ansible.cfg</code> tells Ansible where the passphrase is and which extra code to run; that code finds one encrypted file, decrypts it, and hands its contents to every play as a single variable named <code>lab_access</code>; the inventory then picks individual fields out of that variable.</p>
-<h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
-<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 6. Three lines matter here:</p>
-<pre>[defaults]
-inventory           = inventory/static_inventory.yml
-vault_password_file = ../../../../.vault
-vars_plugins        = ../../../plugins/vars</pre>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 26%;">Setting</th><th style="width: 74%;">What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>inventory</code></td><td>The host list — in this lab, the single <code>catalyst_center_api</code> host you just printed with <code>ansible-inventory --graph</code>.</td></tr>
-<tr><td><code>vault_password_file</code></td><td>Points four levels up, to <code>.vault</code> in the repository root. That file holds one line: the passphrase. Ansible reads it automatically, which is why you are never prompted.</td></tr>
-<tr><td><code>vars_plugins</code></td><td>A folder of extra code Ansible should run before any task, to supply variables. This lab ships exactly one piece, described next.</td></tr>
-</tbody>
-</table>
-<p>Those paths are <strong>relative</strong>. That is the real reason every command in this track runs from the pipeline directory — step outside it and Ansible finds none of the three.</p>
-<h5>2. <code>plugins/vars/lab_access.py</code> — the piece that fetches the secrets</h5>
-<p>A <em>vars plugin</em> is a small piece of Python whose only job is to hand variables to Ansible before the first task runs. You do not call it and it is not a playbook step; Ansible runs it on its own. This one is about fifty lines and does four things:</p>
-<ol>
-<li>Starts in the directory you ran from and <strong>walks up</strong> the folder tree, up to twelve levels, looking for a folder called <code>Lab Topology</code> containing <code>lab_access.yml</code>.</li>
-<li>Asks Ansible to load that file. Because <code>ansible.cfg</code> already supplied the passphrase, Ansible decrypts it in memory. Nothing is ever written back to disk in the clear.</li>
-<li>Checks the decrypted result really is a list of entries under a top-level <code>lab_access:</code> key, and stops with a clear error if it is not.</li>
-<li>Returns it as one variable, <code>lab_access</code>, visible to every play in every collection.</li>
-</ol>
-<p>Why walk up the tree rather than use a fixed path? Because the encrypted file lives once, at the top of the repository, while playbooks run from several different collection folders — campus, assurance, bootstrap. Walking up means no collection has to know how deep it sits, and there is only ever one copy of the credentials to look after.</p>
-<div class="admonition">
-<p>👀 <strong>If a playbook stops with <code>Lab access vault not found</code></strong>, the plugin walked twelve levels up and never found the file. In practice that means you are running from outside the repository. <code>cd</code> back into <code>01_campus/evpn/ansible</code> and try again.</p>
-</div>
-<h5>3. <code>Lab Topology/lab_access.yml</code> — the encrypted answer key</h5>
-<p>Committed to git, this file is unreadable. The first line tells you why:</p>
-<pre>$ANSIBLE_VAULT;1.1;AES256
-38396561366265623539346434333831316639383866623264363262323139...</pre>
-<p>Decrypted, it is ordinary YAML. Each entry is one system in this pod — the structure below is the tracked schema file, <code>lab_access.yml.example</code>, which carries the same keys with the passwords blanked out:</p>
-<pre>lab_access:
-
-  # Kali box every playbook runs from
-  script_server:
-    access: "ssh: 198.18.134.12"
-    username: cisco
-    password: REPLACE_ME
-
-  # Operator jump hosts (RDP)
-  Jumphost1:
-    access: "RDP: 198.18.133.36"
-    username: REPLACE_ME
-    password: REPLACE_ME
-
-  # Drives every stage of the campus pipeline via the Intent API
-  "Catalyst Center":
-    access: "https://cat-center.corp.pseudoco.com"
-    username: REPLACE_ME
-    password: REPLACE_ME
-
-  # Campus EVPN fabric switches. enable_password is required here and
-  # nowhere else - IOS-XE privilege 15.
-  Site_105-Leaf1:
-    access: "ssh: 198.18.128.22"
-    username: REPLACE_ME
-    password: REPLACE_ME
-    enable_password: REPLACE_ME</pre>
-<p><strong>These entries are this guide, written down as data.</strong> Every key name and every <code>access</code> value comes straight from the access tables in <a href="#page-7940"><strong>Environment Access</strong></a> earlier in this guide — the same jump host addresses, the same management URLs, the same switch IPs. Only the username, password and <code>enable_password</code> fields are held back and encrypted. Read that section and this file side by side and you are looking at the same information twice: once for you, once for the automation.</p>
-<p>Keys are matched <strong>exactly as written</strong>, including spaces and capitals, which is why several are quoted. Rename one and the lookup quietly returns nothing rather than raising an error, so the mismatch shows up later as a puzzling authentication failure.</p>
-<h5>4. The inventory picks out the fields it needs</h5>
-<p>Finally, the inventory turns entries in that variable into the settings each stage uses. Nothing here is a secret — it is a reference to one:</p>
-<pre>catc_username: "{{ lab_access['Catalyst Center'].username }}"
-catc_password: "{{ lab_access['Catalyst Center'].password }}"
-catc_host: cat-center.corp.pseudoco.com</pre>
-<p>You can read the decrypted file yourself at any time, without ever creating a plaintext copy:</p>
-<pre>cd ~/cisco-one-experience-lab-automation
-ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault</pre>
-<p>This is a pattern worth stealing for real work: secrets encrypted at rest, committed alongside the code so they never drift apart from it, and decrypted only at run time by whoever holds the passphrase.</p>
-<div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
-<div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<!-- Body -->
-<div style="padding: 18px 20px; color: #2e2e2e;">
-<p>Your script server is ready and your pod number is set. Time to build the fabric: <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
-</div>
-</div></div>
-</div><div class="page-card">
-  <div class="page-card-header"><span>🤖</span>
     <h3 id="page-9003" class="page-anchor">2. Run the EVPN + Catalyst Center Pipeline</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 2 of 8</h3>
 <div class="admonition warning">
 <p>🛑 <strong>This one card replaces two manual ones.</strong> The pipeline below reaches the same end state as <a href="#page-7583">1. EVPN Fabric Provisioning</a> and <a href="#page-7584">2. EVPN Catalyst Center Discovery / Templates</a> combined — the same configuration on the same three switches, arrived at by describing it rather than typing it. Do not run it against a pod where you already completed those cards by hand.</p>
 </div>
-<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the working directory you set up in the previous card.</p>
+<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation 3: Infrastructure as Code — Script Server Preparation (Ansible)</strong></a>.</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
 <h4>The eleven stages</h4>
