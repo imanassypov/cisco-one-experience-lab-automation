@@ -1321,7 +1321,10 @@ skips them deliberately and reports them as skipped.
   name a switch but never an extension, so the model-derived attachment
   comparison cannot see it.
 - **VRF-Lite BGP session** - `Established` on the border leaf, per declared
-  extension. This is the check that separates "the controller pushed the
+  extension. Each session gets an initial read and up to three additional
+  retries, five seconds apart, stopping as soon as the declared peer is
+  `Established`. The report uses the final result; a session that remains down
+  after retries still fails its intent check. This is the check that separates "the controller pushed the
   extension" from "external connectivity works", and it is the only one read
   from a device rather than from the controller. `absent` means the switch
   answered and has no session to that neighbour in that VRF at all, so the

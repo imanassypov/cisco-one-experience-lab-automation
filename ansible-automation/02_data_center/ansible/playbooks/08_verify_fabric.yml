@@ -48,7 +48,7 @@
 #
 # Background: "What the verification stage proves" in the README.
 
-- name: Stage 07a - name the border leaf as the target of the BGP session check
+- name: Stage 08a - name the border leaf as the target of the BGP session check
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -83,7 +83,7 @@
         - dc_verify_bgp_sessions | bool
         - dc_vrf_lite_extensions | default([]) | length > 0
 
-- name: Stage 07b - read the VRF-Lite BGP session state off the border leaf
+- name: Stage 08b - read the VRF-Lite BGP session state off the border leaf
   # Only the border leaf carries the VRF-Lite extensions, and the task below is
   # limited to it. The play still names the whole group because that is the one
   # the credentials are attached to, and because stage 00 may already have
@@ -98,7 +98,7 @@
   vars:
     dc_verify_bgp_sessions: true
     dc_verify_subinterfaces: true
-  # A border leaf this play cannot reach must not fail stage 07. Every other
+  # A border leaf this play cannot reach must not fail stage 08. Every other
   # check in this stage talks to Nexus Dashboard and does not need the VPN to
   # the switch management range, so an unreachable switch costs one check rather
   # than the whole report. ignore_unreachable lets the play finish anyway; the
@@ -107,7 +107,7 @@
 
   tasks:
     # One show command per extension declared in
-    # inventory/group_vars/all/dc_vrf_lite.yml, sent in a single SSH session.
+    # inventory/group_vars/all/dc_vrf_lite.yml, with independent convergence retries.
     #
     # The command is `show bgp sessions [vrf vrf-name]`, from the "Monitor BGP
     # Statistics" table of the Cisco Nexus 9000 Series NX-OS Unicast Routing
@@ -133,21 +133,39 @@
     # hostvars.
     - name: Ask the border leaf for the BGP session state of each VRF-Lite VRF
       cisco.nxos.nxos_command:
-        commands: "{{ dc_bgp_session_commands }}"
+        commands:
+          - command: "show bgp sessions vrf {{ item.vrf }}"
+            output: json
+      loop: "{{ dc_vrf_lite_extensions | default([]) }}"
+      loop_control:
+        label: "{{ item.vrf }} to {{ item.neighbor_ipv4 }}"
       register: dc_bgp_session_output
       changed_when: false
       ignore_errors: true
+      retries: 3
+      delay: 5
+      until: dc_bgp_session_established | bool
       when:
         - dc_verify_bgp_sessions | bool
         - inventory_hostname == dc_vrf_lite_border_leaf
       vars:
-        dc_bgp_session_commands: >-
-          {%- set cmds = [] -%}
-          {%- for ext in dc_vrf_lite_extensions | default([]) -%}
-          {{- cmds.append({'command': 'show bgp sessions vrf ' ~ ext.vrf,
-                           'output': 'json'}) or '' -}}
+        dc_bgp_session_established: >-
+          {%- set raw = (dc_bgp_session_output.stdout | default([]) | first) | default({}) -%}
+          {%- set table = raw.get('TABLE_vrf', {}) if raw is mapping else {} -%}
+          {%- set vrfs = table.get('ROW_vrf', []) -%}
+          {%- set vrfs = [vrfs] if vrfs is mapping else vrfs -%}
+          {%- set matched = [] -%}
+          {%- for vrf in vrfs
+            if (vrf.get('vrf-name-out', '') | lower) == (item.vrf | lower) -%}
+          {%- set neighbors = vrf.get('TABLE_neighbor', {}).get('ROW_neighbor', []) -%}
+          {%- set neighbors = [neighbors] if neighbors is mapping else neighbors -%}
+          {%- for neighbor in neighbors
+            if neighbor.get('neighbor-id', '') == item.neighbor_ipv4
+           and neighbor.get('state', '') == 'Established' -%}
+          {{- matched.append(neighbor) or '' -}}
           {%- endfor -%}
-          {{ cmds }}
+          {%- endfor -%}
+          {{ matched | length > 0 }}
 
     # Every other check in this stage asks Nexus Dashboard what it believes.
     # This one asks the switch, and it exists because the two can disagree
@@ -178,7 +196,7 @@
         - dc_verify_subinterfaces | bool
         - inventory_hostname == dc_vrf_lite_border_leaf
 
-- name: Stage 07c - compare the fabric against intent and write the report
+- name: Stage 08c - compare the fabric against intent and write the report
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
@@ -189,11 +207,12 @@
     dc_verify_bgp_sessions: true
     dc_verify_subinterfaces: true
 
-    # What stage 07b registered on the border leaf. The `in hostvars` test
+    # What stage 08b registered on the border leaf. The `in hostvars` test
     # covers the case where the flag is off and that host was never created.
     dc_bgp_output: >-
       {{ (hostvars[dc_vrf_lite_border_leaf].dc_bgp_session_output | default({}))
          if dc_vrf_lite_border_leaf in hostvars else {} }}
+    dc_bgp_results: "{{ dc_bgp_output.results | default([]) }}"
 
     # The pyATS-parsed sub-interfaces from the same play, one result per
     # declared extension.
@@ -201,19 +220,14 @@
       {{ ((hostvars[dc_vrf_lite_border_leaf].dc_subinterface_output | default({})).results | default([]))
          if dc_vrf_lite_border_leaf in hostvars else [] }}
 
-    # True only when the border leaf answered. An unreachable switch, a refused
-    # login and a failed command all leave stdout empty, and the BGP rows then
-    # read "not determined" rather than claiming the sessions are down.
-    dc_bgp_determined: >-
-      {{ (dc_verify_bgp_sessions | bool)
-         and ((dc_bgp_output.stdout | default([]) | length) > 0) }}
-
     # The transport's own explanation, shown in the report when the read did not
     # happen, so the student is not left guessing between a VPN that is down and
     # a password that is wrong.
     dc_bgp_undetermined_reason: >-
-      {{ dc_bgp_output.msg
-         | default('stage 07b did not run, so nothing was read', true) }}
+      {{ (dc_bgp_results | selectattr('msg', 'defined')
+          | map(attribute='msg') | unique | join('; '))
+         | default(dc_bgp_output.msg
+                   | default('stage 08b did not run, so nothing was read', true), true) }}
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
@@ -267,7 +281,7 @@
           switches. {{ unresolved_groups | length }} attach group reference(s)
           in playbooks/host_vars/{{ inventory_hostname }} do not resolve.
           {{ unresolved_groups | join('. ') }}.
-          Fix the spelling, or declare the missing group, then re-run stage 07.
+          Fix the spelling, or declare the missing group, then re-run stage 08.
       vars:
         vrf_group_names: >-
           {{ dc_declared_vrf_attach_groups | map(attribute='name') | list }}
@@ -694,7 +708,7 @@
     # that does not match the router leaves the leaf configured exactly as
     # declared, with a session that never leaves Idle.
     #
-    # So this check reads the switch. Stage 07b collected the output; the work
+    # So this check reads the switch. Stage 08b collected the output; the work
     # here is picking each declared neighbour out of it.
     #
     # Nexus Dashboard has no API for this. Its LAN API is an intent and
@@ -715,14 +729,15 @@
         # output is matched to the extension that asked for it.
         index_var: dc_bgp_index
       vars:
-        # stdout holds one entry per command sent, in the order they were sent,
-        # and that order is the order of dc_vrf_lite_extensions - so entry N
-        # belongs to extension N. The length test avoids reading past the end
-        # when the read did not happen.
+        # Each loop result holds the final attempt for one declared extension.
+        result: >-
+          {{ dc_bgp_results[dc_bgp_index]
+             if (dc_bgp_results | length) > dc_bgp_index else {} }}
         raw: >-
-          {{ (dc_bgp_output.stdout | default([]))[dc_bgp_index]
-             if ((dc_bgp_output.stdout | default([]) | length) > dc_bgp_index)
-             else '' }}
+          {{ (result.stdout | default([]) | first) | default('') }}
+        dc_bgp_determined: >-
+          {{ (dc_verify_bgp_sessions | bool)
+             and (result.stdout | default([]) | length > 0) }}
         # A VRF the switch does not have returns an empty string, so the mapping
         # test is what separates "no such VRF" from a real answer.
         vrf_table: "{{ (raw.TABLE_vrf | default({})) if raw is mapping else {} }}"
