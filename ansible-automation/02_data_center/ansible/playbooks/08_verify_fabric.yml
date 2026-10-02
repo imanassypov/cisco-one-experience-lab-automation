@@ -123,6 +123,24 @@
     # the module hands back a parsed dictionary. Nothing downstream matches
     # against screen text.
     #
+    # Illustrative current-attempt result (remoteas is an example, not a
+    # verified switch value). dc_bgp_session_output.stdout is the list below:
+    # stdout:
+    #   - TABLE_vrf:
+    #       ROW_vrf:
+    #         vrf-name-out: main
+    #         TABLE_neighbor:
+    #           ROW_neighbor:
+    #             neighbor-id: "192.168.252.14"
+    #             remoteas: "65001"
+    #             state: Established
+    #
+    # `first` extracts TABLE_vrf's containing dictionary. ROW_vrf and
+    # ROW_neighbor can each be a dictionary or a list; the check handles both.
+    # A session still coming up might instead have state: Idle. During retries,
+    # stdout holds the current item's latest attempt; after the loop completes,
+    # each final output is under dc_bgp_session_output.results[index].stdout.
+    #
     # A VRF that does not exist on this switch returns an empty string rather
     # than an error, so a fabric that was never built reads as "no session"
     # instead of stopping the run here.
