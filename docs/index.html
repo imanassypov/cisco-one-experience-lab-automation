@@ -1188,19 +1188,19 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <thead>
 <tr>
 <th style="width: 22%;">Machine</th>
-<th style="width: 26%;">Address</th>
-<th style="width: 52%;">What runs here</th>
+<th style="width: 38%;">Address and login</th>
+<th style="width: 40%;">What runs here</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>Your laptop</strong></td>
 <td>local</td>
-<td>Cisco Secure Client and an SSH terminal. That is all — you install nothing.</td>
+<td>Use browser-based Web RDP to open Jumphost1 and run commands there. Nothing is installed on your laptop.</td>
 </tr>
 <tr>
 <td><strong>Script server</strong><br>(Kali Linux)</td>
-<td><code>198.18.134.12</code>, user <code>cisco</code></td>
+<td><code>198.18.134.12</code><br>Username: <code>cisco</code><br>Password: <code>C1sco12345</code></td>
 <td>You clone the repository here and run the Ansible playbooks for the Campus EVPN and DC EVPN IaC paths. It can reach the in-pod controllers and devices those playbooks manage.</td>
 </tr>
 </tbody>
@@ -1210,33 +1210,19 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <h4>Before you begin</h4>
 <ul>
 <li>An active dCloud <strong>PseudoCo / Cisco One</strong> session, powered on</li>
-<li>Cisco Secure Client (AnyConnect) connected to the dCloud session</li>
-<li>An SSH client — nothing else is needed on your laptop</li>
+<li>Access to Jumphost1 with browser-based Web RDP, as described in <a href="#page-7946">Familiarize Yourself with the Jumphost</a></li>
 <li>Your <strong>dCloud POD number</strong>, from the lab printout — ask a proctor if you cannot find it</li>
 </ul>
 <hr>
-<h4>Step 1 — Confirm the VPN, then SSH in</h4>
-<p>Everything downstream depends on this. Run it first, from your laptop:</p>
-<pre>nc -z -G 5 198.18.134.12 22 &amp;&amp; echo reachable</pre>
-<p>If you do not see <code>reachable</code>, your VPN is not up. Reconnect Cisco Secure Client before continuing — no amount of retrying the later steps will help.</p>
-<p><img class="img-fluid" src="automation_images/a1-vpn-connected.png" alt="Cisco Secure Client showing AnyConnect VPN connected to dcloud-rtp-anyconnect.cisco.com, with Zero Trust Access enrolled and Umbrella active" width="560" height="615"></p>
-<p>Now connect. <strong>Every remaining command in this track runs inside this SSH session.</strong></p>
+<h4>Step 1 — Connect and clone the repository</h4>
+<p>Use browser-based Web RDP to open Jumphost1, as described in <a href="#page-7946">Familiarize Yourself with the Jumphost</a>. On Jumphost1, open a terminal and connect to the script server:</p>
 <pre>ssh cisco@198.18.134.12</pre>
-<div class="admonition">
-<p>👀 <strong>No Cisco Secure Client on your laptop? You can still do the whole lab.</strong> Some corporate builds will not let you install a VPN client. dCloud gives you a way in that needs nothing but a browser.</p>
-<p>In your dCloud session, open the <strong>Servers</strong> view, pick <strong>Jumphost1</strong>, and choose <strong>Web RDP</strong>. That opens a full Windows desktop inside a browser tab — the jump host is already inside the lab network, so no VPN is involved. The credentials for it are on the Jumphost1 panel itself, and also in <a href="#page-7940"><strong>Environment Access</strong></a>.</p>
-<p><img class="img-fluid" src="automation_images/a1-jumphost-web-rdp.png" alt="dCloud Servers view showing the Jumphost1 panel with the Web RDP and VM Console buttons" width="560" height="718"></p>
-<p>From that desktop, open a terminal and SSH to the script server exactly as above:</p>
-<pre>ssh cisco@198.18.134.12</pre>
-<p>Everything from Step 2 onward is identical — you are simply typing it in a browser tab instead of your own terminal. Two things to expect: copy and paste between your laptop and the remote desktop can be awkward, and the session will drop if you leave it idle for a long time, so reconnect and <code>cd</code> back to the pipeline directory if that happens.</p>
-</div>
-<hr>
-<h4>Step 2 — Clone the repository onto the script server</h4>
+<p>Enter <code>C1sco12345</code> when prompted. Once connected, clone the repository in that SSH session:</p>
 <pre>git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap</pre>
 <p>You can clone anywhere you like — every path in the automation is worked out from where the playbooks live, so the home directory is just a convention.</p>
 <hr>
-<h4>Step 3 — Stage the box</h4>
+<h4>Step 2 — Stage the box</h4>
 <p>There is a chicken-and-egg problem here: you cannot use Ansible to install Ansible. A small shell script does the minimum needed to break that cycle — base packages plus a Python environment at <code>~/venv</code> containing <code>ansible-core</code>.</p>
 <pre>./stage-script-server.sh</pre>
 <p><code>sudo</code> will ask for the <code>cisco</code> account password. The script is safe to re-run, and it refuses to run on anything but Linux — so if you run it on your laptop out of habit, it stops and tells you the SSH command you actually wanted.</p>
@@ -1264,7 +1250,7 @@ ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | 
 <p>🛑 <strong>Do not copy this credential pattern into production.</strong> Here the encrypted file <em>and</em> the passphrase that opens it both live in the repository, so the encryption protects nothing — it is a convenience for a disposable lab whose passwords are already public demo values. The mechanism itself is worth stealing; the key handling is not. In real work the passphrase comes from a secret store and never touches the repo.</p>
 </div>
 <hr>
-<h4>Step 4 — Bootstrap the script server</h4>
+<h4>Step 3 — Bootstrap the script server</h4>
 <p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 12 needs to parse device output.</p>
 <p>Call them by their full path. <code>~/venv/bin</code> is not on your <code>PATH</code> yet — putting it there is one of the jobs of the second playbook.</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
@@ -3196,9 +3182,9 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <h4>Campus EVPN-specific preparation</h4>
 <p>These remaining setup steps apply to the Campus EVPN IaC path. Complete them before choosing a pipeline run option below. Catalyst Center in this pod is version <strong>3.1.5</strong>, reachable at <code>cat-center.corp.pseudoco.com</code>.</p>
 <hr>
-<h4>Step 5 — Stage the IOS-XE software images</h4>
+<h4>Step 4 — Stage the IOS-XE software images</h4>
 <p>Stage 09 upgrades the switches, and it has nothing to install until you put the image files on the script server yourself. They are not in the repository: each <code>.bin</code> is well over a gigabyte and GitHub refuses anything above 100 MB, so they are supplied by hand, the same way <code>.vault</code> and <code>lab.yml</code> are.</p>
-<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. Step 4 has already done the work for that: nginx is installed, it is listening on port <strong>8080</strong>, and it is serving <code>/var/www/iosxe-images</code> — a folder the bootstrap deliberately created owned by <em>your</em> login account, not root, so that you can copy into it without <code>sudo</code>.</p>
+<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. Step 3 has already done the work for that: nginx is installed, it is listening on port <strong>8080</strong>, and it is serving <code>/var/www/iosxe-images</code> — a folder the bootstrap deliberately created owned by <em>your</em> login account, not root, so that you can copy into it without <code>sudo</code>.</p>
 <p>So copy the two files — the upgrade image <em>and</em> the rollback image — straight into that folder. From your laptop:</p>
 <pre>scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
     cisco@198.18.134.12:/var/www/iosxe-images/</pre>
@@ -3210,10 +3196,10 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p>Now prove Catalyst Center will be able to fetch what it is about to be pointed at. Run this on the script server:</p>
 <pre>curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
 # HTTP/1.1 200 OK</pre>
-<p><code>200 OK</code> means stage 09 will work. <code>404</code> means the filename does not match what you copied. Connection refused means nginx is not running — re-run Step 4.</p>
+<p><code>200 OK</code> means stage 09 will work. <code>404</code> means the filename does not match what you copied. Connection refused means nginx is not running — re-run Step 3.</p>
 <div class="admonition">
 <p>👀 <strong>There is a second way, and you may have already used it.</strong> The bootstrap also copies any <code>.bin</code> it finds in <code>iosxe_images/</code> at the root of the checkout into that same web root. That exists so you can stage the images <em>before</em> the first bootstrap run and have everything ready in one pass. If you did that, they are already published and this step is done.</p>
-<p>Coming at it after Step 4, as you are here, copying straight to <code>/var/www/iosxe-images</code> is simpler: one transfer instead of two, and it does not leave a second 2.6 GB copy sitting in the checkout. The two routes do not conflict — the bootstrap only ever adds files to the web root, it never clears it, so re-running it later will not remove anything you copied by hand.</p>
+<p>Coming at it after Step 3, as you are here, copying straight to <code>/var/www/iosxe-images</code> is simpler: one transfer instead of two, and it does not leave a second 2.6 GB copy sitting in the checkout. The two routes do not conflict — the bootstrap only ever adds files to the web root, it never clears it, so re-running it later will not remove anything you copied by hand.</p>
 </div>
 <h5>Where each of those paths is defined</h5>
 <p>Nothing here is hard-coded in one place — the folder nginx serves, the optional staging folder in the checkout, and the URL Catalyst Center is given are separate settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
@@ -3247,7 +3233,7 @@ grep -nE '"(image_base_url|image_file|rollback_image_file)"' \
 <p>🛑 <strong>Skipping this has a delayed cost.</strong> Nothing fails now. Stage 09 fails later, part-way through a pipeline run, after the fabric is already built. If you have no images to hand, decide now: either stage them, or plan to run the pipeline with <code>-e swim_activate=false</code>.</p>
 </div>
 <hr>
-<h4>Step 6 — Move to the pipeline directory</h4>
+<h4>Step 5 — Move to the pipeline directory</h4>
 <p>Open a fresh shell so the new <code>PATH</code> takes effect, then change into the pipeline folder:</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 ansible-playbook --version</pre>
@@ -3256,7 +3242,7 @@ ansible-playbook --version</pre>
 <p>🛑 <strong>The working-directory rule.</strong> Every pipeline command from here on must be run from that exact directory. Ansible only reads <code>ansible.cfg</code> from the current directory, and <em>that</em> file is what supplies the inventory, the roles path, the vault password file, and the credential plugin. Run a playbook from anywhere else and you will get <code>Lab access vault not found</code> — that error almost always means you are in the wrong folder, not that anything is broken.</p>
 </div>
 <hr>
-<h4>Step 7 — Confirm your pod number</h4>
+<h4>Step 6 — Confirm your pod number</h4>
 <p>Every student runs the same repository against a different pod, so the values that differ live in exactly <strong>one</strong> file. The staging script already wrote your pod number into it, so this is a check rather than an edit:</p>
 <div class="admonition">
 <p>👀 <strong>Cannot find your POD number?</strong> Ask a proctor before guessing. The Campus EVPN path uses it to generate your SSID; the wrong number could target another pod's shared controller.</p>
@@ -3269,14 +3255,14 @@ ansible-playbook --version</pre>
 <tr><th style="width: 22%;">Variable</th><th style="width: 20%;">Value</th><th style="width: 58%;">Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>lab_pod_id</code></td><td>Your pod number</td><td>Set for you in Step 3. It becomes your SSID — pod 7 produces <code>PSEUDOCO-POD07</code>. Stages that read the settings file <strong>fail</strong> if it is still <code>REPLACE_ME</code>, which is deliberate: it stops you pushing your SSID onto another student's controller.</td></tr>
+<tr><td><code>lab_pod_id</code></td><td>Your pod number</td><td>Entered during Environment Preparation, Step 2. It becomes your SSID — pod 7 produces <code>PSEUDOCO-POD07</code>. Stages that read the settings file <strong>fail</strong> if it is still <code>REPLACE_ME</code>, which is deliberate: it stops you pushing your SSID onto another student's controller.</td></tr>
 <tr><td><code>lab_ap_macs</code></td><td><code>[]</code></td><td>Leave it empty for now. You will fill this in much later, in <a href="#page-9007">the wireless card</a>, once an access point has registered.</td></tr>
 </tbody>
 </table>
 <hr>
-<h4>Step 8 — Confirm the inventory loads</h4>
+<h4>Step 7 — Confirm the inventory loads</h4>
 <p>This check is worth doing: it proves Ansible can read the inventory and unlock the vault before you run a stage that talks to Catalyst Center. It changes nothing — <code>ansible-inventory</code> only reads files.</p>
-<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 6. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 5, go back first:</p>
+<p><strong>It must be run from the pipeline directory</strong>, the one you moved to in Step 5. That folder holds <code>ansible.cfg</code>, and <code>ansible.cfg</code> is what tells Ansible where the inventory is. Run it anywhere else and Ansible finds no configuration at all. If you opened a new SSH session since Step 4, go back first:</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
 ansible-inventory --graph</pre>
 <p>You should see a single host:</p>
@@ -3298,7 +3284,7 @@ ansible-inventory --graph</pre>
 <p>You never type a device password, and no password appears in any playbook. Nothing about this is magic — it is four small pieces, and it is worth understanding, because the same pattern solves the "where do I keep the passwords" problem in real work.</p>
 <p>The short version: <code>ansible.cfg</code> tells Ansible where the passphrase is and which extra code to run; that code finds one encrypted file, decrypts it, and hands its contents to every play as a single variable named <code>lab_access</code>; the inventory then picks individual fields out of that variable.</p>
 <h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
-<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 6. Three lines matter here:</p>
+<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 5. Three lines matter here:</p>
 <pre>[defaults]
 inventory           = inventory/static_inventory.yml
 vault_password_file = ../../../../.vault
