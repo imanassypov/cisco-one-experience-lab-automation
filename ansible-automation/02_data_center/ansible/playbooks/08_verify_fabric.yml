@@ -199,6 +199,22 @@
     # One command per sub-interface: NX-OS rejects more than two ranges in a
     # single `show interface` and a sub-interface is not covered by a `show
     # running-config interface Ethernet1/8` of its parent.
+    #
+    # Illustrative subset of one dc_subinterface_output.results entry
+    # (not captured live; all interface values are examples):
+    # parsed:
+    #   Ethernet1/8.300:
+    #     oper_status: up
+    #     mtu: 9216
+    #     encapsulations:
+    #       first_dot1q: "300"
+    #     ipv4:
+    #       "192.168.252.13/30": {}
+    #
+    # Unlike the BGP task's JSON stdout, Genie puts structured data in parsed.
+    # The comparison looks up the full interface name, then checks operational
+    # state, dot1q tag, address/prefix membership and MTU. Each loop result is
+    # stored under dc_subinterface_output.results[index].parsed.
     - name: Read each VRF-Lite sub-interface off the border leaf
       ansible.utils.cli_parse:
         command: "show interface {{ dc_vrf_lite_interface }}.{{ item.dot1q }}"
@@ -328,6 +344,20 @@
           {{ unresolved }}
 
     # ------------------------------------------------------- observed state
+    # Illustrative subset of dc_observed_inventory (not captured live;
+    # names, addresses and serial numbers are examples):
+    # response:
+    #   DATA:
+    #     - switchName: example-leaf
+    #       ipAddress: "198.18.128.10"
+    #       switchRole: leaf
+    #       serialNumber: EXAMPLE-SERIAL
+    #       mode: Normal
+    #
+    # response.DATA is a list with one record per switch. Normalisation saves
+    # it as dc_switches_observed; the comparison finds each declared switch by
+    # ipAddress and checks switchRole. Serial and mode are informational, as is
+    # the optional ccStatus field (shown as 'not reported' when absent).
     - name: Read the fabric inventory
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -335,6 +365,15 @@
       register: dc_observed_inventory
       changed_when: false
 
+    # Illustrative subset of dc_observed_vrf_response (not captured live;
+    # VRF names and IDs are examples):
+    # response:
+    #   DATA:
+    #     - vrfName: MAIN
+    #       vrfId: 50000
+    #
+    # response.DATA becomes dc_vrfs_observed. The comparison selects vrfName
+    # and checks vrfId against the declared vrf_id; attachments are read below.
     - name: Read the fabric VRFs
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -342,6 +381,17 @@
       register: dc_observed_vrf_response
       changed_when: false
 
+    # Illustrative subset of dc_observed_network_response (not captured live;
+    # names and addresses are examples):
+    # response:
+    #   DATA:
+    #     - networkName: MAIN-EXAMPLE
+    #       vrf: MAIN
+    #       networkTemplateConfig: '{"gatewayIpAddress":"10.10.10.1/24"}'
+    #
+    # response.DATA becomes dc_networks_observed. networkTemplateConfig is a
+    # JSON string, so from_json decodes it before gatewayIpAddress is compared
+    # with gw_ip_address. The network's vrf is checked against vrf_name.
     - name: Read the fabric networks
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -349,6 +399,23 @@
       register: dc_observed_network_response
       changed_when: false
 
+    # Illustrative subset of dc_observed_vrf_attachments (not captured live;
+    # switch and VRF names are examples):
+    # response:
+    #   DATA:
+    #     - vrfName: MAIN
+    #       lanAttachList:
+    #         - switchName: example-leaf
+    #           isLanAttached: true
+    #           lanAttachState: DEPLOYED
+    #         - switchName: example-spine
+    #           isLanAttached: false
+    #           lanAttachState: NA
+    #
+    # response.DATA becomes dc_vrf_attach_observed. lanAttachList is flattened
+    # for each VRF; only attached records are judged for DEPLOYED state. Their
+    # switch names are also compared with the declared attach group, so a
+    # missing required attachment still fails even though NA is not judged.
     - name: Read the VRF attachments
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -364,6 +431,24 @@
     # the same asymmetry stage 06 works around. Matching extensions against the
     # attachments response reports every one of them as missing even when the
     # controller has them and has deployed them.
+    #
+    # Illustrative subset of dc_observed_vrf_switches (not captured live;
+    # VRF, interface, tag and neighbor values are examples):
+    # response:
+    #   DATA:
+    #     - vrfName: MAIN
+    #       switchDetailsList:
+    #         - extensionValues: >-
+    #             {"VRF_LITE_CONN":"{\"VRF_LITE_CONN\":[{\"IF_NAME\":\"Ethernet1/8\",\"DOT1Q_ID\":\"300\",\"NEIGHBOR_IP\":\"192.168.252.14\"}]}"}
+    #
+    # extensionValues is a JSON string whose VRF_LITE_CONN value is another
+    # JSON string. Index the extensions by VRF decodes both layers and stores
+    # the first connection under dc_vrf_lite_extension_values.MAIN:
+    #   IF_NAME: Ethernet1/8
+    #   DOT1Q_ID: "300"
+    #   NEIGHBOR_IP: "192.168.252.14"
+    # These fields prove the controller has the declared extension parameters,
+    # not that the BGP session is up; that needs the separate switch read.
     - name: Read the VRF-Lite extensions in place
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -394,6 +479,25 @@
           {{ out }}
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
+    # Illustrative subset of dc_observed_network_attachments (not captured
+    # live; network, switch and port names are examples):
+    # response:
+    #   DATA:
+    #     - networkName: MAIN-EXAMPLE
+    #       lanAttachList:
+    #         - switchName: example-leaf
+    #           isLanAttached: true
+    #           lanAttachState: DEPLOYED
+    #           portNames: "port-channel10,port-channel20"
+    #         - switchName: example-spine
+    #           isLanAttached: false
+    #           lanAttachState: NA
+    #           portNames: null
+    #
+    # response.DATA becomes dc_net_attach_observed. Attached records must be
+    # DEPLOYED; portNames is split on commas to build switch-and-port pairs
+    # for comparison with the declared attach group. Unattached NA records
+    # are excluded, but missing required pairs still fail the comparison.
     - name: Read the network attachments
       cisco.dcnm.dcnm_rest:
         method: GET
@@ -417,6 +521,90 @@
     # per object with set_fact, which saves a variable for later tasks. Both
     # sides of an object have to be in scope at once, which is clearer as an
     # explicit loop than as a chain of Jinja filters.
+    #
+    # SWITCH COMPARISON WALKTHROUGH
+    # All values below are illustrative, not captured from a live controller.
+    # The declared input comes from inventory/group_vars/all/dc_switches.yml:
+    # dc_switches:
+    #   - name: example-border
+    #     management_ipv4_address: "198.18.128.10"
+    #     role: border_leaf
+    #
+    # The discovery task registers a controller response shaped like this:
+    # dc_observed_inventory:
+    #   response:
+    #     DATA:
+    #       - switchName: example-border
+    #         ipAddress: "198.18.128.10"
+    #         switchRole: Border Leaf
+    #         serialNumber: EXAMPLE-SERIAL
+    #         mode: Normal
+    # Normalise the controller responses extracts response.DATA into
+    # dc_switches_observed, so this task searches a list of switch dictionaries,
+    # not the response wrapper. ccStatus is deliberately omitted in this sample
+    # to demonstrate the informational 'not reported' fallback.
+    #
+    # 1. LOOP AND LOOKUP
+    # Each iteration binds item to one declared switch. loop_control.label
+    # prints item.name in Ansible output; it does not select the observed switch.
+    # observed is evaluated for that item using the following filter chain:
+    #   selectattr('ipAddress', 'defined') -> discard records without that key
+    #   selectattr('ipAddress', 'eq', item.management_ipv4_address)
+    #                                      -> keep exact management-IP matches
+    #   list | first                     -> take the first matching record
+    #   default({})                      -> use {} if no match was found
+    # For the sample, observed is the dictionary containing switchRole:
+    # Border Leaf. The lookup does not compare item.name with switchName.
+    # Duplicate matching IP records are not rejected; only the first is used.
+    #
+    # 2. BUILD THE REPORT ROW AND EVALUATE ok
+    # name, ip and declared_role come from intent. observed_role, serial, mode
+    # and cc_status come from observed, with readable defaults for missing keys.
+    # Plain default(...) replaces undefined values, not explicit JSON nulls.
+    # ok requires BOTH a nonempty observed dictionary AND a matching role.
+    # Both roles are normalised with lower | replace(' ', '_'):
+    #   observed: "Border Leaf" -> "border leaf" -> "border_leaf"
+    #   declared: "border_leaf" -> "border_leaf" -> "border_leaf"
+    #   comparison: true; observed is nonempty, so ok: true
+    # This normalisation handles casing and spaces, not arbitrary aliases.
+    # Serial, mode and ccStatus do not affect ok. This task proves inventory
+    # presence and role only; attachment deployment is checked in later tasks.
+    #
+    # 3. APPEND THE RESULT
+    # set_fact saves dc_switch_rows for later tasks on this play's host.
+    # default([]) supplies the starting list when it is undefined; + [row]
+    # appends a one-element list without replacing earlier switch results.
+    # After the sample's first iteration, assuming no existing rows:
+    # dc_switch_rows:
+    #   - name: example-border
+    #     ip: "198.18.128.10"
+    #     declared_role: border_leaf
+    #     observed_role: Border Leaf
+    #     serial: EXAMPLE-SERIAL
+    #     mode: Normal
+    #     cc_status: not reported
+    #     ok: true
+    #
+    # FAILURE EXAMPLES
+    # If the same IP is reported with switchRole: spine, the row retains all
+    # discovered fields but has observed_role: spine and ok: false, because
+    # "spine" != "border_leaf". If the IP is not in the inventory at all,
+    # observed becomes {}, and the complete row is:
+    #   name: example-border
+    #   ip: "198.18.128.10"
+    #   declared_role: border_leaf
+    #   observed_role: absent
+    #   serial: absent
+    #   mode: unknown
+    #   cc_status: not reported
+    #   ok: false
+    # An existing record without switchRole also fails the role comparison.
+    #
+    # This task records mismatches rather than asserting immediately. Collect
+    # the failures later selects rows with ok: false into dc_failed_rows. The
+    # evidence templates render the results before Fail on any mismatch asserts
+    # that the failure list is empty (when dc_verify_fail_on_mismatch is true).
+    # No controller API calls or switch configuration changes happen here.
     - name: Compare each switch against intent
       ansible.builtin.set_fact:
         dc_switch_rows: "{{ dc_switch_rows | default([]) + [row] }}"
@@ -531,6 +719,133 @@
                and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
                and (missing_switches | length == 0) }}
 
+    # NETWORK COMPARISON WALKTHROUGH
+    # All payloads and results below are illustrative, not captured live.
+    # This task compares each declared network with two controller reads:
+    # dc_networks_observed describes the network itself, while
+    # dc_net_attach_observed describes its switch-and-port attachments.
+    # Both lists were extracted from their discovery responses' response.DATA.
+    #
+    # 1. DECLARED INPUTS
+    # Flatten the declared intent loads these lists from networks.nac.yaml.
+    # Each loop iteration binds item to one entry in dc_declared_networks:
+    # dc_declared_networks:
+    #   - name: MAIN-EXAMPLE
+    #     vrf_name: MAIN
+    #     gw_ip_address: "10.10.10.1/24"
+    #     network_attach_group: example_pair
+    # dc_declared_network_attach_groups:
+    #   - name: example_pair
+    #     switches:
+    #       - hostname: example-leaf1
+    #         ports: [Port-channel10]
+    #       - hostname: example-leaf2
+    #         ports: [Port-channel10]
+    # loop_control.label prints item.name; it does not perform the lookup.
+    #
+    # 2. LOOK UP THE NETWORK AND DECODE ITS GATEWAY
+    # Example normalised network response:
+    # dc_networks_observed:
+    #   - networkName: MAIN-EXAMPLE
+    #     vrf: MAIN
+    #     networkTemplateConfig: '{"gatewayIpAddress":"10.10.10.1/24"}'
+    # selectattr('networkName', 'defined') excludes records without that key.
+    # selectattr('networkName', 'eq', item.name) keeps exact name matches.
+    # list | first takes the first match; default({}) handles no match.
+    # Duplicate matching names are not rejected; only the first is used.
+    # observed_config decodes networkTemplateConfig with from_json when it is
+    # a string, or uses the existing object when it is already structured:
+    # observed_config:
+    #   gatewayIpAddress: "10.10.10.1/24"
+    # Comparisons for this sample:
+    #   observed.vrf == item.vrf_name                     -> MAIN == MAIN
+    #   observed_config.gatewayIpAddress == gw_ip_address  -> exact /24 match
+    # Network names, VRFs and gateway strings are case-sensitive/exact here;
+    # gateway addresses are not converted to canonical IP-network objects.
+    # Missing template config defaults to {}, but malformed JSON is not repaired
+    # by default(): from_json raises a parsing error instead of creating a row.
+    #
+    # 3. SELECT AND PARTITION THE ATTACHMENTS
+    # Example normalised attachment response:
+    # dc_net_attach_observed:
+    #   - networkName: MAIN-EXAMPLE
+    #     lanAttachList:
+    #       - switchName: EXAMPLE-LEAF1
+    #         isLanAttached: true
+    #         lanAttachState: DEPLOYED
+    #         portNames: "port-channel10"
+    #       - switchName: EXAMPLE-LEAF2
+    #         isLanAttached: true
+    #         lanAttachState: DEPLOYED
+    #         portNames: "port-channel10"
+    #       - switchName: example-spine
+    #         isLanAttached: false
+    #         lanAttachState: NA
+    #         portNames: null
+    # The networkName filter selects this network's records, map extracts each
+    # lanAttachList, and flatten combines them into one attachments list.
+    # attached retains records whose isLanAttached exists and is truthy.
+    # not_attached_switches records the others for reporting, but their NA state
+    # is not judged. attach_states collects defined states from attached records:
+    #   attach_states: [DEPLOYED, DEPLOYED]
+    #   not_attached_switches: [example-spine]
+    # The payload assumes attached records supply their deployment state.
+    #
+    # 4. COMPARE SWITCH-AND-PORT PAIRS
+    # attach_group_switches selects example_pair by item.network_attach_group
+    # and flattens its switches list. The nested loop produces one pair for
+    # every declared port on every declared switch; '|' separates the two:
+    # declared_attachments:
+    #   - example-leaf1|Port-channel10
+    #   - example-leaf2|Port-channel10
+    # observed_attachments splits each attached record's comma-separated
+    # portNames, trims whitespace, ignores empty port entries, and lowercases
+    # the complete pair. default('', true) substitutes for absent/null ports:
+    # observed_attachments:
+    #   - example-leaf1|port-channel10
+    #   - example-leaf2|port-channel10
+    # Each declared pair is lowercased for membership testing, but keeps its
+    # original spelling in the report. Both sample pairs exist, so:
+    #   missing_attachments: []
+    # Checking pairs prevents a port found on leaf1 from satisfying leaf2's
+    # requirement. Extra observed pairs are not rejected; this is a required-
+    # attachment check, not exact equality between the two attachment sets.
+    #
+    # 5. BUILD THE RESULT AND EVALUATE ok
+    # All conditions must hold: the network exists, its VRF and gateway match,
+    # at least one attachment is present, every collected attachment state is
+    # DEPLOYED, and no declared switch-and-port pair is missing.
+    # dc_network_rows receives this row for the successful sample:
+    #   - name: MAIN-EXAMPLE
+    #     declared_vrf: MAIN
+    #     observed_vrf: MAIN
+    #     declared_gateway: "10.10.10.1/24"
+    #     observed_gateway: "10.10.10.1/24"
+    #     declared_attachments:
+    #       - example-leaf1|Port-channel10
+    #       - example-leaf2|Port-channel10
+    #     missing_attachments: []
+    #     not_attached_switches: [example-spine]
+    #     attach_states: [DEPLOYED, DEPLOYED]
+    #     ok: true
+    # set_fact starts dc_network_rows with default([]) when undefined and
+    # appends [row], retaining rows from earlier loop iterations.
+    #
+    # FAILURE EXAMPLES
+    # If leaf2 reports no Port-channel10 attachment, the final row instead has
+    # missing_attachments: [example-leaf2|Port-channel10] and ok: false, even
+    # if leaf1 is DEPLOYED. If leaf2 is isLanAttached: false with state NA, it
+    # is also listed under not_attached_switches and its required pair is still
+    # missing: excluding NA does not waive the declared attachment requirement.
+    # A collected PENDING state fails the deployment condition. A gateway of
+    # 10.10.10.254/24 or an observed VRF of PROD fails its exact comparison.
+    # No matching network gives observed: {}, readable 'absent' fields and
+    # ok: false. No attached records also fails, even if network fields match.
+    #
+    # The row records the mismatch rather than failing this task immediately.
+    # Collect the failures later selects rows with ok: false; evidence is
+    # written before the final assertion fails when fail-on-mismatch is enabled.
+    # This task performs no API requests or network configuration changes.
     - name: Compare networks
       ansible.builtin.set_fact:
         dc_network_rows: "{{ dc_network_rows | default([]) + [row] }}"
