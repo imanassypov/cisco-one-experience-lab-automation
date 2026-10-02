@@ -10169,8 +10169,17 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <li>Telemetry collection (<code>telemetryCollection</code>)</li>
 <li>Fabric location (<code>location.latitude</code>, <code>location.longitude</code>)</li>
 </ul>Read by stage 03</td></tr>
-<tr><td><code>dc_external_settings.yml</code></td><td>The whole External fabric, plus the edge router in it. Read by stage 04</td></tr>
-<tr><td><code>dc_vrf_lite.yml</code></td><td>The three VRF-Lite extensions out of the border leaf. Read by stage 06</td></tr>
+<tr><td><code>dc_external_settings.yml</code></td><td><ul>
+<li>External fabric name and BGP ASN (<code>dc_external_fabric_name</code>, <code>BGP_AS</code>)</li>
+<li>Fabric Monitor Mode (<code>IS_READ_ONLY</code>)</li>
+<li>Edge-router discovery details: IP, hostname, platform type and credential reference (<code>dc_external_edge_router</code>)</li>
+</ul>Read by stage 04</td></tr>
+<tr><td><code>dc_vrf_lite.yml</code></td><td><ul>
+<li>Border leaf and local/peer interfaces (<code>dc_vrf_lite_border_leaf</code>, <code>dc_vrf_lite_interface</code>, <code>dc_vrf_lite_peer_interface</code>)</li>
+<li>Inter-fabric link addresses and MTU (<code>dc_vrf_lite_ifc</code>)</li>
+<li>VRF-Lite sub-interface MTU (<code>dc_vrf_lite_mtu</code>)</li>
+<li>Per-VRF peer names, dot1q tags, local addresses and neighbor addresses (<code>dc_vrf_lite_extensions</code>)</li>
+</ul>Read by stage 06</td></tr>
 </table>
 <p>Notice the pattern in the right-hand column of (b): <strong>one file per stage, and each names no mechanism.</strong> The playbook that reads it holds no values of its own, so changing the fabric is always an edit to one of these files rather than to a playbook.</p>
 <hr>
