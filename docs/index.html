@@ -1196,16 +1196,6 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </table>
 <p>The remaining cards in this track — the template model, extending the fabric through Git, and intent verification — have no manual counterpart at all. They exist to show you <em>why</em> a network team would work this way, not just how.</p>
 <hr>
-<h4>The whole journey, at a glance</h4>
-<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. This card is the grey line at the top — the other three come later.</p>
-<p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
-<p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
-<ul>
-<li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
-<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
-<li><strong>The orchestrator runs all twelve stages.</strong> Two of them are worth knowing about before you start it: stage 09 reboots the switches, and stage 11 blocks for up to ten minutes waiting for an access point to boot.</li>
-</ul>
-<hr>
 <h4>One machine does the work</h4>
 <p>Everything in this track runs on the <strong>script server</strong> — a Kali Linux host inside the pod. Your laptop only runs the VPN client and an SSH session. Nothing is installed on it.</p>
 <table style="border-collapse: collapse; width: 100%;" border="1">
@@ -3334,6 +3324,17 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <div class="admonition warning">
 <p>🛑 <strong>This one card replaces two manual ones.</strong> The pipeline below reaches the same end state as <a href="#page-7583">1. EVPN Fabric Provisioning</a> and <a href="#page-7584">2. EVPN Catalyst Center Discovery / Templates</a> combined — the same configuration on the same three switches, arrived at by describing it rather than typing it. Do not run it against a pod where you already completed those cards by hand.</p>
 </div>
+<hr>
+<h4>The whole journey, at a glance</h4>
+<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. The grey preparation line is covered in <a href="#page-9002">Environment Preparation 3</a>; this IaC track covers the design, deploy, and wireless/proof lines.</p>
+<p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
+<p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
+<ul>
+<li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
+<li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
+<li><strong>The orchestrator runs all twelve stages.</strong> Two of them are worth knowing about before you start it: stage 09 reboots the switches, and stage 11 blocks for up to ten minutes waiting for an access point to boot.</li>
+</ul>
+<hr>
 <p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation 3: Infrastructure as Code — Script Server Preparation (Ansible)</strong></a>.</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
