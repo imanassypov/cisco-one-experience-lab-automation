@@ -157,7 +157,11 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Environment Preparation</div>
   <ul class="nav-pages hidden"><li><a href="#page-7946">1. Familiarize Yourself with the Jumphost </a></li>
 <li><a href="#page-7947">2. Activate Duo Admin Account</a></li>
-<li><a class="iac" href="#page-9002"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></li>
+</ul>
+</div><div class="nav-section">
+  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Environment Preparation - IaaC</div>
+  <ul class="nav-pages hidden"><li><a class="iac" href="#page-9002"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></li>
+<li><a class="iac" href="#page-9404"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>4. IaaC Server - How it is wired</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Choose your own Secure Network Adventure</div>
@@ -1051,7 +1055,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </div>
 </div><div class="section-anchor" id="section-2186">
   <div class="section-header"><h2>Environment Preparation</h2><div class="section-summary"><p dir="ltr" style="text-align: left;"></p>
-<p><span lang="EN-GB">In this section you will familiarize yourself with the dCloud Lab environment and prepare for the work ahead. The first two cards use the Jump Hosts and AD1 Server; the optional third card prepares an Ansible script server for the automated EVPN path.</span></p>
+<p><span lang="EN-GB">In this section you will familiarize yourself with the dCloud Lab environment and prepare for the work ahead. The first two cards use the Jump Hosts and AD1 Server. For the optional Ansible-based automation paths, continue to the following Environment Preparation - IaaC section.</span></p>
 <p></p>
 <p></p></div></div>
   <div class="page-card">
@@ -1173,6 +1177,11 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </div>
 </div>
 </div>
+ </div>
+ </div>
+ </div>
+<div class="section-anchor" id="section-2188">
+  <div class="section-header"><h2>Environment Preparation - IaaC</h2><div class="section-summary"><p>This optional setup supports both automated tracks in this guide: Campus EVPN and DC as Code. Prepare the script server once, then use the following cards to see how the Ansible environment and each track are organized. Manual provisioning paths can skip this section.</p></div></div>
 <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
     <h3 id="page-9002" class="page-anchor">3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</h3>
@@ -1245,7 +1254,7 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 <p>The script also writes the <strong>vault password file</strong> for you, at <code>.vault</code> in the repository root. The lab stores its credentials in an encrypted file, <code>Lab Topology/lab_access.yml</code>, and <code>.vault</code> holds the passphrase that opens it. Confirm it works:</p>
 <pre>cd ~/cisco-one-experience-lab-automation
 ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
-<p>If that prints YAML, every playbook in the repository can authenticate, and you will never be asked for a device password again.</p>
+<p>If that prints YAML, the passphrase can decrypt the credential map. The playbooks load the needed username and password from it automatically; this check does not test whether a device accepts those credentials or is reachable.</p>
 <div class="admonition warning">
 <p>🛑 <strong>Do not copy this credential pattern into production.</strong> Here the encrypted file <em>and</em> the passphrase that opens it both live in the repository, so the encryption protects nothing — it is a convenience for a disposable lab whose passwords are already public demo values. The mechanism itself is worth stealing; the key handling is not. In real work the passphrase comes from a secret store and never touches the repo.</p>
 </div>
@@ -1285,18 +1294,91 @@ ansible-playbook --version</pre>
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>Your script server is ready and your pod number is set. Next, go to <a href="#page-9001"><strong>EVPN: Choose Your Provisioning Path</strong></a>. If you choose the automated path, continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
+<p>Your script server is ready and your pod number is set. For a map of how the Ansible files fit together, continue to <a href="#page-9404"><strong>Environment Preparation - IaaC, card 4: How it is wired</strong></a>. Then go to <a href="#page-9001"><strong>EVPN: Choose Your Provisioning Path</strong></a>; if you choose the automated path, continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
 </div>
 </div></div>
-</div><div class="box py-3 branchbuttoncontainer horizontal">
+</div>
+<div class="page-card">
+  <div class="page-card-header"><span>🤖</span>
+    <h3 id="page-9404" class="page-anchor">4. IaaC Server - How it is wired</h3>
+  </div>
+  <div class="page-card-body"><h3>One Ansible environment, two automation tracks</h3>
+<p>The script server is the control point for both Infrastructure as Code (IaC) tracks in this guide. Ansible runs inside the Python environment prepared in the previous card. The repository keeps the reusable runtime setup, the campus EVPN automation, and the data-center automation in separate folders so each track can have its own inventory and workflow.</p>
+<h4>The shared credential map</h4>
+<p><code>Lab Topology/lab_access.yml</code> is an encrypted YAML map of lab accounts. Each entry is named for a host or service, such as <code>script_server</code>, <code>Catalyst Center</code>, <code>Cisco Nexus Dashboard</code>, or <code>DC-Leaf1</code>. The file holds usernames and passwords; it is not where the fabric design or ordinary Ansible settings are defined. The repo-root <code>.vault</code> file supplies the passphrase that unlocks it.</p>
+<p>Each automation folder has an <code>ansible.cfg</code> that points to that passphrase file and enables <code>ansible-automation/plugins/vars/lab_access.py</code>. When Ansible starts, this small plugin finds <code>Lab Topology/lab_access.yml</code>, asks Ansible to decrypt it, and makes the entries available to the play as the variable <code>lab_access</code>. Inventory variables then select the account they need. You do not add a password prompt or manually load the vault in each playbook.</p>
+<p>The credential map is shared, but each track uses only the entries it needs:</p>
+<ul>
+<li><strong>Script-server bootstrap:</strong> <code>00_scriptserver_bootstrap/playbooks/00_preflight.yml</code> checks that the vault opens and that the <code>script_server</code> entry exists. <code>01_bootstrap_script_server.yml</code> uses that account for the local bootstrap and privilege escalation.</li>
+<li><strong>Campus EVPN:</strong> the pipeline playbooks, orchestrated by <code>01_campus/evpn/ansible/playbooks/00_site_deploy.yml</code>, use the <code>Catalyst Center</code> entry for Catalyst Center API access. The stages use that API connection to manage and verify the campus devices; the playbooks do not log in to those switches with entries from <code>lab_access.yml</code>.</li>
+<li><strong>Data center:</strong> the Nexus as Code stages use <code>Cisco Nexus Dashboard</code> for controller API access, and Nexus Dashboard uses the switch account for discovery and management. <code>00_discover_dc_switch_serials.yml</code> connects to the switches directly over SSH; <code>04_external_fabric.yml</code> uses the edge-router entry while adding that router to the external fabric.</li>
+<li><strong>Assurance:</strong> the Splunk automation uses separate entries for the Splunk web/API administrator and the Linux account on <code>splunk_server</code>.</li>
+</ul>
+<p>The earlier <code>ansible-vault view</code> command is just a quick decrypt check. A successful check proves that Ansible can read the map; it does not log in to Catalyst Center, Nexus Dashboard, a switch, or Splunk.</p>
+<h4>Where the Ansible files live</h4>
+<pre style="background: #1e1e1e; color: #d4d4d4; padding: 16px; overflow-x: auto;">ansible-automation/
+├── plugins/vars/lab_access.py       shared loader for the encrypted account map
+├── 00_scriptserver_bootstrap/       prepares the Ansible runtime on this server
+├── 01_campus/evpn/
+│   ├── Settings/settings.json       campus site and network intent
+│   └── ansible/
+│       ├── ansible.cfg               settings for this Ansible collection
+│       ├── inventory/                controller and device names, groups, variables
+│       ├── playbooks/                 ordered stages and the pipeline orchestrator
+│       └── roles/                     reusable tasks called by those stages
+└── 02_data_center/ansible/
+    ├── ansible.cfg                    settings for the DC collection
+    ├── inventory/                     controller/switch groups and shared variables
+    ├── playbooks/                     stages and the deployment orchestrator
+    │   └── host_vars/Pseudoco-DC1/    Nexus as Code fabric model files
+    └── roles/                         local validation and helper tasks</pre>
+<h4>Two tracks, two ways of describing intent</h4>
+<p><strong>Campus EVPN:</strong> <code>Settings/settings.json</code> is the main description of the campus project: sites, networks, devices, and related settings. Ansible loads it through the staged playbooks and uses it to make Catalyst Center API requests. The inventory describes the Ansible targets and groups. Files under <code>inventory/group_vars/</code> add values shared by a group: for example, <code>catalyst_center/connection.yml</code> gets API credentials from <code>lab_access</code>, while <code>all/lab.yml</code> holds the student's pod number and access-point details. The playbooks decide the order; roles hold tasks reused by those stages.</p>
+<p><code>inventory/catalyst_center.yml</code> and <code>inventory/group_vars/catalyst_center/connection.yml</code> work together, but serve different purposes. The inventory defines the <code>catalyst_center</code> group and its member, <code>catalyst_center_api</code>, and configures Ansible to run tasks locally. The group variables file provides settings for that group, including the Catalyst Center API address and settings, with the address and credentials sourced from the vaulted <code>lab_access.yml</code>.</p>
+<table style="border-collapse: collapse; width: 100%; table-layout: fixed;" border="1">
+<thead><tr><th style="width: 50%;">Target and local execution<br><code>inventory/catalyst_center.yml</code></th><th style="width: 50%;">Group API settings<br><code>inventory/group_vars/catalyst_center/connection.yml</code></th></tr></thead>
+<tbody><tr>
+<td style="vertical-align: top;"><pre style="white-space: pre; overflow: auto;"><code>---
+# Static Ansible inventory — the only inventory source for this project.
+# Every stage talks to Catalyst Center over its API, so localhost is the only
+# host. Stage 12 used to SSH to the Site 105 switches; it now collects their
+# CLI through Catalyst Center Command Runner, so no device credentials or
+# reachability to 198.18.128.x are needed from the control node.
+# MCP bastion/Splunk: utils/mcp-ssh-server/inventory/static_hosts.yml (not Ansible).
+all:
+  children:
+    # Host name must differ from the group name, otherwise Ansible warns
+    # "Found both group and host with same name". Playbooks target the group.
+    <span style="background:#3b3b3b;color:#fff;font-weight:bold;">catalyst_center:</span>
+      hosts:
+        <span style="background:#3b3b3b;color:#fff;font-weight:bold;">catalyst_center_api:</span>
+          <span style="background:#3b3b3b;color:#fff;font-weight:bold;">ansible_host: localhost
+          ansible_connection: local</span>
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"</code></pre></td>
+<td style="vertical-align: top;"><pre style="white-space: pre; overflow: auto;"><code>---
+# Catalyst Center connection — cisco.catalystcenter modules (stages 1, 2)
+# Credentials come from Lab Topology/lab_access.yml (vault), key "Catalyst Center".
+<span style="background:#3b3b3b;color:#fff;font-weight:bold;">catc_username: "{{ lab_access['Catalyst Center'].username }}"
+catc_password: "{{ lab_access['Catalyst Center'].password }}"</span>
+<span style="background:#3b3b3b;color:#fff;font-weight:bold;">catc_host: "{{ lab_access['Catalyst Center'].access | urlsplit('hostname') }}"
+catc_port: 443</span>
+# API compatibility profile used by this lab
+catc_version: "3.1.3.0"
+catc_verify: false
+catc_debug: false</code></pre></td>
+</tr></tbody></table>
+<p>The shared name <code>catalyst_center</code> connects these files: it is the inventory group and the directory under <code>group_vars/</code>. Ansible automatically applies that directory's variables to hosts in the group. Notice that <code>ansible_host: localhost</code> means tasks run from the control machine; it is not the Catalyst Center address. <code>catc_host</code> (and <code>dnac_host</code> for the other API client) extracts the hostname from the vaulted <code>access</code> URL with Ansible's <code>urlsplit('hostname')</code> filter. These variables could technically be placed in the inventory, but keeping target structure separate from API and workflow settings makes the setup easier to understand and maintain.</p>
+<p><strong>Data center:</strong> the fabric design is split into <code>*.nac.yaml</code> files under <code>playbooks/host_vars/Pseudoco-DC1/</code>. Together they describe the fabric, underlay, switches, VRFs, and networks for Nexus as Code. The <code>inventory/static_inventory.yml</code> file names the controller-side fabric targets. Files in <code>inventory/group_vars/all/</code> define shared data such as the switch table and settings the Nexus as Code model cannot express; <code>group_vars/nd/</code> defines the Nexus Dashboard connection, and <code>group_vars/dc_fabric_switches/</code> defines direct switch SSH access for serial discovery. The playbooks sequence the stages and the roles provide reusable checks. In this track, keep the fabric model under <code>playbooks/host_vars/</code>; the Nexus as Code validation role expects it there.</p>
+<p>As you follow either track, a useful rule is: change the design in its data file, connection details in inventory variables, and the order of work in the playbooks. Avoid putting passwords in <code>settings.json</code>, inventory, or playbook files; those come from the shared encrypted map.</p></div>
+</div>
+<div class="box py-3 branchbuttoncontainer horizontal">
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;"><!-- Header -->
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭 Complete</span></div>
 <!-- Body (Add your content here) -->
 <h3 style="padding: 18px 20px; color: #2e2e2e;">🎉 Congratulations you have completed all of the environment preparation! Now the fun starts!! Please proceed to the official start of the Lab. Good Luck on your Adventure. 🤩<!-- Add your text, links, or instructions here --></h3>
 </div>
 </div></div>
-</div>
-</div><div class="section-anchor" id="section-2187">
+<div class="section-anchor" id="section-2187">
   <div class="section-header"><h2>Choose your own Secure Network Adventure</h2></div>
   <div class="page-card">
   <div class="page-card-header"><span>📄</span>
@@ -1901,7 +1983,7 @@ ansible-playbook --version</pre>
 <li>Learn the Catalyst Center template model that scales past three switches</li>
 </ul>
 <p><strong>What you need:</strong> the dCloud VPN, a terminal, and your POD number from the lab printout.</p>
-<p><strong>Start here:</strong> <a href="#page-9002">Environment Preparation 3: Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></p>
+<p><strong>Start here:</strong> <a href="#page-9002">Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</a></p>
 </div>
 </div>
 <hr>
@@ -1969,7 +2051,7 @@ ansible-playbook --version</pre>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
 <p>Building it by hand? Continue to <a href="#page-7583"><strong>EVPN Fabric and WLC — Manual Provisioning</strong></a>.</p>
-<p>Building it as code? If you have not prepared the script server yet, start with <a href="#page-9002"><strong>Environment Preparation 3: Infrastructure as Code — Script Server Preparation (Ansible)</strong></a>. Then continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
+<p>Building it as code? If you have not prepared the script server yet, start with <a href="#page-9002"><strong>Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</strong></a>. Then continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
 <p>Both tracks finish at the same place: an EVPN fabric and a working wireless SSID. Pick one and stay on it — running both against the same pod will produce confusing results.</p>
 </div>
 </div></div>
@@ -3137,7 +3219,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p>The remaining cards in this track — the template model, extending the fabric through Git, and intent verification — have no manual counterpart at all. They exist to show you <em>why</em> a network team would work this way, not just how.</p>
 <hr>
 <h4>The whole journey, at a glance</h4>
-<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. The grey preparation line is covered in <a href="#page-9002">Environment Preparation 3</a>; this IaC track covers the design, deploy, and wireless/proof lines.</p>
+<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. The grey preparation line is covered in <a href="#page-9002">Environment Preparation - IaaC, card 3</a>; this IaC track covers the design, deploy, and wireless/proof lines.</p>
 <p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
 <p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
 <ul>
@@ -3146,7 +3228,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <li><strong>The orchestrator runs all twelve stages.</strong> Two of them are worth knowing about before you start it: stage 09 reboots the switches, and stage 11 blocks for up to ten minutes waiting for an access point to boot.</li>
 </ul>
 <hr>
-<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation 3: Infrastructure as Code — Script Server Preparation (Ansible)</strong></a>.</p>
+<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</strong></a>.</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
 <h4>The eleven stages</h4>
@@ -3286,7 +3368,7 @@ ansible-inventory --graph</pre>
 <h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
 <p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 5. Three lines matter here:</p>
 <pre>[defaults]
-inventory           = inventory/static_inventory.yml
+inventory           = inventory/catalyst_center.yml
 vault_password_file = ../../../../.vault
 vars_plugins        = ../../../plugins/vars</pre>
 <table style="border-collapse: collapse; width: 100%;" border="1">

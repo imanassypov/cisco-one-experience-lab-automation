@@ -266,7 +266,7 @@ That `ansible.cfg` points at:
 
 | Setting | File | What the student sees |
 |---------|------|------------------------|
-| `inventory` | `inventory/static_inventory.yml` | Groups and hostnames (`catalyst_center_api`, the three `Site_105-*` switches) and their `ansible_host` IPs |
+| `inventory` | `inventory/catalyst_center.yml` | The `catalyst_center` group and its local API-task target, `catalyst_center_api` |
 | `vault_password_file` | repo-root `.vault` | Unlocks `Lab Topology/lab_access.yml` |
 | `vars_plugins` | `ansible-automation/plugins/vars/lab_access.py` | Injects `lab_access` so each switch can resolve `ansible_user` / `ansible_password` |
 
@@ -2513,7 +2513,7 @@ virtualenv lives outside the tree at `~/venv`.
         └── ansible/                        # ← on Kali, run every pipeline command from here
             ├── ansible.cfg
             ├── inventory/
-            │   ├── static_inventory.yml
+            │   ├── catalyst_center.yml
             │   └── group_vars/all/lab.yml  # your POD number and AP MACs
             ├── playbooks/                  # 00 orchestrator + stages 01–12
             └── evidence/                   # stage 09 and 12 output (gitignored)
