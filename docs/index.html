@@ -3223,9 +3223,9 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
 <p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
 <ul>
-<li><strong>Nothing touches the network until stage 08.</strong> Stages 01 – 07 only build intent inside Catalyst Center. If you make a mistake there, you have not broken anything on a switch.</li>
+<li><strong>Switch configuration starts at stage 08.</strong> Stages 01 – 07 prepare intent in Catalyst Center; stage 08 provisions switches to their sites and applies their site settings and switching profiles.</li>
 <li><strong>There is exactly one unavoidable wait</strong>, and it is not in the software. A physical access point has to boot and find its controller, which cannot happen until stage 10 turns its switch port into a trunk. That is why wireless finishes last.</li>
-<li><strong>The orchestrator runs all twelve stages.</strong> Two of them are worth knowing about before you start it: stage 09 reboots the switches, and stage 11 blocks for up to ten minutes waiting for an access point to boot.</li>
+<li><strong><code>playbooks/00_site_deploy.yml</code> imports and runs the twelve stage playbooks in order.</strong> It simply starts each stage in sequence. Before running it, note that stage 09 reboots the switches, and stage 11 waits up to ten minutes for an access point to boot.</li>
 </ul>
 <hr>
 <p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</strong></a>.</p>
@@ -3251,22 +3251,17 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <tr><td>05</td><td><code>05_assign_to_site.yml</code></td><td>Places the discovered devices into their sites: the controller into the data centre, the switches into Site-105.</td><td><span class="safety design">Design change</span></td></tr>
 <tr><td>06</td><td><code>06_template_sync.yml</code></td><td>Uploads the 24 Jinja2 templates and the composite manifest into a Catalyst Center CLI project named <code>Site-105</code>. This is the fabric design, as code.</td><td><span class="safety design">Design change</span></td></tr>
 <tr><td>07</td><td><code>07_network_profile.yml</code></td><td>Builds four switching profiles, the wireless design including your <code>PSEUDOCO-POD<em>nn</em></code> SSID, the FlexConnect settings, and the <code>HQ-Wireless</code> profile.</td><td><span class="safety design">Design change</span></td></tr>
-<tr><td>08</td><td><code>08_provision_devices.yml</code></td><td>Provisions the switches, then the wireless controller, then any access points already known to Catalyst Center.</td><td><span class="safety maybe">Can reboot APs</span></td></tr>
+<tr><td>08</td><td><code>08_provision_devices.yml</code></td><td>Provisions new switches to their sites, applying their site network settings and switching profiles. Already-provisioned switches are skipped unless <code>force_reprovision=true</code>. Then provisions the wireless controller and any access points already known to Catalyst Center.</td><td><span class="safety disruptive">Changes switch config; can reboot APs</span></td></tr>
 <tr><td>09</td><td><code>09_swim.yml</code></td><td>Imports the IOS-XE image named in <code>settings.json</code> from the script server, tags it golden, stages it in device flash and reloads the switches onto it. Runs before the EVPN push so the fabric is already on its intended image. Add <code>-e swim_activate=false</code> to stage without reloading.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
 <tr><td>10</td><td><code>10_deploy_composite.yml</code></td><td>Renders the templates per device and pushes the resulting EVPN configuration to the three switches.</td><td><span class="safety disruptive">Disruptive</span></td></tr>
 <tr><td>11</td><td><code>11_await_access_points.yml</code></td><td>Waits for the access point to reach Catalyst Center, records its MAC in <code>lab.yml</code>, then names, site-assigns and provisions it. Not part of <code>00_site_deploy.yml</code> — it blocks on hardware booting.</td><td><span class="safety maybe">Reboots your AP</span></td></tr>
 <tr><td>12</td><td><code>12_verify_intent.yml</code></td><td>Collects <code>show</code> output and compares it against the design. Changes nothing.</td><td><span class="safety ro">Read-only</span></td></tr>
 </tbody>
 </table>
-<div class="admonition warning">
-<p>🛑 <strong>Stage 10 pushes live configuration to the switches.</strong> That is the point of it — but be aware it is the stage that changes the network. Stage 08 can reboot access points on a controller shared with other pods. Neither is dangerous in this lab; both deserve your attention in a real one.</p>
-</div>
-<h4>Campus EVPN-specific preparation</h4>
-<p>These remaining setup steps apply to the Campus EVPN IaC path. Complete them before choosing a pipeline run option below. Catalyst Center in this pod is version <strong>3.1.5</strong>, reachable at <code>cat-center.corp.pseudoco.com</code>.</p>
 <hr>
-<h4>Step 4 — Stage the IOS-XE software images</h4>
+<h4>Stage the IOS-XE software images</h4>
 <p>Stage 09 upgrades the switches, and it has nothing to install until you put the image files on the script server yourself. They are not in the repository: each <code>.bin</code> is well over a gigabyte and GitHub refuses anything above 100 MB, so they are supplied by hand, the same way <code>.vault</code> and <code>lab.yml</code> are.</p>
-<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. Step 3 has already done the work for that: nginx is installed, it is listening on port <strong>8080</strong>, and it is serving <code>/var/www/iosxe-images</code> — a folder the bootstrap deliberately created owned by <em>your</em> login account, not root, so that you can copy into it without <code>sudo</code>.</p>
+<p>Catalyst Center cannot read a folder on the script server, so it downloads the image over HTTP instead. The bootstrap steps above have already installed nginx, started it on port <strong>8080</strong>, and configured it to serve <code>/var/www/iosxe-images</code>. The folder is owned by <em>your</em> login account, so you can copy files into it without <code>sudo</code>.</p>
 <p>So copy the two files — the upgrade image <em>and</em> the rollback image — straight into that folder. From your laptop:</p>
 <pre>scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
     cisco@198.18.134.12:/var/www/iosxe-images/</pre>
@@ -3279,41 +3274,6 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <pre>curl -sI http://198.18.134.12:8080/cat9k_iosxe.26.01.02.SPA.bin | head -1
 # HTTP/1.1 200 OK</pre>
 <p><code>200 OK</code> means stage 09 will work. <code>404</code> means the filename does not match what you copied. Connection refused means nginx is not running — re-run Step 3.</p>
-<div class="admonition">
-<p>👀 <strong>There is a second way, and you may have already used it.</strong> The bootstrap also copies any <code>.bin</code> it finds in <code>iosxe_images/</code> at the root of the checkout into that same web root. That exists so you can stage the images <em>before</em> the first bootstrap run and have everything ready in one pass. If you did that, they are already published and this step is done.</p>
-<p>Coming at it after Step 3, as you are here, copying straight to <code>/var/www/iosxe-images</code> is simpler: one transfer instead of two, and it does not leave a second 2.6 GB copy sitting in the checkout. The two routes do not conflict — the bootstrap only ever adds files to the web root, it never clears it, so re-running it later will not remove anything you copied by hand.</p>
-</div>
-<h5>Where each of those paths is defined</h5>
-<p>Nothing here is hard-coded in one place — the folder nginx serves, the optional staging folder in the checkout, and the URL Catalyst Center is given are separate settings that have to agree. They live in two files, both paths below being relative to the root of your checkout, <code>~/cisco-one-experience-lab-automation/</code>:</p>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 26%;">Setting</th><th style="width: 26%;">Value</th><th style="width: 48%;">File, and what it controls</th></tr>
-</thead>
-<tbody>
-<tr><td><code>script_server_image_root</code></td><td><code>/var/www/iosxe-images</code></td><td><code>ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml</code><br>The folder you copied into, and the one nginx serves.</td></tr>
-<tr><td><code>script_server_image_source_dir</code></td><td><code>&lt;checkout&gt;/iosxe_images</code></td><td>Same file — the optional pre-bootstrap staging folder. Anything here is copied to the web root when the bootstrap runs.</td></tr>
-<tr><td><code>script_server_image_http_port</code></td><td><code>8080</code></td><td>Same file — the port nginx listens on.</td></tr>
-<tr><td><code>swim.image_base_url</code></td><td><code>http://198.18.134.12:8080</code></td><td><code>ansible-automation/01_campus/evpn/Settings/settings.json</code>, in the <code>swim</code> block of the <code>Site-105</code> project.<br>What Catalyst Center is told to download from.</td></tr>
-<tr><td><code>swim.image_file</code><br><code>swim.rollback_image_file</code></td><td>the two <code>.bin</code> names</td><td>Same <code>swim</code> block — these must match your filenames character for character.</td></tr>
-</tbody>
-</table>
-<p>Rather than take the table's word for it, print the live values from your own checkout:</p>
-<pre>cd ~/cisco-one-experience-lab-automation
-
-grep -nE 'script_server_image_(source_dir|root|http_port)' \
-  ansible-automation/00_scriptserver_bootstrap/roles/script_server_bootstrap/defaults/main.yml
-
-grep -nE '"(image_base_url|image_file|rollback_image_file)"' \
-  ansible-automation/01_campus/evpn/Settings/settings.json</pre>
-<p>Stage 09 joins the last two together to build the download URL. In <code>ansible-automation/01_campus/evpn/ansible/roles/swim/tasks/import_and_tag.yml</code> it is literally:</p>
-<pre>{{ item.image_base_url }}/{{ item.image_file }}</pre>
-<p>So a typo in either half produces the same symptom — Catalyst Center reports that it could not import the image — and the <code>curl</code> above is the quickest way to tell which half is wrong.</p>
-<div class="admonition">
-<p>🔎 <strong>Why the images are served from the script server rather than downloaded from cisco.com.</strong> Catalyst Center would normally import software straight from Cisco's catalogue, and in this pod that does not work: every image is rejected with <code>NCSW10375 "not the latest or suggested image from cisco"</code> — including builds Cisco's own catalogue flags as recommended — and <code>software.cisco.com</code> answers HTTP 403 from inside the lab. Serving the file locally sidesteps the catalogue completely, which has a useful side effect: <em>any</em> image can be used, not only the handful Cisco currently suggests.</p>
-</div>
-<div class="admonition warning">
-<p>🛑 <strong>Skipping this has a delayed cost.</strong> Nothing fails now. Stage 09 fails later, part-way through a pipeline run, after the fabric is already built. If you have no images to hand, decide now: either stage them, or plan to run the pipeline with <code>-e swim_activate=false</code>.</p>
-</div>
 <hr>
 <h4>Step 5 — Move to the pipeline directory</h4>
 <p>Open a fresh shell so the new <code>PATH</code> takes effect, then change into the pipeline folder:</p>
@@ -3362,99 +3322,9 @@ ansible-inventory --graph</pre>
 </div>
 <p>That single host surprises people. It is correct — the playbooks do not SSH to the switches. Every action goes through the Catalyst Center REST API, including the verification stage, which uses Catalyst Center's Command Runner to collect <code>show</code> output. Catalyst Center is the only thing Ansible talks to.</p>
 <hr>
-<h4>How credentials reach the playbooks</h4>
-<p>You never type a device password, and no password appears in any playbook. Nothing about this is magic — it is four small pieces, and it is worth understanding, because the same pattern solves the "where do I keep the passwords" problem in real work.</p>
-<p>The short version: <code>ansible.cfg</code> tells Ansible where the passphrase is and which extra code to run; that code finds one encrypted file, decrypts it, and hands its contents to every play as a single variable named <code>lab_access</code>; the inventory then picks individual fields out of that variable.</p>
-<h5>1. <code>ansible.cfg</code> — what Ansible is told to load</h5>
-<p>This file sits in <code>01_campus/evpn/ansible/</code>, the directory you moved to in Step 5. Three lines matter here:</p>
-<pre>[defaults]
-inventory           = inventory/catalyst_center.yml
-vault_password_file = ../../../../.vault
-vars_plugins        = ../../../plugins/vars</pre>
-<table style="border-collapse: collapse; width: 100%;" border="1">
-<thead>
-<tr><th style="width: 26%;">Setting</th><th style="width: 74%;">What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>inventory</code></td><td>The host list — in this lab, the single <code>catalyst_center_api</code> host you just printed with <code>ansible-inventory --graph</code>.</td></tr>
-<tr><td><code>vault_password_file</code></td><td>Points four levels up, to <code>.vault</code> in the repository root. That file holds one line: the passphrase. Ansible reads it automatically, which is why you are never prompted.</td></tr>
-<tr><td><code>vars_plugins</code></td><td>A folder of extra code Ansible should run before any task, to supply variables. This lab ships exactly one piece, described next.</td></tr>
-</tbody>
-</table>
-<p>Those paths are <strong>relative</strong>. That is the real reason every command in this track runs from the pipeline directory — step outside it and Ansible finds none of the three.</p>
-<h5>2. <code>plugins/vars/lab_access.py</code> — the piece that fetches the secrets</h5>
-<p>A <em>vars plugin</em> is a small piece of Python whose only job is to hand variables to Ansible before the first task runs. You do not call it and it is not a playbook step; Ansible runs it on its own. This one is about fifty lines and does four things:</p>
-<ol>
-<li>Starts in the directory you ran from and <strong>walks up</strong> the folder tree, up to twelve levels, looking for a folder called <code>Lab Topology</code> containing <code>lab_access.yml</code>.</li>
-<li>Asks Ansible to load that file. Because <code>ansible.cfg</code> already supplied the passphrase, Ansible decrypts it in memory. Nothing is ever written back to disk in the clear.</li>
-<li>Checks the decrypted result really is a list of entries under a top-level <code>lab_access:</code> key, and stops with a clear error if it is not.</li>
-<li>Returns it as one variable, <code>lab_access</code>, visible to every play in every collection.</li>
-</ol>
-<p>Why walk up the tree rather than use a fixed path? Because the encrypted file lives once, at the top of the repository, while playbooks run from several different collection folders — campus, assurance, bootstrap. Walking up means no collection has to know how deep it sits, and there is only ever one copy of the credentials to look after.</p>
-<div class="admonition">
-<p>👀 <strong>If a playbook stops with <code>Lab access vault not found</code></strong>, the plugin walked twelve levels up and never found the file. In practice that means you are running from outside the repository. <code>cd</code> back into <code>01_campus/evpn/ansible</code> and try again.</p>
-</div>
-<h5>3. <code>Lab Topology/lab_access.yml</code> — the encrypted answer key</h5>
-<p>Committed to git, this file is unreadable. The first line tells you why:</p>
-<pre>$ANSIBLE_VAULT;1.1;AES256
-38396561366265623539346434333831316639383866623264363262323139...</pre>
-<p>Decrypted, it is ordinary YAML. Each entry is one system in this pod — the structure below is the tracked schema file, <code>lab_access.yml.example</code>, which carries the same keys with the passwords blanked out:</p>
-<pre>lab_access:
-
-  # Kali box every playbook runs from
-  script_server:
-    access: "ssh: 198.18.134.12"
-    username: cisco
-    password: REPLACE_ME
-
-  # Operator jump hosts (RDP)
-  Jumphost1:
-    access: "RDP: 198.18.133.36"
-    username: REPLACE_ME
-    password: REPLACE_ME
-
-  # Drives every stage of the campus pipeline via the Intent API
-  "Catalyst Center":
-    access: "https://cat-center.corp.pseudoco.com"
-    username: REPLACE_ME
-    password: REPLACE_ME
-
-  # Campus EVPN fabric switches. enable_password is required here and
-  # nowhere else - IOS-XE privilege 15.
-  Site_105-Leaf1:
-    access: "ssh: 198.18.128.22"
-    username: REPLACE_ME
-    password: REPLACE_ME
-    enable_password: REPLACE_ME</pre>
-<p><strong>These entries are this guide, written down as data.</strong> Every key name and every <code>access</code> value comes straight from the access tables in <a href="#page-7940"><strong>Environment Access</strong></a> earlier in this guide — the same jump host addresses, the same management URLs, the same switch IPs. Only the username, password and <code>enable_password</code> fields are held back and encrypted. Read that section and this file side by side and you are looking at the same information twice: once for you, once for the automation.</p>
-<p>Keys are matched <strong>exactly as written</strong>, including spaces and capitals, which is why several are quoted. Rename one and the lookup quietly returns nothing rather than raising an error, so the mismatch shows up later as a puzzling authentication failure.</p>
-<h5>4. The inventory picks out the fields it needs</h5>
-<p>Finally, the inventory turns entries in that variable into the settings each stage uses. Nothing here is a secret — it is a reference to one:</p>
-<pre>catc_username: "{{ lab_access['Catalyst Center'].username }}"
-catc_password: "{{ lab_access['Catalyst Center'].password }}"
-catc_host: cat-center.corp.pseudoco.com</pre>
-<p>You can read the decrypted file yourself at any time, without ever creating a plaintext copy:</p>
-<pre>cd ~/cisco-one-experience-lab-automation
-ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault</pre>
-<p>This is a pattern worth stealing for real work: secrets encrypted at rest, committed alongside the code so they never drift apart from it, and decrypted only at run time by whoever holds the passphrase.</p>
-<hr>
-<h4>Option A — Run the whole thing</h4>
-<p>One playbook imports every stage, 01 through 12, in order:</p>
-<pre>ansible-playbook playbooks/00_site_deploy.yml</pre>
-<p>That is the complete pipeline: an empty Catalyst Center at one end, a verified EVPN fabric with wireless at the other. Two stages inside it behave differently from the rest, and both are worth knowing about before you start.</p>
-<div class="admonition warning">
-<p>🛑 <strong>Stage 09 reboots your fabric part-way through.</strong> It copies an IOS-XE image into each switch and activates it, reloading all three — between stages 08 and 10, with the EVPN configuration still to be pushed. That ordering is deliberate: the switches should be running their intended image before the fabric configuration lands on them, not after.</p>
-<p>Run it when you can afford the fabric to drop. If you cannot, this stages the image into flash and stops short of activating it:</p>
-<pre>ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false</pre>
-</div>
-<div class="admonition">
-<p>⏳ <strong>Stage 11 stops and waits for hardware.</strong> An access point cannot join until stage 10 turns <code>Gi1/0/2</code> into a trunk, so stage 11 polls Catalyst Center for up to ten minutes waiting for one to appear, then records its MAC and provisions it. A long quiet pause there is the playbook working, not hanging.</p>
-<p>If your pod has no access point cabled, that wait ends in a failure <em>after</em> the fabric is already built. Skip it and deal with wireless later:</p>
-<pre>ansible-playbook playbooks/00_site_deploy.yml -e ap_expected_count=0</pre>
-</div>
-<p>The run ends with stage 12, which changes nothing but <strong>fails the play if the fabric does not match the design</strong> — that is the point of it. If you would rather finish with a report than an error, add <code>-e verify_fail_on_mismatch=false</code>.</p>
-<h4>Option B — Run stage by stage (recommended the first time)</h4>
-<p>Going one at a time lets you watch each change land in the Catalyst Center GUI, which is by far the best way to understand what the automation is doing:</p>
+<h4>Campus EVPN Build pipeline execution</h4>
+<p>You can run the complete build with <code>ansible-playbook playbooks/00_site_deploy.yml</code>; that single playbook runs the stages in sequence from setup through verification. For your first run, we recommend launching each stage manually instead. Pausing between stages lets you inspect Catalyst Center and see what has been provisioned so far, building an understanding of the fabric incrementally.</p>
+<p>From the pipeline directory, run these commands in order:</p>
 <pre>ansible-playbook playbooks/01_site_hierarchy.yml
 ansible-playbook playbooks/02_network_settings.yml
 ansible-playbook playbooks/03_credentials.yml
@@ -3467,7 +3337,6 @@ ansible-playbook playbooks/09_swim.yml
 ansible-playbook playbooks/10_deploy_composite.yml
 ansible-playbook playbooks/11_await_access_points.yml
 ansible-playbook playbooks/12_verify_intent.yml</pre>
-<p>Three of them behave differently from the rest, so do not be surprised by them.</p>
 <p><strong>Stage 11 sits there and waits.</strong> It polls Catalyst Center for up to ten minutes while the access point boots on the trunk stage 10 just built, then records its MAC and provisions it. A long quiet pause is the playbook working, not hanging. You can start it the moment stage 10 finishes — there is no advantage to watching the controller first. Card <a href="#page-9007">6. Verify Wireless &amp; Provision the Access Point</a> covers what it does in full.</p>
 <p><strong>Stage 09 upgrades the switch software and reloads them.</strong> It copies an IOS-XE image into each switch's flash and then activates it, which reboots all three. Run it when you can afford the fabric to drop, or add <code>-e swim_activate=false</code> to stage the image now and reload later.</p>
 <p><strong>Stage 12 is the only read-only stage.</strong> It changes nothing and produces the evidence report, so run it as often as you like.</p>
@@ -3489,6 +3358,130 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <tr><td>12</td><td>Nothing changes in the GUI — read <code>evidence/stage12-verification.html</code> instead</td></tr>
 </tbody>
 </table>
+<hr>
+<h4>What each stage does</h4>
+<p>Run these commands from the pipeline directory shown above. Most stages read the design from <code>Settings/settings.json</code>, then use a Cisco Ansible module or a REST request to make the corresponding change in Catalyst Center. Linked API calls open Cisco's official <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/overview">Catalyst Center 3.1.5 API reference</a>.</p>
+<h5>Stage 01 — Create the site hierarchy</h5>
+<p><strong>Purpose:</strong> Create the areas, buildings, and floors that later stages use to locate devices and apply settings.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/sites_info_module.html"><code>sites_info</code></a></span>Read the current site hierarchy so existing paths can be recognized.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/areas_module.html"><code>areas</code></a></span>Create any missing areas beneath their parent.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/buildings_module.html"><code>buildings</code></a></span>Create missing buildings inside those areas.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/floors_module.html"><code>floors</code></a></span>Create missing floors beneath their buildings.</div></div>
+</div>
+<pre>ansible-playbook playbooks/01_site_hierarchy.yml</pre>
+<h5>Stage 02 — Apply network services</h5>
+<p><strong>Purpose:</strong> Define site services such as DHCP, DNS, NTP, syslog, SNMP, and AAA.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/authentication">Authenticate</a></span>Request an API token for the following REST calls.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/sites_info_module.html"><code>sites_info</code></a></span>Match each site path from <code>settings.json</code> to its Catalyst Center site ID.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-network"><code>PUT /dna/intent/api/v1/network/{siteId}</code></a></span>Submit that site's network settings.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/asynchronous-api">Poll the execution status</a></span>Follow the status URL returned by Catalyst Center until the settings operation finishes.</div></div>
+</div>
+<pre>ansible-playbook playbooks/02_network_settings.yml</pre>
+<h5>Stage 03 — Create and assign device credentials</h5>
+<p><strong>Purpose:</strong> Give Catalyst Center the CLI, SNMP, HTTPS, and NETCONF credentials it needs to manage and discover devices.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/global_credential_info_module.html"><code>global_credential_info</code></a></span>Check which CLI, SNMP, and HTTPS credentials already exist.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/device_credential_workflow_manager_module.html"><code>device_credential_workflow_manager</code></a></span>Create missing credentials and assign them to the appropriate sites. The workflow manages the corresponding <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-cli-credentials">CLI</a>/<a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-cli-credentials">update CLI</a>, <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-snmp-read-community">SNMP read</a>/<a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-snmp-read-community">update read</a>, <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-snmp-write-community">SNMP write</a>/<a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-snmp-write-community">update write</a>, <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-http-read-credentials">HTTPS read</a>/<a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-http-read-credential">update read</a>, and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-http-write-credentials">HTTPS write</a>/<a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-http-write-credentials">update write</a> credential operations.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/global_credential_info_module.html"><code>global_credential_info</code></a> for NETCONF</span>Check whether the NETCONF port already has a credential.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-netconf-credentials"><code>POST</code></a> or <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-netconf-credentials"><code>PUT /dna/intent/api/v1/global-credential/netconf</code></a></span>When needed, create the NETCONF credential or update its description.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-task-by-id"><code>GET /api/v1/task/{taskId}</code></a></span>Poll the asynchronous NETCONF operation until it completes.</div></div>
+</div>
+<pre>ansible-playbook playbooks/03_credentials.yml</pre>
+<h5>Stage 04 — Discover devices</h5>
+<p><strong>Purpose:</strong> Ask Catalyst Center to find the switches and wireless controller listed in the design.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/discovery_workflow_manager_module.html"><code>discovery_workflow_manager</code></a></span>Submit each configured discovery job with the credentials from stage 03; the workflow uses <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-discovery-by-id">Get Discovery by ID</a> to track it. Discovered devices appear in inventory, initially under the global site.</div></div>
+</div>
+<pre>ansible-playbook playbooks/04_device_discovery.yml</pre>
+<h5>Stage 05 — Assign devices to sites</h5>
+<p><strong>Purpose:</strong> Put each discovered device in the site where it belongs, so later provisioning can find it.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/site_info_module.html"><code>site_info</code></a></span>Resolve each destination site path to a site ID.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/assign_device_to_site_module.html"><code>assign_device_to_site</code></a></span>Associate each discovered device with its destination site.</div></div>
+</div>
+<pre>ansible-playbook playbooks/05_assign_to_site.yml</pre>
+<h5>Stage 06 — Upload templates</h5>
+<p><strong>Purpose:</strong> Load the Jinja templates and composite definitions that describe the EVPN configuration. The source is either the local template folder or the configured Git repository.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-model"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title">Gather the template files</span>Read them from the local folder or fetch the configured Git repository.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/template_workflow_manager_module.html"><code>template_workflow_manager</code></a></span>List or create the project with <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-a-list-of-projects">Get Projects</a> / <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-project">Create Project</a>, then list, create, or update its templates with <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-the-templates-available">Get Templates</a>, <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-template">Create Template</a>, and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-template">Update Template</a>.</div></div>
+</div>
+<pre>ansible-playbook playbooks/06_template_sync.yml</pre>
+<h5>Stage 07 — Build network profiles</h5>
+<p><strong>Purpose:</strong> Connect the site to its switching templates and define the wireless design and profiles.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/network_profile_switching_workflow_manager_module.html"><code>network_profile_switching_workflow_manager</code></a></span>Create the switching profile and associate it with its site; see Cisco's <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/retrieves-the-list-of-network-profiles-for-sites">Network Profiles for Sites</a> and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/assign-a-network-profile-for-sites-to-the-given-site">Assign Profile to Site</a> operations.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/wireless_design_workflow_manager_module.html"><code>wireless_design_workflow_manager</code></a></span>Create the SSIDs and wireless design objects.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/sites_info_module.html"><code>sites_info</code></a></span>Resolve site paths to IDs for the FlexConnect settings.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title">FlexConnect native VLAN</span>GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-native-vlan-settings-by-site"><code>/dna/intent/api/v1/sites/{siteId}/wirelessSettings/flexConnectNativeVlan</code></a>, conditionally PUT <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-native-vlan-settings-by-site">the same endpoint</a>, poll the task, then GET again to verify.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title">FlexConnect AAA-override VLANs</span>GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-aaa-override-vlan-settings-by-site"><code>/dna/intent/api/v1/sites/{siteId}/wirelessSettings/flexConnectAaaOverride</code></a>, conditionally PUT <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-aaa-override-vlan-settings-by-site">the same endpoint</a>, poll the task, then GET again to verify.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/network_profile_wireless_workflow_manager_module.html"><code>network_profile_wireless_workflow_manager</code></a></span>Create and bind any wireless profile to the sites it serves.</div></div>
+</div>
+<pre>ansible-playbook playbooks/07_network_profile.yml</pre>
+<h5>Stage 08 — Provision devices</h5>
+<p><strong>Purpose:</strong> Provision switches to their sites, applying site settings and switching profiles, then provision the wireless controller and any already-known APs.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title">Look up wired devices</span>GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-site"><code>/dna/intent/api/v1/site?name=...</code></a> for the site ID, <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-device-list"><code>/dna/intent/api/v1/network-device?managementIpAddress=...</code></a> for each switch, and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-provisioned-devices"><code>/dna/intent/api/v1/sda/provisionDevices?siteId=...</code></a> for existing provisioning records.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/provision-devices"><code>POST /dna/intent/api/v1/sda/provisionDevices</code></a> (or <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/re-provision-devices"><code>PUT</code></a> when forced)</span>Provision new switches or explicitly re-provision existing ones, then poll <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-task-by-id"><code>GET /dna/intent/api/v1/task/{taskId}</code></a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/provision_workflow_manager_module.html"><code>provision_workflow_manager</code></a></span>Provision the wireless controller and apply its managed-AP locations; the corresponding Catalyst Center operation is documented <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/wireless-controller-provision">here</a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/accesspoint_workflow_manager_module.html"><code>accesspoint_workflow_manager</code></a>, <a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/site_info_module.html"><code>site_info</code></a>, <a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/assign_device_to_site_module.html"><code>assign_device_to_site</code></a></span>Name each known AP, resolve its site, and assign it to that site.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/ap-provision"><code>POST /dna/intent/api/v1/wirelessAccessPoints/provision</code></a></span>Provision the AP so its policy and site tags are applied, then poll the task result.</div></div>
+</div>
+<pre>ansible-playbook playbooks/08_provision_devices.yml</pre>
+<h5>Stage 09 — Upgrade switch software</h5>
+<p><strong>Purpose:</strong> Import the chosen IOS-XE image, distribute it to the switches, and activate it so the fabric runs the intended software. Activation reloads the switches; add <code>-e swim_activate=false</code> to stop after distribution.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/inventory_workflow_manager_module.html"><code>inventory_workflow_manager</code></a></span>Resynchronize the device inventory; see Cisco's SWIM guide for the related <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">image inventory workflow</a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/network_compliance_workflow_manager_module.html"><code>network_compliance_workflow_manager</code></a></span>Record the starting image-compliance state.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: import</a> and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/tag-as-golden-image">tag golden</a></span>Import the selected image from Cisco.com and mark it as the site's golden image; see the official <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: distribute</a></span>Copy the image to each target switch's flash; see Cisco's <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: activate</a></span>By default, install the image and reload the switches; <code>-e swim_activate=false</code> skips activation. See Cisco's <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/network_compliance_workflow_manager_module.html"><code>network_compliance_workflow_manager</code></a></span>Check image compliance again after activation.</div></div>
+</div>
+<pre>ansible-playbook playbooks/09_swim.yml</pre>
+<h5>Stage 10 — Deploy the EVPN configuration</h5>
+<p><strong>Purpose:</strong> Render the composite templates for each switch and push the resulting EVPN configuration. This is the stage that pushes the EVPN configuration described in <a href="#page-9005">the template-model section</a>.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title">Look up deployment inputs</span>GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-the-templates-available"><code>/dna/intent/api/v1/template-programmer/template?projectNames=...</code></a> to list project templates, GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-details-of-a-given-template"><code>/dna/intent/api/v1/template-programmer/template/{id}</code></a> for the composite details, and GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-device-list"><code>/dna/intent/api/v1/network-device?managementIpAddress=...</code></a> to resolve each target switch ID.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/deploy-template-v2"><code>POST /dna/intent/api/v2/template-programmer/template/deploy</code></a></span>Send one deploy request per switch, including its rendered member templates.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-task-by-id"><code>GET /dna/intent/api/v1/task/{taskId}</code></a> and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/status-of-template-deployment">deployment status</a></span>Poll each switch's task and read the deployment result.</div></div>
+</div>
+<pre>ansible-playbook playbooks/10_deploy_composite.yml</pre>
+<h5>Stage 11 — Wait for and provision access points</h5>
+<p><strong>Purpose:</strong> Wait until a physical AP boots and registers, record its Ethernet MAC in <code>lab.yml</code>, then name, site-assign, and provision it. This stage waits on hardware, so it can take several minutes.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-device-list"><code>GET /dna/intent/api/v1/network-device?family=Unified%20AP</code></a></span>Poll until Catalyst Center reports the expected AP.</div></div>
+<div class="flow-step chain-model"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title">Record the Ethernet MAC</span>Write the discovered AP's Ethernet MAC into <code>lab.yml</code> so later stages can refer to the correct device.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/accesspoint_workflow_manager_module.html"><code>accesspoint_workflow_manager</code></a></span>Set the AP name and location.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/site_info_module.html"><code>site_info</code></a>, then <a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/assign_device_to_site_module.html"><code>assign_device_to_site</code></a></span>Resolve its floor and assign the AP to that site.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/ap-provision"><code>POST /dna/intent/api/v1/wirelessAccessPoints/provision</code></a></span>Apply the AP's policy and site tags, then poll the task result.</div></div>
+</div>
+<pre>ansible-playbook playbooks/11_await_access_points.yml</pre>
+<h5>Stage 12 — Verify the running fabric</h5>
+<p><strong>Purpose:</strong> Compare the design with the live switches and controller, then write a pass/fail report. This stage is read-only and does not change the network.</p>
+<p><strong>Catalyst Center call order:</strong></p>
+<div class="flow">
+<div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-a-list-of-projects"><code>GET /dna/intent/api/v1/template-programmer/project</code></a></span>Find the Template Programmer project containing the deployed design.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-details-of-a-given-template"><code>GET /dna/intent/api/v1/template-programmer/template/{id}</code></a></span>Read the deployed DEFN template bodies; the verifier does not use unsynced local copies.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title">Resolve device IDs</span>GET <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-device-list"><code>/dna/intent/api/v1/network-device?managementIpAddress=...</code></a> to look up each switch and controller in Catalyst Center inventory.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/run-read-only-commands-on-devices-to-get-their-real-time-configuration"><code>POST /dna/intent/api/v1/network-device-poller/cli/read-request</code></a></span>Ask Command Runner to collect the required read-only <code>show</code> commands.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-task-by-id"><code>GET /dna/intent/api/v1/task/{taskId}</code></a></span>Poll until Command Runner has finished collecting output.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/download-a-file-by-fileid"><code>GET /dna/intent/api/v1/file/{fileId}</code></a></span>Download the command results; Ansible evaluates them and writes the evidence report.</div></div>
+</div>
+<pre>ansible-playbook playbooks/12_verify_intent.yml</pre>
 <hr>
 <h4>What stage 10 actually pushes</h4>
 <p>This is the stage that creates the EVPN fabric — the same configuration the traditional path asks you to paste by hand. It does not come from the playbook. It comes from a set of Jinja2 templates that stage 06 uploaded into Catalyst Center, which Catalyst Center then renders <strong>separately for each device</strong>.</p>
@@ -3578,9 +3571,9 @@ write memory</pre>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🔍</span>
-    <h3 id="page-9004" class="page-anchor">3. Verify Intent &amp; Evidence Report</h3>
+    <h3 id="page-9004" class="page-anchor">Verify Intent &amp; Evidence Report</h3>
   </div>
-  <div class="page-card-body"><h3>Infrastructure as Code — Step 3 of 8</h3>
+  <div class="page-card-body">
 <p>Deploying configuration and <em>knowing it is correct</em> are two different things. Stage 12 closes that gap: it reads the design out of Catalyst Center, collects live output from the switches and controller, and produces a pass/fail report you could hand to an auditor.</p>
 <pre>ansible-playbook playbooks/12_verify_intent.yml</pre>
 <p>This stage is <span class="safety ro">read-only</span>. It changes nothing, and you can run it as often as you like.</p>
