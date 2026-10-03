@@ -237,7 +237,7 @@ lab_access:
   # Campus BGP EVPN fabric (01_campus) — Site-105
   # ---------------------------------------------------------------------------
   # These three keys MUST match the hostnames in
-  # 01_campus/evpn/ansible/inventory/static_inventory.yml, and the DEFN_NODE_ROLES
+  # 01_campus/evpn/ansible/inventory/catalyst_center.yml, and the DEFN_NODE_ROLES
   # keys in the Catalyst Center templates use the FQDN form of the same names.
   # `enable_password` is required here and nowhere else — IOS-XE privilege 15.
   Site_105-Border-Spine:
