@@ -92,7 +92,7 @@ This repo’s `settings.json` is mapped to the **live** Catalyst Center hierarch
 | Hierarchy path | Role | Discovery | `device_list` |
 | --- | --- | --- | --- |
 | `Global/CALIFORNIA/San Jose/DC-Site-10/MAIN` | HQ | `C9800-WLC` RANGE `198.18.5.103-198.18.5.103` (NETCONF 830) | `198.18.5.103` |
-| `Global/NEW YORK/New York/DC-Site-11/MAIN` | Remote DC | none (Nexus is NDFC / `02_data_center`) | empty |
+| `Global/NEW YORK/New York/DC-Site-11/MAIN` | Remote DC | none (Nexus Dashboard / `02_data_center`) | empty |
 | `Global/NORTH CAROLINA/Durham/Site-105/MAIN` | Campus EVPN | `Site-105-Discovery` RANGE `172.30.255.1-172.30.255.3` (Loopback, no NETCONF) | `172.30.255.1,2,3` |
 | `Global/TEXAS/Richardson/Site-106/MAIN` | Branch | none | empty |
 

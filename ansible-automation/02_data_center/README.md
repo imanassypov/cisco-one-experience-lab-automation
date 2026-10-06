@@ -2,7 +2,7 @@
 
 This directory contains the Infrastructure as Code track for the data center fabric in the lab. It builds a VXLAN EVPN fabric on Cisco Nexus Dashboard and extends the MAIN, PROD, and IOT segments used by the campus and SD-WAN tracks.
 
-The automation is an alternative to the manual NDFC deployment in the student guide. Run one track or the other. Both tracks build the same `Pseudoco-DC1` fabric on the same pod.
+The automation is an alternative to the manual Nexus Dashboard deployment in the student guide. Run one track or the other. Both tracks build the same `Pseudoco-DC1` fabric on the same pod.
 
 ## What the automation builds
 
