@@ -136,15 +136,35 @@ executive overview splits `overlay_leaves` and renames it to `cisco.node_id` bef
 
 ## 6. Install the app
 
+The repository contains source for one app, **Campus EVPN Assurance**, not
+separate packaged Technology Add-ons (TAs). Build the installable `.spl` with
+the script below; `packaging/dist/` is generated locally and is not committed.
+GitHub's **Code > Download ZIP** is the repository source, not a Splunk installer.
+If you use the automated workflow, stage 06 builds, transfers and installs the
+app for you instead.
+
+The manual build requires `bash`, `rsync`, `tar` and `shasum` on the control node.
+
 ```bash
-# On the control node
-./packaging/build-app.sh          # → packaging/dist/campus_evpn_assurance-<version>.spl
+# On the control node, starting in the repository root
+cd ansible-automation/07_assurance/splunk_evpn
+bash packaging/build-app.sh
+ls -lh packaging/dist/*.spl
+
+# Substitute the version printed by the build and your Splunk SSH account/host
+scp packaging/dist/campus_evpn_assurance-<version>.spl <ssh-user>@<splunk-host>:/tmp/
 
 # On the Splunk host
 sudo /opt/splunk/bin/splunk install app /tmp/campus_evpn_assurance-<version>.spl \
   -update 1 -auth <user>:<pass>
 sudo /opt/splunk/bin/splunk restart -auth <user>:<pass>
 ```
+
+Alternatively, transfer the built `.spl` to the computer running your browser,
+then upload it in Splunk Web under **Apps > Manage Apps > Install app from file**.
+For an existing installation, select the upgrade option. Follow any restart prompt.
+The app supplies dashboards and lookups; it does not replace the index, HEC and
+collector setup in the preceding steps.
 
 Confirm the build number actually changed — Splunk keeps serving a cached app if an
 install half-fails:

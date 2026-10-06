@@ -125,6 +125,35 @@ splunk_evpn/
 
 ## Installation
 
+### Where is the packaged Splunk app?
+
+This EVPN integration provides one dashboard app, **Campus EVPN Assurance**
+(`campus_evpn_assurance`), not a set of separately packaged Technology Add-ons (TAs).
+GitHub contains the app source under [`splunk-app/campus_evpn_assurance/`](splunk-app/campus_evpn_assurance/).
+The installable `.spl` is built locally; `packaging/dist/` is generated output and
+is not committed. GitHub's **Code > Download ZIP** downloads the repository source,
+not a package you can upload to Splunk.
+
+**Automated installation:** stage 06 builds, uploads and installs the app for you.
+There is no app download step when following the Ansible workflow below.
+
+**Manual installation:** on the script server, start in the repository root and run:
+
+```bash
+cd ansible-automation/07_assurance/splunk_evpn
+bash packaging/build-app.sh
+ls -lh packaging/dist/*.spl
+```
+
+The build requires `bash`, `rsync`, `tar` and `shasum`. It prints the package path
+and its SHA-256 checksum. Transfer the resulting `.spl` to the computer running
+your browser, then in Splunk Web select **Apps > Manage Apps > Install app from file**
+and upload it. For command-line installation and the required index, HEC and collector
+setup, follow the [manual setup guide](SETUP_GUIDE.md#6-install-the-app).
+Installing the dashboard app alone does not configure telemetry collection.
+
+### Automated installation
+
 Run from the script server, with the dCloud VPN up.
 
 1. **Add the Splunk credentials to the vault.** Two entries are needed — see
