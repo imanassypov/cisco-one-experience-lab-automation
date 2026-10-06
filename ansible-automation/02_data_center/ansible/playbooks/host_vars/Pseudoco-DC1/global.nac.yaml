@@ -52,8 +52,9 @@ vxlan:
 # both vxlan.global.ibgp and vxlan.global.external), so they cannot be declared
 # from here.
 #
-# They are declared instead in inventory/group_vars/all/dc_advanced_settings.yml
-# and applied by playbooks/03_fabric_advanced_settings.yml, which writes them
-# straight to the controller. Keep them there, not here: this file is the
-# Nexus as Code model and the validate role rejects a key the schema does not
-# know.
+# The VRF-Lite values this pipeline sends are declared in
+# inventory/group_vars/all/dc_vrf_lite.yml and applied by
+# playbooks/03_fabric_advanced_settings.yml. AUTO_SYMMETRIC_VRF_LITE and
+# AUTO_UNIQUE_VRF_LITE_IP_PREFIX remain intentionally absent: under Manual the
+# controller rejects them. Keep controller fields out of this Nexus as Code
+# model; its validate role rejects keys the schema does not know.

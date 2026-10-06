@@ -1,12 +1,13 @@
 ---
-# Declared VRF-Lite extensions out of the border leaf. Guide section 8,
-# "Create VRF-Lite Connections to External".
+# VRF-Lite fabric settings, inter-fabric link, and extensions out of the border
+# leaf. Guide section 8, "Create VRF-Lite Connections to External".
 #
 # This file exists because the Nexus as Code data model cannot express a
 # VRF-Lite EXTENSION. A vrf_attach_group entry in vrfs.nac.yaml can name a
 # switch and nothing else - there is no key for EXTEND: VRF_LITE, for the
 # sub-interface, for the dot1q tag or for the neighbour address. So the
-# extensions are declared here and applied by stage 06.
+# VRF-Lite settings and extensions are declared here and applied by stages 03,
+# 04, and 06.
 #
 # Stage 06 does NOT use dcnm_vrf. That module's vrf_lite block accepts only
 # DOT1Q_ID, IF_NAME, IP_MASK, IPV6_MASK, IPV6_NEIGHBOR, NEIGHBOR_IP and
@@ -43,7 +44,7 @@
 # below; stage 05 deploys it. So stage 05 has to run before stage 06 on a fresh
 # build. If the prototype is missing, stage 06 says so and names stage 05.
 #
-# The dot1q tags below are also CLAIMED by stage 06 before it attaches
+# The dot1q tags below are also RESERVED by stage 06 before it attaches
 # anything, out of the TOP_DOWN_L3_DOT1Q pool. Left to itself the controller
 # allocates its own tags during the attachment POST and the run dies half way
 # through with "Id[3]is already allocated to MAIN"; see the comment on that
@@ -64,6 +65,20 @@
 # a plain discovered external link that the controller converted to Layer 3.
 # Only the link's templateName distinguishes them; stage 06 reports when the
 # required prototype is absent.
+
+# Fabric-wide VRF-Lite behavior and allocation pool. Stage 03 applies these
+# Easy_Fabric nvPairs; they live here with the link and extensions they govern.
+# Manual prevents Nexus Dashboard from auto-creating an IFC with controller-
+# chosen tags. The explicit link and per-VRF values below must match the
+# pre-configured router. The subnet range and target mask define the pool and
+# prefix size used for the point-to-point links.
+#
+# AUTO_SYMMETRIC_VRF_LITE and AUTO_UNIQUE_VRF_LITE_IP_PREFIX are deliberately
+# absent: under Manual the controller rejects them.
+dc_vrf_lite_fabric_settings:
+  VRF_LITE_AUTOCONFIG: "Manual"
+  DCI_SUBNET_RANGE: 192.168.252.0/24
+  DCI_SUBNET_TARGET_MASK: 30
 
 # The border leaf that carries every extension, and the interface on it that
 # faces the edge router. Ethernet1/8 is not chosen here - Nexus Dashboard
@@ -95,7 +110,8 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 # allocated to MAIN". Nothing in the payload can resolve that, because the
 # allocation happens before stage 06 runs.
 #
-# So VRF_LITE_AUTOCONFIG is Manual and the values below are declared. Nothing
+# So dc_vrf_lite_fabric_settings sets VRF_LITE_AUTOCONFIG to Manual and the
+# values below are declared. Nothing
 # is auto-allocated, and the data model is authoritative end to end.
 #
 # These are the parent link's own addresses, not a VRF's. The controller used
@@ -119,15 +135,11 @@ dc_vrf_lite_ifc:
 
 # WHY THE ADDRESSES ARE PINNED RATHER THAN LEFT TO THE CONTROLLER.
 #
-# AUTO_UNIQUE_VRF_LITE_IP_PREFIX is on, so Nexus Dashboard is perfectly able
-# to allocate these from DCI_SUBNET_RANGE itself, and in a greenfield build it
-# should. It is overridden here for the reason the guide gives beside the same
-# fields: "Because in this lab the other side of the link is already
-# configured and was done manually, we are forcing the IP addresses and
-# encapsulation to be pre-determined values in the DC-Service-Leaf side. In a
-# real implementation, if the other side of the link is configured later or if
-# the external equipment is managed by NDFC, there is no need to change the
-# parameters above."
+# If Nexus Dashboard auto-created an IFC with unique-IP allocation enabled, it
+# could draw addresses from DCI_SUBNET_RANGE. This pipeline uses Manual mode
+# and declares the link and each extension explicitly instead. The addresses
+# are pinned because the router is already configured and cannot be changed by
+# this controller.
 #
 # The External fabric is in Monitor Mode (IS_READ_ONLY: true), so Nexus
 # Dashboard will never write to DC-SITE11-CEDGE8Kv. Its side of these three

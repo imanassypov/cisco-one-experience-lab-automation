@@ -85,9 +85,9 @@ The `*.nac.yaml` files under `ansible/playbooks/host_vars/Pseudoco-DC1/` are the
 The files under `ansible/inventory/group_vars/all/` hold values that the current Nexus as Code model cannot express:
 
 - `dc_switches.yml`: switch addresses, roles, and endpoint interfaces.
-- `dc_advanced_settings.yml`: fabric settings such as VRF-Lite deployment, license tier, telemetry, and location.
+- `dc_advanced_settings.yml`: non-VRF fabric-object properties such as license tier, telemetry, and location.
 - `dc_external_settings.yml`: the External fabric and monitored edge router.
-- `dc_vrf_lite.yml`: the three VRF-Lite extensions, including interface, dot1q tag, IP address, and BGP neighbor.
+- `dc_vrf_lite.yml`: all VRF-Lite intent, including fabric mode and subnet pool, inter-fabric link settings, and the three extensions with dot1q tags, addresses, and BGP neighbors.
 
 The model is the source of truth for the objects it describes. To change those objects, edit the model, run the pipeline, and review the verification report. Do not make an undocumented UI change and expect the repository to record it.
 

@@ -226,9 +226,9 @@ Useful overrides:
 | `vrfs.nac.yaml` | The three VRFs and the switches they attach to |
 | `networks.nac.yaml` | The three networks, their gateways, and the port-channels they attach to |
 | `inventory/group_vars/all/dc_switches.yml` | The switch table: names, management addresses, roles, endpoint port-channels |
-| `inventory/group_vars/all/dc_advanced_settings.yml` | The fabric settings Nexus as Code has no key for, applied by stage 03 |
+| `inventory/group_vars/all/dc_advanced_settings.yml` | Non-VRF fabric-object properties: license tier, telemetry, and location. Applied by stage 03 |
 | `inventory/group_vars/all/dc_external_settings.yml` | The whole External fabric: ASN and Monitor Mode, applied by stage 04 |
-| `inventory/group_vars/all/dc_vrf_lite.yml` | The three VRF-Lite extensions out of the border leaf, and the addressing of the inter-fabric link they sit on. Applied by stages 04 and 06 |
+| `inventory/group_vars/all/dc_vrf_lite.yml` | All VRF-Lite intent: fabric mode and subnet pool, inter-fabric link, and the three per-VRF extensions. Applied by stages 03, 04, and 06 |
 | `inventory/group_vars/nd/nd.yml`, `nd/connection.yml` | The controller: `httpapi` transport, vault-sourced credentials, the two 1000s timeouts, and the remove-role delete flags |
 
 **The definitions live in two distinct places, and the boundary is the single
@@ -339,17 +339,11 @@ dc_switches:
     interfaces: []
 ```
 
-`dc_advanced_settings.yml` is the other shape in (b): controller nvPairs,
-written verbatim. These are the guide's Resources-tab settings, and without
-them external connectivity cannot be built at all.
+`dc_advanced_settings.yml` holds the non-VRF Nexus Dashboard fabric-object
+properties. They are not nvPairs; stage 03 applies them with `dcnm_rest`:
 
 ```yaml
-dc_advanced_fabric_settings:             # nvPairs, applied with dcnm_fabric
-  VRF_LITE_AUTOCONFIG: "Manual"          # we build the IFC ourselves, in stage 04
-  DCI_SUBNET_RANGE: 192.168.252.0/24
-  DCI_SUBNET_TARGET_MASK: 30
-
-dc_advanced_nd_fabric_settings:          # NOT nvPairs, applied with dcnm_rest
+dc_advanced_nd_fabric_settings:
   licenseTier: premier
   telemetryCollection: false
   location:                              # both keys, or the other reads zero
@@ -357,12 +351,23 @@ dc_advanced_nd_fabric_settings:          # NOT nvPairs, applied with dcnm_rest
     longitude: -121.8863
 ```
 
-And `dc_vrf_lite.yml` is what the data model has no keys for at all - the
-extension itself:
+`dc_vrf_lite.yml` is the single source for VRF-Lite intent. It contains the
+fabric-wide controller settings (applied in stage 03), the explicitly
+addressed inter-fabric link (stage 04), and the per-VRF extensions (stage 06):
 
 ```yaml
+dc_vrf_lite_fabric_settings:             # VRF-Lite nvPairs, applied in stage 03
+  VRF_LITE_AUTOCONFIG: "Manual"
+  DCI_SUBNET_RANGE: 192.168.252.0/24
+  DCI_SUBNET_TARGET_MASK: 30
+
 dc_vrf_lite_border_leaf: DC-Service-Leaf
 dc_vrf_lite_interface: Ethernet1/8       # detected over CDP, declared for determinism
+
+dc_vrf_lite_ifc:
+  ipv4_addr: 192.168.252.1/30
+  neighbor_ipv4: 192.168.252.2
+  mtu: 1500
 
 dc_vrf_lite_extensions:
   - vrf: PROD
@@ -469,9 +474,9 @@ collections/requirements.yml
 inventory/
   static_inventory.yml            one host per fabric, plus the switch group
   group_vars/all/dc_switches.yml  the switch table
-  group_vars/all/dc_advanced_settings.yml  the non-model fabric settings
+  group_vars/all/dc_advanced_settings.yml  non-VRF fabric-object properties
   group_vars/all/dc_external_settings.yml  the External fabric
-  group_vars/all/dc_vrf_lite.yml  the VRF-Lite extensions
+  group_vars/all/dc_vrf_lite.yml  all VRF-Lite fabric, link and extension intent
   group_vars/nd/               controller transport and credentials
   group_vars/dc_fabric_switches/  SSH to the switches; stage 00 only
 playbooks/
@@ -591,29 +596,29 @@ stays `Manual`, which means the controller will never auto-create a VRF-Lite
 inter-fabric link - so external connectivity cannot be built at all. Stage 03
 closes that gap by writing the settings straight to the controller.
 
-The declared values are in
-`inventory/group_vars/all/dc_advanced_settings.yml`. The playbook holds none of
-its own, so changing the fabric means editing that file.
+The VRF-Lite settings are declared in
+`inventory/group_vars/all/dc_vrf_lite.yml`; the remaining fabric-object
+properties are in `inventory/group_vars/all/dc_advanced_settings.yml`. Stage 03
+holds no values of its own.
 
-| Setting | Declared as | Value |
-|---|---|---|
-| VRF Lite Deployment | `VRF_LITE_AUTOCONFIG` | `Manual` |
-| Auto Deploy for Peer | `AUTO_SYMMETRIC_VRF_LITE` | `true` |
-| Auto Allocation of Unique IP on VRF Extension | `AUTO_UNIQUE_VRF_LITE_IP_PREFIX` | `true` |
-| VRF Lite Subnet IP Range | `DCI_SUBNET_RANGE` | `192.168.252.0/24` |
-| VRF Lite Subnet Mask | `DCI_SUBNET_TARGET_MASK` | `30` |
-| License Tier | `licenseTier` | `premier` |
-| Telemetry | `telemetryCollection` | `false` |
-| Location | `location` | `37.3382, -121.8863` (San Jose, California, US) |
+| Setting | Controller key | Value | Source |
+|---|---|---|---|
+| VRF Lite Deployment | `VRF_LITE_AUTOCONFIG` | `Manual` | `dc_vrf_lite.yml` |
+| Auto Deploy for Peer | `AUTO_SYMMETRIC_VRF_LITE` | Not sent under `Manual` | Intentionally absent |
+| Auto Allocation of Unique IP on VRF Extension | `AUTO_UNIQUE_VRF_LITE_IP_PREFIX` | Not sent under `Manual` | Intentionally absent |
+| VRF Lite Subnet IP Range | `DCI_SUBNET_RANGE` | `192.168.252.0/24` | `dc_vrf_lite.yml` |
+| VRF Lite Subnet Mask | `DCI_SUBNET_TARGET_MASK` | `30` | `dc_vrf_lite.yml` |
+| License Tier | `licenseTier` | `premier` | `dc_advanced_settings.yml` |
+| Telemetry | `telemetryCollection` | `false` | `dc_advanced_settings.yml` |
+| Location | `location` | `37.3382, -121.8863` (San Jose, California, US) | `dc_advanced_settings.yml` |
 
-Two dictionaries, because Nexus Dashboard keeps these in two places. The first
-five are fabric **nvPairs** - the same store Nexus as Code writes the rest of
-the fabric into - and are applied with `cisco.dcnm.dcnm_fabric`. The last three
-are not nvPairs at all; they are properties of the Nexus Dashboard fabric
-object at `/api/v1/manage/fabrics/Pseudoco-DC1`, which `dcnm_fabric` cannot
-reach, so stage 03 does a read-modify-write on that object instead. A setting
-in the wrong dictionary fails the stage by name rather than being silently
-ignored.
+The three sent VRF-Lite values are fabric **nvPairs**, applied with
+`cisco.dcnm.dcnm_fabric`. `AUTO_SYMMETRIC_VRF_LITE` and
+`AUTO_UNIQUE_VRF_LITE_IP_PREFIX` are deliberately omitted: under `Manual`, the
+controller rejects them. License tier, telemetry, and location are properties
+of the Nexus Dashboard fabric object at
+`/api/v1/manage/fabrics/Pseudoco-DC1`, which `dcnm_fabric` cannot reach, so
+stage 03 does a read-modify-write with `dcnm_rest` instead.
 
 **Location is coordinates, because Nexus Dashboard has no field for the place
 name.** There is no city, country or address key on the fabric object, in its
@@ -684,7 +689,7 @@ attaching. Under `Manual` the controller creates nothing of its own.
 Two companion settings went with it. `AUTO_SYMMETRIC_VRF_LITE` and
 `AUTO_UNIQUE_VRF_LITE_IP_PREFIX` are not merely unnecessary under `Manual` -
 the controller rejects them, so they are absent from
-`dc_advanced_settings.yml` rather than set to `false`.
+`dc_vrf_lite.yml` rather than set to `false`.
 ([Nexus Dashboard - VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html))
 The default is `Manual`, under which no IFC is ever auto-created and external
 connectivity cannot be built at all.
@@ -698,7 +703,7 @@ exactly one switch holds the `border` role - `DC-Service-Leaf` - and after
 stage 04 exactly one device holds `edgeRouter` - `DC-SITE11-CEDGE8Kv`. That
 pairing is the whole scope of this setting here.
 
-**`AUTO_SYMMETRIC_VRF_LITE: true`** is the UI's **Auto Deploy for Peer**
+**`AUTO_SYMMETRIC_VRF_LITE`** is the UI's **Auto Deploy for Peer**
 checkbox. Cisco: *"This check box is applicable for VRF Lite deployment. When
 you select this checkbox, auto-created VRF Lite IFCs will have the Auto
 Generate Configuration for Peer field in the VRF Lite tab set. ... This
@@ -716,9 +721,9 @@ LITE sub-interface and BGP peering configuration on managed neighbor devices.
 If set, auto created VRF Lite IFC links will have Auto Deploy for Peer
 enabled."*
 
-**On this pod, `AUTO_SYMMETRIC_VRF_LITE` has no reachable effect.** It is
-declared because the guide declares it and this file mirrors the guide's
-fabric settings, but two independent constraints stop it at the border leaf:
+**This repository deliberately does not send `AUTO_SYMMETRIC_VRF_LITE`.**
+Under `Manual`, the controller rejects this setting; even outside that
+restriction, two independent constraints prevent peer-side configuration:
 
 - **The peer is not NX-OS.** `DC-SITE11-CEDGE8Kv` is an IOS-XE Catalyst
   8000V. Cisco's guidelines for automatic VRF Lite (IFC) configuration state

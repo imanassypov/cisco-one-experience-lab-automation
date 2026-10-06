@@ -7,9 +7,10 @@
 # controller never auto-creates a VRF-Lite inter-fabric link, and external
 # connectivity cannot be built at all.
 #
-# The declared values live in
+# VRF-Lite fabric values live in inventory/group_vars/all/dc_vrf_lite.yml;
+# the other advanced fabric-object properties live in
 # inventory/group_vars/all/dc_advanced_settings.yml. This playbook holds none
-# of its own, so change the fabric by editing that file.
+# of its own.
 #
 # The stage runs between create and deploy on purpose. These are fabric
 # parameters rather than switch configuration: they change what the controller
@@ -32,8 +33,9 @@
   vars:
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
     # The Nexus Dashboard 4.2 fabric object. A different API from the one
-    # above, holding a different set of settings - see the two dictionaries in
-    # inventory/group_vars/all/dc_advanced_settings.yml.
+    # above, holding a different set of settings - see the VRF-Lite fabric
+    # settings in dc_vrf_lite.yml and the other fabric properties in
+    # dc_advanced_settings.yml.
     nd_fabric_path: "/api/v1/manage/fabrics/{{ inventory_hostname }}"
 
   pre_tasks:
@@ -79,20 +81,21 @@
     - name: Require something to apply
       ansible.builtin.assert:
         that:
-          - dc_advanced_fabric_settings is defined
-          - dc_advanced_fabric_settings | length > 0
+          - dc_vrf_lite_fabric_settings is defined
+          - dc_vrf_lite_fabric_settings | length > 0
           - dc_advanced_nd_fabric_settings is defined
           - dc_advanced_nd_fabric_settings | length > 0
         fail_msg: >-
-          dc_advanced_fabric_settings or dc_advanced_nd_fabric_settings is
-          empty or undefined. Both should be declared in
-          inventory/group_vars/all/dc_advanced_settings.yml. An empty
-          dictionary here would make this stage report success while changing
-          nothing.
+          dc_vrf_lite_fabric_settings or dc_advanced_nd_fabric_settings is
+          empty or undefined. Declare the VRF-Lite settings in
+          inventory/group_vars/all/dc_vrf_lite.yml and the other fabric
+          properties in inventory/group_vars/all/dc_advanced_settings.yml. An
+          empty dictionary here would make this stage report success while
+          changing nothing.
       tags: [always]
 
   tasks:
-    # These five settings are fabric nvPairs, the same store Nexus as Code
+    # These VRF-Lite settings are fabric nvPairs, the same store Nexus as Code
     # writes the rest of the fabric into.
     #
     # state: merged is non-destructive here. Nexus Dashboard 4.x rejects a
@@ -109,16 +112,16 @@
                  'FABRIC_TYPE': 'VXLAN_EVPN',
                  'BGP_AS': dc_nac_global.vxlan.global.ibgp.bgp_asn,
                  'DEPLOY': false}
-                | combine(dc_advanced_fabric_settings) }}"
-      register: dc_advanced_fabric_result
+                | combine(dc_vrf_lite_fabric_settings) }}"
+      register: dc_vrf_lite_fabric_result
 
     - name: Report what changed in the Easy_Fabric parameters
       ansible.builtin.debug:
         msg: >-
           Easy_Fabric parameters:
-          {{ 'updated ' + (dc_advanced_fabric_settings | length | string)
+          {{ 'updated ' + (dc_vrf_lite_fabric_settings | length | string)
              + ' declared setting(s)'
-             if dc_advanced_fabric_result.changed
+             if dc_vrf_lite_fabric_result.changed
              else 'already matched the declared intent, nothing sent' }}.
 
     # The license tier, the telemetry toggle and the location are not nvPairs
@@ -172,7 +175,7 @@
     # when: skips the PUT entirely if the controller already holds the declared
     # values. changed_when is set by hand because dcnm_rest always reports
     # changed false, whatever it did.
-    - name: Apply the license tier and the telemetry setting
+    - name: Apply the non-VRF fabric-object properties
       cisco.dcnm.dcnm_rest:
         method: PUT
         path: "{{ nd_fabric_path }}"

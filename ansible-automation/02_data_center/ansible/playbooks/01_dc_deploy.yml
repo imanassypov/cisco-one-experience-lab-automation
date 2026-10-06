@@ -38,7 +38,7 @@
 # link terminates. Stage 04 creates that link explicitly, with dcnm_links and
 # the ext_fabric_setup template, from dc_vrf_lite_ifc in
 # inventory/group_vars/all/dc_vrf_lite.yml. Nothing is left to the controller:
-# dc_advanced_settings.yml sets VRF_LITE_AUTOCONFIG to Manual, so Nexus
+# dc_vrf_lite.yml sets VRF_LITE_AUTOCONFIG to Manual, so Nexus
 # Dashboard never invents a link or picks an address of its own.
 #
 # The link still needs a deploy before the extension can be attached, because
