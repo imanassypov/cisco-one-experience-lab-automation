@@ -5,12 +5,12 @@ EVPN VXLAN** fabric, fed by Model-Driven Telemetry (MDT) over an OpenTelemetry
 Collector pipeline into a Splunk **metrics** index.
 
 > **Installing this app?** Follow the step-by-step
-> [`SETUP_GUIDE.md`](../SETUP_GUIDE.md) shipped alongside the package. It covers
+> [manual installation in the collection README](../../README.md#manual-installation). It covers
 > Splunk prerequisites, the telemetry collector install, and the per-device
 > configuration required for these dashboards to populate.
 >
 > **New to MDT / OpenTelemetry?** Start with the parent
-> [`README.md`](../README.md) — especially [§4 Telemetry and Data Model](../README.md#4-telemetry-and-data-model).
+> [collection README](../../README.md) — especially [The collector](../../README.md#the-collector).
 
 ---
 
@@ -31,7 +31,7 @@ Collector pipeline into a Splunk **metrics** index.
 | Requirement | Value |
 |---|---|
 | Splunk Enterprise / Cloud | **8.0+** (Dashboard Studio v2) |
-| Metrics index | `evpn_assurance` (type **metric**) — created by the admin; see [`SETUP_GUIDE.md`](../SETUP_GUIDE.md) |
+| Metrics index | `evpn_assurance` (type **metric**) — created by the admin; see [Create the index and HEC token](../../README.md#2-create-the-index-and-hec-token) |
 | Data source | OpenTelemetry Collector `otelcol-contrib` → Splunk HEC → `index=evpn_assurance` |
 | Search permissions | Splunk user must have search access to the **metrics** index (not all lab accounts do) |
 | JavaScript in dashboards | enabled (`ui-prefs.conf`) |
@@ -316,7 +316,7 @@ Collector-side checks (on the OTel host): see
 
 ## Version
 
-`1.5.0` (build 85). See [`../SETUP_GUIDE.md`](../SETUP_GUIDE.md) for install,
+`1.5.0` (build 85). See [Manual installation](../../README.md#manual-installation) for install,
 upgrade, and telemetry-pipeline procedures.
 
 ---
@@ -325,8 +325,8 @@ upgrade, and telemetry-pipeline procedures.
 
 | Document | Contents |
 |---|---|
-| [`../README.md`](../README.md) | Full pipeline architecture, CCIE-oriented telemetry primer, operator guide |
-| [`../SETUP_GUIDE.md`](../SETUP_GUIDE.md) | Install app + OTel collector, HEC, subscriptions |
+| [Collection README](../../README.md) | Full pipeline architecture and operator guide |
+| [README — Manual installation](../../README.md#manual-installation) | Install app + OTel collector, HEC, subscriptions |
 | [`../otel-collector/README.md`](../otel-collector/README.md) | `otelcol-contrib`, the version floor, collector troubleshooting |
 | [`../model-config-snippets/telemetry-subscriptions.ios-xe.cfg`](../model-config-snippets/telemetry-subscriptions.ios-xe.cfg) | IOS-XE subscription IDs 40101–40121 |
 | [`../Model Maps/README.md`](../Model Maps/README.md) | CLI ⇄ Cisco YANG xpath reference (when available locally) |
