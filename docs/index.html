@@ -93,8 +93,17 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .page-card-body table tr:nth-child(even) td{background:var(--ws-panel)}
 /* Layer chain. The two-column ASCII form this replaced relied on monospace
    alignment, which pre-wrap destroys as soon as the card narrows. */
-.chain{margin:14px 0}
+.chain{margin:14px 0;max-width:calc(100vw - var(--sidebar-w) - 64px)}
 .chain-step{display:flex;flex-wrap:wrap;column-gap:16px;row-gap:3px;align-items:baseline;border-left:4px solid var(--chain-accent);background:var(--chain-bg);border-radius:var(--ws-radius);padding:10px 14px}
+.chain-groups{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0}
+.chain-group{flex:1 1 370px;min-width:0;border:1px solid var(--ws-border);border-top:4px solid var(--chain-accent);border-radius:var(--ws-radius);background:var(--chain-bg);padding:12px}
+.chain-group-title{font-size:13px;font-weight:700;line-height:1.4;color:var(--chain-accent);margin:0 0 10px}
+.chain-group .chain-step{padding:8px 10px;background:#fff}
+.chain-group .chain-arrow{text-align:center;margin:2px 0}
+.chain-model-source{flex:2 1 330px;min-width:0}
+.chain-model-files{margin:6px 0 0;padding-left:20px;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.chain-addons{margin:8px 0 12px;padding-left:20px;font-size:13px;line-height:1.6}
+.chain-join{text-align:center;font-size:13px;font-weight:700;color:#435b65;margin:12px 0 4px}
 .chain-what{flex:2 1 330px;font-family:var(--ws-mono);font-size:13px;line-height:1.55;word-break:break-word}
 .chain-role{flex:1 1 200px;font-size:13.5px;color:#55606b;line-height:1.55}
 .chain-arrow{color:#aab3bc;font-size:13px;line-height:1;margin:4px 0 4px 20px}
@@ -110,8 +119,15 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .chain-nac{--chain-accent:#7a5cff;--chain-bg:#f4f1ff}
 .chain-dcnm{--chain-accent:#007a5e;--chain-bg:#edf7f3}
 .chain-api{--chain-accent:#ff9000;--chain-bg:#fff8ed}
+.chain-addon{--chain-accent:#d36b1f;--chain-bg:#fff5eb}
 .chain-dev{--chain-accent:#07182d;--chain-bg:#eef1f5}
 .page-card-body pre{background:var(--ws-panel);color:var(--ws-body);border:1px solid var(--ws-border);border-radius:var(--ws-radius);padding:14px 16px;margin:12px 0;overflow:auto;white-space:pre-wrap;word-wrap:break-word;font-family:var(--ws-mono);font-size:87.5%}
+.code-window{position:relative;margin:12px 0}
+.code-window pre{margin:0;padding-top:42px!important}
+.copy-code{position:absolute;top:7px;left:7px;z-index:1;width:28px;height:28px;display:grid;place-items:center;padding:5px;border:1px solid #c7ced6;border-radius:4px;background:#fff;color:#34404d;cursor:pointer}
+.copy-code:hover{background:#edf2f6}
+.copy-code:focus-visible{outline:2px solid var(--cisco-blue);outline-offset:2px}
+.copy-code svg{display:block;width:16px;height:16px}
 .page-card-body code{color:#db1a74;font-size:87.5%;font-family:var(--ws-mono);word-wrap:break-word}
 .page-card-body pre code{color:inherit;font-size:inherit;white-space:inherit}
 .page-card-body hr{border:none;border-top:1px solid var(--ws-border);margin:18px 0}
@@ -159,9 +175,9 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <li><a href="#page-7947">2. Activate Duo Admin Account</a></li>
 </ul>
 </div><div class="nav-section">
-  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Environment Preparation - IaaC</div>
-  <ul class="nav-pages hidden"><li><a class="iac" href="#page-9002"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></li>
-<li><a class="iac" href="#page-9404"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>4. IaaC Server - How it is wired</a></li>
+  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Environment Preparation - IaC</div>
+  <ul class="nav-pages hidden"><li><a class="iac" href="#page-9002"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Infrastructure as Code &mdash; Script Server Preparation (Ansible)</a></li>
+<li><a class="iac" href="#page-9404"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Ansible Script Server - how it is wired</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Choose your own Secure Network Adventure</div>
@@ -285,7 +301,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
   <ul class="nav-pages hidden"><li><a href="#page-7955">1. WebEx and Thousandeyes Integration</a></li>
 </ul>
 </div><div class="nav-section">
-  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon manual" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path></svg>NDFC - DC Fabric Deployment — Manual Provisioning</div>
+  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon manual" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path></svg>Nexus Dashboard - DC Fabric Deployment — Manual Provisioning</div>
   <ul class="nav-pages hidden"><li><a href="#page-8208">1.  Overview</a></li>
 <li><a href="#page-8209">2. Environment Details</a></li>
 <li><a href="#page-8210">3. Getting Started</a></li>
@@ -297,18 +313,17 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <li><a href="#page-8259">9. Test End to End Connectivity</a></li>
 </ul>
 </div><div class="nav-section">
-  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>NDFC - DC Fabric Deployment — Infrastructure as Code</div>
+  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code</div>
   <ul class="nav-pages hidden"><li><a href="#page-dc-overview">Overview</a></li>
-<li><a href="#page-dc-environment">Environment Details</a></li>
-<li><a href="#page-dc-automation">1. Why Automate the DC Fabric</a></li>
-<li><a href="#page-dc-model">2. Where the Definitions Live</a></li>
-<li><a href="#page-dc-serials">3. Serial Discovery</a></li>
-<li><a href="#page-dc-run">4. Run the Pipeline</a></li>
-<li><a href="#page-dc-settings">5. The Settings the Model Cannot Express</a></li>
-<li><a href="#page-dc-vrflite">6. VRF-Lite, and Who Builds the Link</a></li>
-<li><a href="#page-dc-stage05">7. VRF-Lite, and the One Thing It Needs</a></li>
-<li><a href="#page-dc-failures">8. What a Slow Stage Looks Like</a></li>
-<li><a href="#page-dc-verify">9. Reading the Verification Report</a></li>
+<li><a href="#page-dc-automation">Why Automate the DC Fabric</a></li>
+<li><a href="#page-dc-model">Where the Definitions Live</a></li>
+<li><a href="#page-dc-serials">Serial Discovery</a></li>
+<li><a href="#page-dc-run">Run the Pipeline</a></li>
+<li><a href="#page-dc-settings">The Settings the Model Cannot Express</a></li>
+<li><a href="#page-dc-vrflite">VRF-Lite, and Who Builds the Link</a></li>
+<li><a href="#page-dc-stage05">VRF-Lite, and the One Thing It Needs</a></li>
+<li><a href="#page-dc-failures">What a Slow Stage Looks Like</a></li>
+<li><a href="#page-dc-verify">Reading the Verification Report</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Lab Prep Steps</div>
@@ -1055,7 +1070,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </div>
 </div><div class="section-anchor" id="section-2186">
   <div class="section-header"><h2>Environment Preparation</h2><div class="section-summary"><p dir="ltr" style="text-align: left;"></p>
-<p><span lang="EN-GB">In this section you will familiarize yourself with the dCloud Lab environment and prepare for the work ahead. The first two cards use the Jump Hosts and AD1 Server. For the optional Ansible-based automation paths, continue to the following Environment Preparation - IaaC section.</span></p>
+<p><span lang="EN-GB">In this section you will familiarize yourself with the dCloud Lab environment and prepare for the work ahead. The first two cards use the Jump Hosts and AD1 Server. For the optional Ansible-based automation paths, continue to the following Environment Preparation - IaC section.</span></p>
 <p></p>
 <p></p></div></div>
   <div class="page-card">
@@ -1181,10 +1196,10 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
  </div>
  </div>
 <div class="section-anchor" id="section-2188">
-  <div class="section-header"><h2>Environment Preparation - IaaC</h2><div class="section-summary"><p>This optional setup supports both automated tracks in this guide: Campus EVPN and DC as Code. Prepare the script server once, then use the following cards to see how the Ansible environment and each track are organized. Manual provisioning paths can skip this section.</p></div></div>
+  <div class="section-header"><h2>Environment Preparation - IaC</h2><div class="section-summary"><p>This optional setup supports both automated tracks in this guide: Campus EVPN and DC as Code. Prepare the script server once, then use the following cards to see how the Ansible environment and each track are organized. Manual provisioning paths can skip this section.</p></div></div>
 <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-9002" class="page-anchor">3. Infrastructure as Code &mdash; Script Server Preparation (Ansible)</h3>
+    <h3 id="page-9002" class="page-anchor">Infrastructure as Code &mdash; Script Server Preparation (Ansible)</h3>
   </div>
   <div class="page-card-body"><h3>Infrastructure as Code — Step 1 of 8</h3>
 <p>This card prepares the script server for the guide's Ansible-based Infrastructure as Code (IaC) automation. You will connect to the server, clone the repository, and bootstrap the Ansible runtime, Galaxy collections, and required dependencies. Nothing here configures the fabric; complete this setup once before running either IaC path.</p>
@@ -1229,6 +1244,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 <p>Enter <code>C1sco12345</code> when prompted. Once connected, clone the repository in that SSH session:</p>
 <pre>git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap</pre>
+<p><img class="img-fluid" src="automation_images/script_server_git_clone.png" alt="Kali terminal showing the repository cloned and the working directory changed to the script server bootstrap folder"></p>
 <p>You can clone anywhere you like — every path in the automation is worked out from where the playbooks live, so the home directory is just a convention.</p>
 <hr>
 <h4>Step 2 — Stage the box</h4>
@@ -1253,7 +1269,9 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 <p><img class="img-fluid" src="automation_images/a1-stage-script.png" alt="stage-script-server.sh on the script server: base packages present, virtualenv created at /home/cisco/venv, pinned packages installed, ansible core 2.17.14 staged, .vault created, and the dCloud POD number prompt answered with 5" width="865" height="530"></p>
 <p>The script also writes the <strong>vault password file</strong> for you, at <code>.vault</code> in the repository root. The lab stores its credentials in an encrypted file, <code>Lab Topology/lab_access.yml</code>, and <code>.vault</code> holds the passphrase that opens it. Confirm it works:</p>
 <pre>cd ~/cisco-one-experience-lab-automation
-ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
+~/venv/bin/ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4</pre>
+<p>Use the full path: <code>~/venv/bin</code> is not on your <code>PATH</code> until the bootstrap in Step 3 runs, so a bare <code>ansible-vault</code> answers <code>command not found</code> here — and reloading the shell does not change that yet. If apt offers to install <code>ansible-core</code>, say no.</p>
+<p><img class="img-fluid" src="automation_images/ansible_vault_check.png" alt="Kali terminal running ~/venv/bin/ansible-vault view on Lab Topology/lab_access.yml with the .vault password file, printing the first four decrypted YAML lines ending in the script_server entry" width="865" height="163"></p>
 <p>If that prints YAML, the passphrase can decrypt the credential map. The playbooks load the needed username and password from it automatically; this check does not test whether a device accepts those credentials or is reachable.</p>
 <div class="admonition warning">
 <p>🛑 <strong>Do not copy this credential pattern into production.</strong> Here the encrypted file <em>and</em> the passphrase that opens it both live in the repository, so the encryption protects nothing — it is a convenience for a disposable lab whose passwords are already public demo values. The mechanism itself is worth stealing; the key handling is not. In real work the passphrase comes from a secret store and never touches the repo.</p>
@@ -1294,13 +1312,13 @@ ansible-playbook --version</pre>
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
-<p>Your script server is ready and your pod number is set. For a map of how the Ansible files fit together, continue to <a href="#page-9404"><strong>Environment Preparation - IaaC, card 4: How it is wired</strong></a>. Then go to <a href="#page-9001"><strong>EVPN: Choose Your Provisioning Path</strong></a>; if you choose the automated path, continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
+<p>Your script server is ready and your pod number is set. For a map of how the Ansible files fit together, continue to <a href="#page-9404"><strong>Environment Preparation - IaC, card 4: Ansible Script Server - how it is wired</strong></a>. Then go to <a href="#page-9001"><strong>EVPN: Choose Your Provisioning Path</strong></a>; if you choose the automated path, continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
 </div>
 </div></div>
 </div>
 <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-9404" class="page-anchor">4. IaaC Server - How it is wired</h3>
+    <h3 id="page-9404" class="page-anchor">4. Ansible Script Server - how it is wired</h3>
   </div>
   <div class="page-card-body"><h3>One Ansible environment, two automation tracks</h3>
 <p>The script server is the control point for both Infrastructure as Code (IaC) tracks in this guide. Ansible runs inside the Python environment prepared in the previous card. The repository keeps the reusable runtime setup, the campus EVPN automation, and the data-center automation in separate folders so each track can have its own inventory and workflow.</p>
@@ -1983,7 +2001,7 @@ catc_debug: false</code></pre></td>
 <li>Learn the Catalyst Center template model that scales past three switches</li>
 </ul>
 <p><strong>What you need:</strong> the dCloud VPN, a terminal, and your POD number from the lab printout.</p>
-<p><strong>Start here:</strong> <a href="#page-9002">Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</a></p>
+<p><strong>Start here:</strong> <a href="#page-9002">Environment Preparation - IaC, card 3: Script Server Preparation (Ansible)</a></p>
 </div>
 </div>
 <hr>
@@ -2051,7 +2069,7 @@ catc_debug: false</code></pre></td>
 <!-- Body -->
 <div style="padding: 18px 20px; color: #2e2e2e;">
 <p>Building it by hand? Continue to <a href="#page-7583"><strong>EVPN Fabric and WLC — Manual Provisioning</strong></a>.</p>
-<p>Building it as code? If you have not prepared the script server yet, start with <a href="#page-9002"><strong>Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</strong></a>. Then continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
+<p>Building it as code? If you have not prepared the script server yet, start with <a href="#page-9002"><strong>Environment Preparation - IaC, card 3: Script Server Preparation (Ansible)</strong></a>. Then continue to <a href="#page-9003"><strong>2. Run the EVPN + Catalyst Center Pipeline</strong></a>.</p>
 <p>Both tracks finish at the same place: an EVPN fabric and a working wireless SSID. Pick one and stay on it — running both against the same pod will produce confusing results.</p>
 </div>
 </div></div>
@@ -3219,7 +3237,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <p>The remaining cards in this track — the template model, extending the fabric through Git, and intent verification — have no manual counterpart at all. They exist to show you <em>why</em> a network team would work this way, not just how.</p>
 <hr>
 <h4>The whole journey, at a glance</h4>
-<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. The grey preparation line is covered in <a href="#page-9002">Environment Preparation - IaaC, card 3</a>; this IaC track covers the design, deploy, and wireless/proof lines.</p>
+<p>Before you type anything, here is where you are going. Read it like a transit map: each line is a phase, each station is one command, and you ride them left to right, top to bottom. The grey preparation line is covered in <a href="#page-9002">Environment Preparation - IaC, card 3</a>; this IaC track covers the design, deploy, and wireless/proof lines.</p>
 <p><img class="img-fluid" src="automation_images/pipeline-subway-map.png" alt="Subway-style map of the pipeline: a preparation line of five setup steps, a design line of stages 01 to 07 building intent inside Catalyst Center, a deploy line of stages 08 and 09 where live configuration lands, and a wireless and proof line where the access point boots before stages 10 and 11 run" width="865" height="488"></p>
 <p>Three things are worth noticing now, because they explain most of the questions students ask later:</p>
 <ul>
@@ -3228,7 +3246,7 @@ This CLI closely mimics what Catalyst Center <strong>deploys for 802.1x </strong
 <li><strong><code>playbooks/00_site_deploy.yml</code> imports and runs the twelve stage playbooks in order.</strong> It simply starts each stage in sequence. Before running it, note that stage 09 reboots the switches, and stage 11 waits up to ten minutes for an access point to boot.</li>
 </ul>
 <hr>
-<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation - IaaC, card 3: Script Server Preparation (Ansible)</strong></a>.</p>
+<p>This is the main event. Eleven numbered playbooks take your pod from an empty Catalyst Center to a fully provisioned EVPN fabric with wireless. Every command in this card runs on the <strong>script server</strong>, from the pipeline directory set up in <a href="#page-9002"><strong>Environment Preparation - IaC, card 3: Script Server Preparation (Ansible)</strong></a>.</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible</pre>
 <hr>
 <h4>The eleven stages</h4>
@@ -9276,7 +9294,7 @@ curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mo
 </ol></div>
 </div>
 </div><div class="section-anchor" id="section-2379">
-  <div class="section-header"><h2>NDFC - DC Fabric Deployment — Manual Provisioning</h2></div>
+  <div class="section-header"><h2>Nexus Dashboard - DC Fabric Deployment — Manual Provisioning</h2></div>
   <div class="page-card">
   <div class="page-card-header"><span>📄</span>
     <h3 id="page-8208" class="page-anchor">1.  Overview</h3>
@@ -9462,7 +9480,7 @@ curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mo
     <h3 id="page-8212" class="page-anchor">4. Deploy DC VXLAN EVPN Fabric</h3>
   </div>
   <div class="page-card-body"><h3 class="dC-Step" style="margin-left: .25in; text-indent: -.25in;"><!--[endif]-->Deploy VXLAN EVPN Fabric in the Data Center<o:p></o:p></h3>
-<p>In this section, you will deploy the foundation of <strong>PseudoCo’s modern data center</strong> by building a <strong>VXLAN EVPN </strong>fabric using Cisco Nexus Dashboard Fabric Controller (NDFC). This establishes both the underlay and overlay architecture required for scalable, policy-driven connectivity. This fabric becomes the backbone for <strong>extending segmentation</strong> into the data center.</p>
+<p>In this section, you will deploy the foundation of <strong>PseudoCo’s modern data center</strong> by building a <strong>VXLAN EVPN </strong>fabric using Cisco Nexus Dashboard. This establishes both the underlay and overlay architecture required for scalable, policy-driven connectivity. This fabric becomes the backbone for <strong>extending segmentation</strong> into the data center.</p>
 <hr>
 <p class="dC-H2"><strong>Create Fabric</strong><o:p></o:p></p>
 <p style="text-indent: -0.25in;"><!-- [if !supportLists]--><span><span>1.<span style="font: 7.0pt 'Times New Roman';">     </span></span></span><!--[endif]-->Open Nexus Dashboard: From <strong>Jumphost1,</strong> Chrome Favorite  login with credentials <strong>admin / C1sco12345</strong>.<o:p></o:p></p>
@@ -9564,7 +9582,7 @@ curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mo
 <p><img class="img-fluid" src="automation_images/12.1-24.png" alt="Screenshot showing Verify that all the switches configs are in sync . You can re-run the re-calculate and deploy at anytime to sync the switches." width="865" height="336"></p>
 <p>🎉 This concludes the fabric creation. It may take a few minutes for Nexus Dashboard to apply all the commands in the switches. Click <strong>Close</strong>.</p>
 <hr>
-<p>You have successfully deployed a VXLAN EVPN data center fabric using Cisco Nexus Dashboard, transforming the network into a scalable, software-defined architecture. A key Cisco differentiator is the use of NDFC to automate complex fabric provisioning—eliminating manual configuration and enabling rapid, consistent deployment. By leveraging EVPN as a control plane and VXLAN for data plane encapsulation, Cisco delivers a highly resilient and standards-based fabric that supports multi-tenancy and seamless integration with the broader enterprise network.</p>
+<p>You have successfully deployed a VXLAN EVPN data center fabric using Cisco Nexus Dashboard, transforming the network into a scalable, software-defined architecture. A key Cisco differentiator is the use of Nexus Dashboard to automate complex fabric provisioning—eliminating manual configuration and enabling rapid, consistent deployment. By leveraging EVPN as a control plane and VXLAN for data plane encapsulation, Cisco delivers a highly resilient and standards-based fabric that supports multi-tenancy and seamless integration with the broader enterprise network.</p>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
   <!-- Body (Add your content here) -->  
@@ -9922,7 +9940,7 @@ curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mo
 <p>🎉 This completes this section. Nice Work! <br><br></p>
 <hr>
 <figure></figure>
-<p>You have successfully configured an external fabric, allowing controlled communication between the data center and external domains. Cisco’s approach simplifies this integration by abstracting complex routing and border configurations into policy-driven workflows within NDFC. This ensures that external connectivity is both scalable and aligned with the overall segmentation and routing strategy.</p>
+<p>You have successfully configured an external fabric, allowing controlled communication between the data center and external domains. Cisco’s approach simplifies this integration by abstracting complex routing and border configurations into policy-driven workflows within Nexus Dashboard. This ensures that external connectivity is both scalable and aligned with the overall segmentation and routing strategy.</p>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
   <!-- Body (Add your content here) -->  
@@ -9953,7 +9971,7 @@ curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mo
 <pre>DEPLOY [Pseudoco-DC1] get_deployable_switches &rarr; ok (changed=0/5)
 DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
 <p>So a deploy fired seconds after stage 04 can report <code>0/5</code> and exit successfully, and a minute later deploy the border leaf with nobody having touched anything. In the UI you would never notice, because clicking through the wizard takes longer than the controller does. <strong>What that asynchrony does <em>not</em> explain on its own is a stage 05 failure</strong>, which was the working theory for a while and turned out to be only half the answer — the deploy itself, not merely the time that passes, is what stage 05 is waiting on. See <a href="#what-stage-05-needs">card 7 of the automation track</a>.</p>
-<p><strong>Why only one switch ever appears in that deploy.</strong> Cisco scopes VRF-Lite autoconfiguration to <em>"Border role in the VXLAN fabric and Edge Router role in the connected external fabric device"</em> (<a href="https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html">Cisco Nexus Dashboard Fabric Controller &mdash; VRF Lite</a>). DC-Service-Leaf is this fabric's only <code>border</code> switch and DC-SITE11-CEDGE8Kv its only <code>edgeRouter</code>, so the pair of them is the entire scope. DC-Leaf1, DC-Leaf2 and the two spines are outside it and will never show up here.</p>
+<p><strong>Why only one switch ever appears in that deploy.</strong> Cisco scopes VRF-Lite autoconfiguration to <em>"Border role in the VXLAN fabric and Edge Router role in the connected external fabric device"</em> (<a href="https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html">Cisco Nexus Dashboard &mdash; VRF Lite</a>). DC-Service-Leaf is this fabric's only <code>border</code> switch and DC-SITE11-CEDGE8Kv its only <code>edgeRouter</code>, so the pair of them is the entire scope. DC-Leaf1, DC-Leaf2 and the two spines are outside it and will never show up here.</p>
 <p><strong>What to trust.</strong> A <code>0/5</code> result is a statement about that instant, not proof the fabric is finished. The signals worth believing are <code>check_sync &rarr; in_sync=True</code> after a run that actually deployed something, and a clean <code>08_verify_fabric.yml</code>.</p>
 </div></div>
 <p><img class="img-fluid" src="automation_images/14.9-53.png" alt="Screenshot showing A 0/5 result is a statement about that instant, not proof the fabric is finished. The signals worth believing are check_sync → in_sync=True after a run..." width="865" height="425"></p>
@@ -9978,10 +9996,10 @@ DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
 <li>IPv4 Prefix/mask: <strong>192.168.252.5/30</strong></li>
 <li>Neighbor IPv4 Address: <strong>192.168.252.6</strong></li>
 </ol>
-<p><strong>🛑NOTE:</strong> Because in this lab the other side of the link is already configured and was done manually, we are forcing the IP addresses and encapsulation to be pre-determined values in the DC-Service-Leaf side. In a real implementation, if the other side of the link is configured later or if the external equipment is managed by NDFC, there is no need to change the parameters above.</p>
+<p><strong>🛑NOTE:</strong> Because in this lab the other side of the link is already configured and was done manually, we are forcing the IP addresses and encapsulation to be pre-determined values in the DC-Service-Leaf side. In a real implementation, if the other side of the link is configured later or if the external equipment is managed by Nexus Dashboard, there is no need to change the parameters above.</p>
 <p><img class="img-fluid" src="automation_images/14.9-59.png" alt="Screenshot showing Click the Detach/Attach slider to enable the external L3 extension Encapsulation Dot1q VLAN ID: 2 IPv4 Prefix/mask: 192.168.252.5/30 Neighbor IPv4..." width="498" height="441"></p>
 <p>Scroll down an verify the config. Then <strong>Click Save</strong></p>
-<img class="img-fluid" src="automation_images/14.9-60.png" width="496" height="412" alt="Screenshot showing In a real implementation, if the other side of the link is configured later or if the external equipment is managed by NDFC, there is no need to change..."><br>
+<img class="img-fluid" src="automation_images/14.9-60.png" width="496" height="412" alt="Screenshot showing In a real implementation, if the other side of the link is configured later or if the external equipment is managed by Nexus Dashboard, there is no need to change..."><br>
 <p><strong>Click Save</strong> again</p>
 <p><img class="img-fluid" src="automation_images/14.9-61.png" alt="Screenshot showing Scroll down an verify the config. Then Click Save Click Save again" width="865" height="481"></p>
 <p>Check the box next to <strong>DC-Service-Leaf</strong>, click the blue <strong>Actions</strong> button, click <strong>Deploy</strong></p>
@@ -9989,7 +10007,7 @@ DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
 <p>Click <strong>Deploy</strong></p>
 <img class="img-fluid" src="automation_images/14.9-63.png" alt="Screenshot showing 2 IPv4 Prefix/mask: 192.168.252.5/30 Neighbor IPv4...&quot; width=&quot;498&quot; height=&quot;441&quot;&gt; Scroll down an verify the config. Then Click Save Click Save again..." width="865" height="485"><br>
 <p>Click <strong>Close</strong> once the deployment completes</p>
-<p><img class="img-fluid" src="automation_images/14.9-64.png" alt="Screenshot showing later or if the external equipment is managed by NDFC, there is no need to change...&quot;&gt; Click Save again Check the box next to DC-Service-Leaf , click..." width="865" height="484"></p>
+<p><img class="img-fluid" src="automation_images/14.9-64.png" alt="Screenshot showing later or if the external equipment is managed by Nexus Dashboard, there is no need to change...&quot;&gt; Click Save again Check the box next to DC-Service-Leaf , click..." width="865" height="484"></p>
 <p>Click <strong>Back</strong> to close the VRF Overview panel</p>
 <p><img class="img-fluid" src="automation_images/14.9-65.png" alt="Screenshot showing to DC-Service-Leaf , click the blue Actions button, click Deploy Click Deploy Click Close once the deployment completes Click Back to close the VRF..." width="865" height="361"></p>
 <h4>Edit VRF Attachments in VRF IOT</h4>
@@ -10007,10 +10025,10 @@ DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
 <li>IPv4 Prefix/mask: <strong>192.168.252.9/30</strong></li>
 <li>Neighbor IPv4 Address: <strong>192.168.252.10</strong></li>
 </ul>
-<p><strong>🛑NOTE:</strong> Because in this lab the other side of the link is already configured and was done manually, we are forcing the IP addresses and encapsulation to be pre-determined values in the DC-Service-Leaf side. In a real implementation, if the other side of the link is configured later or if the external equipment is managed by NDFC, there is no need to change the parameters above.</p>
+<p><strong>🛑NOTE:</strong> Because in this lab the other side of the link is already configured and was done manually, we are forcing the IP addresses and encapsulation to be pre-determined values in the DC-Service-Leaf side. In a real implementation, if the other side of the link is configured later or if the external equipment is managed by Nexus Dashboard, there is no need to change the parameters above.</p>
 <p><img class="img-fluid" src="automation_images/14.9-69.png" alt="Screenshot showing Click the Detach/Attach slider to enable the external L3 extension Encapsulation Dot1q VLAN ID: 3 IPv4 Prefix/mask: 192.168.252.9/30 Neighbor IPv4..." width="613" height="544"></p>
 <p>Scroll down an verify the config. Then <strong>Click Save</strong></p>
-<p><img class="img-fluid" src="automation_images/14.9-70.png" alt="Screenshot showing In a real implementation, if the other side of the link is configured later or if the external equipment is managed by NDFC, there is no need to change..." width="613" height="543"></p>
+<p><img class="img-fluid" src="automation_images/14.9-70.png" alt="Screenshot showing In a real implementation, if the other side of the link is configured later or if the external equipment is managed by Nexus Dashboard, there is no need to change..." width="613" height="543"></p>
 <p>Click <strong>Save again</strong></p>
 <p><img class="img-fluid" src="automation_images/14.9-71.png" alt="Screenshot showing Scroll down an verify the config. Then Click Save Click Save again" width="865" height="482"></p>
 <p>Check the box next to <strong>DC-Service-Leaf</strong>, click the blue <strong>Actions</strong> button, click <strong>Deploy</strong></p>
@@ -10018,7 +10036,7 @@ DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
 <p>Click <strong>Deploy</strong></p>
 <p><img class="img-fluid" src="automation_images/14.9-73.png" alt="Screenshot showing 4 Prefix/mask: 192.168.252.9/30 Neighbor IPv4...&quot; width=&quot;613&quot; height=&quot;544&quot;&gt; Scroll down an verify the config. Then Click Save Click Save again Check the..." width="865" height="481"></p>
 <p>Click <strong>Close</strong> once the deployment completes</p>
-<p><img class="img-fluid" src="automation_images/14.9-74.png" alt="Screenshot showing uipment is managed by NDFC, there is no need to change...&quot; width=&quot;613&quot; height=&quot;543&quot;&gt; Click Save again Check the box next to DC-Service-Leaf , click the..." width="865" height="484"></p>
+<p><img class="img-fluid" src="automation_images/14.9-74.png" alt="Screenshot showing uipment is managed by Nexus Dashboard, there is no need to change...&quot; width=&quot;613&quot; height=&quot;543&quot;&gt; Click Save again Check the box next to DC-Service-Leaf , click the..." width="865" height="484"></p>
 <p>Click <strong>Back</strong> to close the VRF Overview panel</p>
 <p><img class="img-fluid" src="automation_images/14.9-75.png" alt="Screenshot showing DC-Service-Leaf , click the blue Actions button, click Deploy Click Deploy Click Close once the deployment completes Click Back to close the VRF..." width="865" height="435"></p>
 <h4><strong>Edit VRF Attachments in VRF MAIN</strong></h4>
@@ -10036,11 +10054,11 @@ DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
 <li>IPv4 Prefix/mask: <strong>192.168.252.13/30</strong></li>
 <li>Neighbor IPv4 Address: <strong>192.168.252.14</strong></li>
 </ul>
-<p><strong>🛑NOTE: </strong>Because in this lab the other side of the link is already configured and was done manually, we are forcing the IP addresses and encapsulation to be pre-determined values in the DC-Service-Leaf side. In a real implementation, if the other side of the link is configured later or if the external equipment is managed by NDFC, there is no need to change the parameters above.</p>
+<p><strong>🛑NOTE: </strong>Because in this lab the other side of the link is already configured and was done manually, we are forcing the IP addresses and encapsulation to be pre-determined values in the DC-Service-Leaf side. In a real implementation, if the other side of the link is configured later or if the external equipment is managed by Nexus Dashboard, there is no need to change the parameters above.</p>
 <p><img class="img-fluid" src="automation_images/14.9-79.png" alt="Screenshot showing Click the Detach/Attach slider to enable the external L3 extension Encapsulation Dot1q VLAN ID: 4 IPv4 Prefix/mask: 192.168.252.13/30 Neighbor IPv4..." width="615" height="544"></p>
 Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <article class="md-content__inner md-typeset"></article>
-<article class="md-content__inner md-typeset"><img class="img-fluid" src="automation_images/14.9-80.png" alt="Screenshot showing In a real implementation, if the other side of the link is configured later or if the external equipment is managed by NDFC, there is no need to change..." width="615" height="545"><br>
+<article class="md-content__inner md-typeset"><img class="img-fluid" src="automation_images/14.9-80.png" alt="Screenshot showing In a real implementation, if the other side of the link is configured later or if the external equipment is managed by Nexus Dashboard, there is no need to change..." width="615" height="545"><br>
 <p>Click <strong>Save</strong></p>
 <p><img class="img-fluid" src="automation_images/14.9-81.png" alt="Screenshot showing Scroll down an verify the config. Then Click Save Click Save" width="865" height="409"></p>
 <p>Check the box next to <strong>DC-Service-Leaf</strong>, click the blue <strong>Actions</strong> button, click <strong>Deploy</strong></p>
@@ -10048,7 +10066,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <p>Click <strong>Deploy</strong></p>
 <p><img class="img-fluid" src="automation_images/14.9-83.png" alt="Screenshot showing l down an verify the config. Then Click Save Click Save Check the box next to DC-Service-Leaf , click the blue Actions button, click Deploy Click Deploy" width="865" height="435"></p>
 <p>Click <strong>Close</strong> once the deployment completes</p>
-<p><img class="img-fluid" src="automation_images/14.9-84.png" alt="Screenshot showing if the external equipment is managed by NDFC, there is no need to change...&quot; width=&quot;615&quot; height=&quot;545&quot;&gt; Click Save Check the box next to DC-Service-Leaf..." width="865" height="432"></p>
+<p><img class="img-fluid" src="automation_images/14.9-84.png" alt="Screenshot showing if the external equipment is managed by Nexus Dashboard, there is no need to change...&quot; width=&quot;615&quot; height=&quot;545&quot;&gt; Click Save Check the box next to DC-Service-Leaf..." width="865" height="432"></p>
 <p>Click <strong>Back</strong> to close the VRF Overview panel</p>
 <p><img class="img-fluid" src="automation_images/14.9-85.png" alt="Screenshot showing ext to DC-Service-Leaf , click the blue Actions button, click Deploy Click Deploy Click Close once the deployment completes Click Back to close the VRF..." width="865" height="351"></p>
 🎉 Congratulations! You have successfully created the VRF-Lite connections to our External SD-WAN Fabric. Now lets test end-to-end connectivity and segmentation. </article>
@@ -10095,26 +10113,24 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 </div></div>
 </div>
 </div><div class="section-anchor" id="section-9500">
-  <div class="section-header"><h2>NDFC - DC Fabric Deployment — Infrastructure as Code</h2></div>
+  <div class="section-header"><h2>Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code</h2></div>
   <div class="page-card">
   <div class="page-card-header"><span>📄</span>
     <h3 id="page-dc-overview" class="page-anchor">Overview</h3>
   </div>
-  <div class="page-card-body"><p>This track uses Ansible and Network as Code to build the <strong>Pseudoco-DC1 VXLAN EVPN fabric</strong>, including its switches, server connections, MAIN/PROD/IOT segments, and external connectivity. It reaches the same fabric outcome as the manual workflow, using a version-controlled model and pipeline instead of configuring objects in Nexus Dashboard.</p>
-<p>For the design goals and what the fabric provides, see the <a href="#page-8208">Manual Provisioning Overview</a>.</p></div>
+  <div class="page-card-body"><p>PseudoCo's Zero Trust design is only useful if its segmentation reaches the applications and services employees depend on. This track extends the lab's existing <strong>MAIN, PROD, and IoT business segments</strong> into the data center, so workloads are placed into the same broad security domains as the users, devices, and services that need to reach them. The goal is a consistent segmentation model across campus, branch, WAN, and data center, reducing gaps created when each network domain is built and operated independently.</p>
+<p><img class="img-fluid" src="automation_images/dc-segmentation-overview.png" alt="Logical diagram showing MAIN, PROD, and IoT segments carried from campus, branch, and WAN through the pod-configured external router and separate VRF-Lite links into matching VRFs in the Pseudoco-DC1 VXLAN EVPN fabric, with the Ansible deployment and verification flow below." width="1405" height="695"></p>
+<p>The automation builds the <strong>Pseudoco-DC1 VXLAN EVPN fabric</strong> on five Nexus switches through Nexus Dashboard. Server workloads connect through the leaf pair and are assigned to separate MAIN, PROD, or IOT VRFs and overlay networks. Those distinct Layer 3 segments provide the data center's macro-segmentation boundaries: a workload joins the network for its business role, rather than sharing one undifferentiated data center network. VXLAN EVPN provides the fabric connectivity that carries those segments across the switches.</p>
+<p>To connect the data center to the rest of the lab, the border leaf extends each VRF over its own VRF-Lite connection to the External fabric and the pod's preconfigured IOS-XE edge router. This gives each business segment a separate routed handoff toward the enterprise environment and creates the network path needed for campus or WAN users to reach appropriately placed data center workloads. The segment mapping supports policy consistency; it does not by itself define which users or applications are authorized to communicate.</p>
+<p>This distinction reflects the wider lab principles: <strong>identity-aware access, least-privilege policy, and visibility across domains</strong>. The campus and security exercises introduce identity and SGT-based micro-segmentation; this DC track establishes the fabric and VRF-level macro-segmentation foundation those broader workflows can build on. It does not configure SGT policy, change the external router, or prove end-to-end application traffic. Its verification checks the declared fabric and border-leaf configuration, while policy enforcement and live traffic validation remain separate lab outcomes.</p>
+<p>The Infrastructure as Code path reaches the same fabric outcome as <a href="#page-8208">Manual Provisioning</a>, but expresses the intended state in a version-controlled model and applies it through a repeatable pipeline in Nexus Dashboard. Choose either path for a pod; both build the same fabric.</p></div>
 </div><div class="page-card">
-  <div class="page-card-header"><span>📄</span>
-    <h3 id="page-dc-environment" class="page-anchor">Environment Details</h3>
-  </div>
-  <div class="page-card-body"><p>The target is the same five-switch data center fabric used by the manual track, with three server workloads aligned to the MAIN, PROD, and IOT VRFs and VRF-Lite connectivity to an external network. The pipeline discovers the switches and applies the declared fabric configuration through Nexus Dashboard.</p>
-<p>For the physical and logical topology diagrams, see <a href="#page-8209">Manual Provisioning Environment Details</a>.</p></div></div>
-  <div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-automation" class="page-anchor">1. Why Automate the DC Fabric</h3>
+    <h3 id="page-dc-automation" class="page-anchor">Why Automate the DC Fabric</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 1 of 9</h3>
+  <div class="page-card-body">
 <div class="admonition warning">
-<p>🛑 <strong>This track is an alternative to the manual sections above, not an addition to them.</strong> Everything in <em>NDFC - DC Fabric Deployment — Infrastructure as Code</em> builds the same <strong>Pseudoco-DC1</strong> fabric on the same five switches as <em>NDFC - DC Fabric Deployment — Manual Provisioning</em>, from a declarative model in git instead of from the Nexus Dashboard UI.</p>
+<p>🛑 <strong>This track is an alternative to the manual sections above, not an addition to them.</strong> Everything in <em>Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code</em> builds the same <strong>Pseudoco-DC1</strong> fabric on the same five switches as <em>Nexus Dashboard - DC Fabric Deployment — Manual Provisioning</em>, from a declarative model in git instead of from the Nexus Dashboard UI.</p>
 <p><strong>Do one or the other, never both.</strong> If you have already worked through the manual sections, you do not need to run the pipeline to have a working fabric — read these cards for the reasoning and skip the commands. If you start here, you get the same end state, and the manual sections are still worth reading for what they teach about the fabric itself.</p>
 </div>
 <p>Built by hand, <strong>Pseudoco-DC1</strong> is a fabric object, five switches discovered from a seed IP, a vPC pair, three server port-channels, three VRFs, three networks, and an attachment for each. Roughly two hundred clicks, and every one of them a chance to mistype a VNI.</p>
@@ -10133,7 +10149,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <tr>
 <td><strong>VRF-Lite addressing and dot1q tags</strong></td>
 <td>Section 8: <em>"IP addresses are allocated from the VRF Lite sub-interface address pool defined in the Fabric Settings"</em> — you read back what the controller chose</td>
-<td>Every address, tag and MTU is declared in <code>dc_vrf_lite.yml</code>. Stage 06 also <em>claims</em> the three dot1q tags out of the <code>TOP_DOWN_L3_DOT1Q</code> pool before it attaches anything</td>
+<td>Every address, tag and MTU is declared in <code>dc_vrf_lite.yml</code>. Stage 06 also <em>reserves</em> the three dot1q tags out of the <code>TOP_DOWN_L3_DOT1Q</code> pool before it attaches anything</td>
 <td>The router's <code>GigabitEthernet2.2/.3/.4</code> are fixed at dot1q 2/3/4 and <code>192.168.252.6/.10/.14</code>. Anything the controller allocates for itself is a coin toss against those, and a mismatch leaves the leaf configured and the session dead</td>
 </tr>
 <tr>
@@ -10160,15 +10176,45 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <h4>What Network as Code actually is</h4>
 <p>The automation uses the <a href="https://netascode.cisco.com/docs/data_models/vxlan/overview/"><strong>Cisco Network as Code</strong></a> VXLAN EVPN data model (<code>cisco.nac_dc_vxlan</code>), and the most useful way to hold it in your head is this: <strong>it is a declarative layer over the <code>cisco.dcnm</code> module collection, and it has no transport of its own.</strong> It reads a YAML data model off disk, works out which <code>cisco.dcnm</code> module calls produce the fabric that model describes, and drives those modules itself. You never write an API call, and you never write per-device configuration.</p>
 <p>The distinction from using <code>cisco.dcnm</code> on its own matters. That collection gives you one module per Nexus Dashboard object — create a fabric, add inventory, pair a vPC, attach a network — so automating this section with it directly would mean writing out the same sequence of steps you would click in the UI, in the same order, with the same dependencies to get right. Network as Code inverts that. You declare the fabric you want and it works out the calls. There is no "add switch" step in the data model; there is a list of switches.</p>
-<p>This is the whole chain, and it is the one thing on this page worth memorising:</p>
+<p>The diagram separates the Network as Code model and roles from the additional Ansible work needed for VRF-Lite integration. Both paths converge on the same Nexus Dashboard fabric:</p>
 <div class="chain">
-<div class="chain-step chain-model"><div class="chain-what">playbooks/host_vars/Pseudoco-DC1/*.nac.yaml</div><div class="chain-role">the declarative data model</div></div>
+<div class="chain-groups">
+<div class="chain-group chain-nac">
+<div class="chain-group-title">NETWORK AS CODE — THE MODELED PATH</div>
+<div class="chain-step chain-model"><div class="chain-model-source"><div class="chain-what">playbooks/host_vars/Pseudoco-DC1/</div><ul class="chain-model-files"><li><code>global.nac.yaml</code></li><li><code>underlay.nac.yaml</code></li><li><code>topology_vpc.nac.yaml</code></li><li><code>topology_switches.nac.yaml</code> (generated by stage 00)</li><li><code>vrfs.nac.yaml</code></li><li><code>networks.nac.yaml</code></li></ul></div><div class="chain-role">declares the fabric, switches, VRFs, networks, and attachments</div></div>
 <div class="chain-arrow">&#9660;</div>
 <div class="chain-step chain-nac"><div class="chain-what">cisco.nac_dc_vxlan.validate</div><div class="chain-role">reads the model off disk and checks it</div></div>
 <div class="chain-arrow">&#9660;</div>
-<div class="chain-step chain-nac"><div class="chain-what">cisco.nac_dc_vxlan.dtc.create<br>cisco.nac_dc_vxlan.dtc.deploy</div><div class="chain-role">renders the module calls</div></div>
+<div class="chain-step chain-nac"><div class="chain-what">cisco.nac_dc_vxlan.dtc.create<br>cisco.nac_dc_vxlan.dtc.deploy</div><div class="chain-role">stage 02 creates modeled intent; stages 05 and 07 deploy it</div></div>
 <div class="chain-arrow">&#9660;</div>
-<div class="chain-step chain-dcnm"><div class="chain-what">cisco.dcnm.dcnm_fabric &middot; dcnm_inventory &middot; dcnm_interface &middot; dcnm_vrf &middot; dcnm_network</div><div class="chain-role">one module per controller object</div></div>
+<div class="chain-step chain-dcnm"><div class="chain-what">cisco.dcnm.dcnm_fabric &middot; dcnm_inventory &middot; dcnm_interface &middot; dcnm_vrf &middot; dcnm_network</div><div class="chain-role">module calls generated for objects represented in the model</div></div>
+</div>
+<div class="chain-group chain-addon">
+<div class="chain-group-title">ADDITIONAL ANSIBLE WORK — VRF-LITE INTEGRATION</div>
+<div class="chain-step chain-addon"><div class="chain-model-source"><div class="chain-what">inventory/group_vars/all/</div><ul class="chain-model-files">
+<li><code>dc_switches.yml</code> — switch and endpoint mapping</li>
+<li><code>dc_advanced_settings.yml</code> — stage 03</li>
+<li><code>dc_external_settings.yml</code> — stage 04</li>
+<li><code>dc_vrf_lite.yml</code> — stages 04 and 06</li>
+</ul></div><div class="chain-role">Ansible inputs for switch mapping, fabric settings, External fabric, and VRF-Lite</div></div>
+<p>The model has no fields for these settings and extensions, so the pipeline supplies them separately:</p>
+<ul class="chain-addons">
+<li><strong>Stage 03</strong> — fabric settings the model cannot express</li>
+<li><strong>Stage 04</strong> — External fabric and VRF-Lite inter-fabric link</li>
+<li><strong>Stage 06</strong> — reserve dot1q tags and configure per-VRF extensions
+<ul class="chain-addons">
+<li><code>TOP_DOWN_L3_DOT1Q</code> tags: <code>PROD 2</code>, <code>IoT 3</code>, <code>MAIN 4</code></li>
+<li><code>PROD</code> — <code>192.168.252.5/30</code>, peer <code>192.168.252.6</code></li>
+<li><code>IoT</code> — <code>192.168.252.9/30</code>, peer <code>192.168.252.10</code></li>
+<li><code>MAIN</code> — <code>192.168.252.13/30</code>, peer <code>192.168.252.14</code></li>
+<li><code>DC-Service-Leaf Ethernet1/8</code> — sub-interface MTU <code>1500</code></li>
+</ul>
+</li>
+</ul>
+<div class="chain-step chain-addon"><div class="chain-what">Additional Ansible tasks</div><div class="chain-role">direct cisco.dcnm modules, templates, and targeted REST calls</div></div>
+</div>
+</div>
+<div class="chain-join">Both paths apply intent through the Nexus Dashboard controller</div>
 <div class="chain-arrow">&#9660;</div>
 <div class="chain-step chain-api"><div class="chain-what">Nexus Dashboard REST over httpapi</div><div class="chain-role">ndfc.corp.pseudoco.com:443</div></div>
 <div class="chain-arrow">&#9660;</div>
@@ -10180,77 +10226,37 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <li><strong>Only the last hop touches a switch.</strong> Everything from the model down to Nexus Dashboard is <em>intent</em>. Stages 02 to 06 write intent; stages 05 and 07 are the deploy stages that change running configuration.</li>
 </ul>
 <hr>
-<h4>The three roles this pipeline uses</h4>
-<p>The collection ships more roles than these, but a stage here only ever calls three of them, and the split between them <em>is</em> the pipeline's structure:</p>
+<h4>Network as Code roles and their fabric outcomes</h4>
+<p>These three Network as Code roles turn the declared model into a checked, staged, and deployed data center fabric. Each has a distinct part in that path:</p>
 <ul>
 <li><code>cisco.nac_dc_vxlan.validate</code> — the first role of stages 02 and 06. It reads every <code>*.nac.yaml</code> out of <code>playbooks/host_vars/Pseudoco-DC1/</code> and checks it against the collection's schema and rule set. It touches neither the controller nor a switch, so a model error fails here rather than half way through a build.</li>
-<li><code>cisco.nac_dc_vxlan.dtc.create</code> — stage 02. It builds the entire intent on the controller in 21 steps: fabric object, switch import and roles, vPC pair, port-channels, VRFs, networks, attachments. It changes nothing on a switch, with one exception — importing a switch is itself a write, and the import is greenfield.</li>
+<li><code>cisco.nac_dc_vxlan.dtc.create</code> — stage 02. It builds the fabric intent on the controller:
+<ul>
+<li>Fabric object</li>
+<li>Switch import and roles</li>
+<li>vPC pair</li>
+<li>Port-channels</li>
+<li>VRFs</li>
+<li>Networks</li>
+<li>Attachments</li>
+</ul>
+Switch import is a greenfield write that erases the switch's existing running configuration.</li>
 <li><code>cisco.nac_dc_vxlan.dtc.deploy</code> — stages 05 and 07. These are the UI's <strong>Recalculate and Deploy</strong> actions, and they are the only stages in this pipeline that change running configuration.</li>
 </ul>
 <p><code>validate</code> runs ahead of the other two inside the same play rather than as a stage of its own, because all three read the same files and neither of the others would notice a key the schema would have rejected. Stages 03, 04, 05 and 07 call <strong>no</strong> Network as Code role at all — what they declare has no key in the data model, so they use <code>cisco.dcnm</code> modules and raw REST instead. That boundary is what the next card is about.</p>
 <hr>
-<h4>The collection pins, and why each one is there</h4>
-<p><code>collections/requirements.yml</code> pins seven collections. Three are Cisco's, and each is pinned for a different reason:</p>
-<ul>
-<li><code>cisco.nac_dc_vxlan</code> <strong>0.9.0</strong> — the declarative layer itself, the thing that renders <code>cisco.dcnm</code> module calls out of the <code>host_vars</code> data model.</li>
-<li><code>cisco.dcnm</code> <strong>3.13.0</strong> — the modules underneath, and <strong>the floor matters here</strong>. Nexus Dashboard 4.2.1 support landed in <code>cisco.dcnm</code> 3.12.1, 3.13.0 adds 4.3.1, and <code>cisco.nac_dc_vxlan</code> 0.9.0 declares <code>cisco.dcnm</code> &gt;= 3.13.0 as a hard dependency. Do not pin it lower.</li>
-<li><code>cisco.nxos</code> <strong>10.2.0</strong> — used by <em>one</em> stage only, <code>00_discover_dc_switch_serials.yml</code>, which SSHes to the switches to read their serial numbers. Every other stage talks to Nexus Dashboard over <code>httpapi</code> and needs none of it.</li>
-</ul>
-<p>The four supporting collections — <code>ansible.netcommon</code> 7.1.0, <code>ansible.utils</code> 5.1.2, <code>ansible.posix</code> 2.0.0 and <code>community.general</code> 10.1.0 — match the versions in the upstream <code>netascode/ansible-dc-vxlan-example</code> requirements, and are pinned alongside the Cisco three so the dependency resolver cannot substitute its own choices. All four declare <code>requires_ansible "&gt;=2.15.0"</code>, so they sit happily on the <code>ansible-core</code> 2.17.14 this repository pins.</p>
-<hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">So where is the fabric actually written down? In two places, and the boundary between them is the heart of this track: <a href="#page-dc-model"><strong>2. Where the Definitions Live</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">So where is the fabric actually written down? In two places, and the boundary between them is the heart of this track: <a href="#page-dc-model"><strong>Where the Definitions Live</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-model" class="page-anchor">2. Where the Definitions Live</h3>
+    <h3 id="page-dc-model" class="page-anchor">Where the Definitions Live</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 2 of 9</h3>
-<h4>Two places, one boundary</h4>
-<p>Everything this pipeline builds is declared in one of two directories, and telling them apart is the single most useful thing you can take from this track:</p>
-<div class="chain-stack">
-<div class="chain-step chain-model"><div class="chain-what">playbooks/host_vars/Pseudoco-DC1/*.nac.yaml</div><div class="chain-role"><span class="chain-tag">(a)</span>the Network as Code data model</div></div>
-<div class="chain-step chain-dcnm"><div class="chain-what">inventory/group_vars/all/dc_*.yml</div><div class="chain-role"><span class="chain-tag">(b)</span>additional data-model elements not currently covered by the shipped Network as Code collection</div></div>
-<div class="chain-step chain-api"><div class="chain-what">inventory/group_vars/nd/*.yml</div><div class="chain-role">the controller connection</div></div>
-</div>
-<p><strong>(a) is the declarative model, and the collection owns its schema.</strong> The <code>validate</code> role reads these six files off disk and checks them; <code>dtc.create</code> and <code>dtc.deploy</code> turn what survives into <code>cisco.dcnm</code> module calls. No API name, no module name and no controller field appears in any of them.</p>
-<p><strong>(b) contains additional data-model elements not currently covered by the shipped Network as Code collection.</strong> They are expressed as plain Ansible variables owned by the playbooks. The collection does not read them directly; the playbooks apply them using <code>dcnm_fabric</code>, <code>dcnm_rest</code>, <code>dcnm_vrf</code> and other relevant operations. Their values are therefore spelled the way the <strong>controller</strong> spells them — <code>VRF_LITE_AUTOCONFIG</code>, <code>IS_READ_ONLY</code>, <code>licenseTier</code> — because that is what goes on the wire.</p>
-<p>There are six files in (a) and four in (b), and it is worth knowing what each one owns before you go looking for a value in the wrong place:</p>
-<table>
-<tr><th>File</th><th>Declares</th></tr>
-<tr><td colspan="2"><strong>(a) <code>playbooks/host_vars/Pseudoco-DC1/</code> — the Network as Code data model</strong></td></tr>
-<tr><td><code>global.nac.yaml</code></td><td>Fabric name and type, BGP ASN 65000, the two route reflectors, the L2/L3 VNI ranges the overlay IDs come from, and the <strong>Add Switches without Reload</strong> option</td></tr>
-<tr><td><code>underlay.nac.yaml</code></td><td>Underlay addressing. One setting in this lab: the <code>/31</code> subnet mask, against an upstream default of <code>/30</code></td></tr>
-<tr><td><code>topology_vpc.nac.yaml</code></td><td>The DC-Leaf1 / DC-Leaf2 vPC peering. Deliberately names no peer-link ports and no domain ID, so the controller detects and allocates both</td></tr>
-<tr><td><code>topology_switches.nac.yaml</code></td><td>The five switches, their roles, their serial numbers and their port-channels. <strong>Generated by stage 00 and gitignored</strong> — a tracked <code>.example</code> sits beside it</td></tr>
-<tr><td><code>vrfs.nac.yaml</code></td><td>MAIN, PROD and IOT, and the group of switches each attaches to</td></tr>
-<tr><td><code>networks.nac.yaml</code></td><td>The three overlay networks, their anycast gateways, and the port-channel each attaches on</td></tr>
-<tr><td colspan="2"><strong>(b) <code>inventory/group_vars/all/</code> — additional data-model elements not currently covered by the shipped Network as Code collection</strong></td></tr>
-<tr><td><code>dc_switches.yml</code></td><td>The switch table: names, management addresses, roles, endpoint port-channels. Read by stage 00</td></tr>
-<tr><td><code>dc_advanced_settings.yml</code></td><td><ul>
-<li>VRF-Lite deployment method (<code>VRF_LITE_AUTOCONFIG</code>)</li>
-<li>VRF-Lite subnet range and target mask (<code>DCI_SUBNET_RANGE</code>, <code>DCI_SUBNET_TARGET_MASK</code>)</li>
-<li>License tier (<code>licenseTier</code>)</li>
-<li>Telemetry collection (<code>telemetryCollection</code>)</li>
-<li>Fabric location (<code>location.latitude</code>, <code>location.longitude</code>)</li>
-</ul>Read by stage 03</td></tr>
-<tr><td><code>dc_external_settings.yml</code></td><td><ul>
-<li>External fabric name and BGP ASN (<code>dc_external_fabric_name</code>, <code>BGP_AS</code>)</li>
-<li>Fabric Monitor Mode (<code>IS_READ_ONLY</code>)</li>
-<li>Edge-router discovery details: IP, hostname, platform type and credential reference (<code>dc_external_edge_router</code>)</li>
-</ul>Read by stage 04</td></tr>
-<tr><td><code>dc_vrf_lite.yml</code></td><td><ul>
-<li>Border leaf and local/peer interfaces (<code>dc_vrf_lite_border_leaf</code>, <code>dc_vrf_lite_interface</code>, <code>dc_vrf_lite_peer_interface</code>)</li>
-<li>Inter-fabric link addresses and MTU (<code>dc_vrf_lite_ifc</code>)</li>
-<li>VRF-Lite sub-interface MTU (<code>dc_vrf_lite_mtu</code>)</li>
-<li>Per-VRF peer names, dot1q tags, local addresses and neighbor addresses (<code>dc_vrf_lite_extensions</code>)</li>
-</ul>Read by stage 06</td></tr>
-</table>
-<p>Notice the pattern in the right-hand column of (b): <strong>one file per stage, and each names no mechanism.</strong> The playbook that reads it holds no values of its own, so changing the fabric is always an edit to one of these files rather than to a playbook.</p>
+  <div class="page-card-body">
 <hr>
-<h4>What (a) looks like</h4>
-<p>Every file in (a) opens with <code>vxlan:</code> and nests under it. Here is a VRF and the group that attaches it, from <code>playbooks/host_vars/Pseudoco-DC1/vrfs.nac.yaml</code>:</p>
+<h4>Network as Code model: VRF and network examples</h4>
+<p>Network as Code model files open with <code>vxlan:</code> and nest under it. Here is a VRF and the group that attaches it, from <code>playbooks/host_vars/Pseudoco-DC1/vrfs.nac.yaml</code>:</p>
 <pre>vxlan:
   overlay:
     vrfs:
@@ -10267,7 +10273,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
         switches:
           - hostname: DC-Leaf1   # DC-Service-Leaf is deliberately absent
           - hostname: DC-Leaf2</pre>
-<p>A <strong>VRF attachment</strong> is the association that places a VRF on a switch. Here, <code>vrf_attach_group: dc_leaves</code> points to a named list of switches; each <code>hostname</code> in that list identifies a switch where PROD is attached. The model can say which switches get the VRF, but it cannot configure the separate VRF-Lite extension from section 8 — its sub-interface, dot1q tag, or neighbour address. That limitation is why file (b) has to exist, and it comes back three more times on this page.</p>
+<p>A <strong>VRF attachment</strong> is the association that places a VRF on a switch. Here, <code>vrf_attach_group: dc_leaves</code> points to a named list of switches; each <code>hostname</code> in that list identifies a switch where PROD is attached. The model can say which switches get the VRF, but it cannot configure the separate VRF-Lite extension from section 8 — its sub-interface, dot1q tag, or neighbour address. That limitation is why separate Ansible inputs are needed, and it comes back three more times on this page.</p>
 <p>A network, from <code>networks.nac.yaml</code>, where an attach group can also name ports:</p>
 <pre>vxlan:
   overlay:
@@ -10291,8 +10297,12 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
               - Port-channel4</pre>
 <p>That one stanza is the network, its Layer 3 mode, its anycast gateway <em>and</em> its attachment — the three separate UI screens you worked through in section 6.</p>
 <hr>
-<h4>What (b) looks like</h4>
-<p><code>inventory/group_vars/all/dc_switches.yml</code> is the switch table, and it feeds two different things: stage 00 substitutes each <code>role</code> into the generated model, and it also turns the table into an SSH inventory group at run time with <code>add_host</code>.</p>
+<h4>Additional Ansible inputs</h4>
+<p><code>inventory/group_vars/all/dc_switches.yml</code> lists each switch's name, management IP address, and role. Stage 00 uses each row in two ways:</p>
+<ul>
+<li>The Network as Code switch model needs both a chassis serial and a management IP, but for different purposes: Nexus Dashboard identifies the switch by serial and uses the IP for management connectivity. The management IP is fixed for this lab and already appears in the tracked example and switch table; serials vary by pod and are unknown to an empty controller. Stage 00 uses the IP in <code>dc_switches.yml</code> to SSH to each switch, reads its serial, then copies <code>topology_switches.nac.yaml.example</code> to <code>topology_switches.nac.yaml</code> and fills in the serial and declared role. Stage 02 imports this generated Network as Code switch model.</li>
+<li>It uses <code>add_host</code> to add the switch name and management IP to the in-memory Ansible inventory group <code>dc_fabric_switches</code>. This gives Stage 00 an SSH target for reading the serial; the temporary hosts are not written to the static inventory file.</li>
+</ul>
 <pre>dc_fabric_name: Pseudoco-DC1
 
 dc_switches:
@@ -10311,7 +10321,7 @@ dc_switches:
     management_ipv4_address: 198.18.128.13
     role: border                            # the only border switch in the fabric
     interfaces: []</pre>
-<p><code>dc_advanced_settings.yml</code> is the other shape in (b): controller nvPairs, written verbatim. These are the <strong>Resources</strong>-tab settings from section 4, and without them external connectivity cannot be built at all.</p>
+<p><code>dc_advanced_settings.yml</code> holds controller nvPairs, written verbatim. These are the <strong>Resources</strong>-tab settings from section 4, and without them external connectivity cannot be built at all.</p>
 <pre>dc_advanced_fabric_settings:             # nvPairs, applied with dcnm_fabric
   VRF_LITE_AUTOCONFIG: "Manual"          # we build the IFC ourselves, in stage 04
   AUTO_SYMMETRIC_VRF_LITE: true
@@ -10336,7 +10346,7 @@ dc_vrf_lite_extensions:
     ipv4_addr: 192.168.252.5/30          # the leaf's sub-interface
     neighbor_ipv4: 192.168.252.6         # the router's side, pre-configured by the pod</pre>
 <p>Notice what is <em>not</em> in there: <code>vrf_id</code> and <code>vlan_id</code> are deliberately not restated. Stage 05 reads them back out of <code>vrfs.nac.yaml</code> at run time, so the two files cannot drift apart.</p>
-<p>The <strong>External</strong> fabric has no Network as Code model either, which is why it too appears only in (b), as <code>dc_external_settings.yml</code>. The collection's create role cannot build it: that role always runs a config-save after its inventory step, and on a fabric with no switches the controller answers <code>HTTP 500: Fabric External cannot be deployed without any switches</code>. The fabric holds no VRFs, networks or interfaces either, so there is nothing for the model to express.</p>
+<p>The <strong>External</strong> fabric has no Network as Code model either, so the pipeline creates it from <code>dc_external_settings.yml</code>. The collection's create role cannot build it: that role always runs a config-save after its inventory step, and on a fabric with no switches the controller answers <code>HTTP 500: Fabric External cannot be deployed without any switches</code>. The fabric holds no VRFs, networks or interfaces either, so there is nothing for the model to express.</p>
 <hr>
 <h4>Four things in these files that are not obvious from reading them</h4>
 <p>Each of these looks arbitrary until it is explained, and each is already commented in the file it belongs to:</p>
@@ -10354,7 +10364,7 @@ dc_vrf_lite_extensions:
 <div class="flow-step chain-nac"><div class="flow-num">2</div><div class="flow-body"><span class="flow-where">stage 02</span><span class="flow-title">Validated</span>Before stage 02 contacts Nexus Dashboard, <code>cisco.nac_dc_vxlan.validate</code> checks this YAML file. Write actual values in the file; do not use Ansible templates such as <code>{{ }}</code>. It checks three things: <code>vrf_id</code> must fall within the L3 VNI range in <code>global.nac.yaml</code>; <code>vlan_id</code> must fall within the collection's allowed L3 VLAN range; and <code>vrf_attach_group</code> must match a group declared in this file. No request has been sent to Nexus Dashboard yet.</div></div>
 <div class="flow-step chain-nac"><div class="flow-num">3</div><div class="flow-body"><span class="flow-where">stage 02</span><span class="flow-title">Rendered into a module call</span>Stage 02's second role, <code>dtc.create</code>, reaches its <code>vrfs</code> step and calls <code>cisco.dcnm.dcnm_vrf</code> with <code>state: replaced</code> and a config built from the model: the VRF, its id, its VLAN, and one <code>attach</code> entry per hostname in <code>dc_leaves</code>. <code>replaced</code> is what makes the model authoritative &mdash; and what detaches anything the model does not list.</div></div>
 <div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-where">controller</span><span class="flow-title">On the controller</span><code>dcnm_vrf</code> POSTs to <code>.../top-down/fabrics/Pseudoco-DC1/vrfs</code> and its attachments endpoint, over the <code>httpapi</code> connection from <code>inventory/group_vars/nd/connection.yml</code>. PROD now exists in Nexus Dashboard, attached to DC-Leaf1 and DC-Leaf2 &mdash; and <code>PENDING</code>, because nothing has been pushed.</div></div>
-<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-where">stage 06</span><span class="flow-title">Extended</span>Stage 06 reads <code>dc_vrf_lite.yml</code>, reads <code>vrf_id</code> and <code>vlan_id</code> back out of <code>vrfs.nac.yaml</code> so it cannot contradict step 1, claims dot1q <code>2</code> out of the <code>TOP_DOWN_L3_DOT1Q</code> pool, and POSTs to the controller's <code>vrfs/attachments</code> endpoint naming only DC-Service-Leaf. That payload carries what the data model has no keys for: <code>Ethernet1/8</code>, dot1q <code>2</code>, <code>192.168.252.5/30</code>, neighbour <code>192.168.252.6</code> and MTU <code>1500</code>. Only the drifting VRFs are touched, so the two leaf attachments from step 4 are left alone. Still nothing on a switch.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-where">stage 06</span><span class="flow-title">Extended</span>Stage 06 reads <code>dc_vrf_lite.yml</code>, reads <code>vrf_id</code> and <code>vlan_id</code> back out of <code>vrfs.nac.yaml</code> so it cannot contradict step 1, reserves dot1q <code>2</code> out of the <code>TOP_DOWN_L3_DOT1Q</code> pool, and POSTs to the controller's <code>vrfs/attachments</code> endpoint naming only DC-Service-Leaf. That payload carries what the data model has no keys for: <code>Ethernet1/8</code>, dot1q <code>2</code>, <code>192.168.252.5/30</code>, neighbour <code>192.168.252.6</code> and MTU <code>1500</code>. Only the drifting VRFs are touched, so the two leaf attachments from step 4 are left alone. Still nothing on a switch.</div></div>
 <div class="flow-step chain-dev"><div class="flow-num">6</div><div class="flow-body"><span class="flow-where">stage 07</span><span class="flow-title">Deployed</span>Stage 07 runs <code>dtc.deploy</code>, which asks the controller which switches have pending configuration and deploys them. PROD's VRF and SVIs land on the leaves; on the border leaf the same push carries the parent <code>Ethernet1/8</code>, the <code>.2</code> sub-interface and the eBGP neighbour, <em>because step 5 staged them before this ran</em>. Every attachment flips <code>PENDING</code> to <code>DEPLOYED</code>.</div></div>
 <div class="flow-step chain-dcnm"><div class="flow-num">7</div><div class="flow-body"><span class="flow-where">stage 08</span><span class="flow-title">Verified</span>Stage 08 reads <code>vrfs.nac.yaml</code> again &mdash; the same file, not a copy &mdash; and compares it against the controller: PROD exists with VNI 50001, is attached to both declared leaves, every attachment reads <code>DEPLOYED</code>, and the border leaf's extension carries the declared interface, dot1q tag and neighbour address. It then reads the switch itself over SSH: <code>Ethernet1/8.2</code> parsed with pyATS/Genie, and the eBGP session to <code>192.168.252.6</code>. Five checks are associated with PROD &mdash; the VRF row, the <code>ProdNetwork1</code> row, the VRF-Lite extension row, the sub-interface row and the BGP session row.</div></div>
 </div>
@@ -10365,13 +10375,13 @@ dc_vrf_lite_extensions:
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One thing in that model cannot be written by hand and cannot be read from the controller — a serial number per switch. <a href="#page-dc-serials"><strong>3. Serial Discovery</strong></a> is the stage that gets it.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One thing in that model cannot be written by hand and cannot be read from the controller — a serial number per switch. <a href="#page-dc-serials"><strong>Serial Discovery</strong></a> is the stage that gets it.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-serials" class="page-anchor">3. Serial Discovery</h3>
+    <h3 id="page-dc-serials" class="page-anchor">Serial Discovery</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 3 of 9</h3>
+  <div class="page-card-body">
 <h4>The part that cannot be declared: serial numbers</h4>
 <p>Network as Code identifies a switch by its <strong>serial number</strong>, not by hostname or management IP. That is the right choice for a fabric — a serial is the one identifier that cannot be reassigned by a typo — but it creates a problem for a lab: serial numbers are specific to your pod. Committing them to git would tie the repository to one dCloud instance and make everyone else's checkout wrong.</p>
 <p>So the pipeline has a discovery stage, and it asks the switches rather than the controller. <code>00_discover_dc_switch_serials.yml</code> SSHes to each management address and runs <code>cisco.nxos.nxos_facts</code>, which reads <code>show version</code> and parses the Processor Board ID. It prints a table of switch, management IP, role and serial number, and then writes the data model for you.</p>
@@ -10393,13 +10403,13 @@ dc_vrf_lite_extensions:
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">With the switch model generated, the pipeline has everything it needs: <a href="#page-dc-run"><strong>4. Run the Pipeline</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">With the switch model generated, the pipeline has everything it needs: <a href="#page-dc-run"><strong>Run the Pipeline</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-run" class="page-anchor">4. Run the Pipeline</h3>
+    <h3 id="page-dc-run" class="page-anchor">Run the Pipeline</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 4 of 9</h3>
+  <div class="page-card-body">
 <h4>Running it</h4>
 <p>First, make sure stage 00 bootstrap has installed the pinned Python packages and Ansible collections. A script server staged before the DC track existed may not have the required collections. Pull the latest checkout and run:</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
@@ -10440,10 +10450,10 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <p>🔎 <strong>All of sections 4 through 8 are automated, on the fabric side. The edge router is pre-configured by the pod, by design.</strong> The pipeline covers everything the Network as Code data model can express, which is sections 4, 5 and 6, plus the fabric settings it cannot — stage <code>03</code>'s job, described below. Section 7's External fabric <em>and</em> the edge router in it are stage <code>04</code>. Section 8 is split between two stages: its opening <strong>Recalculate and Deploy</strong> is stage <code>06</code>, and its three per-VRF extensions are stage <code>05</code>. Each of those per-VRF walkthroughs has two halves, and only the second is outside the data model: attaching the VRF to the border leaf is an ordinary <code>vrf_attach_group</code> entry, while the extension on top of it has no key at all — the model can say <em>which switch</em>, never the sub-interface, dot1q tag or neighbour address you typed in. So stage 05 drops to <code>cisco.dcnm</code>'s <code>dcnm_vrf</code> directly for that second half, from intent declared in <code>inventory/group_vars/all/dc_vrf_lite.yml</code>. See <a href="#what-stage-05-needs">card 7</a>.</p>
 <p><strong>What sits outside the pipeline is <code>DC-SITE11-CEDGE8Kv</code>'s own side of the handoff, and that is by design rather than a shortfall.</strong> This lab ships the external edge router already configured, so there is nothing for the automation to write there — the matching sub-interfaces, dot1q tags and BGP neighbours are waiting for the fabric to meet them. That is also why the <code>192.168.252.x</code> addresses in <code>dc_vrf_lite.yml</code> are pinned rather than allocated from <code>DCI_SUBNET_RANGE</code>: the far end is fixed, so the near end has to match it exactly.</p>
 <p>Stage <code>04</code> creates the External fabric with ASN 65531 and <strong>Fabric Monitor Mode</strong> already on, and that setting is what <em>protects</em> the pre-configured router: Cisco is explicit that <em>"when an external fabric is set to Fabric Monitor Mode Only, you cannot deploy configurations on the switches"</em>, so Nexus Dashboard reads that router and never writes to it. The stage does not use the Network as Code roles, and that is not a preference — the collection cannot do this job twice over. Its create role always runs a config-save after the inventory step, and Nexus Dashboard answers <code>HTTP 500: Fabric External cannot be deployed without any switches</code> on a switchless fabric, which this one permanently is. And <code>dc_external_fabric_general.j2</code> ties <code>IS_READ_ONLY</code> to the <em>bootstrap</em> setting rather than to Monitor Mode, emitting <code>false</code> when bootstrap is off and <code>""</code> when it is on — neither can ever produce <code>true</code>, so applying a model here would take the fabric <em>out</em> of Monitor Mode. The stage builds it with <code>cisco.dcnm.dcnm_fabric</code> and sets Monitor Mode in the same call, so the fabric is never briefly writable.</p>
-<p><strong>Stage <code>04</code> also adds the edge router</strong>, so you do not have to repeat the steps above on a re-run. It does not use <code>dcnm_inventory</code> to do it, and the <em>Device Type</em> dropdown you used above is the reason. That field is not a label — it chooses how Nexus Dashboard <em>interrogates</em> the seed. Cisco's guide is explicit: <em>“Cisco CSR 1000v is discovered using SSH … does not need SNMP support”</em>, and <em>“Starting from NDFC release 12.1.3b, SNMP is not required for IOS-XE devices.”</em> Choose IOS XE and the controller asks over SSH; leave it alone and it asks over SNMPv3, which is the NX-OS path.</p>
+<p><strong>Stage <code>04</code> also adds the edge router</strong>, so you do not have to repeat the steps above on a re-run. It does not use <code>dcnm_inventory</code> to do it, and the <em>Device Type</em> dropdown you used above is the reason. That field is not a label — it chooses how Nexus Dashboard <em>interrogates</em> the seed. Cisco's guide is explicit: <em>“Cisco CSR 1000v is discovered using SSH … does not need SNMP support”</em>; from release 12.1.3b onward, SNMP is not required for IOS-XE devices. Choose IOS XE and the controller asks over SSH; leave it alone and it asks over SNMPv3, which is the NX-OS path.</p>
 <p>Nexus Dashboard 4.x has two switch APIs, and only one of them supports a non-NX-OS device.</p>
 <ul>
-<li>The <strong>legacy NDFC API</strong> under <code>/appcenter/…/rest/control/</code> is what <code>dcnm_inventory</code> drives, and therefore what Network as Code drives. It has no IOS-XE support and no device-type field. Pointed at this router, <code>inventory/test-reachability</code> answers <strong>HTTP 200</strong> reporting <code>reachable: true</code>, <code>auth: true</code>, <code>statusReason: "SNMPv3 Timeout"</code>, <code>valid: false</code>, and null <code>platform</code>, <code>version</code> and <code>serialNumber</code>. The SSH login worked, but SNMPv3 was still required, so no device identity was read. Supplying <code>platformType</code> to this endpoint by hand has no effect either. <code>platformType</code>, <code>device_type</code> and <code>ios-xe</code> appear nowhere in <code>cisco.dcnm</code> 3.13.0, which is the tip of that collection's <code>main</code> branch, so a newer release would not change this.</li>
+<li>The <strong>legacy fabric API</strong> under <code>/appcenter/…/rest/control/</code> is what <code>dcnm_inventory</code> drives, and therefore what Network as Code drives. It has no IOS-XE support and no device-type field. Pointed at this router, <code>inventory/test-reachability</code> answers <strong>HTTP 200</strong> reporting <code>reachable: true</code>, <code>auth: true</code>, <code>statusReason: "SNMPv3 Timeout"</code>, <code>valid: false</code>, and null <code>platform</code>, <code>version</code> and <code>serialNumber</code>. The SSH login worked, but SNMPv3 was still required, so no device identity was read. Supplying <code>platformType</code> to this endpoint by hand has no effect either. <code>platformType</code>, <code>device_type</code> and <code>ios-xe</code> appear nowhere in <code>cisco.dcnm</code> 3.13.0, which is the tip of that collection's <code>main</code> branch, so a newer release would not change this.</li>
 <li>The <strong>ND 4.x manage API</strong> does support it, and it is the same API stage <code>03</code> uses for License Tier and Telemetry. The dropdown becomes <code>platformType: "ios-xe"</code>. Stage <code>04</code> makes the two calls the UI makes behind <em>Discover Switches</em> and <em>Add Switches</em>: <code>POST /api/v1/manage/fabrics/External/actions/shallowDiscovery</code> to read the router's <code>model</code>, <code>softwareVersion</code> and <code>serialNumber</code>, then <code>POST /api/v1/manage/fabrics/External/switches?ticketId=</code> to add it. Those identity fields are pod-specific, which is why the stage discovers them rather than declaring them.</li>
 </ul>
 <p>💡 <strong>Three details here are easy to get wrong.</strong> The failed discovery returns <strong>HTTP 200</strong>, so a script that only checks the status code sees success and an empty candidate list. <code>dcnm_inventory</code> reports <code>Switch with IP … is not reachable or is not a valid IP</code>, which points at routing and firewalls when the actual failure was the SNMP interrogation. And the two APIs do not share a schema: <code>snmpV3AuthProtocol</code> is the string <code>"md5"</code> on the manage API and an integer on the legacy one, so the same body sent to the wrong endpoint returns <code>HTTP 400: Cannot deserialize value of type int from String "md5"</code>. A payload captured from the UI is not portable between them.</p>
@@ -10458,13 +10468,13 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One stage in that run is not Network as Code at all, and the fabric cannot reach the outside world without it: <a href="#page-dc-settings"><strong>5. The Settings the Model Cannot Express</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One stage in that run is not Network as Code at all, and the fabric cannot reach the outside world without it: <a href="#page-dc-settings"><strong>The Settings the Model Cannot Express</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-settings" class="page-anchor">5. The Settings the Model Cannot Express</h3>
+    <h3 id="page-dc-settings" class="page-anchor">The Settings the Model Cannot Express</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 5 of 9</h3>
+  <div class="page-card-body">
 <h4>The settings the model cannot express</h4>
 <p>Stage <code>03_fabric_advanced_settings.yml</code> is the one stage in this pipeline that is not Network as Code, and it is there because the data model has a hole in it. Go back to the fabric settings you filled in during section 4 and look at the <strong>Resources</strong> tab: <code>cisco.nac_dc_vxlan</code> 0.9.0 has no key for any of it. Nor for <strong>License Tier</strong> or the <strong>Telemetry</strong> checkbox.</p>
 <p>That is not a cosmetic gap. <strong>VRF Lite Subnet IP Range</strong>, <strong>License Tier</strong> and the rest are invisible to the model, and a pipeline that stopped at what the model can express would hand you a fabric that looks complete and cannot be extended.</p>
@@ -10490,18 +10500,18 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One of those settings decides who builds the link that carries your VRFs outside — the controller, or you: <a href="#page-dc-vrflite"><strong>6. VRF-Lite, and Who Builds the Link</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One of those settings decides who builds the link that carries your VRFs outside — the controller, or you: <a href="#page-dc-vrflite"><strong>VRF-Lite, and Who Builds the Link</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-vrflite" class="page-anchor">6. VRF-Lite, and Who Builds the Link</h3>
+    <h3 id="page-dc-vrflite" class="page-anchor">VRF-Lite, and Who Builds the Link</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 6 of 9</h3>
+  <div class="page-card-body">
 <h4 id="the-two-vrf-lite-settings">VRF-Lite: what the controller offers, and why we decline it</h4>
 <p>One of stage 03's settings deserves more than a bullet, because it decides who builds the link that carries your VRFs to the outside world — Nexus Dashboard, or you. This pipeline takes that job away from the controller on purpose, and the reason is worth understanding before you read stage 04. The quotations below are from Cisco's Nexus Dashboard 4.2.1 documentation rather than from observation.</p>
 <p><strong>VRF Lite Deployment</strong> is the nvPair <code>VRF_LITE_AUTOCONFIG</code>. Cisco, <a href="https://www.cisco.com/c/en/us/td/docs/dcn/nd/4x/articles-421/editing-fabric-settings-data-center-vxlan.html">Editing Data Center VXLAN Fabric Settings, Release 4.2.1</a>: <em>"Specify the VRF Lite method for extending inter fabric connections. The VRF Lite Subnet IP Range field specifies resources reserved for IP address used for VRF Lite when VRF Lite IFCs are auto-created. If you select Back2Back&amp;ToExternal, then VRF Lite IFCs are auto-created."</em> The <a href="https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html">VRF Lite article</a> is more specific about what gets joined to what: <em>"Use this option to automatically configure VRF Lite IFCs between a border switch and the edge or core switches in external fabric or between back-to-back border switches in VXLAN EVPN fabric."</em></p>
 <p>An <strong>IFC</strong> is an Inter-Fabric Connection — the link object Nexus Dashboard builds between a border switch in one fabric and a device in another, and the thing a VRF extension rides on. <strong>This pipeline sets the field to <code>Manual</code>, so no IFC is ever auto-created.</strong> Stage 04 builds it instead, with <code>dcnm_links</code> and the <code>ext_fabric_setup</code> template, from <code>dc_vrf_lite_ifc</code> in <code>dc_vrf_lite.yml</code>.</p>
-<p><strong>Why decline the automation?</strong> Because auto-created IFCs choose their own addresses out of the <strong>VRF Lite Subnet IP Range</strong>, and the controller also picks its own dot1q tags for each VRF extension. The edge router on this pod is pre-built and in Monitor Mode: its <code>GigabitEthernet2.2</code>, <code>.3</code> and <code>.4</code> already carry fixed addresses and fixed tags, and Nexus Dashboard may never write to it. A controller that allocates freely will sooner or later allocate something the router cannot match, and the handoff comes up configured on one side and dead on the other. So every value is declared in git and applied exactly: stage 04 for the link, stage 06 for the three per-VRF extensions — including <a href="#page-dc-stage05">claiming the dot1q tags</a> before it attaches anything.</p>
+<p><strong>Why decline the automation?</strong> Because auto-created IFCs choose their own addresses out of the <strong>VRF Lite Subnet IP Range</strong>, and the controller also picks its own dot1q tags for each VRF extension. The edge router on this pod is pre-built and in Monitor Mode: its <code>GigabitEthernet2.2</code>, <code>.3</code> and <code>.4</code> already carry fixed addresses and fixed tags, and Nexus Dashboard may never write to it. A controller that allocates freely will sooner or later allocate something the router cannot match, and the handoff comes up configured on one side and dead on the other. So every value is declared in git and applied exactly: stage 04 for the link, stage 06 for the three per-VRF extensions — including <a href="#page-dc-stage05">reserving the dot1q tags</a> before it attaches anything.</p>
 <p><strong>The automation would only ever have acted on one switch here anyway, and that is by Cisco's definition rather than by luck.</strong> The same article: <em>"Autoconfiguration is supported for the following cases: Border role in the VXLAN fabric and Edge Router role in the connected external fabric device; Border Gateway role in the VXLAN fabric and Edge Router role in the connected external fabric device; Border role to another Border role directly."</em> In <code>Pseudoco-DC1</code> exactly one switch carries the <code>border</code> role — <strong>DC-Service-Leaf</strong> — and after stage 04 exactly one device carries <code>edgeRouter</code> — <strong>DC-SITE11-CEDGE8Kv</strong>. DC-Leaf1, DC-Leaf2 and the two spines fall outside every supported case. Remember this when you read a deploy that touches a single switch.</p>
 <p><strong>And on this pod the peer-side automation could never have fired at all</strong>, for two separate reasons, either of which would be sufficient alone. This is why the companion settings <code>AUTO_SYMMETRIC_VRF_LITE</code> and <code>AUTO_UNIQUE_VRF_LITE_IP_PREFIX</code> are absent from <code>dc_advanced_settings.yml</code> rather than set to <code>false</code> — under <code>Manual</code> the controller rejects them outright:</p>
 <ul>
@@ -10512,13 +10522,13 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">Stage 04 builds the link and stage 06 hangs the VRF-Lite extensions off it — but only once one precondition is met: <a href="#page-dc-stage05"><strong>7. VRF-Lite, and the One Thing It Needs</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">Stage 04 builds the link and stage 06 hangs the VRF-Lite extensions off it — but only once one precondition is met: <a href="#page-dc-stage05"><strong>VRF-Lite, and the One Thing It Needs</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-stage05" class="page-anchor">7. VRF-Lite, and the One Thing It Needs</h3>
+    <h3 id="page-dc-stage05" class="page-anchor">VRF-Lite, and the One Thing It Needs</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 7 of 9</h3>
+  <div class="page-card-body">
 <h4>What stage 05 does</h4>
 <p><code>06_vrf_lite.yml</code> is section 8's three <em>"Edit VRF Attachments"</em> walkthroughs, written down. It attaches MAIN, PROD and IOT to the border leaf with <code>EXTEND: VRF_LITE</code>, each on its own dot1q sub-interface off <code>Ethernet1/8</code>, pointing at <code>GigabitEthernet2</code> on <code>DC-SITE11-CEDGE8Kv</code>:</p>
 <pre>| VRF  | dot1q | Sub-interface     | Neighbour      |
@@ -10533,7 +10543,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <ul>
 <li><strong>It uses a per-VRF payload built from the controller's own prototype.</strong> The stage names only DC-Service-Leaf and touches only the VRFs that have drifted, so the DC-Leaf1 and DC-Leaf2 attachments stage 02 made survive untouched.</li>
 <li><strong>It has to run after stage 02 on <em>every</em> pass, not once.</strong> Stage 02's create role runs <code>dcnm_vrf</code> with <code>state: replaced</code>, and the model has no key for an extension — so a create run keeps the border leaf's attachment and clears the extension off it. Stage 06 puts it back, and is idempotent when it is already there. <a href="#page-dc-verify">Card 9</a> is the check that catches it if it ever does not.</li>
-<li><strong>It claims the dot1q tags before it attaches anything.</strong> Left to itself the controller reserves a tag per VRF out of the <code>TOP_DOWN_L3_DOT1Q</code> pool during the attachment POST, in an order of its own choosing, and the POST is not atomic — so a mismatch fails half way through with <code>Id[3]is already allocated to MAIN</code>. Stage 06 pre-allocates all three from the data model first, leaving the controller nothing to choose.</li>
+<li><strong>It reserves the dot1q tags before it attaches anything.</strong> Left to itself the controller reserves a tag per VRF out of the <code>TOP_DOWN_L3_DOT1Q</code> pool during the attachment POST, in an order of its own choosing, and the POST is not atomic — so a mismatch fails half way through with <code>Id[3]is already allocated to MAIN</code>. Stage 06 pre-allocates all three from the data model first, leaving the controller nothing to choose.</li>
 </ul>
 <hr>
 <h4 id="what-stage-05-needs">What stage 06 needs, and the order that gives it</h4>
@@ -10601,13 +10611,13 @@ GigabitEthernet2.4     192.168.252.14  YES other  up       up</pre>
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One stage in this pipeline looks like it has hung, and has not: <a href="#page-dc-failures"><strong>8. What a Slow Stage Looks Like</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">One stage in this pipeline looks like it has hung, and has not: <a href="#page-dc-failures"><strong>What a Slow Stage Looks Like</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-failures" class="page-anchor">8. What a Slow Stage Looks Like</h3>
+    <h3 id="page-dc-failures" class="page-anchor">What a Slow Stage Looks Like</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 8 of 9</h3>
+  <div class="page-card-body">
 <p>One thing in a first run of this pipeline looks like a failure and is not, and it is worth recognising on sight. A couple of rules the data model already follows for you are worth knowing about too, because they are the kind of thing that bites when you write a model of your own.</p>
 <h4>The step that looks like a hang</h4>
 <p><code>02_create_dc_fabric.yml</code> will sit on <code>TASK [cisco.nac_dc_vxlan.create : Execute Create Resources]</code> and print nothing for <strong>several minutes</strong>. Nothing is wrong — that is the stage importing the switches, and importing them is a blocking HTTP call: <code>dcnm_inventory</code> POSTs to <code>fabrics/Pseudoco-DC1/inventory/discover</code> and Nexus Dashboard holds that request open while it SSHes to the switches in it, discovers them and imports them. There is one such POST per switch role — three here, for the leaves, the spines and the border. It is the same work you watched the <strong>Add Switches</strong> dialog do in section 4 — minutes, not seconds — except here there is no progress bar in front of it. Leave it alone; do not press <code>Ctrl-C</code>.</p>
@@ -10627,19 +10637,19 @@ ansible_connect_timeout: 1000</pre>
 <h4>Two rules the model already follows for you</h4>
 <p>Two settings in the data model exist because of how the controller behaves under automation rather than because the fabric needs them, and both are already declared &mdash; there is nothing for you to do. They are worth knowing about, because if you ever write a model of your own you will meet them.</p>
 <ul>
-<li><strong>Interface descriptions are plain ASCII.</strong> NDFC feeds <code>PEER1_PO_DESC</code> and <code>PEER2_PO_DESC</code> to a template that renders them into CLI, so a data model is payload rather than prose &mdash; keep punctuation simple there even though the surrounding documentation uses em dashes freely.</li>
+<li><strong>Interface descriptions are plain ASCII.</strong> Nexus Dashboard feeds <code>PEER1_PO_DESC</code> and <code>PEER2_PO_DESC</code> to a template that renders them into CLI, so a data model is payload rather than prose &mdash; keep punctuation simple there even though the surrounding documentation uses em dashes freely.</li>
 <li><strong>Every VRF and network pins its VLAN.</strong> Leave <code>vlan_id</code> out and <code>cisco.dcnm</code> asks the controller's resource manager for the next free VLAN. That endpoint answers honestly but reserves nothing, and the module asks once per object with nothing committed in between &mdash; so all three networks are handed the same VLAN, the first wins and the rest are rejected with <code>Entered network VLAN id 2300 is already in use</code>. The GUI's <strong>Propose VLAN</strong> button is safe only because you click <strong>Create</strong> between proposals. <strong>The automation is not the GUI clicks in a loop:</strong> a step that is safe performed one at a time can stop being safe performed all at once, and the difference is in the pacing rather than the API. The model therefore pins MainNetwork1 <code>2300</code>, ProdNetwork1 <code>2301</code>, IOTNetwork1 <code>2302</code> from the L2 range, and MAIN <code>2000</code>, PROD <code>2001</code>, IOT <code>2002</code> from the L3 range &mdash; the same values clicking through section 6 in order would have produced.</li>
 </ul>
 <hr>
 <div style="border: 2px solid #007a5e; border-radius: 8px; background-color: #ffffff; margin: 24px 0; font-family: Arial, Helvetica, sans-serif;">
 <div style="background-color: #e8f3ef; padding: 12px 16px; display: flex; align-items: center; color: #007a5e; font-weight: bold; font-size: 16px; border-bottom: 1px solid #007a5e;"><span style="font-size: 18px; margin-right: 10px;">🧭</span> Next up</div>
-<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">With the pipeline running clean, the last stage tells you whether the fabric matches what you declared: <a href="#page-dc-verify"><strong>9. Reading the Verification Report</strong></a>.</div>
+<div style="padding-top: 18px; padding-right: 20px; padding-bottom: 18px; color: #2e2e2e;">With the pipeline running clean, the last stage tells you whether the fabric matches what you declared: <a href="#page-dc-verify"><strong>Reading the Verification Report</strong></a>.</div>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-verify" class="page-anchor">9. Reading the Verification Report</h3>
+    <h3 id="page-dc-verify" class="page-anchor">Reading the Verification Report</h3>
   </div>
-  <div class="page-card-body"><h3>DC Infrastructure as Code — Step 9 of 9</h3>
+  <div class="page-card-body">
 <h4>Reading the verification report</h4>
 <p>Stage 08 is the last thing <code>01_dc_deploy.yml</code> runs, and you can also run it on its own whenever you want a second opinion on the fabric. It reads the controller, reads the border leaf, and writes two files; it changes nothing:</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
@@ -11186,6 +11196,55 @@ ansible-playbook playbooks/08_verify_fabric.yml</pre>
 </div></div>
 </div>
 <script>
+const copyIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg>';
+const copiedIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"></path></svg>';
+const copyCode=async text=>{
+  if(navigator.clipboard?.writeText&&window.isSecureContext){
+    try{await navigator.clipboard.writeText(text);return;}catch{}
+  }
+  const textarea=document.createElement('textarea');
+  textarea.value=text;
+  textarea.setAttribute('readonly','');
+  textarea.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.append(textarea);
+  textarea.select();
+  const copied=document.execCommand('copy');
+  textarea.remove();
+  if(!copied)throw new Error('Clipboard copy failed');
+};
+document.querySelectorAll('.page-card-body pre').forEach(pre=>{
+  const codeWindow=document.createElement('div');
+  codeWindow.className='code-window';
+  pre.before(codeWindow);
+  codeWindow.append(pre);
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='copy-code';
+  button.title='Copy code to clipboard';
+  button.setAttribute('aria-label','Copy code to clipboard');
+  button.innerHTML=copyIcon;
+  let feedbackTimer;
+  const resetFeedback=()=>{
+    button.innerHTML=copyIcon;
+    button.title='Copy code to clipboard';
+    button.setAttribute('aria-label','Copy code to clipboard');
+  };
+  button.addEventListener('click',async()=>{
+    clearTimeout(feedbackTimer);
+    try{
+      await copyCode(pre.textContent);
+      button.innerHTML=copiedIcon;
+      button.title='Copied to clipboard';
+      button.setAttribute('aria-label','Copied to clipboard');
+      feedbackTimer=setTimeout(resetFeedback,1500);
+    }catch{
+      button.title='Copy failed';
+      button.setAttribute('aria-label','Copy failed');
+      feedbackTimer=setTimeout(resetFeedback,2500);
+    }
+  });
+  codeWindow.append(button);
+});
 document.querySelectorAll('.nav-section-title').forEach(btn=>{
   btn.addEventListener('click',()=>{
     btn.classList.toggle('collapsed');

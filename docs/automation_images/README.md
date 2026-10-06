@@ -20,6 +20,7 @@ serves it from the repository root. The HTML references these with a relative pa
 |---|---|
 | `pipeline-subway-map.mmd` | Mermaid source for the subway-style pipeline map |
 | `pipeline-subway-map.png` | Rendered map used in card **1** |
+| `dc-segmentation-overview.drawio` / `dc-segmentation-overview.png` | Editable Draw.io source and rendered logical diagram for the Nexus Dashboard Infrastructure as Code overview (`#page-dc-overview`) |
 | `template-model.mmd` | Mermaid source for the DEFN / FUNC / FABRIC data-flow diagram |
 | `template-model.png` | Rendered diagram used in card **4** |
 | `evpn-dhcp-walkthrough.mmd` | Mermaid source for the DHCP relay round-trip sequence diagram |

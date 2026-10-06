@@ -3,7 +3,7 @@
 This pipeline builds the VXLAN EVPN data center fabric `Pseudoco-DC1` on Cisco
 Nexus Dashboard 4.2.1.10, from a declarative YAML model held in git.
 
-It automates sections 4 through 8 of the student guide's **NDFC - DC Fabric
+It automates sections 4 through 8 of the student guide's **Nexus Dashboard - DC Fabric
 Deployment**. Everything the guide has you click through in the Nexus Dashboard
 UI, this pipeline declares instead. The one thing it does not carry is the edge
 router's own side of the VRF-Lite handoff, which Nexus Dashboard cannot write -
@@ -63,16 +63,28 @@ Two consequences of that shape matter more than any syntax:
   Nexus Dashboard is *intent*. Stages 02 to 06 write intent; stages 05 and 07
   are the deploy stages that change running configuration.
 
-### The three roles this pipeline uses
+### Network as Code roles and their fabric outcomes
 
-The collection ships more roles than this. A stage here only ever calls these
-three, and the split between them is the pipeline's structure.
+These three Network as Code roles turn the declared model into a checked,
+staged, and deployed data center fabric. Each has a distinct part in that path:
 
 | Role | Called by | What it does |
 |---|---|---|
 | `cisco.nac_dc_vxlan.validate` | 02, 05, 07, and 08, as the first role of the play | Reads every `*.nac.yaml` out of `playbooks/host_vars/<fabric>/` and checks it against the collection's schema and rule set. Touches neither controller nor switch. A model error fails here instead of half way through a build |
-| `cisco.nac_dc_vxlan.dtc.create` | 02 | Builds the whole intent on the controller in 21 steps: fabric object, switch import and roles, vPC pair, port-channels, VRFs, networks, attachments. Changes nothing on a switch, with one exception - importing a switch is itself a write, and the import is greenfield |
+| `cisco.nac_dc_vxlan.dtc.create` | 02 | Builds the fabric intent on the controller; see the sequence below |
 | `cisco.nac_dc_vxlan.dtc.deploy` | 05 and 07 | The UI's Recalculate and Deploy. The only thing in this pipeline that changes running configuration |
+
+Stage 02 builds:
+
+- Fabric object
+- Switch import and roles
+- vPC pair
+- Port-channels
+- VRFs
+- Networks
+- Attachments
+
+Switch import is the exception to the controller-only changes: it is a greenfield write that erases the switch's existing running configuration.
 
 `validate` runs ahead of the other two in the same play rather than as a
 separate stage, because they read the same files and neither notices a key
@@ -176,7 +188,7 @@ Two things to expect from a first run, both normal:
 | `03_fabric_advanced_settings.yml` | Applies the settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
 | `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode, adds the IOS-XE edge router to it, and builds the VRF-Lite inter-fabric link that stage 06 needs |
 | `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric, which configures the parent interface of that link - the point at which the controller starts offering stage 06 a prototype |
-| `06_vrf_lite.yml` | Claims the declared dot1q tags out of `TOP_DOWN_L3_DOT1Q`, then adds the three VRF-Lite extensions to the border leaf's VRF attachments, from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
+| `06_vrf_lite.yml` | Reserves the declared dot1q tags out of `TOP_DOWN_L3_DOT1Q`, then adds the three VRF-Lite extensions to the border leaf's VRF attachments, from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
 | `07_recalculate_and_deploy.yml` | Second "Recalculate and Deploy". Pushes the extensions staged by stage 06 and is the **only** stage that changes running configuration |
 | `08_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes `evidence/stage08-verification.md` |
 | `09_cleanup.yml` | Destructive teardown: overlays, inter-fabric link, switches, both fabrics, then the sub-interfaces on the border leaf. Needs `-e dc_cleanup_confirm=CLEANUP_OK` |
@@ -666,14 +678,14 @@ and controller-chosen dot1q tags. The edge router on this pod is pre-built and
 in Monitor Mode, so its `GigabitEthernet2.2/.3/.4` addresses and tags are
 fixed and cannot be moved to meet the controller. Every value has to come from
 the data model instead, so stage 04 creates the IFC itself with `dcnm_links`
-and the `ext_fabric_setup` template, and stage 06 claims the dot1q tags before
+and the `ext_fabric_setup` template, and stage 06 reserves the dot1q tags before
 attaching. Under `Manual` the controller creates nothing of its own.
 
 Two companion settings went with it. `AUTO_SYMMETRIC_VRF_LITE` and
 `AUTO_UNIQUE_VRF_LITE_IP_PREFIX` are not merely unnecessary under `Manual` -
 the controller rejects them, so they are absent from
 `dc_advanced_settings.yml` rather than set to `false`.
-([NDFC - VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html))
+([Nexus Dashboard - VRF Lite](https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html))
 The default is `Manual`, under which no IFC is ever auto-created and external
 connectivity cannot be built at all.
 
@@ -698,7 +710,7 @@ presets is defined as *"Specifies to auto generate a VRF-Lite configuration
 for managed NX-OS neighbor devices. This knob autoconfigures the neighbor VRF
 on the neighboring managed device."* The `cisco.dcnm` nvPair name maps to that
 checkbox, which the CiscoDevNet
-[NDFC Terraform provider](https://registry.terraform.io/providers/CiscoDevNet/ndfc/latest/docs/data-sources/fabric)
+[Nexus Dashboard Terraform provider](https://registry.terraform.io/providers/CiscoDevNet/ndfc/latest/docs/data-sources/fabric)
 states directly: `auto_symmetric_vrf_lite` is *"Whether to auto generate VRF
 LITE sub-interface and BGP peering configuration on managed neighbor devices.
 If set, auto created VRF Lite IFC links will have Auto Deploy for Peer
@@ -1136,7 +1148,7 @@ the list. The [vrfAttachmentsPostPayload
 schema](https://developer.cisco.com/docs/nexus-dashboard/latest/vrfattachmentspostpayload/)
 (Nexus Dashboard API v1, Release 4.2 and later) describes that boolean as
 *"When deployment value is true it means it is to attach and when the value is
-false it means it is detach"*, and the [NDFC 12.1.2 API
+false it means it is detach"*, and the [Nexus Dashboard API changelog for 12.1.2
 changelog](https://developer.cisco.com/docs/nexus-dashboard-fabric-controller/12-1-2/api-changelog/)
 says the same of this exact path, under the heading *"Attach/Detach
 VRFs/VRF-Lite"*: *"List of LAN Attach objects. When in Lan Attach object
@@ -1333,7 +1345,7 @@ skips them deliberately and reports them as skipped.
   for how each of those reads.
 
 `extensionValues` is a JSON document encoded into a string field, and its
-inner keys are an NDFC implementation detail rather than a documented
+inner keys are a Nexus Dashboard implementation detail rather than a documented
 contract, so the three declared values are matched as substrings of the raw
 field rather than by walking a parsed structure. A schema change then costs a
 false failure that is obvious from the report, instead of a check that
@@ -1394,7 +1406,7 @@ sets Monitor Mode in the same call, so the fabric is never briefly writable.
 stage 04, but not with a `cisco.dcnm` module. Nexus Dashboard 4.x has two
 switch APIs, and only one of them supports a non-NX-OS device.
 
-The **legacy NDFC API** under `/appcenter/.../rest/control/` is what
+The **legacy fabric controller API** under `/appcenter/.../rest/control/` is what
 `dcnm_inventory` drives, and therefore what Nexus as Code drives. It has no
 IOS-XE support. The equivalent play would be:
 
@@ -1470,8 +1482,8 @@ from the UI is not portable between them.
 its `CSR/CAT8K/ASR/CAT9K` sub-selector. It selects the discovery protocol
 rather than labelling the device. Cisco's External Connectivity Network guide
 states that *"Cisco CSR 1000v is discovered using SSH ... does not need SNMP
-support"* and that *"Starting from NDFC release 12.1.3b, SNMP is not required
-for IOS-XE devices."* Omitting it makes the controller use the NX-OS SNMPv3
+support"*; the 12.1.3b release also removed the SNMP requirement for IOS-XE
+devices. Omitting it makes the controller use the NX-OS SNMPv3
 path, which produces the timeout above.
 
 Two further details shape how stage 04 checks its own work. The controller
