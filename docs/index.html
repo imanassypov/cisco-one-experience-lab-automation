@@ -1278,6 +1278,7 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 </div>
 <hr>
 <h4>Step 3 — Bootstrap the script server</h4>
+<p>These checks catch a wrong host, incomplete checkout, unusable vault, or broken <code>sudo</code> access before system changes begin. The bootstrap makes <code>cat-center.corp.pseudoco.com</code> resolvable, installs the pinned Python tools and Cisco collections required by later playbooks, and adds the virtual environment to your <code>PATH</code> so the lab runs from a consistent toolchain.</p>
 <p>Two playbooks, run in order. Together they take roughly ten minutes — most of that is downloading the <code>pyats</code> and <code>genie</code> libraries, which stage 12 needs to parse device output.</p>
 <p>Call them by their full path. <code>~/venv/bin</code> is not on your <code>PATH</code> yet — putting it there is one of the jobs of the second playbook.</p>
 <pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
@@ -1288,6 +1289,7 @@ cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootst
 <p>👀 <strong>Now reload your shell — this step catches nearly everyone.</strong> The second playbook adds <code>~/venv/bin</code> to your <code>PATH</code>, but it does that by writing to your shell startup files. A shell that is already open never re-reads those files, so in <em>this</em> session <code>ansible-playbook</code> is still not found. The bootstrap worked; your shell simply has not caught up.</p>
 <pre>exec $SHELL -l
 ansible-playbook --version</pre>
+<p><img class="img-fluid" src="automation_images/ansible_version.png" alt="Terminal after reloading the shell; ansible-playbook --version reports Ansible Core 2.17.14 and shows the executable running from the ~/venv virtual environment"></p>
 <p>Opening a new SSH session does the same thing. Once <code>ansible-playbook --version</code> answers, you can drop the <code>~/venv/bin/</code> prefix for the rest of the lab — every later command in this guide assumes you have done this.</p>
 </div>
 <div class="admonition warning">
@@ -10415,14 +10417,7 @@ dc_vrf_lite_extensions:
   </div>
   <div class="page-card-body">
 <h4>Running it</h4>
-<p>First, make sure script-server bootstrap has installed the pinned Python packages and Ansible collections. A script server staged before the DC track existed may not have the required collections. Pull the latest checkout and run:</p>
-<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
-git -C ~/cisco-one-experience-lab-automation pull
-ansible-playbook ~/cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap/playbooks/01_bootstrap_script_server.yml</pre>
-<p>The bootstrap verifies <code>cisco.dcnm 3.13.0</code>, <code>cisco.nac_dc_vxlan 0.9.0</code>, <code>cisco.nxos 10.2.0</code>, and the supporting collection pins. It also runs <code>pip check</code>. Re-running the bootstrap is the supported way to repair an older virtual environment.</p>
-<div class="admonition">
-<p>💡 <strong>If you skip this you get a confusing error.</strong> Ansible reports a missing <em>collection</em> as a missing <em>role</em>: <code>ERROR! the role 'cisco.nac_dc_vxlan.validate' was not found</code>, followed by a list of role search paths. Nothing is wrong with the playbook it points at — the collection simply is not installed.</p>
-</div>
+  <p><strong>Prerequisite:</strong> The script server must be staged and bootstrapped before running any data-center playbook. Complete <a href="#page-9002">Infrastructure as Code — Script Server Preparation (Ansible)</a> near the beginning of this guide first; that setup installs the pinned Python environment and Cisco collections these playbooks require.</p>
 <p>Then read the serials off the switches, which also writes the data model, and run the pipeline:</p>
 <pre>ansible-playbook playbooks/00_discover_dc_switch_serials.yml
 ansible-playbook playbooks/01_dc_deploy.yml</pre>
@@ -10444,7 +10439,21 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <p>You can still have section 4 on its own when you want it, and the right way to ask for it is a tag rather than a separate playbook. The create role exposes a per-step tag for the fabric object:</p>
 <pre>ansible-playbook playbooks/02_create_dc_fabric.yml --tags cr_manage_fabric</pre>
 <p>The guards in Stage 02 (fabric creation) on the generated switch model are tagged <code>always</code>, so they still run underneath that filter — you get a fabric-only run <em>with</em> the checks rather than instead of them. The one thing you cannot do is stand up an empty fabric on a fresh checkout before running stage 00 (serial discovery), because stage 02 (fabric creation) refuses to start without the switch model. Stage 00 (serial discovery) was already a hard prerequisite, so that costs you nothing real.</p>
-<p>The numbering is worth a second of your attention, because it answers a question you would otherwise have to open each file to settle: <strong>Stages 02 (fabric creation), 03 (fabric settings), 04 (External fabric and link), 05 (first deploy), 06 (VRF-Lite extension staging), 07 (extension deploy), and 08 (fabric verification) are exactly what <code>01_dc_deploy.yml</code> runs, and anything numbered outside that range is something you invoke by name.</strong> Two playbooks sit outside it deliberately. <code>00_discover_dc_switch_serials.yml</code> comes first because it is the only stage that reaches a switch directly, and it only needs running again if the pod hardware changes. <code>09_remove.yml</code> is a destructive prune that the orchestrator must never trigger by accident.</p>
+<p>The numbering is worth a second of your attention: it tells you which playbooks <code>01_dc_deploy.yml</code> runs without opening each file:</p>
+<ul>
+<li><strong>Stage 02 (fabric creation)</strong></li>
+<li><strong>Stage 03 (fabric settings)</strong></li>
+<li><strong>Stage 04 (External fabric and link)</strong></li>
+<li><strong>Stage 05 (first deploy)</strong></li>
+<li><strong>Stage 06 (VRF-Lite extension staging)</strong></li>
+<li><strong>Stage 07 (extension deploy)</strong></li>
+<li><strong>Stage 08 (fabric verification)</strong></li>
+</ul>
+<p>Two playbooks sit outside the orchestrator and must be run by name:</p>
+<ul>
+<li><code>00_discover_dc_switch_serials.yml</code> comes first because it is the only stage that reaches a switch directly. Rerun it only if the pod hardware changes.</li>
+<li><code>09_remove.yml</code> is a destructive prune that the orchestrator must never trigger by accident.</li>
+</ul>
 <p>Stages <code>03</code> and <code>04</code> run before the first deploy because their settings and External fabric are inputs to the inter-fabric link, and stage <code>04</code> is what creates that link. Stage <code>06</code> runs after the first deploy because the controller will not offer it a prototype until that link's parent interface exists on the switch. The second <strong>Recalculate and Deploy</strong> then carries the three dot1q sub-interfaces and their BGP neighbours to the border leaf.</p>
 <p>The verification stage reads the Nexus Dashboard API and writes <code>evidence/stage08-verification.md</code>. It compares every switch, VRF, network, and VRF-Lite extension against the declared model. It also reads BGP session state from DC-Service-Leaf over SSH when <code>dc_verify_bgp_sessions</code> is enabled. If the switch cannot be reached, the BGP result is <code>not determined</code>, not a failed-session claim. The stage changes nothing, so you can re-run it. Use <code>-e dc_verify_fail_on_mismatch=false</code> to write the report without failing on a mismatch, or <code>-e dc_verify_bgp_sessions=false</code> to omit the SSH check.</p>
 <div class="admonition">
