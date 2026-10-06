@@ -230,7 +230,7 @@
           playbooks/00_discover_dc_switch_serials.yml, which reads the serials
           off the switches and regenerates that file.
 
-    # ------------------------------------------------- claim the dot1q tags
+    # ------------------------------------------------- reserve the dot1q tags
     # Nexus Dashboard allocates a dot1q ID per VRF out of the TOP_DOWN_L3_DOT1Q
     # pool, scoped to this border leaf, and it does so DURING the attachment
     # POST below: it reserves a tag for every VRF in the payload before it
@@ -245,7 +245,7 @@
     # allocatedFlag false and timestamps 2 seconds AHEAD of the one that
     # succeeded: reservations the controller had just made for itself.
     #
-    # So the tags are claimed here first, from the data model, with
+    # So the tags are reserved here first, from the data model, with
     # isManual=true. Once every declared ID is already held by the VRF that
     # declares it, the controller has nothing left to choose and the POST below
     # simply writes what it was given. Re-running changes nothing, because a
