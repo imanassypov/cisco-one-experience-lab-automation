@@ -123,14 +123,16 @@ Confirm it opens the credential map:
 
 ```bash
 cd ~/cisco-one-experience-lab-automation
-ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
+~/venv/bin/ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
 # ---
 # # Vault-encrypted lab access lookup. Single credential source for all playbooks.
 # lab_access:
 #   "script_server":
 ```
 
-If that prints YAML, every playbook in the repo can authenticate. The
+The full path is needed because `~/venv/bin` is not on `PATH` until
+`01_bootstrap_script_server.yml` runs; reloading the shell before that does
+nothing. If that prints YAML, every playbook in the repo can authenticate. The
 `--vault-password-file` flag is needed here only because the repository root has
 no `ansible.cfg`; inside a collection directory the config supplies it.
 
