@@ -215,6 +215,11 @@ say "Pod ${LAB_POD_ID} written to lab.yml (SSID will be PSEUDOCO-POD$(printf '%0
 
 cat <<EOF
 
+Check the vault opens (full path - the venv is not on PATH yet):
+
+  cd ${REPO_ROOT}
+  ${VENV}/bin/ansible-vault view "Lab Topology/lab_access.yml" --vault-password-file .vault | head -4
+
 Now bootstrap this host. These use the venv directly, so there is nothing to
 activate first:
 
