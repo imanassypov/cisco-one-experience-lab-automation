@@ -3473,6 +3473,8 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/network_compliance_workflow_manager_module.html"><code>network_compliance_workflow_manager</code></a></span>Check image compliance again after activation.</div></div>
 </div>
 <pre>ansible-playbook playbooks/09_swim.yml</pre>
+<p>The successful run below shows Stage 09 activating the image and reloading the switches. An Ansible recap with <code>failed=0</code> confirms the workflow completed; run Stage 12 separately to verify the fabric and its telemetry after the upgrade.</p>
+<p><img class="img-fluid" src="automation_images/evpn_swim.png" alt="Ansible output showing a successful Stage 09 IOS-XE upgrade, activation and switch reload, followed by a recap with no failed tasks" width="1000"></p>
 <h5 class="stage-title">Stage 10 — Deploy the EVPN configuration</h5>
 <p><strong>Purpose:</strong> Render the composite templates for each switch and push the resulting EVPN configuration. This is the stage that pushes the EVPN configuration described in <a href="#page-9005">the template-model section</a>.</p>
 <p><strong>Catalyst Center call order:</strong></p>
