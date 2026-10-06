@@ -85,6 +85,7 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 .page-card-body h2{font-size:1.875rem}
 .page-card-body h3{font-size:1.640625rem}
 .page-card-body h4{font-size:1.40625rem}
+.page-card-body .stage-title{font-size:1.5rem;font-weight:700;line-height:1.3;color:var(--cisco-dark);background:#e8f7fc;border:1px solid #cfe9f2;border-left:5px solid var(--cisco-blue);border-radius:var(--ws-radius);padding:14px 18px;margin:28px 0 12px;overflow-wrap:break-word}
 .page-card-body p{line-height:1.7;margin:8px 0}
 .page-card-body ul,.page-card-body ol{padding-left:22px;line-height:1.8}
 .page-card-body table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
@@ -209,8 +210,8 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
   <ul class="nav-pages hidden"><li><a href="#page-9010">How DHCP Works in a Multi-Tenant Fabric</a></li>
 </ul>
 </div><div class="nav-section">
-  <div class="nav-section-title collapsed"><span class="arrow">▾</span>Splunk EVPN Assurance <em>(optional)</em></div>
-  <ul class="nav-pages hidden"><li><a href="#page-9020">Streaming Telemetry into Splunk</a></li>
+  <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Splunk EVPN Assurance <em>(optional)</em></div>
+  <ul class="nav-pages hidden"><li><a class="iac" href="#page-9020"><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Streaming Telemetry into Splunk</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Macro / Micro Segmentation</div>
@@ -3377,7 +3378,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <hr>
 <h4>What each stage does</h4>
 <p>Run these commands from the pipeline directory shown above. Most stages read the design from <code>Settings/settings.json</code>, then use a Cisco Ansible module or a REST request to make the corresponding change in Catalyst Center. Linked API calls open Cisco's official <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/overview">Catalyst Center 3.1.5 API reference</a>.</p>
-<h5>Stage 01 — Create the site hierarchy</h5>
+<h5 class="stage-title">Stage 01 — Create the site hierarchy</h5>
 <p><strong>Purpose:</strong> Create the areas, buildings, and floors that later stages use to locate devices and apply settings.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3387,7 +3388,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/floors_module.html"><code>floors</code></a></span>Create missing floors beneath their buildings.</div></div>
 </div>
 <pre>ansible-playbook playbooks/01_site_hierarchy.yml</pre>
-<h5>Stage 02 — Apply network services</h5>
+<h5 class="stage-title">Stage 02 — Apply network services</h5>
 <p><strong>Purpose:</strong> Define site services such as DHCP, DNS, NTP, syslog, SNMP, and AAA.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3397,7 +3398,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/asynchronous-api">Poll the execution status</a></span>Follow the status URL returned by Catalyst Center until the settings operation finishes.</div></div>
 </div>
 <pre>ansible-playbook playbooks/02_network_settings.yml</pre>
-<h5>Stage 03 — Create and assign device credentials</h5>
+<h5 class="stage-title">Stage 03 — Create and assign device credentials</h5>
 <p><strong>Purpose:</strong> Give Catalyst Center the CLI, SNMP, HTTPS, and NETCONF credentials it needs to manage and discover devices.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3408,14 +3409,14 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-task-by-id"><code>GET /api/v1/task/{taskId}</code></a></span>Poll the asynchronous NETCONF operation until it completes.</div></div>
 </div>
 <pre>ansible-playbook playbooks/03_credentials.yml</pre>
-<h5>Stage 04 — Discover devices</h5>
+<h5 class="stage-title">Stage 04 — Discover devices</h5>
 <p><strong>Purpose:</strong> Ask Catalyst Center to find the switches and wireless controller listed in the design.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
 <div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/discovery_workflow_manager_module.html"><code>discovery_workflow_manager</code></a></span>Submit each configured discovery job with the credentials from stage 03; the workflow uses <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-discovery-by-id">Get Discovery by ID</a> to track it. Discovered devices appear in inventory, initially under the global site.</div></div>
 </div>
 <pre>ansible-playbook playbooks/04_device_discovery.yml</pre>
-<h5>Stage 05 — Assign devices to sites</h5>
+<h5 class="stage-title">Stage 05 — Assign devices to sites</h5>
 <p><strong>Purpose:</strong> Put each discovered device in the site where it belongs, so later provisioning can find it.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3423,7 +3424,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/assign_device_to_site_module.html"><code>assign_device_to_site</code></a></span>Associate each discovered device with its destination site.</div></div>
 </div>
 <pre>ansible-playbook playbooks/05_assign_to_site.yml</pre>
-<h5>Stage 06 — Upload templates</h5>
+<h5 class="stage-title">Stage 06 — Upload templates</h5>
 <p><strong>Purpose:</strong> Load the Jinja templates and composite definitions that describe the EVPN configuration. The source is either the local template folder or the configured Git repository.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3431,7 +3432,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/template_workflow_manager_module.html"><code>template_workflow_manager</code></a></span>List or create the project with <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-a-list-of-projects">Get Projects</a> / <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-project">Create Project</a>, then list, create, or update its templates with <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-the-templates-available">Get Templates</a>, <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/create-template">Create Template</a>, and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/update-template">Update Template</a>.</div></div>
 </div>
 <pre>ansible-playbook playbooks/06_template_sync.yml</pre>
-<h5>Stage 07 — Build network profiles</h5>
+<h5 class="stage-title">Stage 07 — Build network profiles</h5>
 <p><strong>Purpose:</strong> Connect the site to its switching templates and define the wireless design and profiles.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3443,7 +3444,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/dnac/network_profile_wireless_workflow_manager_module.html"><code>network_profile_wireless_workflow_manager</code></a></span>Create and bind any wireless profile to the sites it serves.</div></div>
 </div>
 <pre>ansible-playbook playbooks/07_network_profile.yml</pre>
-<h5>Stage 08 — Provision devices</h5>
+<h5 class="stage-title">Stage 08 — Provision devices</h5>
 <p><strong>Purpose:</strong> Provision switches to their sites, applying site settings and switching profiles, then provision the wireless controller and any already-known APs.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3454,19 +3455,25 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/ap-provision"><code>POST /dna/intent/api/v1/wirelessAccessPoints/provision</code></a></span>Provision the AP so its policy and site tags are applied, then poll the task result.</div></div>
 </div>
 <pre>ansible-playbook playbooks/08_provision_devices.yml</pre>
-<h5>Stage 09 — Upgrade switch software</h5>
+<h5 class="stage-title">Stage 09 — Upgrade switch software</h5>
+<div class="admonition warning">
+<p>⚠️ <strong>Optional: allow approximately 30 minutes for the SWIM upgrade.</strong> Complete this step if you want the IOS-XE support needed for EVPN telemetry subscriptions, which feed <a href="#page-9020">Splunk EVPN Assurance</a>. If you are not following the optional Splunk assurance exercise, you can omit this upgrade when running the numbered playbooks individually.</p>
+<p>The expected completion time is <strong>around 30 minutes</strong>, assuming the IOS-XE images have already been uploaded to the script server and made available over HTTP at the <code>swim.image_base_url</code> configured in <code>Settings/settings.json</code>. The lab settings use <code>import_source: remote</code>, so Catalyst Center imports the image from the script server. Cisco.com import is an alternative when <code>import_source</code> is set to <code>CCO</code>. Allow additional time if the image still needs to be downloaded or staged.</p>
+<p><strong>This is a full software upgrade, not just a telemetry configuration change.</strong> SWIM distributes and activates the image, reloads the switches, and checks them afterwards. Expect a fabric outage while they restart. The full-site orchestrator includes stage 09 by default; <code>-e swim_activate=false</code> stops after distribution without activating the new image, but does not complete the upgrade needed for the newer telemetry support.</p>
+<p><strong>The upgrade is only the switch-side prerequisite.</strong> Stage 12's telemetry receiver checks will still fail if you have not yet completed the <a href="#page-9020">Splunk EVPN Assurance automation</a> and the collector is not already running. That workflow installs and configures the <strong>OpenTelemetry (OTel) collector on the Splunk host</strong> before it can receive the switches' telemetry. Once Splunk assurance provisioning is complete, you are encouraged to <strong>re-run Stage 12</strong>: with a supported switch image, valid subscriptions and an accessible collector, the telemetry connections should be established and those checks should pass.</p>
+</div>
 <p><strong>Purpose:</strong> Import the chosen IOS-XE image, distribute it to the switches, and activate it so the fabric runs the intended software. Activation reloads the switches; add <code>-e swim_activate=false</code> to stop after distribution.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
 <div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/inventory_workflow_manager_module.html"><code>inventory_workflow_manager</code></a></span>Resynchronize the device inventory; see Cisco's SWIM guide for the related <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">image inventory workflow</a>.</div></div>
 <div class="flow-step chain-api"><div class="flow-num">2</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/network_compliance_workflow_manager_module.html"><code>network_compliance_workflow_manager</code></a></span>Record the starting image-compliance state.</div></div>
-<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: import</a> and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/tag-as-golden-image">tag golden</a></span>Import the selected image from Cisco.com and mark it as the site's golden image; see the official <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
+<div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: import</a> and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/tag-as-golden-image">tag golden</a></span>Import the selected image from the configured source (the script server's HTTP service in this lab, or Cisco.com for CCO import) and mark it as the site's golden image; see the official <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
 <div class="flow-step chain-api"><div class="flow-num">4</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: distribute</a></span>Copy the image to each target switch's flash; see Cisco's <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
 <div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/swim_workflow_manager_module.html"><code>swim_workflow_manager</code>: activate</a></span>By default, install the image and reload the switches; <code>-e swim_activate=false</code> skips activation. See Cisco's <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">SWIM guide</a>.</div></div>
 <div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/network_compliance_workflow_manager_module.html"><code>network_compliance_workflow_manager</code></a></span>Check image compliance again after activation.</div></div>
 </div>
 <pre>ansible-playbook playbooks/09_swim.yml</pre>
-<h5>Stage 10 — Deploy the EVPN configuration</h5>
+<h5 class="stage-title">Stage 10 — Deploy the EVPN configuration</h5>
 <p><strong>Purpose:</strong> Render the composite templates for each switch and push the resulting EVPN configuration. This is the stage that pushes the EVPN configuration described in <a href="#page-9005">the template-model section</a>.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3475,7 +3482,7 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">3</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/get-task-by-id"><code>GET /dna/intent/api/v1/task/{taskId}</code></a> and <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/status-of-template-deployment">deployment status</a></span>Poll each switch's task and read the deployment result.</div></div>
 </div>
 <pre>ansible-playbook playbooks/10_deploy_composite.yml</pre>
-<h5>Stage 11 — Wait for and provision access points</h5>
+<h5 class="stage-title">Stage 11 — Wait for and provision access points</h5>
 <p><strong>Purpose:</strong> Wait until a physical AP boots and registers, record its Ethernet MAC in <code>lab.yml</code>, then name, site-assign, and provision it. This stage waits on hardware, so it can take several minutes.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
@@ -3486,8 +3493,17 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">5</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/ap-provision"><code>POST /dna/intent/api/v1/wirelessAccessPoints/provision</code></a></span>Apply the AP's policy and site tags, then poll the task result.</div></div>
 </div>
 <pre>ansible-playbook playbooks/11_await_access_points.yml</pre>
-<h5>Stage 12 — Verify the running fabric</h5>
+<p>A successful run ends with an <strong>Access point provisioning summary</strong> like the example below. Here, <code>SITE-105-AP-1</code> was provisioned on the <code>Site-105/MAIN</code> floor, and the play recap shows <code>unreachable=0</code> and <code>failed=0</code>. The second AP is listed under <strong>Skipped</strong>; this example provisioned one access point, so that entry is not a failure. Your pod's AP name and MAC address may differ.</p>
+<p><img class="img-fluid" src="automation_images/evpn_provision_ap.png" alt="Stage 11 access point provisioning summary showing SITE-105-AP-1 provisioned on the Site-105 MAIN floor, SITE-105-AP-2 skipped, and a play recap with no unreachable hosts or failures" width="1000"></p>
+<p>Provisioning reboots the access point. Allow 1-3 minutes for it to rejoin, then confirm <code>show ap tag summary</code> on the controller reports a <strong>Static</strong> tag source before continuing to stage 12.</p>
+<h5 class="stage-title">Stage 12 — Verify the running fabric</h5>
 <p><strong>Purpose:</strong> Compare the design with the live switches and controller, then write a pass/fail report. This stage is read-only and does not change the network.</p>
+<div class="admonition warning">
+<p>⚠️ <strong>Telemetry validation depends on completing Splunk assurance provisioning.</strong> If you have not yet completed the <a href="#page-9020">Splunk EVPN Assurance automation</a> and no collector is running, the telemetry receiver checks will fail even after the Stage 09 upgrade. The assurance workflow installs the <strong>OpenTelemetry (OTel) collector</strong>, configures it on the Splunk host and starts its receiver at <code>198.18.5.109:57444</code>. Until that receiver is ready, valid subscriptions cannot connect; this does not by itself mean the EVPN forwarding configuration failed.</p>
+<p><strong>After completing Splunk assurance provisioning, re-run this validation step.</strong> Allow time for the switches to establish their telemetry connections, then run the command below from the script server. With the intended switch image, valid subscriptions and working collector connectivity, the telemetry checks should now pass, and the overall validation should pass if the other fabric checks also match the design. If any failures remain, inspect the updated evidence report rather than assuming they are all collector-related.</p>
+<pre>cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible
+ansible-playbook playbooks/12_verify_intent.yml</pre>
+</div>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
 <div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/gets-a-list-of-projects"><code>GET /dna/intent/api/v1/template-programmer/project</code></a></span>Find the Template Programmer project containing the deployed design.</div></div>
@@ -3498,6 +3514,29 @@ ansible-playbook playbooks/12_verify_intent.yml</pre>
 <div class="flow-step chain-api"><div class="flow-num">6</div><div class="flow-body"><span class="flow-title"><a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/download-a-file-by-fileid"><code>GET /dna/intent/api/v1/file/{fileId}</code></a></span>Download the command results; Ansible evaluates them and writes the evidence report.</div></div>
 </div>
 <pre>ansible-playbook playbooks/12_verify_intent.yml</pre>
+<div class="admonition warning">
+<p>⚠️ <strong>If you skipped Stage 09: telemetry checks can fail even though the EVPN fabric is working.</strong> The example below shows six failed checks: subscription validity and receiver connectivity on each of the two leaves and the Border-Spine. These are six <em>device-level checks</em>, not six missing subscriptions. The verifier still writes its Markdown and HTML reports before returning a failure.</p>
+</div>
+<p><img class="img-fluid" src="automation_images/evpn_validation_without_swim.png" alt="Stage 12 validation after skipping the SWIM upgrade, showing telemetry subscription and receiver failures on both leaves and the Border-Spine, with six failed checks and saved evidence reports" width="1000"></p>
+<p><strong>What was actually installed?</strong> Read-only checks from Kali on both <code>Site_105-Leaf1</code> and <code>Site_105-Leaf2</code> found IOS-XE <code>17.12.01</code> and all <strong>19 expected Splunk subscriptions</strong> in running configuration. None was missing. The device rejected the NVE/EVPN subscriptions' operational data paths with <code>Invalid XPath filter</code>, so configured does not mean usable:</p>
+<table style="border-collapse: collapse; width: 100%;" border="1">
+<thead><tr><th>Subscriptions</th><th>Data</th><th>Observed on both leaves</th></tr></thead>
+<tbody>
+<tr><td><code>40101-40106</code></td><td>NVE global state, per-VNI state and peer adjacency</td><td><code>Invalid</code>; receivers <code>Disconnected</code> because the subscription is invalid</td></tr>
+<tr><td><code>40107-40112</code></td><td>EVPN instance, VLAN binding and per-EVI peer state</td><td><code>Invalid</code>; receivers <code>Disconnected</code> because the subscription is invalid</td></tr>
+<tr><td><code>40115</code>, <code>40117</code></td><td>NVE global and per-VNI traffic counters</td><td><code>Invalid</code>; receivers <code>Disconnected</code> because the subscription is invalid</td></tr>
+<tr><td><code>40114</code>, <code>40116</code>, <code>40119</code></td><td>BGP neighbour and address-family state</td><td><code>Valid</code>; receivers <code>Transport requested</code>, not connected</td></tr>
+<tr><td><code>40120</code>, <code>40121</code></td><td>Interface operational state</td><td><code>Valid</code>; receivers <code>Transport requested</code>, not connected</td></tr>
+</tbody>
+</table>
+<p>IDs <code>40113</code> and <code>40118</code> are not part of the current template's expected set. Do not add them just to fill the gaps in the numbering. The screenshot also reports the Border-Spine failing; the detailed device inspection above was performed on the two leaves.</p>
+<p>To inspect the same distinction yourself, run these read-only commands on each leaf from Kali:</p>
+<pre>show version
+show running-config | section ^telemetry ietf subscription
+show telemetry ietf subscription all
+show telemetry ietf subscription all receivers</pre>
+<p><strong>For the Splunk assurance exercise, complete the Stage 09 upgrade</strong> to the intended lab image, re-run stage 10, and complete the <a href="#page-9020">Splunk EVPN Assurance automation</a> before re-running stage 12. Stage 09 reloads the switches, so allow the upgrade and restart to finish first. An upgrade addresses the unsupported data paths; the assurance workflow installs and configures the collector needed to receive the telemetry. Once both are ready and the connections are established, the telemetry checks should pass. If valid subscriptions still show <code>Transport requested</code>, separately check the collector service, listener and network path to <code>198.18.5.109:57444</code>.</p>
+<p>If you intentionally omit Splunk assurance, you can keep the failure report as evidence of the telemetry limitation. To generate the report without a failing exit status, use <code>-e verify_fail_on_mismatch=false</code>; that changes reporting only, not subscription validity or connectivity.</p>
 <hr>
 <h4>What stage 10 actually pushes</h4>
 <p>This is the stage that creates the EVPN fabric — the same configuration the traditional path asks you to paste by hand. It does not come from the playbook. It comes from a set of Jinja2 templates that stage 06 uploaded into Catalyst Center, which Catalyst Center then renders <strong>separately for each device</strong>.</p>
@@ -4769,7 +4808,7 @@ show ip dhcp relay information trusted-sources</pre>
 <pre style="background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto;">cd ansible-automation/07_assurance/splunk_evpn
 bash packaging/build-app.sh
 ls -lh packaging/dist/*.spl</pre>
-<p>The script prints the package path and SHA-256 checksum. Transfer the resulting <code>.spl</code> to the computer running your browser, then upload it in Splunk Web under <strong>Apps &gt; Manage Apps &gt; Install app from file</strong>. For an existing installation, select the upgrade option and follow any restart prompt. Installing the dashboards alone does not configure telemetry collection; follow the repository's <code>SETUP_GUIDE.md</code> for the index, HEC and collector setup.</p>
+<p>The script prints the package path and SHA-256 checksum. Transfer the resulting <code>.spl</code> to the computer running your browser, then upload it in Splunk Web under <strong>Apps &gt; Manage Apps &gt; Install app from file</strong>. For an existing installation, select the upgrade option and follow any restart prompt. Installing the dashboards alone does not configure telemetry collection; follow <strong>Manual installation</strong> in <code>ansible-automation/07_assurance/splunk_evpn/README.md</code> for the index, HEC and collector setup.</p>
 </div>
 <p>The whole thing is a single collection, <code>07_assurance/splunk_evpn</code>, with the same numbered-stage shape as the campus pipeline:</p>
 <pre>cd ansible-automation/07_assurance/splunk_evpn/ansible
