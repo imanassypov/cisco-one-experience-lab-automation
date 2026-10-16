@@ -316,16 +316,16 @@ body{margin:0;font-family:'Open Sans',-apple-system,'Segoe UI',Arial,sans-serif;
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span><svg class="nav-icon iac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code</div>
-  <ul class="nav-pages hidden"><li><a href="#page-dc-overview">Overview</a></li>
-<li><a href="#page-dc-automation">Why Automate the DC Fabric</a></li>
-<li><a href="#page-dc-model">Where the Definitions Live</a></li>
-<li><a href="#page-dc-serials">Serial Discovery</a></li>
-<li><a href="#page-dc-run">Run the Pipeline</a></li>
-<li><a href="#page-dc-settings">The Settings the Model Cannot Express</a></li>
-<li><a href="#page-dc-vrflite">VRF-Lite, and Who Builds the Link</a></li>
-<li><a href="#page-dc-stage05">VRF-Lite, and the One Thing It Needs</a></li>
-<li><a href="#page-dc-failures">What a Slow Stage Looks Like</a></li>
-<li><a href="#page-dc-verify">Reading the Verification Report</a></li>
+  <ul class="nav-pages hidden"><li><a href="#page-dc-overview">1. Overview</a></li>
+<li><a href="#page-dc-automation">2. Why Automate the DC Fabric</a></li>
+<li><a href="#page-dc-model">3. Where the Definitions Live</a></li>
+<li><a href="#page-dc-serials">4. Serial Discovery</a></li>
+<li><a href="#page-dc-run">5. Run the Pipeline</a></li>
+<li><a href="#page-dc-settings">6. The Settings the Model Cannot Express</a></li>
+<li><a href="#page-dc-vrflite">7. VRF-Lite, and Who Builds the Link</a></li>
+<li><a href="#page-dc-stage05">8. VRF-Lite, and the One Thing It Needs</a></li>
+<li><a href="#page-dc-failures">9. What a Slow Stage Looks Like</a></li>
+<li><a href="#page-dc-verify">10. Reading the Verification Report</a></li>
 </ul>
 </div><div class="nav-section">
   <div class="nav-section-title collapsed"><span class="arrow">▾</span>Lab Prep Steps</div>
@@ -9959,7 +9959,7 @@ curl -sk -u &lt;admin&gt; "https://198.18.5.109:8089/services/messages?output_mo
 <p><strong>The interesting part is that the controller is still working after stage 04 returns.</strong> This section opens by telling you that <em>"your border leaf and external router must detect each other so the provisioning of the sub-interface (with IP address) and BGP configuration can occur"</em>, and section 7 says the External fabric exists <em>"so that ND can detect the physical connection using CDP"</em>. That detection is asynchronous. Adding the router to the External fabric returns <code>HTTP 202</code> with an empty body, and Nexus Dashboard onboards it and correlates its CDP adjacency with DC-Service-Leaf afterwards, on its own schedule. Anything that asks "what is pending?" before the controller has an answer gets a truthful nothing:</p>
 <pre>DEPLOY [Pseudoco-DC1] get_deployable_switches &rarr; ok (changed=0/5)
 DEPLOY [Pseudoco-DC1] all &rarr; skipped (no switches need deployment)</pre>
-<p>So a deploy fired seconds after stage 04 can report <code>0/5</code> and exit successfully, and a minute later deploy the border leaf with nobody having touched anything. In the UI you would never notice, because clicking through the wizard takes longer than the controller does. <strong>What that asynchrony does <em>not</em> explain on its own is a stage 05 failure</strong>, which was the working theory for a while and turned out to be only half the answer — the deploy itself, not merely the time that passes, is what stage 05 is waiting on. See <a href="#what-stage-05-needs">card 7 of the automation track</a>.</p>
+<p>So a deploy fired seconds after stage 04 can report <code>0/5</code> and exit successfully, and a minute later deploy the border leaf with nobody having touched anything. In the UI you would never notice, because clicking through the wizard takes longer than the controller does. <strong>What that asynchrony does <em>not</em> explain on its own is a stage 05 failure</strong>, which was the working theory for a while and turned out to be only half the answer — the deploy itself, not merely the time that passes, is what stage 05 is waiting on. See <a href="#what-stage-05-needs">card 8 of the automation track</a>.</p>
 <p><strong>Why only one switch ever appears in that deploy.</strong> Cisco scopes VRF-Lite autoconfiguration to <em>"Border role in the VXLAN fabric and Edge Router role in the connected external fabric device"</em> (<a href="https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html">Cisco Nexus Dashboard &mdash; VRF Lite</a>). DC-Service-Leaf is this fabric's only <code>border</code> switch and DC-SITE11-CEDGE8Kv its only <code>edgeRouter</code>, so the pair of them is the entire scope. DC-Leaf1, DC-Leaf2 and the two spines are outside it and will never show up here.</p>
 <p><strong>What to trust.</strong> A <code>0/5</code> result is a statement about that instant, not proof the fabric is finished. The signals worth believing are <code>check_sync &rarr; in_sync=True</code> after a run that actually deployed something, and a clean <code>08_verify_fabric.yml</code>.</p>
 </div></div>
@@ -10105,7 +10105,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
   <div class="section-header"><h2>Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code</h2></div>
   <div class="page-card">
   <div class="page-card-header"><span>📄</span>
-    <h3 id="page-dc-overview" class="page-anchor">Overview</h3>
+    <h3 id="page-dc-overview" class="page-anchor">1. Overview</h3>
   </div>
   <div class="page-card-body"><p>PseudoCo's Zero Trust design is only useful if its segmentation reaches the applications and services employees depend on. This track extends the lab's existing <strong>MAIN, PROD, and IoT business segments</strong> into the data center, so workloads are placed into the same broad security domains as the users, devices, and services that need to reach them. The goal is a consistent segmentation model across campus, branch, WAN, and data center, reducing gaps created when each network domain is built and operated independently.</p>
 <p><img class="img-fluid" src="automation_images/dc-segmentation-overview.png" alt="Logical diagram showing MAIN, PROD, and IoT segments carried from campus, branch, and WAN through the pod-configured external router and separate VRF-Lite links into matching VRFs in the Pseudoco-DC1 VXLAN EVPN fabric, with the Ansible deployment and verification flow below." width="1405" height="695"></p>
@@ -10115,7 +10115,7 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <p>The Infrastructure as Code path reaches the same fabric outcome as <a href="#page-8208">Manual Provisioning</a>, but expresses the intended state in a version-controlled model and applies it through a repeatable pipeline in Nexus Dashboard. Choose either path for a pod; both build the same fabric.</p></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-automation" class="page-anchor">Why Automate the DC Fabric</h3>
+    <h3 id="page-dc-automation" class="page-anchor">2. Why Automate the DC Fabric</h3>
   </div>
   <div class="page-card-body">
 <div class="admonition warning">
@@ -10145,19 +10145,19 @@ Scroll down an verify the config. Then <strong>Click Save</strong></article>
 <td><strong>Attaching the border leaf</strong></td>
 <td>Section 8 does both <strong>Detach/Attach</strong> sliders in one place: attach the VRF, then enable the extension inside <strong>Edit Extension Details</strong></td>
 <td>Split across two stages. The plain attachment is a <code>vrf_attach_group</code> entry the model owns in stage 02; the extension is stage 06</td>
-<td>The Network as Code model can name a switch in an attach group and nothing else. It has no key for <code>EXTEND: VRF_LITE</code>, the sub-interface, the tag or the neighbour, so the second half has to be applied separately. <a href="#page-dc-stage05">Card 7</a></td>
+<td>The Network as Code model can name a switch in an attach group and nothing else. It has no key for <code>EXTEND: VRF_LITE</code>, the sub-interface, the tag or the neighbour, so the second half has to be applied separately. <a href="#page-dc-stage05">Card 8</a></td>
 </tr>
 <tr>
 <td><strong>Serial numbers</strong></td>
 <td>Switches are discovered from a seed IP; you never type a serial</td>
 <td><code>00_discover_dc_switch_serials.yml</code> SSHes to each switch first and generates <code>topology_switches.nac.yaml</code></td>
-<td>The data model identifies a switch by serial, and Nexus Dashboard keys on the <strong>chassis</strong> serial. It cannot be read from an empty controller, and on these virtual switches it is not the one <code>show version</code> prints. <a href="#page-dc-serials">Card 3</a></td>
+<td>The data model identifies a switch by serial, and Nexus Dashboard keys on the <strong>chassis</strong> serial. It cannot be read from an empty controller, and on these virtual switches it is not the one <code>show version</code> prints. <a href="#page-dc-serials">Card 4</a></td>
 </tr>
 <tr>
 <td><strong>Knowing it worked</strong></td>
 <td>You look at the UI and see everything green</td>
 <td><code>08_verify_fabric.yml</code> compares the controller <em>and</em> the switch against the declared model and writes <code>evidence/stage08-verification.md</code></td>
-<td>A green UI is the controller agreeing with itself. The report checks intent against what <code>DC-Service-Leaf</code> is actually running, parsed with pyATS/Genie, because the two can disagree. <a href="#page-dc-verify">Card 9</a></td>
+<td>A green UI is the controller agreeing with itself. The report checks intent against what <code>DC-Service-Leaf</code> is actually running, parsed with pyATS/Genie, because the two can disagree. <a href="#page-dc-verify">Card 10</a></td>
 </tr>
 </table>
 <p>Two things that look like divergences and are not. The pipeline unchecks <strong>Preserve Config</strong> exactly as section 4 does, so the switch import is greenfield on both paths and erases the running configuration either way. And both paths end with the same two <strong>Recalculate and Deploy</strong> actions in the same order — the pipeline simply names them stage 05 and stage 07 and refuses to let you forget the second one.</p>
@@ -10240,7 +10240,7 @@ Switch import is a greenfield write that erases the switch's existing running co
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-model" class="page-anchor">Where the Definitions Live</h3>
+    <h3 id="page-dc-model" class="page-anchor">3. Where the Definitions Live</h3>
   </div>
   <div class="page-card-body">
 <hr>
@@ -10341,7 +10341,7 @@ dc_vrf_lite_extensions:
 <p>Each of these looks arbitrary until it is explained, and each is already commented in the file it belongs to:</p>
 <ul>
 <li><strong><code>vlan_id</code> is pinned on every VRF and every network, and leaving it out breaks the run.</strong> Omit it and <code>cisco.dcnm</code> asks the controller's resource manager for the next free VLAN — which answers honestly and reserves nothing. The module asks once per object inside the loop, with nothing committed in between, so all three VRFs are handed 2000, the first attachment wins, and the rest fail. The UI's <strong>Propose VLAN</strong> button is safe only because a person clicks <strong>Create</strong> between proposals.</li>
-<li><strong>Serial numbers are generated, not tracked.</strong> Network as Code identifies a switch by serial and validates that every switch has one before anything reaches the controller — but the controller cannot tell you a serial until the switch is already in the fabric, and serials are pod hardware, so committing them would make every other checkout wrong. <a href="#page-dc-serials">Card 3</a> is the stage that reads them over SSH.</li>
+<li><strong>Serial numbers are generated, not tracked.</strong> Network as Code identifies a switch by serial and validates that every switch has one before anything reaches the controller — but the controller cannot tell you a serial until the switch is already in the fabric, and serials are pod hardware, so committing them would make every other checkout wrong. <a href="#page-dc-serials">Card 4</a> is the stage that reads them over SSH.</li>
 <li><strong>Every switch is erased on import, and no setting changes that.</strong> <code>preserve_config: false</code> is hardcoded in the create role's inventory template — not exposed in the data model and not reachable by a flag. That matches the guide, which has you uncheck <strong>Preserve Config</strong>, but it means a first run wipes all five switches with no prompt.</li>
 <li><strong><code>DC-Service-Leaf</code> is deliberately absent from <code>vrf_attach_groups</code>.</strong> An entry there can name a switch and nothing else, so attaching the border leaf <em>from the model</em> would give it the three VRFs <em>without</em> the VRF-Lite extensions — worse than not attaching it, because the VRFs would be present and unreachable from outside. The model leaves it out, and stage 06 attaches it properly with the extension. The consequence is worth remembering: stage 02 runs <code>dcnm_vrf</code> with <code>state: replaced</code> against that model, so <strong>every create run detaches the extensions</strong> and stage 06 has to run after it on every pass.</li>
 </ul>
@@ -10368,7 +10368,7 @@ dc_vrf_lite_extensions:
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-serials" class="page-anchor">Serial Discovery</h3>
+    <h3 id="page-dc-serials" class="page-anchor">4. Serial Discovery</h3>
   </div>
   <div class="page-card-body">
 <h4>The part that cannot be declared: serial numbers</h4>
@@ -10396,7 +10396,7 @@ dc_vrf_lite_extensions:
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-run" class="page-anchor">Run the Pipeline</h3>
+    <h3 id="page-dc-run" class="page-anchor">5. Run the Pipeline</h3>
   </div>
   <div class="page-card-body">
 <h4>Running it</h4>
@@ -10425,7 +10425,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <p>One stage builds everything, and that is worth saying plainly, because it does not mirror the order you clicked through by hand. <code>02_create_dc_fabric.yml</code> creates the fabric object, imports and roles the five switches, pairs the vPC, lays down the port-channels and declares the VRFs and networks — all of sections 4, 5 and 6 in a single run. Giving the fabric object a stage of its own would be misleading rather than useful, because Network as Code drives the whole data model through one create role: a playbook that ran that role and filtered nothing would perform the entire build whatever its name promised.</p>
 <p>When that stage finishes, open the fabric's <strong>Inventory</strong> tab and you are looking at your own data model reflected back at you:</p>
 <p><img class="img-fluid" src="automation_images/dc-create_fabric_ux_fabric_view.png" alt="Nexus Dashboard Inventory tab for the Pseudoco-DC1 fabric after stage 02, listing all five switches: DC-Leaf1 at 198.18.128.101 and DC-Leaf2 at 198.18.128.102 with Role Leaf, DC-Service-Leaf at 198.18.128.13 with Role Border, and DC-Spine-1 at 198.18.128.11 and DC-Spine-2 at 198.18.128.12 with Role Spine. Every switch is an N9K-C9300v with Discovery status Ok and a populated serial number. The Configuration sync status column reads Pending for the two leaves and Not applicable for the other three" width="865" height="383"></p>
-<p>Every column in that table came from a file you can read. The <strong>Role</strong> column is the <code>role:</code> key for each switch in <code>dc_switches.yml</code> — two leaves, one border, two spines — and the <strong>Serial number</strong> column is what stage 00 read over SSH and wrote into the generated model. The detail worth pausing on is <strong>Configuration sync status</strong>: the two leaves read <code>Pending</code>, which is precisely the state <a href="#page-dc-model">card 2</a>'s walkthrough leaves PROD in at step 4. The intent exists on the controller and has not reached a switch. Stage 05 is what clears it.</p>
+<p>Every column in that table came from a file you can read. The <strong>Role</strong> column is the <code>role:</code> key for each switch in <code>dc_switches.yml</code> — two leaves, one border, two spines — and the <strong>Serial number</strong> column is what stage 00 read over SSH and wrote into the generated model. The detail worth pausing on is <strong>Configuration sync status</strong>: the two leaves read <code>Pending</code>, which is precisely the state <a href="#page-dc-model">card 3</a>'s walkthrough leaves PROD in at step 4. The intent exists on the controller and has not reached a switch. Stage 05 is what clears it.</p>
 <p>You can still have section 4 on its own when you want it, and the right way to ask for it is a tag rather than a separate playbook. The create role exposes a per-step tag for the fabric object:</p>
 <pre>ansible-playbook playbooks/02_create_dc_fabric.yml --tags cr_manage_fabric</pre>
 <p>Stage 02's guards on the generated switch model are tagged <code>always</code>, so they still run underneath that filter — you get a fabric-only run <em>with</em> the checks rather than instead of them. The one thing you cannot do is stand up an empty fabric on a fresh checkout before running stage 00, because stage 02 refuses to start without the switch model. Stage 00 was already a hard prerequisite, so that costs you nothing real.</p>
@@ -10436,7 +10436,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <p>⚠️ <strong>This pipeline wipes the switches, and it will not ask you first.</strong> The guide builds this fabric greenfield, with <strong>Preserve Config</strong> unchecked, so Nexus Dashboard erases each switch's running configuration as it imports it. The automation does exactly the same thing, and there is no confirmation flag: <code>preserve_config: false</code> is hardcoded inside the Network as Code collection, so no setting in the data model changes it. Run it against a lab pod you are happy to rebuild, and expect all five switches to come back empty before the fabric is laid down on top.</p>
 </div>
 <div class="admonition">
-<p>🔎 <strong>All of sections 4 through 8 are automated, on the fabric side. The edge router is pre-configured by the pod, by design.</strong> The pipeline covers everything the Network as Code data model can express, which is sections 4, 5 and 6, plus the fabric settings it cannot — stage <code>03</code>'s job, described below. Section 7's External fabric <em>and</em> the edge router in it are stage <code>04</code>. Section 8 is split between two stages: its opening <strong>Recalculate and Deploy</strong> is stage <code>06</code>, and its three per-VRF extensions are stage <code>05</code>. Each of those per-VRF walkthroughs has two halves, and only the second is outside the data model: attaching the VRF to the border leaf is an ordinary <code>vrf_attach_group</code> entry, while the extension on top of it has no key at all — the model can say <em>which switch</em>, never the sub-interface, dot1q tag or neighbour address you typed in. So stage 05 drops to <code>cisco.dcnm</code>'s <code>dcnm_vrf</code> directly for that second half, from intent declared in <code>inventory/group_vars/all/dc_vrf_lite.yml</code>. See <a href="#what-stage-05-needs">card 7</a>.</p>
+<p>🔎 <strong>All of sections 4 through 8 are automated, on the fabric side. The edge router is pre-configured by the pod, by design.</strong> The pipeline covers everything the Network as Code data model can express, which is sections 4, 5 and 6, plus the fabric settings it cannot — stage <code>03</code>'s job, described below. Section 7's External fabric <em>and</em> the edge router in it are stage <code>04</code>. Section 8 is split between two stages: its opening <strong>Recalculate and Deploy</strong> is stage <code>06</code>, and its three per-VRF extensions are stage <code>05</code>. Each of those per-VRF walkthroughs has two halves, and only the second is outside the data model: attaching the VRF to the border leaf is an ordinary <code>vrf_attach_group</code> entry, while the extension on top of it has no key at all — the model can say <em>which switch</em>, never the sub-interface, dot1q tag or neighbour address you typed in. So stage 05 drops to <code>cisco.dcnm</code>'s <code>dcnm_vrf</code> directly for that second half, from intent declared in <code>inventory/group_vars/all/dc_vrf_lite.yml</code>. See <a href="#what-stage-05-needs">card 8</a>.</p>
 <p><strong>What sits outside the pipeline is <code>DC-SITE11-CEDGE8Kv</code>'s own side of the handoff, and that is by design rather than a shortfall.</strong> This lab ships the external edge router already configured, so there is nothing for the automation to write there — the matching sub-interfaces, dot1q tags and BGP neighbours are waiting for the fabric to meet them. That is also why the <code>192.168.252.x</code> addresses in <code>dc_vrf_lite.yml</code> are pinned rather than allocated from <code>DCI_SUBNET_RANGE</code>: the far end is fixed, so the near end has to match it exactly.</p>
 <p>Stage <code>04</code> creates the External fabric with ASN 65531 and <strong>Fabric Monitor Mode</strong> already on, and that setting is what <em>protects</em> the pre-configured router: Cisco is explicit that <em>"when an external fabric is set to Fabric Monitor Mode Only, you cannot deploy configurations on the switches"</em>, so Nexus Dashboard reads that router and never writes to it. The stage does not use the Network as Code roles, and that is not a preference — the collection cannot do this job twice over. Its create role always runs a config-save after the inventory step, and Nexus Dashboard answers <code>HTTP 500: Fabric External cannot be deployed without any switches</code> on a switchless fabric, which this one permanently is. And <code>dc_external_fabric_general.j2</code> ties <code>IS_READ_ONLY</code> to the <em>bootstrap</em> setting rather than to Monitor Mode, emitting <code>false</code> when bootstrap is off and <code>""</code> when it is on — neither can ever produce <code>true</code>, so applying a model here would take the fabric <em>out</em> of Monitor Mode. The stage builds it with <code>cisco.dcnm.dcnm_fabric</code> and sets Monitor Mode in the same call, so the fabric is never briefly writable.</p>
 <p><strong>Stage <code>04</code> also adds the edge router</strong>, so you do not have to repeat the steps above on a re-run. It does not use <code>dcnm_inventory</code> to do it, and the <em>Device Type</em> dropdown you used above is the reason. That field is not a label — it chooses how Nexus Dashboard <em>interrogates</em> the seed. Cisco's guide is explicit: <em>“Cisco CSR 1000v is discovered using SSH … does not need SNMP support”</em>; from release 12.1.3b onward, SNMP is not required for IOS-XE devices. Choose IOS XE and the controller asks over SSH; leave it alone and it asks over SNMPv3, which is the NX-OS path.</p>
@@ -10461,7 +10461,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-settings" class="page-anchor">The Settings the Model Cannot Express</h3>
+    <h3 id="page-dc-settings" class="page-anchor">6. The Settings the Model Cannot Express</h3>
   </div>
   <div class="page-card-body">
 <h4>The settings the model cannot express</h4>
@@ -10493,7 +10493,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-vrflite" class="page-anchor">VRF-Lite, and Who Builds the Link</h3>
+    <h3 id="page-dc-vrflite" class="page-anchor">7. VRF-Lite, and Who Builds the Link</h3>
   </div>
   <div class="page-card-body">
 <h4 id="the-two-vrf-lite-settings">VRF-Lite: what the controller offers, and why we decline it</h4>
@@ -10515,7 +10515,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-stage05" class="page-anchor">VRF-Lite, and the One Thing It Needs</h3>
+    <h3 id="page-dc-stage05" class="page-anchor">8. VRF-Lite, and the One Thing It Needs</h3>
   </div>
   <div class="page-card-body">
 <h4>What stage 05 does</h4>
@@ -10525,13 +10525,13 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 | PROD | 2     | 192.168.252.5/30  | 192.168.252.6  |
 | IOT  | 3     | 192.168.252.9/30  | 192.168.252.10 |
 | MAIN | 4     | 192.168.252.13/30 | 192.168.252.14 |</pre>
-<p><strong>Each of those walkthroughs has two Detach/Attach sliders, and the pipeline splits them between two stages.</strong> The first slider attaches the VRF itself to DC-Service-Leaf, and that is an ordinary <code>vrf_attach_group</code> entry in <code>vrfs.nac.yaml</code>, so the data model owns it and stage 02 makes it. The second, inside <strong>Edit Extension Details</strong>, is what the model cannot express: there is no key for <code>EXTEND: VRF_LITE</code>, the sub-interface, the dot1q tag or the neighbour address. <strong>Stage 06 is the second slider and nothing else.</strong> It posts to the controller's <code>vrfs/attachments</code> endpoint directly, and the intent still lives in git — in <code>inventory/group_vars/all/dc_vrf_lite.yml</code>, quoted in <a href="#page-dc-model">card 2</a>.</p>
+<p><strong>Each of those walkthroughs has two Detach/Attach sliders, and the pipeline splits them between two stages.</strong> The first slider attaches the VRF itself to DC-Service-Leaf, and that is an ordinary <code>vrf_attach_group</code> entry in <code>vrfs.nac.yaml</code>, so the data model owns it and stage 02 makes it. The second, inside <strong>Edit Extension Details</strong>, is what the model cannot express: there is no key for <code>EXTEND: VRF_LITE</code>, the sub-interface, the dot1q tag or the neighbour address. <strong>Stage 06 is the second slider and nothing else.</strong> It posts to the controller's <code>vrfs/attachments</code> endpoint directly, and the intent still lives in git — in <code>inventory/group_vars/all/dc_vrf_lite.yml</code>, quoted in <a href="#page-dc-model">card 3</a>.</p>
 <p><strong>Why not <code>dcnm_vrf</code>?</strong> It does support <code>attach[].vrf_lite[]</code>, but its <code>vrf_lite</code> block accepts only <code>DOT1Q_ID</code>, <code>IF_NAME</code>, <code>IP_MASK</code>, <code>IPV6_MASK</code>, <code>IPV6_NEIGHBOR</code>, <code>NEIGHBOR_IP</code> and <code>PEER_VRF_NAME</code> — there is no key for the sub-interface MTU, and it hardcodes the Jython template to <code>Ext_VRF_Lite_Jython</code>, which is the wrong one for an IOS-XE peer. Stage 06 starts from the prototype the controller offers instead, so the neighbour ASN and the template come from the inter-fabric link rather than from a guess.</p>
 <p>That split is worth dwelling on. It is tempting to leave the border leaf out of the model altogether, on the reasoning that attaching it without the extension would be worse than not attaching it at all. The manual guide settles it: the plain attachment is the first half of the job, not a broken version of it, so it belongs where every other attachment lives.</p>
 <p>Two design choices in the stage are load-bearing:</p>
 <ul>
 <li><strong>It uses a per-VRF payload built from the controller's own prototype.</strong> The stage names only DC-Service-Leaf and touches only the VRFs that have drifted, so the DC-Leaf1 and DC-Leaf2 attachments stage 02 made survive untouched.</li>
-<li><strong>It has to run after stage 02 on <em>every</em> pass, not once.</strong> Stage 02's create role runs <code>dcnm_vrf</code> with <code>state: replaced</code>, and the model has no key for an extension — so a create run keeps the border leaf's attachment and clears the extension off it. Stage 06 puts it back, and is idempotent when it is already there. <a href="#page-dc-verify">Card 9</a> is the check that catches it if it ever does not.</li>
+<li><strong>It has to run after stage 02 on <em>every</em> pass, not once.</strong> Stage 02's create role runs <code>dcnm_vrf</code> with <code>state: replaced</code>, and the model has no key for an extension — so a create run keeps the border leaf's attachment and clears the extension off it. Stage 06 puts it back, and is idempotent when it is already there. <a href="#page-dc-verify">Card 10</a> is the check that catches it if it ever does not.</li>
 <li><strong>It reserves the dot1q tags before it attaches anything.</strong> Left to itself the controller reserves a tag per VRF out of the <code>TOP_DOWN_L3_DOT1Q</code> pool during the attachment POST, in an order of its own choosing, and the POST is not atomic — so a mismatch fails half way through with <code>Id[3]is already allocated to MAIN</code>. Stage 06 pre-allocates all three from the data model first, leaving the controller nothing to choose.</li>
 </ul>
 <hr>
@@ -10542,7 +10542,7 @@ ansible-playbook playbooks/01_dc_deploy.yml</pre>
 <pre>DcnmVrf.update_vrf_attach_vrf_lite_extensions: caller: push_diff_attach.
 No VRF LITE capable interfaces found on this switch.
 ip: 198.18.128.13, serial_number: 955T6I5X2D4</pre>
-<p>That message comes from one specific check inside <code>dcnm_vrf</code>, and knowing which one is what rules everything else out. The module asks the controller for the border leaf's <code>extensionPrototypeValues</code> — the list of extensions Nexus Dashboard is <em>offering</em> on that switch — keeps only the entries whose <code>extensionType</code> is <code>VRF_LITE</code>, and fails when none survives. Stage 06 makes the same check itself now. <strong>A prototype exists only where a VRF-Lite IFC terminates</strong>, so the question this error asks is never "did the attachment work" but "does the IFC exist, and has it been deployed". <a href="#page-dc-vrflite">Card 6</a> is about who builds that IFC, and why on this pod it is us rather than the controller.</p>
+<p>That message comes from one specific check inside <code>dcnm_vrf</code>, and knowing which one is what rules everything else out. The module asks the controller for the border leaf's <code>extensionPrototypeValues</code> — the list of extensions Nexus Dashboard is <em>offering</em> on that switch — keeps only the entries whose <code>extensionType</code> is <code>VRF_LITE</code>, and fails when none survives. Stage 06 makes the same check itself now. <strong>A prototype exists only where a VRF-Lite IFC terminates</strong>, so the question this error asks is never "did the attachment work" but "does the IFC exist, and has it been deployed". <a href="#page-dc-vrflite">Card 7</a> is about who builds that IFC, and why on this pod it is us rather than the controller.</p>
 <p>Stage 06 does not try to predict this failure; it lets the module report it, and its <code>rescue</code> block turns the message into the instruction that resolves it — run the deploy stage first. Ordering the stages <code>05, 06, 07</code> makes that the normal path.</p>
 <hr>
 <h4>Why waiting is not the same as deploying</h4>
@@ -10604,7 +10604,7 @@ GigabitEthernet2.4     192.168.252.14  YES other  up       up</pre>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-failures" class="page-anchor">What a Slow Stage Looks Like</h3>
+    <h3 id="page-dc-failures" class="page-anchor">9. What a Slow Stage Looks Like</h3>
   </div>
   <div class="page-card-body">
 <p>One thing in a first run of this pipeline looks like a failure and is not, and it is worth recognising on sight. A couple of rules the data model already follows for you are worth knowing about too, because they are the kind of thing that bites when you write a model of your own.</p>
@@ -10620,7 +10620,7 @@ See the timeout setting options in the Network Debug and Troubleshooting Guide..
 <pre>ansible_command_timeout: 1000
 ansible_connect_timeout: 1000</pre>
 <p>The value is not a padded guess. <code>cisco.dcnm</code> asks for exactly these two variables at exactly this value in its own README, and its <code>dcnm_inventory</code> action plugin refuses to run at all if either is below 1000. So 1000 is the vendor's floor for this module, and the numbers in the file are load-bearing rather than cautious.</p>
-<p>Which raises the obvious question: if the collection guards against this, why did the run get as far as failing? Because of the seam between the two collections described in <a href="#page-dc-automation">card 1</a>. Network as Code does not call the <code>cisco.dcnm</code> modules the way a playbook would — it drives them itself, from one consolidated action plugin, and routes only <code>dcnm_vrf</code> and <code>dcnm_network</code> through their own. <code>dcnm_inventory</code> therefore never sees its own precondition check, and you get the bare 30-second <code>ConnectionError</code> with no hint that a timeout setting exists. That is the honest cost of a collection that sits on top of another one: you inherit its capabilities, and you can quietly lose its guard rails.</p>
+<p>Which raises the obvious question: if the collection guards against this, why did the run get as far as failing? Because of the seam between the two collections described in <a href="#page-dc-automation">card 2</a>. Network as Code does not call the <code>cisco.dcnm</code> modules the way a playbook would — it drives them itself, from one consolidated action plugin, and routes only <code>dcnm_vrf</code> and <code>dcnm_network</code> through their own. <code>dcnm_inventory</code> therefore never sees its own precondition check, and you get the bare 30-second <code>ConnectionError</code> with no hint that a timeout setting exists. That is the honest cost of a collection that sits on top of another one: you inherit its capabilities, and you can quietly lose its guard rails.</p>
 <p>If you already hit this, you do not need to tear anything down. The run created the fabric object before it died at the inventory step, and Nexus Dashboard most likely carried on discovering the switches server-side after Ansible stopped listening — check the fabric's <strong>Switches</strong> tab and you may well find them already there. The inventory step runs <code>state: merged</code>, which only ever adds, so re-running converges whether the switches arrived or not. Deleting the fabric and starting over costs you the wipe-and-rediscover cycle for no gain.</p>
 <hr>
 <h4>Two rules the model already follows for you</h4>
@@ -10636,7 +10636,7 @@ ansible_connect_timeout: 1000</pre>
 </div></div>
 </div><div class="page-card">
   <div class="page-card-header"><span>🤖</span>
-    <h3 id="page-dc-verify" class="page-anchor">Reading the Verification Report</h3>
+    <h3 id="page-dc-verify" class="page-anchor">10. Reading the Verification Report</h3>
   </div>
   <div class="page-card-body">
 <h4>Reading the verification report</h4>
@@ -10674,7 +10674,7 @@ ansible-playbook playbooks/08_verify_fabric.yml</pre>
 | VRF-Lite MAIN on DC-Service-. | yes      | DEPLOYED | yes            | yes        | yes            | yes   |</pre>
 <p>The three "seen" columns are substring matches of the declared interface, dot1q tag and neighbour address against the attachment's <code>extensionValues</code> — a JSON document Nexus Dashboard encodes into a string field, whose inner keys are an implementation detail rather than a documented contract. Matching them as substrings means a schema change costs a false failure that is obvious in the report, rather than a check that silently passes because a renamed key read as absent on both sides.</p>
 <div class="admonition">
-<p>🔎 <strong>A VRF-Lite row reading <code>NO</code> with state <code>absent</code> almost always means stage 02 ran after stage 06.</strong> The create role uses <code>state: replaced</code> against a model that deliberately omits the extension, so it clears every extension — see <a href="#page-dc-stage05">card 7</a>. Re-run <code>06_vrf_lite.yml</code>, then <code>07_recalculate_and_deploy.yml</code>. This is the check that catches that regression: without it, the VRF still exists, the normal attachments still pass, and external connectivity is quietly gone.</p>
+<p>🔎 <strong>A VRF-Lite row reading <code>NO</code> with state <code>absent</code> almost always means stage 02 ran after stage 06.</strong> The create role uses <code>state: replaced</code> against a model that deliberately omits the extension, so it clears every extension — see <a href="#page-dc-stage05">card 8</a>. Re-run <code>06_vrf_lite.yml</code>, then <code>07_recalculate_and_deploy.yml</code>. This is the check that catches that regression: without it, the VRF still exists, the normal attachments still pass, and external connectivity is quietly gone.</p>
 </div>
 <div class="admonition">
 <p>🔎 <strong>Something under "Not attached" is a statement, not a fault.</strong> Nexus Dashboard's attachment list enumerates every switch that <em>could</em> carry a VRF or network, not just the ones it has actually attached, and marks the rest <code>NA</code>. The report names those switches rather than judging them, and <code>NA</code> is the one state it sets aside. An attached switch in any state other than <code>DEPLOYED</code> still fails, which is the whole point of running the stage.</p>
