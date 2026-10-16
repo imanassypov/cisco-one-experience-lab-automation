@@ -114,10 +114,30 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 # values below are declared. Nothing
 # is auto-allocated, and the data model is authoritative end to end.
 #
-# These are the parent link's own addresses, not a VRF's. The controller used
-# 192.168.252.0/30 for it, the first /30 of DCI_SUBNET_RANGE, and the router's
-# GigabitEthernet2 carries no address at all - the peering that matters is
-# per-VRF on the sub-interfaces below.
+# Stage 04 consumes this block through dcnm_links and ext_fabric_setup:
+# ipv4_addr -> ipv4_subnet, neighbor_ipv4 -> neighbor_ip, mtu -> Link MTU.
+# The IFC identifies Ethernet1/8 -> GigabitEthernet2 and supplies the link
+# context from which stage 06 reads the VRF-Lite extension prototypes.
+#
+# The IP pair is an OVERRIDABLE DEFAULT for VRF-extension sub-interfaces,
+# not necessarily an address configured on the physical parent interface.
+# Cisco's "VRF Lite" guide, General Parameters, defines Source IP Address/Mask
+# and Destination IP Address this way and describes resource-manager prefix
+# reservation. The first /30 of DCI_SUBNET_RANGE supplies these IFC defaults;
+# stage 06 overrides them with the per-VRF values below: PROD .5/.6,
+# IOT .9/.10, and MAIN .13/.14, all /30.
+#
+# The UX link editor can therefore show .1/30 while PROD's extension and live
+# Ethernet1/8.2 use .5/30. The interface selector names the parent Ethernet1/8;
+# DOT1Q_ID 2 identifies the PROD sub-interface created under that parent.
+# Both live parent interfaces have no IP address. Cisco documents physical
+# interface IP/eBGP provisioning separately under "Auto Generate Configuration
+# on default VRF"; do not confuse that option with tenant VRF extensions.
+#
+# Official source (NDFC 12.2.1, not release-specific 4.2.1 verification):
+# https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html
+# The guide does not establish whether this module/controller accepts omitted
+# IFC IP fields, so keep the declared defaults rather than treating them as unused.
 dc_vrf_lite_ifc:
   ipv4_addr: 192.168.252.1/30
   neighbor_ipv4: 192.168.252.2
