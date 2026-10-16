@@ -21,6 +21,7 @@
 #   dnac_host / dnac_port / dnac_verify
 #   force_wireless_provisioning — bool; re-provision an already-provisioned
 #                                 WLC. Defaults true (roles defaults/main.yml).
+#   wlc_ap_location_confirm_retries / _delay — Step D settle poll (connection.yml)
 # ============================================================================
 ---
 # ── Step A: Collect the rows that declare a controller ────────────────────
@@ -121,14 +122,15 @@
 #                "managementIpAddress": "198.18.5.103" } ] } }
 #        ]
 #   Out: _wlc_family_map = {
-#          "198.18.5.103": { "hostname": "wlc.corp.pseudoco.com",
+#          "198.18.5.103": { "id":       "b1000000-0000-4000-8000-000000000110",
+#                            "hostname": "wlc.corp.pseudoco.com",
 #                            "family":   "Wireless Controller" }
 #        }
 # Keyed by the API's managementIpAddress rather than the loop item, matching
 # the wired pass, so a controller answering on a different address than the
 # one queried still maps. An empty response array drops the entry, which the
 # assert in Step C then reports.
-- name: Build IP → { hostname, family } map for controller candidates
+- name: Build IP → { id, hostname, family } map for controller candidates
   when: _wlc_rows | length > 0
   ansible.builtin.set_fact:
     _wlc_family_map: >-
@@ -138,6 +140,7 @@
         {%- if device is not none and device.id is defined -%}
           {%- set ns.result = ns.result | combine({
               device.managementIpAddress: {
+                'id':       device.id,
                 'hostname': device.hostname | default(device.managementIpAddress),
                 'family':   device.family   | default('')
               }
@@ -268,7 +271,145 @@
   loop_control:
     label: "{{ item.management_ip_address }}"
 
-# ── Step D: Provision ─────────────────────────────────────────────────────
+# ── Step D: Pre-assign managed AP locations and wait for them to settle ───
+#
+# provision_workflow_manager assigns the managed AP locations and then calls
+# the provision API immediately afterwards, with nothing in between. Catalyst
+# Center accepts the assignment and its task reports SUCCESS, but the provision
+# validator is still reading the previous state about a second later and
+# rejects the request with
+#   NCWS70003 "Managed AP Locations are not configured for the device <uuid>"
+# Verified 2026-10-16 on CatC 3.1.5: the assign task completed in 306 ms, the
+# provision failed 0.5 s after it, and GET .../managedApLocations/count showed
+# the locations present when queried afterwards. A task reporting SUCCESS is
+# not a barrier for the provision validator.
+#
+# Assigning here first and confirming the count turns the module's own assign
+# into an idempotent re-assert against state that has already settled. Same
+# shape as the AP pass's ap_assign_confirm_retries wait, which exists because
+# assign_device_to_site has the identical acceptance-vs-completion gap.
+#
+# Example
+#   In : _wlc_rows / _wlc_family_map as above
+#   Out: _wlc_ap_location_targets = [
+#          { "ip": "198.18.5.103",
+#            "device_id": "b1000000-0000-4000-8000-000000000110",
+#            "primary":   ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
+#            "secondary": [] }
+#        ]
+#        _wlc_ap_location_paths = ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"]
+- name: Build managed AP location targets
+  when: _wlc_rows | length > 0
+  ansible.builtin.set_fact:
+    _wlc_ap_location_targets: >-
+      {%- set ns = namespace(result=[]) -%}
+      {%- for row in _wlc_rows -%}
+        {%- for ip in row.ips -%}
+          {%- if ip in _wlc_family_map
+               and 'Wireless' in (_wlc_family_map[ip].family | default('')) -%}
+            {%- set ns.result = ns.result + [{
+                  'ip':        ip,
+                  'device_id': _wlc_family_map[ip].id,
+                  'primary':   row.controller.managed_ap_locations | default([], true),
+                  'secondary': row.controller.secondary_managed_ap_locations | default([], true)
+                }] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: Collect the distinct site paths to resolve
+  when: _wlc_rows | length > 0
+  ansible.builtin.set_fact:
+    _wlc_ap_location_paths: >-
+      {{ ((_wlc_ap_location_targets | map(attribute='primary') | flatten)
+          + (_wlc_ap_location_targets | map(attribute='secondary') | flatten))
+         | unique }}
+
+- name: Resolve managed AP location site IDs
+  when: _wlc_ap_location_paths | length > 0
+  cisco.dnac.site_info:
+    name: "{{ item }}"
+  loop: "{{ _wlc_ap_location_paths }}"
+  register: _wlc_ap_location_site_info
+
+- name: Build managed AP location site path → ID map
+  when: _wlc_ap_location_paths | length > 0
+  ansible.builtin.set_fact:
+    _wlc_ap_location_site_ids: >-
+      {%- set ns = namespace(result={}) -%}
+      {%- for r in (_wlc_ap_location_site_info.results | default([])) -%}
+        {%- set site = r.dnac_response.response | default([]) | first | default(none) -%}
+        {%- if site is not none and site.id is defined -%}
+          {%- set ns.result = ns.result | combine({r.item: site.id}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+
+- name: --DEBUG-- Managed AP location site IDs
+  when:
+    - catc_debug | default(false) | bool
+    - _wlc_ap_location_paths | length > 0
+  ansible.builtin.debug:
+    var: _wlc_ap_location_site_ids
+
+# Naming a site the hierarchy does not hold is the other way to earn NCWS70003:
+# the module appends the unresolved lookup to its payload without checking and
+# the provision then finds nothing assigned. Fail here with the site name.
+- name: Assert every managed AP location exists in the hierarchy
+  when: _wlc_ap_location_paths | length > 0
+  ansible.builtin.assert:
+    that: >-
+      _wlc_ap_location_paths
+      | difference(_wlc_ap_location_site_ids.keys() | list)
+      | length == 0
+    fail_msg: >-
+      Not found in the Catalyst Center site hierarchy:
+      {{ _wlc_ap_location_paths
+         | difference(_wlc_ap_location_site_ids.keys() | list)
+         | join(', ') }}.
+      managed_ap_locations must name sites that stage 01 created.
+    success_msg: >-
+      {{ _wlc_ap_location_paths | length }} managed AP location(s) resolved.
+
+- name: Assign managed AP locations to each controller
+  when: _wlc_ap_location_targets | length > 0
+  cisco.dnac.wireless_controllers_assign_managed_ap_locations:
+    deviceId: "{{ item.device_id }}"
+    primaryManagedAPLocationsSiteIds: >-
+      {{ item.primary | map('extract', _wlc_ap_location_site_ids) | list }}
+    secondaryManagedAPLocationsSiteIds: >-
+      {{ (item.secondary | map('extract', _wlc_ap_location_site_ids) | list)
+         if item.secondary else omit }}
+  loop: "{{ _wlc_ap_location_targets }}"
+  loop_control:
+    label: "{{ item.ip }}"
+  register: _wlc_ap_location_assign
+
+- name: --DEBUG-- Managed AP location assignment result
+  when:
+    - catc_debug | default(false) | bool
+    - _wlc_ap_location_targets | length > 0
+  ansible.builtin.debug:
+    var: _wlc_ap_location_assign
+
+# The assign module returns as soon as Catalyst Center accepts the request and
+# always reports changed=false, so the count is the only honest confirmation.
+- name: Wait for the managed AP locations to take effect
+  when: _wlc_ap_location_targets | length > 0
+  cisco.dnac.wireless_controllers_managed_ap_locations_count_info:
+    networkDeviceId: "{{ item.device_id }}"
+  register: _wlc_ap_location_confirm
+  until: >-
+    (_wlc_ap_location_confirm.dnac_response.response.primaryManagedApLocationsCount
+     | default(0) | int) >= (item.primary | length)
+  retries: "{{ wlc_ap_location_confirm_retries }}"
+  delay: "{{ wlc_ap_location_confirm_delay }}"
+  loop: "{{ _wlc_ap_location_targets }}"
+  loop_control:
+    label: "{{ item.ip }}"
+
+# ── Step E: Provision ─────────────────────────────────────────────────────
 #
 # provision_workflow_manager handles the async task polling internally, so
 # there is no task-ID plumbing here of the kind the wired pass needs.
@@ -290,7 +431,7 @@
   ansible.builtin.debug:
     var: _wlc_provision_result
 
-# ── Step E: Summary ───────────────────────────────────────────────────────
+# ── Step F: Summary ───────────────────────────────────────────────────────
 - name: Wireless provisioning summary
   when: _wlc_rows | length > 0
   ansible.builtin.debug:
