@@ -2219,10 +2219,14 @@ brief` reports `protocol up`; a config line proves none of that.
 > so the role chunks them. Any command Catalyst Center refuses is reported as
 > `NOT VERIFIED` rather than silently passing.
 
-> **An empty response is a result, not an error.** Genie raises
-> `SchemaEmptyParserError` when a command runs but has nothing to report — a
-> fabric with no NVE peers, or a controller with no access points joined. The
-> `genie_parse` filter turns that into an empty dict, so the check reports the
+> **An empty response is a result, not an error.** Genie signals "the command
+> ran but there is nothing to report" in two ways, depending on how much of the
+> output it recognised. `SchemaEmptyParserError` means nothing matched at all —
+> a fabric with no NVE peers. `SchemaMissingKeyError` means the preamble matched
+> but a required table is empty: `show ap tag summary` on a controller with no
+> access points still prints `Number of APs: 0` and the column headers, so Genie
+> parses that much and then fails the schema on the missing `ap_name` key. The
+> `genie_parse` filter turns both into an empty dict, so the check reports the
 > value as absent and fails on its own terms. Only a genuine parsing problem,
 > such as a missing parser, aborts the run. Run stage 12 before stage 10 and you
 > will see those checks fail, which is the correct answer.
@@ -2247,10 +2251,10 @@ brief` reports `protocol up`; a config line proves none of that.
 ansible-playbook playbooks/12_verify_intent.yml
 ```
 
-Report without failing the play, for a known-broken demo fabric:
+Also fail the play on a mismatch, for a pipeline that gates on the exit code:
 
 ```bash
-ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=false
+ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=true
 ```
 
 ### Important expected output
@@ -2356,9 +2360,11 @@ Three stages behave differently from the rest inside a single run:
 > ansible-playbook playbooks/00_site_deploy.yml -e ap_expected_count=0
 > ```
 
-> **Stage 12 fails the run on any mismatch** — `verify_fail_on_mismatch`
-> defaults to `true`, which is the point of a verification stage. For a report
-> without a non-zero exit, add `-e verify_fail_on_mismatch=false`.
+> **Stage 12 reports, it does not police.** `verify_fail_on_mismatch` defaults
+> to `false`, so a mismatch is printed as the stage's closing verdict and
+> recorded in both reports while the run still ends successfully. Read the
+> verdict, then the report. For a pipeline that needs a non-zero exit code, add
+> `-e verify_fail_on_mismatch=true`.
 
 For a first pass, run the stages one at a time instead. You can check Catalyst
 Center after each one and stop before the disruptive stages (08, 09, 10). Use

@@ -53,13 +53,30 @@ def genie_parse(output, command, os_name="iosxe"):
     if lines and lines[0].strip() == command.strip():
         output = "\n".join(lines[1:])
 
-    # Genie signals "the command ran but there was nothing to parse" by raising
-    # rather than returning {}. Imported defensively because the module path has
-    # moved between Genie releases; the class-name check below is the fallback.
-    try:
-        from genie.metaparser.util.exceptions import SchemaEmptyParserError
-    except ImportError:
-        SchemaEmptyParserError = ()
+    # Genie signals "the command ran but there was nothing to parse" two
+    # different ways, depending on how much of the output it recognised.
+    #
+    #   SchemaEmptyParserError  — nothing matched at all.
+    #   SchemaMissingKeyError   — the preamble matched but a required table is
+    #                             empty. 'show ap tag summary' on a controller
+    #                             with no access points still prints
+    #                             "Number of APs: 0" and the column headers, so
+    #                             Genie parses that much and then fails the
+    #                             schema on the missing 'ap_name' key.
+    #
+    # Both are device states, not tooling failures. Imported defensively
+    # because the module path has moved between Genie releases; the class-name
+    # check below is the fallback.
+    empty_errors = []
+    for name in ("SchemaEmptyParserError", "SchemaMissingKeyError"):
+        try:
+            module = __import__(
+                "genie.metaparser.util.exceptions", fromlist=[name]
+            )
+            empty_errors.append(getattr(module, name))
+        except (ImportError, AttributeError):
+            pass
+    empty_error_names = {"SchemaEmptyParserError", "SchemaMissingKeyError"}
 
     try:
         parsed = device.parse(command, output=output)
@@ -68,8 +85,8 @@ def genie_parse(output, command, os_name="iosxe"):
         # with no NVE peers or a controller with no APs genuinely has nothing to
         # report. Return {} so the check reports 'absent' and fails on its own
         # terms, instead of aborting the whole run.
-        if isinstance(exc, SchemaEmptyParserError) or \
-                type(exc).__name__ == "SchemaEmptyParserError":
+        if isinstance(exc, tuple(empty_errors)) or \
+                type(exc).__name__ in empty_error_names:
             return {}
         raise AnsibleFilterError(
             "Genie could not parse '{0}' for os '{1}': {2}: {3}".format(
