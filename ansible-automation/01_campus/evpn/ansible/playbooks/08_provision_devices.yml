@@ -120,6 +120,8 @@
       dnac_port: "{{ dnac_port }}"
       dnac_version: "{{ dnac_version }}"
       dnac_debug: "{{ dnac_debug }}"
+    # The two modules below are resource modules, not workflow managers: their
+    # argument spec is dnac_argument_spec(), which has no logging parameters.
     cisco.dnac.wireless_controllers_assign_managed_ap_locations:
       dnac_host: "{{ dnac_host }}"
       dnac_username: "{{ catc_username }}"
@@ -128,8 +130,6 @@
       dnac_port: "{{ dnac_port }}"
       dnac_version: "{{ dnac_version }}"
       dnac_debug: "{{ dnac_debug }}"
-      dnac_log_level: "{{ dnac_log_level }}"
-      dnac_log: "{{ dnac_log }}"
     cisco.dnac.wireless_controllers_managed_ap_locations_count_info:
       dnac_host: "{{ dnac_host }}"
       dnac_username: "{{ catc_username }}"
@@ -138,8 +138,6 @@
       dnac_port: "{{ dnac_port }}"
       dnac_version: "{{ dnac_version }}"
       dnac_debug: "{{ dnac_debug }}"
-      dnac_log_level: "{{ dnac_log_level }}"
-      dnac_log: "{{ dnac_log }}"
   pre_tasks:
     - name: Obtain Catalyst Center auth token
       ansible.builtin.import_role:
