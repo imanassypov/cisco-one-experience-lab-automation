@@ -161,7 +161,7 @@
                 ]
             },
             "wireless_controller": {
-                "managed_ap_locations": [
+                "primary_managed_ap_locations": [
                     "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
                 ],
                 "skip_ap_provision": false,

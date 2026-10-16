@@ -161,7 +161,7 @@
 # it on default tags, serving no SSID.
 #
 # Runs after the controller pass because the AP is provisioned against a floor
-# the controller lists in managed_ap_locations, which Step 5 sets.
+# the controller lists in primary_managed_ap_locations, which Step 5 sets.
 # Tasks: tasks/provision_accesspoints.yml
 #
 # Gated by ap_provision_enabled because provisioning an AP can reboot it.

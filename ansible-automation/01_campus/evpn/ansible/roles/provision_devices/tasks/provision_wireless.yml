@@ -28,7 +28,7 @@
 #
 # A row qualifies when it has both a wireless_controller block and a
 # device_list. The controller's own site comes from the row's hierarchy
-# fields, exactly as the wired pass derives it; managed_ap_locations is
+# fields, exactly as the wired pass derives it; primary_managed_ap_locations is
 # separate and names the sites whose APs this controller serves, which are
 # usually somewhere else in the hierarchy.
 #
@@ -39,7 +39,7 @@
 #            "HierarchyBldg": "DC-Site-10", "HierarchyFloor": "MAIN",
 #            "device_list": "198.18.5.103",
 #            "wireless_controller": {
-#              "managed_ap_locations": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
+#              "primary_managed_ap_locations": ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
 #              "skip_ap_provision": false,
 #              "rolling_ap_upgrade": { "enable_rolling_ap_upgrade": false,
 #                                      "ap_reboot_percentage": 25 } }
@@ -160,7 +160,7 @@
 #
 # One entry per controller, shaped for provision_workflow_manager. The
 # wireless_controller block in settings.json is already snake_case and 1:1
-# with the module schema, so managed_ap_locations, skip_ap_provision and
+# with the module schema, so primary_managed_ap_locations, skip_ap_provision and
 # rolling_ap_upgrade pass through untouched; only the keys the module needs
 # from elsewhere are added.
 #
@@ -168,8 +168,8 @@
 # from the wired pass's force_reprovision on purpose: forcing the controller
 # should not also switch on the wired PUT re-push of the fabric switches.
 # It defaults true because the module short-circuits on 'already provisioned'
-# without diffing intent, so a changed managed_ap_locations would otherwise
-# never be applied. See roles defaults/main.yml.
+# without diffing intent, so a changed primary_managed_ap_locations would
+# otherwise never be applied. See roles defaults/main.yml.
 #
 # Example
 #   In : _wlc_rows       = as built in Step A
@@ -178,7 +178,7 @@
 #   Out: _wlc_provision_config = [
 #          { "management_ip_address": "198.18.5.103",
 #            "site_name_hierarchy":   "Global/CALIFORNIA/San Jose/DC-Site-10/MAIN",
-#            "managed_ap_locations":  ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
+#            "primary_managed_ap_locations":  ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
 #            "skip_ap_provision":     false,
 #            "rolling_ap_upgrade":    { "enable_rolling_ap_upgrade": false,
 #                                       "ap_reboot_percentage": 25 },
@@ -199,9 +199,15 @@
                   'site_name_hierarchy':   row.site_path,
                   'force_provisioning':    force_wireless_provisioning | default(true) | bool
                 } -%}
-            {%- if row.controller.managed_ap_locations is defined
-                 and row.controller.managed_ap_locations -%}
-              {%- set cfg = cfg | combine({'managed_ap_locations': row.controller.managed_ap_locations}) -%}
+            {%- set ap_locs = row.controller.primary_managed_ap_locations
+                              | default(row.controller.managed_ap_locations | default([], true), true) -%}
+            {%- if ap_locs -%}
+              {%- set cfg = cfg | combine({'primary_managed_ap_locations': ap_locs}) -%}
+            {%- endif -%}
+            {%- if row.controller.secondary_managed_ap_locations is defined
+                 and row.controller.secondary_managed_ap_locations -%}
+              {%- set cfg = cfg | combine({'secondary_managed_ap_locations':
+                    row.controller.secondary_managed_ap_locations}) -%}
             {%- endif -%}
             {%- if row.controller.skip_ap_provision is defined -%}
               {%- set cfg = cfg | combine({'skip_ap_provision': row.controller.skip_ap_provision}) -%}
@@ -258,15 +264,16 @@
     success_msg: >-
       {{ _wlc_provision_config | length }} wireless controller(s) to provision.
 
-# managed_ap_locations is what makes this stage worth running — without it the
-# controller is provisioned but serves no site, and the APs never join.
+# primary_managed_ap_locations is what makes this stage worth running — without
+# it the controller is provisioned but serves no site, and the APs never join.
 - name: Assert every controller names at least one managed AP location
   when: _wlc_rows | length > 0
   ansible.builtin.assert:
-    that: item.managed_ap_locations | default([]) | length > 0
+    that: item.primary_managed_ap_locations | default([]) | length > 0
     fail_msg: >-
-      Controller {{ item.management_ip_address }} has no managed_ap_locations.
-      Add the site path(s) whose APs it serves to wireless_controller in settings.json.
+      Controller {{ item.management_ip_address }} has no
+      primary_managed_ap_locations. Add the site path(s) whose APs it serves to
+      wireless_controller in settings.json.
   loop: "{{ _wlc_provision_config }}"
   loop_control:
     label: "{{ item.management_ip_address }}"
@@ -296,8 +303,7 @@
 #            "device_id": "b1000000-0000-4000-8000-000000000110",
 #            "primary":   ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"],
 #            "secondary": [] }
-#        ]
-#        _wlc_ap_location_paths = ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"]
+#        ]#        _wlc_ap_location_paths = ["Global/NORTH CAROLINA/Durham/Site-105/MAIN"]
 - name: Build managed AP location targets
   when: _wlc_rows | length > 0
   ansible.builtin.set_fact:
@@ -310,7 +316,8 @@
             {%- set ns.result = ns.result + [{
                   'ip':        ip,
                   'device_id': _wlc_family_map[ip].id,
-                  'primary':   row.controller.managed_ap_locations | default([], true),
+                  'primary':   row.controller.primary_managed_ap_locations
+                               | default(row.controller.managed_ap_locations | default([], true), true),
                   'secondary': row.controller.secondary_managed_ap_locations | default([], true)
                 }] -%}
           {%- endif -%}
@@ -368,7 +375,7 @@
       {{ _wlc_ap_location_paths
          | difference(_wlc_ap_location_site_ids.keys() | list)
          | join(', ') }}.
-      managed_ap_locations must name sites that stage 01 created.
+      primary_managed_ap_locations must name sites that stage 01 created.
     success_msg: >-
       {{ _wlc_ap_location_paths | length }} managed AP location(s) resolved.
 
@@ -442,7 +449,7 @@
             | zip(_wlc_provision_config | map(attribute='site_name_hierarchy'))
             | map('join', ' → ') | map('regex_replace', '^', '│   ') | list)
          + ['│ AP locations  : '
-            + (_wlc_provision_config | map(attribute='managed_ap_locations')
+            + (_wlc_provision_config | map(attribute='primary_managed_ap_locations')
                | flatten | unique | join(', '))]
          + ['│ Force provis  : ' + (force_wireless_provisioning | default(true) | bool) | string]
          + ['│ Changed       : ' + (_wlc_provision_result.changed | default(false)) | string]
