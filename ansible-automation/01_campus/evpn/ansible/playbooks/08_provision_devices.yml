@@ -37,6 +37,8 @@
 #     force_wireless_provisioning (true) — force the WLC pass every run
 #     wireless_provision_enabled (true) — set false to leave WLCs alone
 #     ap_provision_enabled (true) — set false to leave APs alone
+#     wlc_ap_location_confirm_retries (20), wlc_ap_location_confirm_delay (5)
+#       — settle wait after assigning a controller's managed AP locations
 #     task_poll_retries (60), task_poll_delay (10) — async task polling
 #     dnac_host/port/version/verify
 #   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
@@ -58,6 +60,11 @@
 #
 # Depends on: stages 01, 02, 05 and 07
 # Modules: cisco.dnac.provision_workflow_manager (wireless pass)
+#          cisco.dnac.wireless_controllers_assign_managed_ap_locations and
+#            cisco.dnac.wireless_controllers_managed_ap_locations_count_info
+#            (wireless pass; assign the AP locations and confirm they landed
+#            before the workflow manager runs — see provision_wireless.yml
+#            Step D for why the module cannot be left to do it alone)
 #          cisco.dnac.accesspoint_workflow_manager (AP pass, naming only)
 #          cisco.dnac.site_info + assign_device_to_site (AP site assignment)
 #          ansible.builtin.uri for POST /wirelessAccessPoints/provision (AP
@@ -105,6 +112,22 @@
       dnac_version: "{{ dnac_version }}"
       dnac_debug: "{{ dnac_debug }}"
     cisco.dnac.assign_device_to_site:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+    cisco.dnac.wireless_controllers_assign_managed_ap_locations:
+      dnac_host: "{{ dnac_host }}"
+      dnac_username: "{{ catc_username }}"
+      dnac_password: "{{ catc_password }}"
+      dnac_verify: "{{ dnac_verify }}"
+      dnac_port: "{{ dnac_port }}"
+      dnac_version: "{{ dnac_version }}"
+      dnac_debug: "{{ dnac_debug }}"
+    cisco.dnac.wireless_controllers_managed_ap_locations_count_info:
       dnac_host: "{{ dnac_host }}"
       dnac_username: "{{ catc_username }}"
       dnac_password: "{{ catc_password }}"

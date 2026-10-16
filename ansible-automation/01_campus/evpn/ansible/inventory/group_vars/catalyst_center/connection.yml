@@ -107,6 +107,15 @@ task_poll_delay: 10
 # APs whenever a controller's managed AP locations change, so a run that only
 # needs to touch switches can skip it.
 wireless_provision_enabled: true
+# provision_workflow_manager assigns a controller's managed AP locations and
+# calls the provision API immediately after. Catalyst Center reports the assign
+# task SUCCESS before its provision validator can see it, and rejects the
+# provision with NCWS70003 "Managed AP Locations are not configured". The
+# wireless pass therefore assigns them itself first and polls
+# GET /wirelessControllers/{id}/managedApLocations/count until the count
+# matches. 20 x 5s = 100 seconds; observed settle time is under a second.
+wlc_ap_location_confirm_retries: 20
+wlc_ap_location_confirm_delay: 5
 # Access points are named, site-assigned and provisioned in a third pass, after
 # the controllers. Set false to leave them alone: provisioning an AP can reboot
 # it, and it takes 1-3 minutes to rejoin.
