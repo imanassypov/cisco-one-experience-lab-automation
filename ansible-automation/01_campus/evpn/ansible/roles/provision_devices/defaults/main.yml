@@ -27,7 +27,8 @@ wireless_family_markers:
 #
 # Defaults true because provision_workflow_manager short-circuits on
 # 'already provisioned' without diffing intent, so with it false a changed
-# managed_ap_locations or wireless profile binding is silently never applied.
+# primary_managed_ap_locations or wireless profile binding is silently never
+# applied.
 # Forcing re-asserts the intent on every run. A re-provision that changes the
 # controller's managed AP locations reboots the affected APs; re-asserting the
 # same locations does not.

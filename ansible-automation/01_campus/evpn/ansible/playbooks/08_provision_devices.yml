@@ -28,8 +28,9 @@
 #   settings.json → settings_data.project[]:
 #     device_list — comma-separated management IPs
 #     HierarchyParent/Area/Bldg/Floor — composed into the target site path
-#     wireless_controller — optional; managed_ap_locations, skip_ap_provision,
-#                           rolling_ap_upgrade for the WLC in that row
+#     wireless_controller — optional; primary_managed_ap_locations,
+#                           skip_ap_provision, rolling_ap_upgrade for the WLC
+#                           in that row
 #     access_points — optional; name, location, mode and site per AP, keyed by
 #                     the AP's Ethernet MAC from lab.yml via an {APn_MAC} token
 #   connection.yml:

@@ -42,7 +42,7 @@ flowchart LR
 
   GWIFI --> K7["<b>wireless_design</b><br/><span style='font-size:13px'>interfaces · ssids · flex_connect</span><br/><b>stage 07</b>"]
   GWIFI --> K8["<b>wireless_profile</b><br/><span style='font-size:13px'>profile_name · ssid_details · site_names</span><br/><b>stage 07</b>"]
-  GWIFI --> K9["<b>wireless_controller</b><br/><span style='font-size:13px'>managed_ap_locations · skip_ap_provision</span><br/><b>stage 08</b>"]
+  GWIFI --> K9["<b>wireless_controller</b><br/><span style='font-size:13px'>primary_managed_ap_locations · skip_ap_provision</span><br/><b>stage 08</b>"]
   GWIFI --> K10["<b>access_points</b><br/><span style='font-size:13px'>mac_address carries AP1_MAC / AP2_MAC</span><br/><b>stages 08 · 11</b>"]
 
   GDEV --> K5["<b>device_list</b><br/><span style='font-size:13px'>comma-separated mgmt IPs<br/>a STRING, not a list</span><br/><b>stages 04 · 05 · 08</b>"]

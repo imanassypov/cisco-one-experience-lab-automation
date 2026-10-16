@@ -1272,7 +1272,7 @@ default tags and never broadcasts `PSEUDOCO-PODnn`.
 ### Data read from settings.json
 
 - `project[].device_list` and hierarchy fields
-- `project[].wireless_controller.managed_ap_locations`
+- `project[].wireless_controller.primary_managed_ap_locations`
 - `project[].wireless_controller.skip_ap_provision`
 - `project[].wireless_controller.rolling_ap_upgrade`
 - `project[].access_points[].mac_address`

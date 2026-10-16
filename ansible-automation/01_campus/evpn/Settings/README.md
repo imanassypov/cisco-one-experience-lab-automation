@@ -224,7 +224,7 @@ settings.json
     │   ├── additional_interfaces[]    # Extra WLC interfaces on the profile
     │   └── DayNTemplateNames[]        # Optional wireless Day-N template bindings
     ├── wireless_controller{}          # Optional — the row that owns the WLC
-    │   ├── managed_ap_locations[]     # Site paths whose APs this WLC manages
+    │   ├── primary_managed_ap_locations[]  # Site paths whose APs this WLC manages
     │   ├── skip_ap_provision          # Provision the WLC without touching APs
     │   └── rolling_ap_upgrade{}       # Staged AP reboot behaviour
     ├── wireless_design{}              # Optional — global wireless design objects
@@ -603,7 +603,7 @@ A site may declare both `network_profile` and `wireless_profile`. DC-Site-10 doe
 
 `interface_name` names an interface declared in `wireless_design.interfaces`, and is mandatory unless a `vlan_group_name` is given instead. `local_to_vlan` is what makes the SSID locally switched at the AP rather than tunnelled back to the controller. Both are VLAN 10 here because that is the native VLAN on the Site-105 AP trunk ports.
 
-**The controller and the APs are at different sites.** DC-Site-10 owns the C9800, but the APs are on Site-105 VLAN 10, hanging off the `Gi1/0/2` trunk ports on the leaves. That is why `site_names` and `managed_ap_locations` both point at Site-105 while living on the DC-Site-10 row.
+**The controller and the APs are at different sites.** DC-Site-10 owns the C9800, but the APs are on Site-105 VLAN 10, hanging off the `Gi1/0/2` trunk ports on the leaves. That is why `site_names` and `primary_managed_ap_locations` both point at Site-105 while living on the DC-Site-10 row.
 
 Getting `site_names` wrong is not a quiet mistake. A wireless controller can only be provisioned for AP locations that already have a wireless profile bound; if the profile binds to DC-Site-10 instead of Site-105, stage 08 fails with `NCWL10001: Wireless profile is not configured for managed site <uuid>`.
 
@@ -615,7 +615,7 @@ The optional `wireless_controller` object belongs on the row whose `device_list`
 
 ```json
 "wireless_controller": {
-    "managed_ap_locations": [
+    "primary_managed_ap_locations": [
         "Global/NORTH CAROLINA/Durham/Site-105/MAIN"
     ],
     "skip_ap_provision": false,
@@ -628,7 +628,7 @@ The optional `wireless_controller` object belongs on the row whose `device_list`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `managed_ap_locations` | array | Site paths whose APs this controller manages. Assigned before provisioning; the WLC cannot be provisioned without at least one. |
+| `primary_managed_ap_locations` | array | Site paths whose APs this controller manages. Assigned before provisioning; the WLC cannot be provisioned without at least one. Named `managed_ap_locations` before Catalyst Center 2.3.7.6; the old key still works. |
 | `skip_ap_provision` | bool | Provision the controller without touching the APs it manages. |
 | `rolling_ap_upgrade` | object | Staged AP reboot behaviour during provisioning. `ap_reboot_percentage` is ignored unless `enable_rolling_ap_upgrade` is true. |
 
