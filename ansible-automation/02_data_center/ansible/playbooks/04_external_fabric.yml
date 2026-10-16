@@ -12,10 +12,16 @@
 # of that handoff. Run after stage 06, the DC fabric would have been deployed
 # against a peer fabric that did not yet exist.
 #
-# Settings come from inventory/group_vars/all/dc_external_settings.yml. The
-# stage is safe to re-run: every write is guarded by a read, so the fabric
-# converges with state merged and the router is added only when the fabric's
-# switch list does not already contain it.
+# External fabric and edge-router settings come from
+# inventory/group_vars/all/dc_external_settings.yml. VRF-Lite link settings
+# come from inventory/group_vars/all/dc_vrf_lite.yml; the source fabric and
+# border-leaf identity come from inventory/group_vars/all/dc_switches.yml.
+# The link play reads the DC ASN from host_vars/Pseudoco-DC1/global.nac.yaml,
+# relative to this playbook directory.
+#
+# On re-run, dcnm_fabric and dcnm_links reconcile their declared settings with
+# state: merged. Router discovery and addition are separately guarded by a
+# read of the External fabric's switch list, matched on the management IP.
 #
 # Two decisions shape the whole play.
 #
@@ -341,6 +347,22 @@
 # This runs against the DC fabric rather than the External one because the link
 # belongs to the source fabric, and it runs after the play above because the
 # router has to be in the External fabric before a link can terminate on it.
+#
+# Cisco's "VRF Lite" guide, General Parameters, defines the IFC source IP/mask
+# and destination IP as defaults for VRF-extension sub-interfaces that can be
+# overridden. This profile consumes dc_vrf_lite_ifc's .1/30 and .2 defaults;
+# stage 06 replaces them in each extension with PROD .5/.6, IOT .9/.10,
+# and MAIN .13/.14. These link fields do not by themselves prove that the
+# physical Ethernet1/8 or GigabitEthernet2 has an IP address; neither does in
+# this deployment. Physical-interface IP/eBGP generation is a separate option
+# documented under "Auto Generate Configuration on default VRF".
+# ext_fabric_setup prepares the Layer 3 parent interface and its Link MTU;
+# the per-VRF sub-interfaces and peerings are supplied by stage 06's intent.
+#
+# Official source (NDFC 12.2.1, not release-specific 4.2.1 verification):
+# https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html
+# The guide does not establish whether these IFC IP fields can be omitted from
+# this module/controller payload, so the profile retains the declared defaults.
 - name: Stage 04 - build the VRF-Lite inter-fabric link
   hosts: Pseudoco-DC1
   gather_facts: false

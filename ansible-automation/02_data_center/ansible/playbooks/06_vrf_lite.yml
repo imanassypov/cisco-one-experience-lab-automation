@@ -17,9 +17,10 @@
 # cisco.dcnm's dcnm_vrf. The module sends seven extension fields and no others -
 # DOT1Q_ID, IF_NAME, IP_MASK, IPV6_MASK, IPV6_NEIGHBOR, NEIGHBOR_IP and
 # PEER_VRF_NAME - so it cannot carry the sub-interface MTU or the neighbour
-# ASN, and it hardcodes the Nexus template Ext_VRF_Lite_Jython where this pod's
-# IOS-XE peer is offered ios_xe_Ext_VRF_Lite_Jython. The UI's Edit Extension
-# Details dialog writes all of them in one payload, and so does this stage.
+# ASN, and it hardcodes Ext_VRF_Lite_Jython rather than using the controller's
+# offered template. This stage preserves the prototype's ASN and template and
+# adds the declared extension fields, including MTU. The UI's Edit Extension
+# Details dialog writes these fields in one payload, and so does this stage.
 #
 # Like stages 02 to 04, it writes intent to the controller and changes nothing
 # on a switch, so a deploy has to follow it before the sub-interfaces and BGP
@@ -31,14 +32,19 @@
 #     describe. This stage rewrites only the border leaf's attachment for the
 #     three VRFs it owns, and only where a field differs, so a second run on an
 #     already-extended fabric sends nothing.
-#   - It has to run after a deploy, not before one. Nexus Dashboard offers the
-#     border leaf a VRF-Lite extension only where a VRF-Lite inter-fabric link
-#     terminates on the parent interface, and it builds that link itself during
-#     a Recalculate and Deploy, once the edge router stage 04 adds is in the
-#     External fabric. Without that link there is no prototype to build the
-#     payload from, and this stage says so. So run 05_recalculate_and_deploy.yml
-#     first, then this stage, then the deploy again. 01_dc_deploy.yml already
-#     imports the stages in that order.
+#   - Stage 04 creates the External fabric, onboards the edge router, and
+#     explicitly creates or reconciles the VRF-Lite IFC with dcnm_links and
+#     ext_fabric_setup. Manual mode means this pipeline does not rely on
+#     controller auto-creation of that link. Stage 05 deploys the parent-link
+#     configuration and recalculates the fabric. On fresh builds in this lab,
+#     the extension prototypes became available only after that deployment
+#     and recalculation; this is an observed dependency, not a universal
+#     Cisco requirement to deploy before adding a VRF-Lite extension.
+#     Stage 06 requires those prototypes to construct the per-VRF intent,
+#     and stage 07 deploys the resulting sub-interfaces and BGP neighbours.
+#     Run stages 04 -> 05 -> 06 -> 07. 01_dc_deploy.yml already imports them
+#     in that order. Keeping IFC creation in stage 04 puts it before the
+#     stage 05 deployment boundary; stage 06 does not create the IFC itself.
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
