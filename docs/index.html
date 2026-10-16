@@ -3907,12 +3907,7 @@ exit-address-family
   <div class="page-card-header"><span>🌱</span>
     <h3 id="page-9006" class="page-anchor">5. Extending the Fabric: Add a Tenant or VLAN via Git</h3>
   </div>
-  <div class="page-card-body"><p>Two worked examples, then the workflow that carries them from an edit on your screen to configuration on a switch. This is where Infrastructure as Code stops being an idea and becomes a habit.</p>
-<div class="admonition">
-<p>👀 <strong>Optional but recommended.</strong> The lab works without this card. Do it anyway — making a change and watching it flow through is the most useful twenty minutes in the automated track.</p>
-</div>
-<hr>
-<h4>Example 1 — Add a VLAN to an existing tenant</h4>
+  <div class="page-card-body"><h4>Example 1 — Add a VLAN to an existing tenant</h4>
 <p>Goal: a voice VLAN, <strong>111</strong>, inside the existing <code>PROD</code> tenant.</p>
 <p>One file changes: <code>DEFN-OVERLAY.j2</code>. Find the <code>PROD</code> group and add the VLAN to both the id list and the VLAN dictionary. Everything <span style="color: #1a7f37; background: rgba(46,160,67,0.18); border-radius: 3px; padding: 1px 4px;">highlighted in green</span> is new — the rest is already there:</p>
 <pre>{
