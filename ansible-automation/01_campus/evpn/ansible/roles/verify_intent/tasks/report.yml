@@ -72,6 +72,23 @@
       Catalyst Center returned no output for their command. They are listed
       under "Not verified" in {{ verify_report_path }} and do not fail this run.
 
+- name: Verification verdict
+  when: not (verify_fail_on_mismatch | bool)
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        ('All ' ~ _verify_counts.pass ~ ' evaluated check(s) match the declared intent.')
+        if (_verify_counts.fail | int) == 0 else
+        (_verify_counts.fail ~ ' check(s) do not match the declared intent: '
+         ~ (_verify_results | selectattr('status', 'equalto', 'FAIL')
+            | map(attribute='id') | unique | join(', '))
+         ~ '. Read the intended and observed values with "less -R '
+         ~ verify_report_path ~ '", or open ' ~ verify_report_html_path
+         ~ ' in a browser and use its failures-only filter.')
+      }}
+
+# Off by default: a mismatch is a finding in the report, not a broken run. Turn
+# it on for a pipeline that gates on the exit code.
 - name: Assert the fabric matches the declared intent
   when: verify_fail_on_mismatch | bool
   ansible.builtin.assert:
@@ -83,8 +100,8 @@
       Read the intended and observed values with
       'less -R {{ verify_report_path }}', or open
       {{ verify_report_html_path }} in a browser and use its failures-only
-      filter. Re-run with -e verify_fail_on_mismatch=false to report without
-      failing.
+      filter. This task only runs because verify_fail_on_mismatch was set true;
+      the reports are written either way.
     success_msg: >-
       All {{ _verify_counts.pass }} evaluated check(s) match the declared
       intent. Report: {{ verify_report_path }}

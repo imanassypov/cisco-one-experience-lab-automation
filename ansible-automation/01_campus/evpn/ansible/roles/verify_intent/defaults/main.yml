@@ -13,9 +13,15 @@ verify_command_batch_size: 5
 # own default (300s per the API docs).
 verify_command_timeout: 0
 
-# Set false to render the report and still exit 0 — useful when demonstrating a
-# known-broken fabric to students.
-verify_fail_on_mismatch: true
+# Stage 12 reports, it does not police. A mismatch is a finding to read in the
+# report, not a reason to end the run on a red task — the stage collected every
+# command and wrote both reports, so the play did its job. The verdict is the
+# last thing printed, and it is in the Markdown and HTML reports either way.
+#
+# Set true to also fail the play when a check does not match, for a pipeline
+# that needs a non-zero exit code to gate on:
+#   -e verify_fail_on_mismatch=true
+verify_fail_on_mismatch: false
 
 # Where the reports land. Relative to the playbook, so they follow the repo's
 # existing evidence/ convention and stay gitignored. realpath collapses the

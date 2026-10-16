@@ -38,14 +38,17 @@
 #   evidence/stage12-verification.md on the host that ran the play — Kali when
 #   driven from the script server, not the laptop. Gitignored.
 #
-# Read-only: issues nothing but GETs and Command Runner read requests.
+# Read-only: issues nothing but GETs and Command Runner read requests. A
+# mismatch is reported, not fatal — the stage ends successfully with the verdict
+# as its last line, and both reports are written either way. Add
+# -e verify_fail_on_mismatch=true for a pipeline that gates on the exit code.
 #
 # Depends on: stages 01-10. Stage 09 (SWIM) reloads the switches, so run this
 # after it rather than before — a fabric mid-reload will fail every check.
 #
 # Run: ansible-playbook playbooks/12_verify_intent.yml
 #      ansible-playbook playbooks/12_verify_intent.yml -e catc_debug=true
-#      ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=false
+#      ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=true
 # =============================================================================
 - name: Verify deployed fabric against declared intent
   hosts: catalyst_center

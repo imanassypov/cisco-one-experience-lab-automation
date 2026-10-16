@@ -38,10 +38,11 @@
 # is already built. Skip the wait and provision the AP later with:
 #   ansible-playbook playbooks/00_site_deploy.yml -e ap_expected_count=0
 #
-# Stage 12 is read-only, but it fails the run on any mismatch
-# (verify_fail_on_mismatch defaults to true). To end with a report instead of
-# a failure:
-#   ansible-playbook playbooks/00_site_deploy.yml -e verify_fail_on_mismatch=false
+# Stage 12 is read-only and reports rather than polices: a mismatch is printed
+# as the stage's closing verdict and recorded in both reports, and the run still
+# ends successfully. For a pipeline that needs a non-zero exit code on a
+# mismatch:
+#   ansible-playbook playbooks/00_site_deploy.yml -e verify_fail_on_mismatch=true
 #
 # Run: ansible-playbook playbooks/00_site_deploy.yml
 # =============================================================================
