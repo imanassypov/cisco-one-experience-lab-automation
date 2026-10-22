@@ -3467,6 +3467,21 @@ grep -nE '"(image_file|rollback_image_file)"' Settings/settings.json
 ls -l /var/www/iosxe-images/cat9k_iosxe.26.01.02.SPA.bin \
       /var/www/iosxe-images/cat9k_iosxe.17.12.08.SPA.bin</code></pre>
 </blockquote>
+<p><strong>What a missing image looks like:</strong> If the configured upgrade image is not found in Catalyst Center's image repository after the import phase, Stage 09 stops at the 09.2 check. For example:</p>
+<pre><code>TASK [swim : 09.2 | Fail if the upgrade image is not in the repository]
+failed: [catalyst_center_api] (item=cat9k_iosxe.26.01.02.SPA.bin) =&gt; {
+    "assertion": "item.json.response | default([]) | length &gt; 0",
+    "evaluated_to": false,
+    "item": {
+        "json": {
+            "response": [],
+            "version": "1.0"
+        },
+        "status": 200
+    },
+    "msg": "cat9k_iosxe.26.01.02.SPA.bin is NOT in the Catalyst Center image repository after the import phase"
+}</code></pre>
+<p>An HTTP <code>200</code> with an empty <code>response</code> does <strong>not</strong> mean the image was found. Confirm the exact <code>image_file</code> (and rollback filename) in <code>settings.json</code>, that each matching <code>.bin</code> exists under <code>/var/www/iosxe-images/</code>, and that Catalyst Center can reach its corresponding URL. The full Ansible response can contain authentication headers; do not copy those into shared logs or documentation.</p>
 <p><strong>Catalyst Center call order:</strong></p>
 <div class="flow">
 <div class="flow-step chain-api"><div class="flow-num">1</div><div class="flow-body"><span class="flow-title"><a href="https://docs.ansible.com/ansible/latest/collections/cisco/catalystcenter/inventory_workflow_manager_module.html"><code>inventory_workflow_manager</code></a></span>Resynchronize the device inventory; see Cisco's SWIM guide for the related <a href="https://developer.cisco.com/docs/catalyst-center/3-1-5/swim">image inventory workflow</a>.</div></div>
