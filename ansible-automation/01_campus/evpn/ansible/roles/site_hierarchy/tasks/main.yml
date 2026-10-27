@@ -386,12 +386,8 @@
 # in Catalyst Center.  The response is indexed by nameHierarchy for O(1)
 # parent-ID lookup in Phase B.
 #
-# Why this phase is mandatory:
-#   Unlike cisco.dnac.site_workflow_manager, the individual cisco.catalystcenter
-#   modules (areas, buildings, floors) have NO built-in idempotency by name.
-#   The action plugin's get_object_by_name() always returns None — the module
-#   can only detect an existing site if you supply its UUID via id:.
-#   Without this lookup, every run would attempt to re-create every site.
+# This map preserves the stage's no-write default for existing sites, even
+# though the workflow manager can reconcile existing objects itself.
 #
 # site_id_map  { "Global/PODS/POD 0/Building P0": "abc123-...", ... }
 #
@@ -433,26 +429,10 @@
 #
 # Processes each site in shallow-first (parent-before-child) order.
 #
-# include_tasks is used instead of a plain loop so that set_fact inside
-# tasks/create_or_update_site.yml updates site_id_map BETWEEN iterations:
-# after site N is created, its UUID is added to site_id_map before site N+1
-# runs.  This satisfies the parentId requirement for any children at deeper
-# levels — including the nested-area case where two consecutive entries are
-# both areas but the second is a child of the first.
-#
-# A plain `loop:` on a single task cannot do this because set_fact inside a
-# loop only takes effect after the ENTIRE loop completes.
-#
-# Per-site API calls (tasks/create_or_update_site.yml):
-#   Site is NEW (not in site_id_map):
-#     POST /dna/intent/api/v1/areas             (area)
-#     POST /dna/intent/api/v2/buildings         (building)
-#     POST /dna/intent/api/v2/floors            (floor)
-#     GET  /dna/intent/api/v1/sites?nameHierarchy=<path>   ← ID resolution
-#   Site EXISTS (in site_id_map):
-#     PUT  /dna/intent/api/v1/areas/{id}        (area)
-#     PUT  /dna/intent/api/v2/buildings/{id}    (building)
-#     PUT  /dna/intent/api/v2/floors/{id}       (floor)
+# The workflow manager receives one typed config at a time and completes each
+# operation before its children run. Newly created UUIDs are re-queried into
+# site_id_map between iterations. Existing areas are skipped; building/floor
+# reconciliation requires site_hierarchy_update_existing=true.
 #
 - name: "Phase B — Reset per-run outcome log"
   ansible.builtin.set_fact:
@@ -478,11 +458,27 @@
 # Sites absent from site_id_map (not in CatC) are silently skipped inside
 # tasks/delete_site.yml via a `when: _exists` guard — safe to re-run.
 #
-# Per-site API calls (tasks/delete_site.yml):
-#   DELETE /dna/intent/api/v1/areas/{id}      (area)
-#   DELETE /dna/intent/api/v2/buildings/{id}  (building)
-#   DELETE /dna/intent/api/v2/floors/{id}     (floor)
+# Each existing path is passed to site_workflow_manager with state=deleted.
 #
+- name: "Phase C — Reject deletion of unconfigured descendants"
+  ansible.builtin.assert:
+    that: _unconfigured_descendants | length == 0
+    fail_msg: >-
+      Refusing to delete '{{ _delete_path }}': the workflow manager would also
+      delete sites outside the configured hierarchy: {{ _unconfigured_descendants }}.
+  vars:
+    _delete_path: >-
+      {{ site_config.site[site_config.site_type].parent_name ~ '/' ~
+         site_config.site[site_config.site_type].name }}
+    _unconfigured_descendants: >-
+      {{ site_id_map.keys() | select('match', '^' ~ (_delete_path | regex_escape) ~ '/')
+         | difference(all_site_paths) | list }}
+  loop: "{{ site_configs_list }}"
+  loop_control:
+    loop_var: site_config
+    label: "{{ _delete_path }}"
+  when: (state | default('merged')) == 'deleted'
+
 - name: "Phase C — Delete sites (children first)"
   ansible.builtin.include_tasks: delete_site.yml
   loop: "{{ site_configs_list | reverse | list }}"

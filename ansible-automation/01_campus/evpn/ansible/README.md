@@ -422,16 +422,37 @@ the current JSON does not set them.
 ### Catalyst Center APIs
 
 - `GET /dna/intent/api/v1/sites` — read the existing hierarchy.
-- `POST /dna/intent/api/v1/areas` — create a missing state or city.
-- `POST /dna/intent/api/v2/buildings` — create a missing building.
-- `POST /dna/intent/api/v2/floors` — create a missing floor.
+- `POST /dna/intent/api/v1/sites/bulk` — create missing areas, buildings, and floors through
+  `cisco.catalystcenter.site_workflow_manager`.
 - `GET /dna/intent/api/v1/sites?nameHierarchy=<path>` — resolve a newly
   created site's UUID.
-- `PUT` to the corresponding area, building, or floor endpoint — update an
-  existing object when updates are enabled.
+- The workflow manager handles building/floor updates when enabled and
+  deletion with `state: deleted`.
 
 Building and floor updates are disabled by default because of a known
 collection/SDK issue. Missing objects are still created.
+
+All site creation and updates use the workflow manager with `state: merged` and
+`config_verify: true`. This avoids the collection 2.11.0 `floors` action
+plugin's incorrect dictionary validation for `unitsOfMeasure`; the intended
+value remains a string (`feet` or `meters`). Areas, buildings, and floors are
+created parent-first. Existing areas are always skipped; existing buildings
+and floors are skipped unless `-e site_hierarchy_update_existing=true` is set.
+Deletion uses the same module with `state: deleted`, children first, skipping
+absent paths. No floor images are uploaded. Read-only lookups still use
+`sites_info`; UUID resolution and per-path reporting are unchanged.
+Because the workflow manager can recursively delete descendants, deletion
+preflight refuses to proceed if any targeted parent contains an existing site
+outside the configured hierarchy. This check runs before any deletion.
+
+The workflow manager in collection 2.11.0 documents Python >= 3.12 and
+`catalystcentersdk >= 3.2.3.0.0`, newer than the SDK pinned by this project.
+Live validation on Kali on 2026-10-27 created the missing Site-105 MAIN floor
+(`Created 1, updated 0, skipped 15`, `changed=1 failed=0`); the second run
+reported `Created 0, updated 0, skipped 16`, `changed=0 failed=0`.
+This verifies missing-floor creation on the existing runtime, not every
+operation: new area/building creation, opt-in updates, and deletion remain
+unverified live. No dependency pins or the `3.1.3.0` API profile were changed.
 
 ### Run it
 
@@ -2416,6 +2437,7 @@ to print the full HTTP request and response for each API call.
 | `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | [Step 6](#step-6--confirm-your-pod-number) was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
 | `ansible-inventory --graph` prints `[WARNING]: No inventory was parsed, only implicit localhost is available` and an empty `@all` | You are not in the `evpn/ansible` directory, so Ansible never found `ansible.cfg` and fell back to a default with no inventory | `cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible` and re-run. Every `ansible-playbook` command in this collection runs from there too |
 | Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
+| Stage 01 floor CREATE fails converting `unitsOfMeasure` to dict | Collection 2.11.0's `floors` action plugin declares the string field as a dictionary | Update the checkout and re-run stage 01. Missing floors now use `site_workflow_manager`; keep units as `feet` or `meters`, not a dictionary. Existing-floor updates remain disabled by default |
 | Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
 | Stage 08 fails with `AAA CLI(s) are already present on the device … Remove the CLIs, resync the device and retry` | The pod was not reset cleanly — the switches still carry the AAA/RADIUS block a previous run of this lab pushed, and Catalyst Center will not overwrite AAA it no longer owns | Remove the block by hand on all three switches, `write memory`, resync in Inventory, re-run stage 08 — full command list under [Stage 08](#if-provisioning-fails-with-aaa-clis-are-already-present) |
 | Stage 12 reports every telemetry subscription as `absent` and every receiver as `no receiver` | Fixed 2026-09-22. A stale checkout still looks up subscription numbers as numbers, and still parses the command Catalyst Center echoes back as if it were output | `git pull`. Confirm the fabric was never at fault with `show telemetry ietf subscription summary` on any switch — it should read all Valid, 0 Invalid |
