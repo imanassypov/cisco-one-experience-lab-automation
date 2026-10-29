@@ -2,19 +2,12 @@
 # =============================================================================
 # provision_devices / defaults/main.yml
 # =============================================================================
-# Device families that POST/PUT /dna/intent/api/v1/sda/provisionDevices cannot
-# handle, and which the wired pass in tasks/provision_switches.yml therefore keeps
-# out of its payloads.
+# Device families the SDA provisioning API cannot handle, so the wired pass
+# leaves them out and the wireless and AP passes pick them up instead.
 #
-# Matched as substrings against the family Catalyst Center reports for the
-# device, so 'Wireless' covers 'Wireless Controller' and 'Wireless Sensor'
-# without listing each. 'Unified AP' needs its own entry because an access
-# point's family contains no such marker.
-#
-# A device matching any marker is reported and left alone by the wired pass.
-# Controllers are then provisioned by tasks/provision_wireless.yml through
-# provision_workflow_manager, and access points by
-# tasks/provision_accesspoints.yml — neither of which touches the SDA API.
+# Matched as SUBSTRINGS of the family Catalyst Center reports, so 'Wireless'
+# covers both 'Wireless Controller' and 'Wireless Sensor'. 'Unified AP' needs
+# its own entry because an access point's family contains no such marker.
 wireless_family_markers:
   - Wireless
   - Unified AP

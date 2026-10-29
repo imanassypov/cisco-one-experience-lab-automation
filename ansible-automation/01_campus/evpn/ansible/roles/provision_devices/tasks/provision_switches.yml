@@ -1,28 +1,13 @@
 # ============================================================================
-# tasks/provision_switches.yml
+# provision_devices / provision_switches.yml
 # ============================================================================
-# Provisions the wired switches of one site entry from settings.json.
+# Provisions the wired switches of ONE site. `site_entry` is the loop variable:
+# .key is the site path, .value the list of management IPs.
 #
-# Input variable (set by loop in provision_devices.yml):
-#   site_entry.key    — full site hierarchy path
-#                       (e.g. Global/PODS/POD 0/Building P0/Floor 1)
-#   site_entry.value  — list of management IPs to provision to this site
-#
-# Variables read from inventory / parent play scope:
-#   _catc_token         — short-lived JWT (set in parent play)
-#   dnac_host / dnac_port / dnac_verify
-#   force_reprovision   — bool; re-provision already-provisioned devices
-#   task_poll_retries / task_poll_delay
+# Devices whose family matches provision_devices/defaults/main.yml are left for
+# the wireless and AP passes — the SDA API cannot provision them.
 # ============================================================================
 ---
-# ── Step A: Resolve site UUID ─────────────────────────────────────────────
-#
-# GET /dna/intent/api/v1/site?name=<full_hierarchy_path>
-#
-# The `name` query parameter accepts the full slash-delimited hierarchy path
-# (e.g. "Global/PODS/POD 0/Building P0/Floor 1").  The response array's first
-# element carries `id` — the site UUID required by provisionDevices.
-#
 - name: "Resolve site UUID | {{ site_entry.key }}"
   ansible.builtin.uri:
     url: "https://{{ dnac_host }}:{{ dnac_port }}/dna/intent/api/v1/site?name={{ site_entry.key | urlencode }}"
