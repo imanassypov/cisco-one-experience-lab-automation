@@ -257,9 +257,11 @@
   tags: [always]
 
 # ── Phases ───────────────────────────────────────────────────────────────────
-# Rollback is a recovery path, not a step in the normal sequence: when it is
-# requested it runs alone, because importing and re-tagging the upgrade image on
-# the way to a downgrade is exactly the wrong thing to do.
+# Rollback REPLACES the forward phases rather than following them. If 09.1-09.3
+# ran first they would import, tag and activate the image being backed away
+# from: distributing it into flash, where Catalyst Center's auto-clean can evict
+# the rollback target, and reloading the fabric twice. Rollback needs nothing
+# from them — 09.1 imports the rollback image during the upgrade that preceded.
 # apply: is required on every include below. A tag on include_tasks selects the
 # include itself but not the tasks it pulls in, so --tags swim_import would run
 # the include and nothing else.
