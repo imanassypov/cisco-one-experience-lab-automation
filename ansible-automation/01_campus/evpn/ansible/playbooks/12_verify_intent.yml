@@ -2,53 +2,33 @@
 # =============================================================================
 # 12_verify_intent.yml  —  Pipeline stage 12
 # =============================================================================
-# Verifies that what the fabric is actually running matches what the pipeline
-# declared, and writes a markdown report.
+# Checks that what the fabric is RUNNING matches what the pipeline DECLARED,
+# and writes a report. Read-only: it issues GETs and show commands, nothing
+# else.
 #
-# Intent comes from two places:
-#   settings.json                — site, wireless SSID/VLANs, access points
-#   DEFN-*.j2 in Catalyst Center — VRFs, VNIs, loopbacks, roles, client ports
+#   what was declared                    what is running
+#   ─────────────────                    ───────────────
+#   settings.json  SSID, VLANs, APs      show vrf / vlan / nve peers /
+#   DEFN-*.j2      VRFs, VNIs, ports     bgp summary / ap summary …
+#            │                                   │
+#            └─────────►  compare  ◄──────────┘
+#                            evidence/stage12-verification.{md,html}
 #
-# The DEFN bodies are read from Catalyst Center Template Programmer, not from
-# the repo. Stage 06 seeds Catalyst Center from git or a local folder depending
-# on template_source; this stage verifies what was actually deployed, so a
-# locally edited template that was never synced cannot produce a false pass,
-# and the stage works from a checkout with no templates in it at all.
+# The templates are read from Catalyst Center, NOT from this checkout, so a
+# template you edited locally and never synced cannot produce a false pass.
 #
-# Live state is collected through Catalyst Center Command Runner
-# (POST /dna/intent/api/v1/network-device-poller/cli/read-request), so stage 12
-# needs no SSH to the switches. It runs from the Kali script server like every
-# other stage, and works even when the path to the fabric management addresses
-# is down.
+# Device output comes through Catalyst Center Command Runner, so this stage
+# needs no SSH to any switch, and is parsed with Genie rather than matched as
+# text — the checks assert on operational state (is the tunnel up) rather than
+# on configuration lines (was it configured).
 #
-# Role: verify_intent
-#   12.1 intent_templates — DEFN bodies from Catalyst Center
-#   12.2 intent_fabric    — render them to data
-#   12.3 intent_settings  — intent declared in settings.json
-#   12.4 resolve_devices  — management IP to device UUID
-#   12.5 run_commands     — Command Runner, batched 5 commands per request
-#   12.6 evaluate         — check declared against observed
-#   12.7 report           — markdown + console summary, then fail on mismatch
+# A mismatch is REPORTED, not fatal: the run ends successfully with the verdict
+# as its last line. Add -e verify_fail_on_mismatch=true to gate a pipeline.
 #
-# Sourced (pre_tasks, order matters):
-#   catc_common tasks_from: auth_token    → _catc_token
-#   catc_common tasks_from: load_settings → settings_data
-#
-# Produced:
-#   evidence/stage12-verification.md on the host that ran the play — Kali when
-#   driven from the script server, not the laptop. Gitignored.
-#
-# Read-only: issues nothing but GETs and Command Runner read requests. A
-# mismatch is reported, not fatal — the stage ends successfully with the verdict
-# as its last line, and both reports are written either way. Add
-# -e verify_fail_on_mismatch=true for a pipeline that gates on the exit code.
-#
-# Depends on: stages 01-10. Stage 09 (SWIM) reloads the switches, so run this
-# after it rather than before — a fabric mid-reload will fail every check.
+# Depends on: stages 01-10. Run it after stage 09, never during — a fabric
+# mid-reload fails every check.
 #
 # Run: ansible-playbook playbooks/12_verify_intent.yml
-#      ansible-playbook playbooks/12_verify_intent.yml -e catc_debug=true
-#      ansible-playbook playbooks/12_verify_intent.yml -e verify_fail_on_mismatch=true
 # =============================================================================
 - name: Verify deployed fabric against declared intent
   hosts: catalyst_center

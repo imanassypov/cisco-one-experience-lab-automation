@@ -2,47 +2,30 @@
 # =============================================================================
 # 00_site_deploy.yml  —  Full pipeline orchestrator (stages 01–12)
 # =============================================================================
-# Builds a Catalyst Center deployment end-to-end by importing each stage
-# playbook in dependency order. The orchestrator itself declares no vars and
-# calls no roles — every stage loads its own vault and settings.json.
+# Runs every stage in order, start to finish. It declares nothing of its own —
+# each imported playbook loads its own settings and credentials.
 #
-# Sourced (indirectly, per imported stage):
-#   CICD Pipeline/Settings/settings.json      — declarative source of truth
-#   inventory/group_vars/catalyst_center/     — connection.yml
-#   Lab Topology/lab_access.yml               — CatC username/password (vault)
+# Order matters: each stage consumes what the previous one created.
 #
-# Produced (cumulative state in Catalyst Center):
-#   site hierarchy → network settings → credentials → discovered devices →
-#   site assignments → synced templates → network profiles → provisioned
-#   devices → upgraded images → deployed Day-N composite templates →
-#   provisioned access points → verification evidence
+#   01 hierarchy ─► 02 settings ─► 03 credentials ─► 04 discovery ─► 05 assign
+#      ─► 06 templates ─► 07 profiles ─► 08 provision ─► 09 image upgrade
+#      ─► 10 deploy the fabric config ─► 11 access points ─► 12 verify
 #
-# Order is significant — each stage consumes objects created by the previous:
-#   01 hierarchy → 02 settings → 03 credentials → 04 discovery → 05 assign
-#   → 06 templates → 07 profiles → 08 provision → 09 SWIM → 10 composite deploy
-#   → 11 access points → 12 verify
+# Stage 09 comes before stage 10 on purpose: get the switches onto their
+# intended image before pushing EVPN and telemetry configuration onto them.
 #
-# Stage 09 sits before the composite deploy on purpose: the switches should be
-# running their intended image before EVPN and telemetry configuration is
-# pushed onto them, not after.
+# 🛑 Stage 09 RELOADS the switches, between stages 08 and 10. To build the site
+#    without an image change:  -e swim_activate=false
 #
-# 🛑 Stage 09 RELOADS the switches. Activation is default-on, so a plain run of
-# this orchestrator upgrades and reboots the fabric between stages 08 and 10.
-# To build the site without an image change:
-#   ansible-playbook playbooks/00_site_deploy.yml -e swim_activate=false
+# ⏳ Stage 11 BLOCKS for up to 10 minutes waiting for an access point to join,
+#    and fails if none appears — after the fabric is already built. A pod with
+#    no AP cabled should skip it with:  -e ap_expected_count=0
 #
-# ⏳ Stage 11 BLOCKS. A physical access point cannot join until stage 10 turns
-# Gi1/0/2 into an AP trunk, so 11 polls Catalyst Center for up to 10 minutes
-# (ap_wait_retries × ap_wait_delay) waiting for one to appear, then asserts.
-# A pod with no access point cabled will therefore fail here, after the fabric
-# is already built. Skip the wait and provision the AP later with:
-#   ansible-playbook playbooks/00_site_deploy.yml -e ap_expected_count=0
+# Stage 12 reports rather than polices: a mismatch is printed and recorded, and
+# the run still succeeds. To gate on it:  -e verify_fail_on_mismatch=true
 #
-# Stage 12 is read-only and reports rather than polices: a mismatch is printed
-# as the stage's closing verdict and recorded in both reports, and the run still
-# ends successfully. For a pipeline that needs a non-zero exit code on a
-# mismatch:
-#   ansible-playbook playbooks/00_site_deploy.yml -e verify_fail_on_mismatch=true
+# First time through, run the stages ONE AT A TIME instead. You can check
+# Catalyst Center after each, and a failure belongs to a single stage.
 #
 # Run: ansible-playbook playbooks/00_site_deploy.yml
 # =============================================================================

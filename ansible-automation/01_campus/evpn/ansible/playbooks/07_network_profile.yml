@@ -2,62 +2,24 @@
 # =============================================================================
 # 07_network_profile.yml  —  Pipeline stage 07
 # =============================================================================
-# Creates or updates Catalyst Center network profiles and binds them to sites.
-# The profile is the join between a site and the templates synced in stage 06 —
-# without it, provisioning has nothing to push. Role: network_profile.
+# Creates the network profiles that join a SITE to the TEMPLATES from stage 06.
+# Without a profile, stage 08 provisioning has nothing to push.
 #
-# Sourced:
-#   settings.json → settings_data.project[] (via catc_common.load_settings):
-#     network_profile:
-#       profile_name        — e.g. "BGP-EVPN-Switching"
-#       DayNTemplateNames[] — [{TemplateName: "Building-P0-Composite",
-#                                Project: "Building P0"}]
-#       Day0TemplateNames[] — optional onboarding templates
-#     wireless_design:      — optional; SSIDs and FlexConnect settings, created
-#       ssids[]               before any profile can reference them
-#       flex_connect_configuration[]  — native VLAN (WFM + URI PUT)
-#       flex_connect_aaa_override[]   — ISE VLAN-name map (URI PUT only;
-#                                       the design WFM has no field for it)
-#     wireless_profile:     — optional, only sites with a WLC
-#       profile_name        — e.g. "HQ-Wireless"
-#       site_names[]        — sites this profile is bound to; a WLC cannot manage
-#                             a site's APs until one is bound (NCWL10001)
-#       ssid_details[]      — passed through to the WFM as-is; may be empty
-#       additional_interfaces[] — extra WLC interfaces on the profile (not the
-#                               Flex vlan-name table; that is flex_connect_aaa_override)
-#       DayNTemplateNames[] — optional wireless Day-N templates
-#     HierarchyParent/Area/Bldg/Floor — composed into the bound site path
-#   inventory/group_vars/all/lab.yml:
-#     lab_pod_id — fills the {POD} token in SSID names; catc_common.load_settings
-#       substitutes it, so this play sees "PSEUDOCO-POD12", not the raw token
-#   connection.yml: dnac_host, dnac_port, dnac_version, dnac_verify, dnac_debug
-#   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
+# Three things are built here, in order, because each needs the one before:
+#   wireless design   SSIDs and FlexConnect settings — a profile cannot
+#                     reference an SSID that does not exist yet
+#   switching profile binds the Day-N template to the site
+#   wireless profile  binds the SSID to the site. A controller cannot manage a
+#                     site's APs until this exists (stage 08 fails without it)
 #
-# Produced:
-#   profile_list — PascalCase JSON flattened into WFM string lists:
-#     [{ profile_name: "BGP-EVPN-Switching",
-#        site_names: ["Global/PODS/POD 0/Building P0/Floor 1"],
-#        day_n_templates: ["Building-P0-Composite"],
-#        onboarding_templates: [] }]
-#   wireless_profile_list — same shape for the wireless WFM; empty when no row
-#     declares wireless_profile, in which case the wireless call is skipped.
-#   In Catalyst Center: a switching profile per project row attached to its
-#   site and applied during stage 08, plus a wireless profile on the sites that
-#   declare one. A site may carry both — DC-Site-10 has a C9800 today and is
-#   expected to gain switches.
+# The SSID name carries a {POD} token that is replaced from lab.yml at load
+# time, so pod 12 becomes PSEUDOCO-POD12. The WLC is SHARED between students:
+# changing your pod number after running this leaves the old SSID behind.
 #
-# Depends on: stage 06 (referenced template names must already exist)
-# Required by: stage 08 — provisioning a wireless controller fails with
-#   NCWL10001 until a wireless profile is bound to each of its managed AP sites
-# Modules: cisco.dnac.network_profile_switching_workflow_manager
-#          cisco.dnac.wireless_design_workflow_manager
-#          cisco.dnac.network_profile_wireless_workflow_manager
-#          cisco.catalystcenter.sites_info (Flex REST site UUID)
-#          ansible.builtin.uri (Flex native-VLAN PUT — the design WFM skips
-#          create when no override exists, which left WLC native VLAN 1;
-#          Flex AAA-override VLAN PUT — the WFM has no field, and
-#          additional_interfaces is not this map)
+# Two FlexConnect settings are written with raw REST because the design module
+# has no field for them: the native VLAN and the AAA VLAN-name override.
 #
+# Depends on: stage 06
 # Run: ansible-playbook playbooks/07_network_profile.yml
 # =============================================================================
 - name: Create and Assign Network Profiles from settings.json

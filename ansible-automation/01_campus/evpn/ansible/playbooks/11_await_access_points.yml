@@ -2,52 +2,34 @@
 # =============================================================================
 # 11_await_access_points.yml  —  Pipeline stage 11
 # =============================================================================
-# Waits for an access point to reach Catalyst Center, records its Ethernet MAC
-# in inventory/group_vars/all/lab.yml, then provisions it.
+# Waits for an access point to show up in Catalyst Center, writes its MAC into
+# lab.yml, then names, site-assigns and provisions it.
 #
-# Why this stage exists
+# Why a whole stage just for this
 # --------------------------------------------------------------------------
-# Wireless is the one part of this lab that cannot complete in a single pass: a
+# Wireless is the one part of the lab that cannot finish in a single pass: a
 # physical AP has to boot and find its controller in the middle of it. The AP
-# cannot join until stage 10 makes Gi1/0/2 an AP trunk, so at first-run time
-# there is no AP for stage 08 to provision.
+# cannot join until stage 10 configures the switch port it hangs off, so when
+# stage 08 ran there was no AP to provision.
 #
-# Bridging that gap by hand is where students lose time. They have to notice
-# the AP registered, read a MAC off the controller, convert it from IOS dotted
-# notation to colons, pick the Ethernet MAC rather than the Base Radio MAC, and
-# paste it into the right file. Every one of those is a chance to get it wrong,
-# and the resulting failure is an opaque "not found among the Unified AP
-# devices". This playbook does all of it.
+# Doing that by hand is where students lose time — spot the AP, read a MAC off
+# the controller, convert IOS dotted notation to colons, pick the ETHERNET MAC
+# and not the Base Radio MAC, paste it into the right file. Get any of it wrong
+# and the error is an opaque "not found among the Unified AP devices".
 #
-# Two plays:
-#   1. Poll Catalyst Center until an AP appears, write the MACs into lab.yml.
-#   2. Name, site-assign and provision those APs.
+#   play 1   poll until an AP appears  ──►  write lab_ap_macs into lab.yml
+#   play 2   name it, assign it to its floor, provision it
 #
-# Play 2 runs the AP pass of the provision_devices role directly rather than
-# importing stage 08. Stage 08 would also run the wired pass, which has nothing
-# to do here, and the controller pass, which reboots every AP on the shared
-# 9800 unless -e wireless_provision_enabled=false is remembered. Calling the AP
-# tasks directly removes that footgun.
+# Play 2 calls the AP tasks of the provision_devices role directly rather than
+# re-running stage 08: stage 08 would also touch the SHARED controller, which
+# reboots every student's APs.
 #
-# Runs after: 10_deploy_composite.yml
-# Runs before: 12_verify_intent.yml
+# NOT part of 00_site_deploy.yml on purpose — it blocks on hardware booting,
+# and the orchestrator should not stall on something no API call can hurry.
 #
-# Deliberately NOT part of 00_site_deploy.yml. It blocks on hardware booting,
-# which can take minutes, and the orchestrator should not stall on something no
-# amount of API work can hurry along.
-#
-# Sourced:
-#   catc_common tasks_from: auth_token    → _catc_token
-#   catc_common tasks_from: load_settings → settings_data
-#   connection.yml: dnac_host/port/verify, ap_assign_confirm_*
-#
-# Produced:
-#   inventory/group_vars/all/lab.yml — lab_ap_macs populated, comments intact
-#   On Catalyst Center: APs named, assigned to their floor, and provisioned
-#
+# Runs after stage 10, before stage 12.
 # Run: ansible-playbook playbooks/11_await_access_points.yml
 #      ansible-playbook playbooks/11_await_access_points.yml -e ap_expected_count=2
-#      ansible-playbook playbooks/11_await_access_points.yml -e ap_provision_after_discovery=false
 # =============================================================================
 - name: Wait for access points and record their MACs in lab.yml
   hosts: catalyst_center
