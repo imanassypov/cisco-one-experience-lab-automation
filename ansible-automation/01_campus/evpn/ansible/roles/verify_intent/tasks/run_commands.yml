@@ -1,28 +1,18 @@
 # ============================================================================
 # verify_intent / tasks/run_commands.yml  —  Stage 12.5
 # ============================================================================
-# Collects live CLI output through Catalyst Center Command Runner.
+# Collects live CLI output through Catalyst Center Command Runner, so this
+# stage needs no SSH to any device.
 #
-# One request per (role, command batch). Catalyst Center rejects more than five
-# commands per request — "Maximum of 5 commands allowed per request", verified
-# 2026-09-15 — so verify_command_batch_size chunks the list. Devices of the same
-# role go in one request, because deviceUuids is a list.
+# Catalyst Center rejects more than FIVE commands per request, so the command
+# list is chunked. Devices of the same role share a request.
 #
-# Flow per batch:
-#   POST /dna/intent/api/v1/network-device-poller/cli/read-request → taskId
-#   GET  /dna/intent/api/v1/task/{taskId}  until endTime; progress holds fileId
-#   GET  /dna/intent/api/v1/file/{fileId}  → per-device commandResponses
+# A refused command (FAILURE or BLACKLISTED) is treated as a hard error, not as
+# empty output — a check reading no text would otherwise "pass" against
+# nothing, which is the exact failure this stage exists to catch.
 #
-# The file is a list of
-#   {deviceUuid, commandResponses: {SUCCESS: {cmd: text}, FAILURE: {}, BLACKLISTED: {}}}
-#
-# FAILURE and BLACKLISTED are treated as hard errors rather than empty output.
-# A check that silently sees no text would otherwise report a pass against
-# nothing, which is the failure mode this whole stage exists to catch.
-#
-# Consumes: _verify_devices, verify_commands (vars/checks.yml)
-# Produced: _cli_output — {hostname: {command: text}}
-#           _verify_blacklisted — [{device, command}] for the report
+# Out: _cli_output — {hostname: {command: text}}
+#      _verify_blacklisted — [{device, command}] for the report
 # ============================================================================
 ---
 # Example - two roles, six switch commands, three WLC commands, batch size 5

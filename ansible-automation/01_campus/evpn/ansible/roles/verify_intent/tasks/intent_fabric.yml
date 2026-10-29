@@ -1,22 +1,19 @@
 # ============================================================================
 # verify_intent / tasks/intent_fabric.yml  —  Stage 12.2
 # ============================================================================
-# Turns the DEFN-*.j2 bodies fetched from Catalyst Center into a plain data
-# structure.
+# Turns the DEFN-*.j2 bodies into plain data the checks can read.
 #
-# The DEFN files are pure {% set %} blocks, so concatenating them into a single
-# template puts every variable in one Jinja scope. An epilogue appended last
-# emits the whole lot as JSON. That is why this uses assemble + template rather
-# than Jinja {% import %}: import would need a statically known module name per
-# file, and the file list comes from Catalyst Center at run time.
+# The DEFN files are pure {% set %} blocks, so gluing them into one template
+# puts every variable in a single Jinja scope, and an epilogue dumps the lot as
+# JSON. Hence assemble + template rather than {% import %}: import needs a file
+# name known at parse time, and this list arrives from Catalyst Center at run
+# time.
 #
-# Everything happens in a tempfile directory on whichever host runs the play —
-# normally the Kali script server. Nothing is written into the repo's template
-# folder, which stage 06 syncs wholesale to Catalyst Center.
+# All of it happens in a tempdir, never in the repo's template folder — stage
+# 06 syncs that folder wholesale.
 #
-# Consumes: _defn_templates (tasks/intent_templates.yml)
-# Produced: _intent_fabric — {vrfs, vrf_to_node, node_roles, loop_underlay,
-#                             client_ports, overlay, l3out, bgp_asn, ...}
+# In:  _defn_templates
+# Out: _intent_fabric — {vrfs, vrf_to_node, node_roles, client_ports, …}
 # ============================================================================
 ---
 - name: Create a working directory for the intent extraction

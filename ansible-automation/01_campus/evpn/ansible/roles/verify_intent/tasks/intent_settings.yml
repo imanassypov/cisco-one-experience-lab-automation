@@ -3,36 +3,19 @@
 # ============================================================================
 # The half of the intent that settings.json owns: wireless and device lists.
 #
-# settings_data has already been token-substituted by catc_common.load_settings,
-# so lab.wireless_ssid reads PSEUDOCO-POD12 rather than PSEUDOCO-POD{POD}, and
-# access_points[].mac_address holds a real MAC. An entry whose {APn_MAC} token
-# was never filled is dropped, exactly as stage 08 drops it.
+# settings_data is already token-substituted, so the SSID reads PSEUDOCO-POD12
+# and AP MACs are real. An AP whose token was never filled is dropped, exactly
+# as stage 08 drops it.
 #
-# Produced:
-#   _intent_settings — {ssid, wireless_vlans[], access_points[], wlc_ips[],
-#                       switch_ips[]}
+# switch_ips comes from TemplateTarget, not device_list: TemplateTarget is what
+# stage 10 actually deployed fabric config to, so it is the only list this
+# stage can hold to the DEFN intent. device_list also carries the controller,
+# which gets no fabric config at all.
+#
+# Out: _intent_settings — {ssid, wireless_vlans[], access_points[], wlc_ips[],
+#                          switch_ips[]}
 # ============================================================================
 ---
-# Example
-#   In : settings_data.lab.wireless_ssid = "PSEUDOCO-POD12"
-#        project[].wireless_design.interfaces = [ {"vlan_id": 10}, {"vlan_id": 101} ]
-#        project[].access_points = [ {"ap_name": "SITE-105-AP-1",
-#                                     "mac_address": "08:4f:a9:50:f0:28"} ]
-#        project[].network_profile.DayNTemplateNames[].TemplateTarget
-#          = ["172.30.255.1","172.30.255.2","172.30.255.3"]
-#        project[].wireless_controller present, device_list = "198.18.5.103"
-#   Out: _intent_settings = {
-#          "ssid": "PSEUDOCO-POD12",
-#          "wireless_vlans": ["10","101","102"],
-#          "access_points": [{"name": "SITE-105-AP-1",
-#                             "mac": "08:4f:a9:50:f0:28"}],
-#          "switch_ips": ["172.30.255.1","172.30.255.2","172.30.255.3"],
-#          "wlc_ips":    ["198.18.5.103"] }
-#
-# switch_ips comes from TemplateTarget rather than device_list: TemplateTarget is
-# what stage 10 actually deployed the fabric templates to, so it is the list
-# whose configuration this stage can hold to the DEFN intent. device_list also
-# carries the controller, which gets no fabric config at all.
 - name: Derive the intent declared in settings.json
   ansible.builtin.set_fact:
     _intent_settings: >-

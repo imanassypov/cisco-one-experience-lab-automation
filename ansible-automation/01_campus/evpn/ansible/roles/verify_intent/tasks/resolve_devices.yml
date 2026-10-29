@@ -1,16 +1,14 @@
 # ============================================================================
 # verify_intent / tasks/resolve_devices.yml  —  Stage 12.4
 # ============================================================================
-# Management IP to Catalyst Center device UUID and hostname.
+# Management IP → Catalyst Center device UUID and hostname.
 #
-# The hostname matters as much as the UUID: Catalyst Center reports the FQDN
-# (Site_105-Leaf1.corp.pseudoco.com), which is exactly the key DEFN-VRF.j2 and
-# DEFN-ROLES.j2 use in DEFN_VRF_TO_NODE / DEFN_NODE_ROLES. That is the join
-# between declared intent and observed state.
+# The hostname matters as much as the UUID: Catalyst Center reports the FQDN,
+# which is exactly the key DEFN-VRF.j2 and DEFN-ROLES.j2 use to say which VRFs
+# and roles a node has. It is the join between declared and observed.
 #
-# Consumes: _intent_settings.switch_ips / .wlc_ips
-# Produced: _verify_devices — [{ip, id, hostname, family, role}]
-#           role is 'switch' or 'wlc', which selects the command set
+# Out: _verify_devices — [{ip, id, hostname, family, role}]
+#      role is 'switch' or 'wlc', which selects the command set
 # ============================================================================
 ---
 - name: Build the lookup target list
