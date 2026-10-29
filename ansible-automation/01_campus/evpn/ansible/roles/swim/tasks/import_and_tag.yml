@@ -145,19 +145,29 @@
 
 - name: "09.2 | Fail if the upgrade image is not in the repository"
   ansible.builtin.assert:
-    that: item.json.response | default([]) | length > 0
+    that: item.present
     fail_msg: >-
-      {{ item.item.image_file }} is NOT in the Catalyst Center image repository
+      {{ item.image_file }} is NOT in the Catalyst Center image repository
       after the import phase, so nothing downstream can work.
       The image name must match a build Catalyst Center is offered by CCO
       exactly — a name that merely exists on cisco.com is not enough. List what
       this cluster can actually import with:
         GET /dna/intent/api/v1/images
       (note: offset/limit return an empty set on this build — call it plain).
-    success_msg: "{{ item.item.image_file }} present in the repository"
-  loop: "{{ _swim_repo_check.results }}"
+    success_msg: "{{ item.image_file }} present in the repository"
+  # Summarised rather than looped over _swim_repo_check.results: a looped assert
+  # prints its whole item, which for a uri result includes the auth token.
+  vars:
+    _summary: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for r in _swim_repo_check.results -%}
+      {%- set ns.out = ns.out + [{'image_file': r.item.image_file,
+                                  'present': (r.json.response | default([]) | length > 0)}] -%}
+      {%- endfor -%}
+      {{ ns.out }}
+  loop: "{{ _summary }}"
   loop_control:
-    label: "{{ item.item.image_file }}"
+    label: "{{ item.image_file }}"
 
 # Golden tagging is scoped to the BUILDING, not the floor the devices sit on.
 # tag_scope_check.yml explains why and enforces it.
