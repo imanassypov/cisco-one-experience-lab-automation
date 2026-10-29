@@ -12,15 +12,17 @@
 # a known image is therefore part of standing up assurance, not a side errand.
 #
 # Phase order — each is a separate file and can be run alone with tags:
-#   09.1 preflight       resync inventory, baseline IMAGE compliance   (read-only)
-#   09.2 import_and_tag  pull image from CCO, mark it golden           (CatC only)
-#   09.3 distribute      copy image to device flash, no reload         (safe)
-#   09.4 activate        reload onto the new image                     (DISRUPTIVE)
-#   09.5 postcheck       IMAGE compliance after activation             (read-only)
-#   09.6 rollback        re-tag prior image and activate it            (DISRUPTIVE)
+#   09.1 import_and_tag  pull image into the repository, mark it golden (CatC only)
+#   09.2 distribute      copy image to device flash, no reload            (safe)
+#   09.3 activate        reload onto the new image                  (DISRUPTIVE)
+#   09.4 rollback        re-tag prior image and activate it         (DISRUPTIVE)
 #
-# Phases 09.1-09.5 run by default, including the reload in 09.4. 09.6 replaces
+# Phases 09.1-09.3 run by default, including the reload in 09.3. 09.4 replaces
 # them and stays locked behind explicit flags — see defaults/main.yml.
+#
+# Tasks are numbered by their position within a phase (09.1.1, 09.1.2, …), and
+# tasks pulled in from a guard file nest under the step that includes them
+# (09.1.7.1 …) so inserting one cannot renumber its caller.
 #
 # Sourced:
 #   settings_data.swim_catalog        — the images themselves (settings.json)
@@ -261,7 +263,7 @@
 # apply: is required on every include below. A tag on include_tasks selects the
 # include itself but not the tasks it pulls in, so --tags swim_import would run
 # the include and nothing else.
-- name: "Stage 09.6 | Rollback to the previous image"
+- name: "Stage 09.4 | Rollback to the previous image"
   ansible.builtin.include_tasks:
     file: rollback.yml
     apply:
@@ -272,15 +274,7 @@
 - name: Run the forward upgrade phases
   when: not (swim_rollback | bool)
   block:
-    - name: "Stage 09.1 | Preflight — resync and baseline compliance"
-      ansible.builtin.include_tasks:
-        file: preflight.yml
-        apply:
-          tags: [swim_preflight]
-      when: swim_run_preflight | bool
-      tags: [swim_preflight]
-
-    - name: "Stage 09.2 | Import and tag golden"
+    - name: "Stage 09.1 | Import and tag golden"
       ansible.builtin.include_tasks:
         file: import_and_tag.yml
         apply:
@@ -288,7 +282,7 @@
       when: swim_run_import | bool
       tags: [swim_import]
 
-    - name: "Stage 09.3 | Distribute image to device flash"
+    - name: "Stage 09.2 | Distribute image to device flash"
       ansible.builtin.include_tasks:
         file: distribute.yml
         apply:
@@ -296,23 +290,13 @@
       when: swim_run_distribute | bool
       tags: [swim_distribute]
 
-    - name: "Stage 09.4 | Activate image (reloads devices)"
+    - name: "Stage 09.3 | Activate image (reloads devices)"
       ansible.builtin.include_tasks:
         file: activate.yml
         apply:
           tags: [swim_activate]
       when: swim_activate | bool
       tags: [swim_activate]
-
-    - name: "Stage 09.5 | Post-activation compliance"
-      ansible.builtin.include_tasks:
-        file: postcheck.yml
-        apply:
-          tags: [swim_postcheck]
-      when:
-        - swim_activate | bool
-        - swim_run_postcheck | bool
-      tags: [swim_postcheck]
 
 - name: Stage 09 summary
   ansible.builtin.debug:

@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/activate.yml  —  Stage 09.4
+# swim / tasks/activate.yml  —  Stage 09.3
 # =============================================================================
 # DISRUPTIVE. Reloads every targeted device onto the distributed image.
 #
@@ -29,7 +29,7 @@
 # Post: devices running the new image; EVPN/telemetry state rebuilt from config
 # =============================================================================
 
-- name: "09.4 | Announce the reload"
+- name: "09.3.1 | Announce the reload"
   ansible.builtin.debug:
     msg:
       - "ACTIVATING {{ item.image_file }} at {{ item.site_name }}"
@@ -39,7 +39,7 @@
   loop_control:
     label: "{{ item.site_name }}"
 
-- name: "09.4 | Activate the golden image"
+- name: "09.3.2 | Activate the golden image"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
     # Must outlast the reload. Timing out here would not stop the upgrade — it
@@ -72,7 +72,7 @@
     var: _swim_activate
   when: catc_debug | default(false) | bool
 
-- name: "09.4 | Report activation outcome"
+- name: "09.3.3 | Report activation outcome"
   ansible.builtin.debug:
     msg: >-
       {{ item.item.image_file }} @ {{ item.item.site_name }}:
@@ -82,27 +82,29 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "09.4 | Write activation evidence"
+- name: "09.3.4 | Write activation evidence"
   ansible.builtin.copy:
     dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-activate.json"
     mode: "0644"
     content: "{{ _evidence | to_nice_json }}"
   vars:
     _evidence:
-      phase: "09.4 activate"
+      phase: "09.3 activate"
       run_id: "{{ swim_run_id }}"
       images: "{{ _swim_entries | map(attribute='image_file') | list }}"
       activation: "{{ _swim_activate.results | map(attribute='msg') | list }}"
 
 # Evidence is written before this assert so a failed activation still leaves a
 # record on disk to work from.
-- name: "09.4 | Establish whether the image is already everywhere"
+- name: "09.3.5 | Establish whether the image is already everywhere"
   ansible.builtin.include_tasks:
     file: image_state.yml
     apply:
       tags: [swim_activate]
+  vars:
+    _swim_step: "09.3.5"
 
-- name: "09.4 | Fail if activation did not complete"
+- name: "09.3.6 | Fail if activation did not complete"
   ansible.builtin.assert:
     that:
       - not (item.failed | default(false))

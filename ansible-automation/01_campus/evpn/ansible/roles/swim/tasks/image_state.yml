@@ -2,7 +2,7 @@
 # =============================================================================
 # swim / tasks/image_state.yml  —  shared helper
 # =============================================================================
-# Answers one question for 09.3 and 09.4: is this image ALREADY running on every
+# Answers one question for 09.2 and 09.3: is this image ALREADY running on every
 # device it is tagged golden for?
 #
 # Both phases report "No eligible devices" for two opposite reasons:
@@ -21,13 +21,19 @@
 #
 # Requiring at least one tagged device is deliberate: if golden tagging silently
 # failed, zero devices are tagged, nothing is "stale", and a naive check would
-# call that success — the exact failure this role already guards against in 09.2.
+# call that success — the exact failure this role already guards against in 09.1.
 #
-# Pre:  _swim_entries
+# _swim_step comes from the caller, because this file runs inside two different
+# phases and the task numbering has to say which one. The index trails the name
+# here, unlike every other task, and the step suffix is built inside the
+# expression: ansible-lint name[template] requires the Jinja to be the very last
+# thing in the string, because --start-at-task cannot resolve it.
+#
+# Pre:  _swim_entries, _swim_step
 # Post: swim_image_up_to_date — {image_file: bool}
 # =============================================================================
 
-- name: "Read per-device image state"
+- name: "Read per-device image state | {{ _swim_step ~ '.1' }}"
   cisco.catalystcenter.network_device_images_info:
     limit: 500
     offset: 1
@@ -36,7 +42,7 @@
   # so losing it just restores the old, stricter behaviour.
   failed_when: false
 
-- name: "Record which images are already running everywhere they are golden"
+- name: "Record which images are already running everywhere they are golden | {{ _swim_step ~ '.2' }}"
   ansible.builtin.set_fact:
     swim_image_up_to_date: >-
       {{ swim_image_up_to_date | default({})
