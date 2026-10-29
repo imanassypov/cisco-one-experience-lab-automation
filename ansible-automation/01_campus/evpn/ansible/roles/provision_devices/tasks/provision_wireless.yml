@@ -1,27 +1,22 @@
 # ============================================================================
-# tasks/provision_wireless.yml  —  Pipeline stage 8.1
+# provision_devices / provision_wireless.yml
 # ============================================================================
-# Provisions wireless controllers, which the wired pass in
-# provision_switches.yml deliberately leaves alone.
+# Provisions the wireless controllers the wired pass skipped.
 #
-# POST /dna/intent/api/v1/sda/provisionDevices cannot set the wireless
-# DeviceInfo role and answers NCWL10092 (Endpoint Proxy / Guest Anchor
-# required) for a C9800, so provision_switches.yml drops any device whose
-# family contains 'Wireless' into _skipped_wireless_ips. Those controllers are
-# picked up here instead, through provision_workflow_manager, which is the only
-# path that carries managed AP locations.
+# The SDA provisioning API cannot express a controller — it has no way to set
+# the wireless role and rejects a C9800 — so controllers come here instead,
+# through provision_workflow_manager, which is also the only path that carries
+# managed AP locations.
 #
-# This runs once after the wired loop rather than inside it: one module call
-# covers every controller in settings.json, and the live wired path is left
-# byte-identical.
+# Runs ONCE after the wired loop rather than inside it: a single call covers
+# every controller in settings.json.
 #
-# Variables read from inventory / parent play scope:
-#   settings_data              — settings.json (catc_common.load_settings)
-#   _catc_token                — short-lived JWT for the inventory lookups
-#   dnac_host / dnac_port / dnac_verify
-#   force_wireless_provisioning — bool; re-provision an already-provisioned
-#                                 WLC. Defaults true (roles defaults/main.yml).
-#   wlc_ap_location_confirm_retries / _delay — Step D settle poll (connection.yml)
+# A row qualifies when it has both a wireless_controller block and a
+# device_list. Note the two different sites involved: the controller's OWN site
+# comes from that row's hierarchy fields, while primary_managed_ap_locations
+# names the sites whose APs it serves — usually somewhere else entirely.
+#
+# -e force_wireless_provisioning=false skips an already-provisioned controller.
 # ============================================================================
 ---
 # ── Step A: Collect the rows that declare a controller ────────────────────

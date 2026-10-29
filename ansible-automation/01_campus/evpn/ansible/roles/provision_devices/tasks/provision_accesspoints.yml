@@ -1,86 +1,37 @@
 # ============================================================================
-# tasks/provision_accesspoints.yml  —  Pipeline stage 8.2
+# provision_devices / provision_accesspoints.yml
 # ============================================================================
 # Names each access point, assigns it to its floor, and provisions it.
 #
-# Provisioning the AP is what puts the tags on. Provisioning the controller
-# creates the WLAN and policy profiles; the policy and site tags that bind an
-# AP to those profiles are written only when the AP itself is provisioned —
-# Step 34 "Provision the AP" of "Provision a Cisco Catalyst 9800 Series
-# Wireless Controller" in the Catalyst Center User Guide 3.1.x. An AP that is
-# merely a site member sits on default-site-tag and default-policy-tag, which
-# map no WLAN, so it broadcasts nothing however often the controller is
-# re-pushed. Re-provisioning the controller is therefore not a substitute, and
-# this file no longer does it — that only reboots every AP the controller owns,
-# and 198.18.5.103 is shared across pods.
+# PROVISIONING THE AP IS WHAT PUTS THE TAGS ON. Provisioning the controller
+# creates the WLAN and policy profiles, but the policy and site tags that bind
+# an AP to them are written only when the AP ITSELF is provisioned. An AP that
+# is merely a site member sits on default tags, which map no WLAN, so it
+# broadcasts nothing no matter how often the controller is re-pushed.
 #
 # Flow: resolve → name → assign to floor → provision → poll.
 #
-# Why each step uses what it uses:
-#
-#   accesspoint_workflow_manager  names the AP and sets its location. Its
-#     config must carry NO site key. Given a site it calls verify_wlc_provision
-#     on the AP's controller, which asks GET sda/get_device_info whether that
-#     controller is provisioned; this lab is BGP EVPN with non-fabric wireless,
-#     so the WLC holds no fabric role and that endpoint 400s, which the module
-#     turns into check_return_status() and aborts the play.
-#     Verified live 2026-09-15 against WLC 198.18.5.103:
-#       GET /dna/intent/api/v1/business/sda/device?deviceManagementIpAddress=198.18.5.103
-#       → HTTP 400, status=failed, "This device does not have any fabric role
-#         assigned to it for deviceManagementIpAddress = 198.18.5.103"
-#     That is also why it cannot do the provisioning in Step F, even though its
-#     access_point_provision_new() builds the correct call — that helper is
-#     only reachable through the site key that arms the gate.
-#     Raised upstream 2026-09-15:
-#     https://github.com/cisco-en-programmability/catalystcenter-ansible/issues/71
-#     If that is fixed, Steps D-F can collapse into the one module.
-#
-#   assign_device_to_site  does the site assignment — the same module stage 05
-#     uses for the switches, and it does not care about fabric roles.
-#
-#   a raw POST /dna/intent/api/v1/wirelessAccessPoints/provision  provisions
-#     the AP, because no module does it correctly. See Step F.
-#
-# provision_workflow_manager, which stage 8.1 uses for the controller, cannot
-# be used anywhere here: get_dev_type() maps only "Wireless Controller" and
-# "Switches and Hubs"/"Routers", everything else falls to device_type = None,
-# and the module contains no reference to ap_provision or wirelessAccessPoints
-# at all. Its skip_ap_provision option is a flag on the CONTROLLER's payload
-# (skipApProvision), not an AP action.
+# Three different tools, for three reasons:
+#   accesspoint_workflow_manager  names it. Its config must carry NO site key:
+#     given one, it checks whether the AP's controller holds a FABRIC role, and
+#     this lab is non-fabric wireless, so that check 400s and aborts the play.
+#     (Raised upstream: catalystcenter-ansible issue 71.)
+#   assign_device_to_site         does the site assignment — the same module
+#     stage 05 uses, and it does not care about fabric roles.
+#   a raw POST to the provision API  because no module does it correctly.
 #
 # Provisioning an AP can reboot it, with a 1-3 minute rejoin, so the whole pass
-# is gated by ap_provision_enabled. There is no per-AP force flag: the API is
-# documented as "Access Point Provision and ReProvision" and re-asserting is
-# the only way to repair an AP that drifted back onto default tags.
+# is gated by ap_provision_enabled. There is no per-AP force flag: re-asserting
+# is the only way to repair an AP that drifted back onto default tags.
 #
-# Variables read from inventory / parent play scope:
-#   settings_data   — settings.json (catc_common.load_settings), already token
-#                     substituted, so access_points[].mac_address is a real MAC
-#   _catc_token     — short-lived JWT for the REST calls
-#   dnac_host / dnac_port / dnac_verify
-#   task_poll_retries / task_poll_delay
+# This file deliberately does NOT re-provision the controller — that reboots
+# every AP it owns, and the controller is shared across pods.
 # ============================================================================
 ---
-# ── Step A: Collect the declared access points ────────────────────────────
-#
-# Every access_points entry across all project rows, flattened.
-#
 # An entry whose mac_address still holds a literal {APn_MAC} is dropped here.
-# settings.json carries an entry per AP the site could have, while lab.yml
-# lists only the MACs of the pod actually in front of the student, so the
-# loader deliberately leaves the surplus tokens unresolved for this filter.
-#
-# Example - a two-AP site in a pod that has one AP
-#   In : settings_data.project[2].access_points = [
-#          { "mac_address": "08:4f:a9:50:f0:28", "ap_name": "SITE-105-AP-1",
-#            "location": "Leaf1", "ap_mode": "Local",
-#            "is_assigned_site_as_location": "Disabled",
-#            "site": { "floor": { "name": "MAIN",
-#                                 "parent_name": "Global/NORTH CAROLINA/Durham/Site-105" } } },
-#          { "mac_address": "{AP2_MAC}", "ap_name": "SITE-105-AP-2", ... }
-#        ]
-#   Out: _ap_declared   = [ the SITE-105-AP-1 entry ]
-#        _ap_unresolved = ["SITE-105-AP-2"]
+# settings.json lists every AP the site could have; lab.yml lists only the MACs
+# of the pod in front of the student, so the surplus tokens stay unresolved on
+# purpose and this filter removes them.
 - name: Build declared access point list
   ansible.builtin.set_fact:
     _ap_declared: >-
