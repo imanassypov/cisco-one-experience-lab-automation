@@ -2,35 +2,14 @@
 # =============================================================================
 # catc_common / build_site_id_map.yml
 # =============================================================================
-# Queries Catalyst Center for all existing sites and builds a lookup table
-# nameHierarchy → site UUID. Required before create/update/delete loops that
-# need parentId or id for areas, buildings, and floors.
+# Fetches every site once and builds a lookup of site path → UUID, so later
+# loops can resolve a parent or target without a call per site.
 #
-# Play-level inputs:
-#   catc_debug — optional
-#   module_defaults on cisco.catalystcenter.sites_info (from playbook)
-#
-# Play-level outputs:
-#   site_id_map — dict[str, str]  full path → UUID
-#   _site_id_map — alias (same content; legacy name used in some roles)
+# Out: site_id_map{} (and _site_id_map, the same thing under the older name)
 # =============================================================================
 
-# Task: Phase A — Fetch all existing sites from Catalyst Center
-# Purpose: GET /dna/intent/api/v1/sites (unfiltered) via collection module.
-# Pre:  site_id_map undefined
-# Post: catc_all_sites (register):
-#         catc_all_sites.catalystcenter_response.response = [
-#           { "id": "a1000000-0000-4000-8000-000000000001", "type": "global" },
-#           { "id": "a1000000-0000-4000-8000-000000000002", "type": "area",
-#             "nameHierarchy": "Global/PODS" },
-#           { "id": "a1000000-0000-4000-8000-000000000003", "type": "area",
-#             "nameHierarchy": "Global/PODS/POD 0" },
-#           { "id": "a1000000-0000-4000-8000-000000000004", "type": "building",
-#             "nameHierarchy": "Global/PODS/POD 0/Building P0" },
-#           { "id": "a1000000-0000-4000-8000-000000000005", "type": "floor",
-#             "nameHierarchy": "Global/PODS/POD 0/Building P0/Floor 1" }
-#         ]
-#       The Global root row carries no nameHierarchy key.
+# The Global root row comes back with no nameHierarchy key, so it is dropped
+# from the map and re-added by hand — items2dict raises on the missing key.
 - name: "Phase A — Fetch all existing sites from Catalyst Center"
   cisco.catalystcenter.sites_info:
   register: catc_all_sites

@@ -2,22 +2,15 @@
 # =============================================================================
 # catc_common / load_settings.yml
 # =============================================================================
-# Shared prerequisite for stages 1–5 and 7–9. Loads the single source of truth
-# (Settings/settings.json) into play scope so downstream roles can iterate
-# settings_data.project without re-reading the file.
+# Reads Settings/settings.json into `settings_data` so every stage works from
+# one copy of the intent.
 #
-# Invoked from playbooks via:
-#   import_role: { name: catc_common, tasks_from: load_settings }
+# It also substitutes the per-pod {TOKEN} placeholders — {POD} from lab_pod_id,
+# {AP1_MAC} and friends from lab_ap_macs — so no stage ever sees a raw token
+# and no student has to edit settings.json. Those values live in the gitignored
+# inventory/group_vars/all/lab.yml.
 #
-#
-# Per-pod {TOKEN} placeholders in the file are resolved here, so every stage
-# sees the same substituted data. See "Runtime token substitution" below.
-#
-# Play-level inputs (from inventory/group_vars):
-#   settings_json_path  — relative to playbooks/ (default ../../Settings/settings.json)
-#   lab_pod_id          — dCloud pod number, fills {POD} (group_vars/all/lab.yml)
-#   lab_ap_macs         — AP MACs in join order, fills {AP1_MAC}, {AP2_MAC}, …
-#   catc_debug          — optional; dumps resolved path, token map and JSON when true
+# Out: settings_data
 # =============================================================================
 
 - name: Require a real lab_pod_id before substituting tokens

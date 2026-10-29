@@ -1,35 +1,19 @@
 # ============================================================================
 # verify_intent / tasks/intent_templates.yml  —  Stage 12.1
 # ============================================================================
-# Downloads the DEFN-*.j2 template bodies from Catalyst Center Template
-# Programmer.
+# Downloads the DEFN-*.j2 bodies from Catalyst Center.
 #
-# The repo checkout is deliberately NOT read. Stage 06 seeds Catalyst Center
-# from either git or a local folder depending on template_source; stage 12 must
-# verify what Catalyst Center actually holds, because that is what stage 10
-# deployed. A DEFN file edited locally and never synced therefore cannot
-# produce a false pass, and this stage works from a checkout that has no
-# templates in it at all.
+# The repo checkout is deliberately NOT read. Catalyst Center holds what stage
+# 10 actually deployed, so a DEFN file edited locally and never synced cannot
+# produce a false pass — and this stage works from a checkout with no templates
+# in it at all.
 #
-# Variables read from parent play scope:
-#   settings_data — settings.json (catc_common.load_settings)
-#   _catc_token / dnac_host / dnac_port / dnac_verify
-#
-# Produced:
-#   _defn_templates — [{name, id, version, last_update, content_b64}]
-#                     content is carried base64-encoded so the raw Jinja never
-#                     passes back through Ansible's templar
+# Out: _defn_templates — [{name, id, version, last_update, content_b64}]
+#      content stays base64 so raw Jinja never passes back through the templar
 # ============================================================================
 ---
-# ── Step A: Which Template Programmer projects hold this site's intent ────
-#
-# settings.json names the project on every Day-N template entry, so the same
-# field that tells stage 06 where to push tells stage 12 where to read.
-#
-# Example
-#   In : settings_data.project[].network_profile.DayNTemplateNames = [
-#          { "TemplateName": "BGP-EVPN-BUILD.j2", "Project": "Site-105", ... } ]
-#   Out: _verify_projects = ["Site-105"]
+# Which projects to read is the same field that told stage 06 where to push:
+# the Project named on each Day-N template entry in settings.json.
 - name: Collect the Template Programmer projects named in settings.json
   ansible.builtin.set_fact:
     _verify_projects: >-
