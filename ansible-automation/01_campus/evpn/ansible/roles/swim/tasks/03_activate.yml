@@ -4,29 +4,17 @@
 # =============================================================================
 # DISRUPTIVE. Reloads every targeted device onto the distributed image.
 #
-# Runs by default — `swim_activate` is true in defaults/main.yml, so a bare
-# stage 09 run performs the whole upgrade. Opt out with `-e swim_activate=false`
-# to stage the image in flash and stop.
+# Runs by default. `-e swim_activate=false` stops after phase 2 instead.
 #
-# On IOS-XE in install mode Catalyst Center drives the three-step sequence:
-#   install add       stage the package         (no reload — usually already
-#                                                done by phase 2)
-#   install activate  RELOAD HAPPENS HERE
-#   install commit    make it persistent across the next reload
+# Catalyst Center drives the IOS-XE install sequence: `install add` (already
+# done by phase 2), `install activate` — THE RELOAD — then `install commit` to
+# survive the next one.
 #
-# Two settings are easy to get wrong and both are read from settings.json:
-#   schedule_validate        must be false to actually activate. true is a
-#                            dry-run that validates and changes nothing, which
-#                            looks like a clean success.
-#   activate_lower_image_version  false blocks accidental downgrades. Rollback
-#                            sets it true — that is the whole difference.
+# Site-105 is three switches with no redundancy, so the overlay is down for the
+# length of the reload and verification will fail until BGP and NVE reconverge.
 #
-# The Site-105 fabric is three switches with no redundancy, so a reload drops
-# the overlay. Expect the fabric down for the length of the reload and stage 12
-# to fail until BGP and NVE re-converge.
-#
-# Pre:  image distributed by phase 2
-# Post: devices running the new image; EVPN/telemetry state rebuilt from config
+# Pre:  image in flash from phase 2
+# Post: devices running the new image
 # =============================================================================
 
 - name: "3.1 | Announce the reload"

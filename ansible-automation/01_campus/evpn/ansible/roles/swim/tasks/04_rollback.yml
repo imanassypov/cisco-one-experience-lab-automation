@@ -2,24 +2,21 @@
 # =============================================================================
 # swim / tasks/04_rollback.yml  —  Phase 4
 # =============================================================================
-# DISRUPTIVE recovery path. Re-tags the previous image golden and activates it,
-# reloading every targeted device back onto the older version.
+# DISRUPTIVE recovery path. Marks the previous image as the site standard again
+# and reloads every targeted device back onto it.
 #
-# Only reachable when all three gates are set (checked in tasks/main.yml):
+# Replaces phases 1-3 rather than following them — main.yml branches on
+# swim_rollback — and needs all three gates:
 #   -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
 #
-# Runs INSTEAD OF the forward phases, never after them — tasks/main.yml branches
-# on swim_rollback. Re-importing and re-tagging the upgrade image on the way to
-# a downgrade would undo the thing being rolled back.
+# Needs nothing from the forward phases: phase 1 already imported
+# rollback_image_file during the upgrade this is undoing.
 #
-# Depends on phase 1 having imported rollback_image_file. That is why both images
-# are imported up front: the recovery target must already be in the repository.
+# The one real difference from phase 3 is activate_lower_image_version: the
+# target is older than what is running, and Catalyst Center refuses the
+# downgrade without it.
 #
-# The one meaningful difference from phase 3: activate_lower_image_version must be
-# true, because the rollback target is by definition older than what is running.
-# Left false, Catalyst Center refuses the downgrade.
-#
-# Pre:  settings.json project[].swim.rollback_image_file, already imported
+# Pre:  rollback_image_file declared in settings.json and already imported
 # Post: devices running the previous image
 # =============================================================================
 
