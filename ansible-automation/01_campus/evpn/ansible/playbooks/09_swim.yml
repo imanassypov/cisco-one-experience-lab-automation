@@ -85,6 +85,9 @@
 # Run — stage the image in flash only, no reload (safe any time):
 #   ansible-playbook playbooks/09_swim.yml -e swim_activate=false
 #
+# Run — one device type only, by swim_catalog id (switches without the WLC):
+#   ansible-playbook playbooks/09_swim.yml -e swim_images=c9300-26.01.02
+#
 # Run — emergency rollback to the previous image (RELOADS every device):
 #   ansible-playbook playbooks/09_swim.yml \
 #     -e swim_rollback=true -e swim_rollback_confirm=YES -e swim_reload_ack=RELOAD_OK
