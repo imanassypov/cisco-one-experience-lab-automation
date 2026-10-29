@@ -1,25 +1,14 @@
 ---
 # =============================================================================
-# network_settings / main.yml  —  Pipeline stage 2.0
+# network_settings / main.yml
 # =============================================================================
-# Applies per-site network services (DHCP, DNS, NTP, AAA, syslog, SNMP, etc.)
-# from settings_data.project[].network_settings to Catalyst Center.
+# Applies each project's network_settings block to its site.
 #
-# Uses composite PUT /dna/intent/api/v1/network/{siteId} (raw uri) to avoid
-# NCND01243 when only clientAndEndpoint_aaa is configured without network_aaa.
-#
-# Prerequisites: catc_common.load_settings → settings_data
-#                Stage 1 site hierarchy must exist (site UUIDs required)
+# Needs: settings_data, and the hierarchy from stage 01 (site UUIDs)
 # =============================================================================
 
-# Deepest populated hierarchy level wins: Floor > Building > Area > Parent.
-# One entry per project[] row — index alignment matters, the payload builder
-# below pairs settings_data.project[i] with site_names[i].
-# Example
-#   In : settings_data.project = [
-#          { "HierarchyParent": "Global/PODS", "HierarchyArea": "POD 0",
-#            "HierarchyBldg": "Building P0",   "HierarchyFloor": "Floor 1" } ]
-#   Out: site_names = ["Global/PODS/POD 0/Building P0/Floor 1"]
+# One site path per project[] row, deepest level that is filled in. The order
+# matters: the payload builder below pairs project[i] with site_names[i].
 - name: Build site name list from entries
   ansible.builtin.set_fact:
     site_names: >-

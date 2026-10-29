@@ -2,22 +2,16 @@
 # =============================================================================
 # network_profile / apply_flex_aaa_override.yml
 # =============================================================================
-# Pins FlexConnect AAA-override VLAN-name rows at one site. Loop variable:
-#   flex_aaa.site_name_hierarchy — CatC site path
-#   flex_aaa.vlans[]             — [{vlan_name, vlan_id}, ...]
+# Writes the FlexConnect VLAN-name rows at one site. Loop variable: flex_aaa
 #
-# Why this API and not wireless_profile.additional_interfaces?
-# additionalInterfaces on HQ-Wireless are extra WLC interfaces ("in addition
-# to the interfaces mapped to SSIDs"). CatC does not copy them into the Flex
-# profile vlan-name table. ISE AAA override returns names (Main/PROD/IOT);
-# those names only land on the 9800 Flex profile from
-# PUT /sites/{siteId}/wirelessSettings/flexConnectAaaOverride — the sibling of
-# flexConnectNativeVlan. wireless_design_workflow_manager has no field for it.
+# ISE returns VLAN NAMES (Main/PROD/IOT) rather than numbers, so the
+# controller needs a name-to-VLAN table in its Flex profile. The only API that
+# fills that table is flexConnectAaaOverride — the design module has no field
+# for it, and wireless_profile.additional_interfaces is a different thing
+# (extra WLC interfaces, never copied into the Flex table).
 #
-# PUT replaces the site's override list. GET-assert the owned (non-inherited)
-# set equals intent, so stage 07 cannot succeed with an empty map.
-#
-# Parent scope: _catc_token, site_id_map, catc_host, catc_port, catc_verify
+# The PUT replaces the whole list, so it is read back and compared afterwards:
+# the stage must not succeed with an empty map.
 # =============================================================================
 
 - name: "Reset per-site AAA-override facts  | {{ flex_aaa.site_name_hierarchy }}"

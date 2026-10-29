@@ -1,34 +1,16 @@
 ---
 # =============================================================================
-# device_discovery / main.yml  —  Pipeline stage 4.0
+# device_discovery / main.yml
 # =============================================================================
-# Submits Catalyst Center discovery jobs from settings_data.project[].discovery
-# (preferred) or a legacy device_list. Uses global credentials already stored
-# in CatC (stage 3) via description references — not inline passwords.
+# Builds one Catalyst Center discovery job per project row that declares a
+# discovery block.
 #
-# Prerequisites:
-#   catc_common.load_settings → settings_data
-#   Stage 3 / Design credentials present (CLI Admin, SNMPv2c Read/Write,
-#   HTTPS Read/Write). NETCONF only when enable_netconf is true.
+# Credentials are referenced by DESCRIPTION, never inline — the job points at
+# the globals stage 03 created. NETCONF is only attached when the row sets
+# enable_netconf, which the wireless controller needs and the switches do not.
 #
-# Module: cisco.dnac.discovery_workflow_manager (state: merged)
+# Needs: settings_data, and the stage 03 credentials present by description
 # =============================================================================
-
-# One discovery job per project row that has a discovery block (or device_list).
-# Example (Site-105 from settings.json)
-#   In : settings_data.project[] discovery = {
-#          "discovery_name": "Site-105-Discovery",
-#          "discovery_type": "RANGE",
-#          "ip_address_list": ["172.30.255.1-172.30.255.3"],
-#          "preferred_mgmt_ip_method": "UseLoopBack",
-#          "enable_netconf": false,
-#          "cli_description": "CLI Admin", ...
-#        }
-#   Out: discovery_list entry with RANGE + global CLI/SNMP/HTTP, no NETCONF.
-#
-# Example (C9800-WLC)
-#   enable_netconf true → also sets discovery_specific_credentials.net_conf_port
-#   and preferred_mgmt_ip_method None.
 - name: Build discovery config list
   ansible.builtin.set_fact:
     discovery_list: >-
