@@ -20,31 +20,26 @@
 # the SWIM family string — the same value settings.json carries as
 # device_image_family_name, which is how an entry is matched to its record.
 #
-# Pre:  _swim_entries, _catc_token, _swim_tag_site_ids (tag_scope_check.yml)
+# Pre:  _swim_entries, _swim_tag_site_ids (tag_scope_check.yml)
 # Post: nothing persisted; fails the stage if a tag is not visible at its site
 # =============================================================================
 
 - name: "09.2 | Read standard images per site"
-  ansible.builtin.uri:
-    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/siteWiseProductNames?siteId={{ _swim_tag_site_ids[item.tag_site_name] }}"
-    method: GET
-    headers:
-      X-Auth-Token: "{{ _catc_token }}"
-    validate_certs: "{{ catc_verify | bool }}"
-    status_code: [200, 202]
+  cisco.catalystcenter.site_wise_product_names_info:
+    siteId: "{{ _swim_tag_site_ids[item.tag_site_name] }}"
   loop: "{{ _swim_entries }}"
   loop_control:
     label: "{{ item.device_image_family_name }} @ {{ item.tag_site_name }}"
   register: _swim_site_products_raw
 
-# See tag_scope_check.yml: a looped assert prints its whole `item`, so the raw
-# uri results must not be the thing looped over.
+# Unfiltered on purpose: productName would narrow the response to the family
+# being checked, and the failure message needs the ones the site DOES know.
 - name: "09.2 | Summarise the per-site standard images"
   ansible.builtin.set_fact:
     _swim_site_products: >-
       {%- set ns = namespace(out=[]) -%}
       {%- for r in _swim_site_products_raw.results -%}
-      {%- set records = r.json.response | default([]) -%}
+      {%- set records = r.catalystcenter_response.response | default([]) -%}
       {%- set match = records | selectattr('productName', 'equalto', r.item.device_image_family_name) | list -%}
       {%- set ns.out = ns.out + [{
             'site': r.item.tag_site_name,

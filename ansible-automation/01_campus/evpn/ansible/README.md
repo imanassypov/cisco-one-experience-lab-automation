@@ -2449,8 +2449,20 @@ confirmed your pod values.
 a missing collection:
 
 ```bash
-ansible-galaxy collection install -r collections/requirements.yml
+ansible-galaxy collection install -r collections/requirements.yml --force
 ```
+
+`--force` matters: without it `ansible-galaxy` silently leaves an older build in
+place when one is already installed, so a raised pin appears to apply and does
+not.
+
+> **`cisco.catalystcenter` is pinned to 2.14.0.** It needs ansible-core >= 2.16
+> (this project pins 2.17) and imports `pytz`, which is why
+> `ansible-automation/requirements.txt` installs it — nothing installs a
+> collection's Python dependencies for you. Stage 09 also uses four read-only
+> `*_info` modules from it, and those **reject** `catalystcenter_log` and
+> `catalystcenter_log_level` even though the workflow managers accept them, so
+> `09_swim.yml` keeps two separate `module_defaults` anchors.
 
 | File | Target |
 |------|--------|
@@ -2486,7 +2498,7 @@ to print the full HTTP request and response for each API call.
 | `git pull` fails on local changes | The tree is dirty from ad-hoc file edits | Commit or revert them, then pull again |
 | `lab_pod_id` is still `REPLACE_ME` (or not a positive integer) | [Step 6](#step-6--confirm-your-pod-number) was skipped | Edit `inventory/group_vars/all/lab.yml` or pass `-e lab_pod_id=<n>` |
 | `ansible-inventory --graph` prints `[WARNING]: No inventory was parsed, only implicit localhost is available` and an empty `@all` | You are not in the `evpn/ansible` directory, so Ansible never found `ansible.cfg` and fell back to a default with no inventory | `cd ~/cisco-one-experience-lab-automation/ansible-automation/01_campus/evpn/ansible` and re-run. Every `ansible-playbook` command in this collection runs from there too |
-| Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.10.2 --force` |
+| Stage 01 fails `[400] NCND00067: The request body is invalid` on an area CREATE | `cisco.catalystcenter` below 2.4.0 — `parentId` is sent empty | `ansible-galaxy collection install cisco.catalystcenter:2.14.0 --force` |
 | Stage 01 floor CREATE fails converting `unitsOfMeasure` to dict | Collection 2.11.0's `floors` action plugin declares the string field as a dictionary | Update the checkout and re-run stage 01. Missing floors now use `site_workflow_manager`; keep units as `feet` or `meters`, not a dictionary. Existing-floor updates remain disabled by default |
 | Stage 07 asserts on an SSID name still containing `{` | The `{POD}` placeholder was edited out of `settings.json` | Restore the placeholder — the pod number belongs in `lab.yml`, not in `settings.json` |
 | Stage 08 fails with `AAA CLI(s) are already present on the device … Remove the CLIs, resync the device and retry` | The pod was not reset cleanly — the switches still carry the AAA/RADIUS block a previous run of this lab pushed, and Catalyst Center will not overwrite AAA it no longer owns | Remove the block by hand on all three switches, `write memory`, resync in Inventory, re-run stage 08 — full command list under [Stage 08](#if-provisioning-fails-with-aaa-clis-are-already-present) |

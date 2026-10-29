@@ -18,37 +18,26 @@
 # Resolving the site here also gives the siteId that tag_verify.yml needs after
 # tagging, so the two guards share one lookup.
 #
-# uri rather than cisco.catalystcenter.sites_info: 09_swim.yml declares
-# module_defaults only for the three workflow managers, so the info module has
-# no connection parameters.
-#
-# Pre:  _swim_entries, _catc_token
+# Pre:  _swim_entries
 # Post: _swim_tag_site_ids — {tag_site_name: siteId}
 # =============================================================================
 
 - name: "09.2 | Resolve the golden-tag site"
-  ansible.builtin.uri:
-    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites?nameHierarchy={{ item | urlencode }}"
-    method: GET
-    headers:
-      X-Auth-Token: "{{ _catc_token }}"
-    validate_certs: "{{ catc_verify | bool }}"
-    # Several SWIM-adjacent reads answer 202 with the full body.
-    status_code: [200, 202]
+  cisco.catalystcenter.sites_info:
+    nameHierarchy: "{{ item }}"
   loop: "{{ _swim_entries | map(attribute='tag_site_name') | unique | list }}"
   loop_control:
     label: "{{ item }}"
   register: _swim_tag_sites_raw
 
-# Collapse the HTTP results before asserting on them. A looped assert prints its
-# whole `item`, and for a registered uri result that is the entire response
-# including the X-Auth-Token header — a live credential on every iteration.
+# Collapse the results before asserting on them. A looped assert prints its
+# whole `item`, so the thing looped over has to be small.
 - name: "09.2 | Summarise the resolved tag sites"
   ansible.builtin.set_fact:
     _swim_tag_sites: >-
       {%- set ns = namespace(out=[]) -%}
       {%- for r in _swim_tag_sites_raw.results -%}
-      {%- set hits = r.json.response | default([]) -%}
+      {%- set hits = r.catalystcenter_response.response | default([]) -%}
       {%- set ns.out = ns.out + [{
             'path': r.item,
             'matches': hits | length,

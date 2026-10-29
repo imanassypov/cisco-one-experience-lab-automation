@@ -29,7 +29,7 @@ evpn/
 - `template_source: local` and `template_local_root` → `evpn/` (so `Catalyst Center Templates/…` resolves)
 - `settings_json_path` → `evpn/Settings/settings.json`
 - CatC API host: `cat-center.corp.pseudoco.com` (credentials from `lab_access['Catalyst Center']` in `Lab Topology/lab_access.yml`, not in `settings.json` or plaintext inventory)
-- Appliance **3.1.5**. Ansible/SDK API profile is **3.1.3.0** (`catc_version` / `dnac_version`) because `catalystcentersdk` has no `3.1.5` profile. Collections: `cisco.catalystcenter` 2.10.2, `cisco.dnac` 6.46.0; SDKs `catalystcentersdk` 3.1.3.0.1 and `dnacentersdk` 2.10.6 (installed by `00_scriptserver_bootstrap`).
+- Appliance **3.1.5**. Ansible/SDK API profile is **3.1.3.0** (`catc_version` / `dnac_version`) because `catalystcentersdk` has no `3.1.5` profile. Collections: `cisco.catalystcenter` 2.14.0, `cisco.dnac` 6.46.0; SDKs `catalystcentersdk` 3.1.3.0.1 and `dnacentersdk` 2.10.6 (installed by `00_scriptserver_bootstrap`).
 
 ## Do not provision yet
 

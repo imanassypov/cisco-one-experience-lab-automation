@@ -20,7 +20,9 @@
 # ansible-galaxy skipped the upgrade silently.
 collections:
   - name: cisco.catalystcenter
-    version: "2.11.0"
+    # 2.14.0 requires ansible-core >= 2.16 (we pin 2.17) and adds a pytz import,
+    # which is why ansible-automation/requirements.txt now installs it.
+    version: "2.14.0"
   - name: cisco.dnac
     version: "6.46.0"
   - name: ansible.posix
