@@ -1,43 +1,19 @@
 ---
 # =============================================================================
-# tasks/apply_network_settings.yml
+# network_settings / apply_network_settings.yml
+# =============================================================================
+# Applies the settings for ONE site. `site_config` is the loop variable, and
+# credentials come from the play's module_defaults rather than from here.
 #
-# Applies v1 network settings for ONE site to Catalyst Center.
-# Loop variable: site_config  (set by the include_tasks loop in
-#                              network_settings.yml Step 7)
-#
-# Why raw URI instead of a cisco.catalystcenter module?
-# -------------------------------------------------------
-# Catalyst Center enforces NCND01243: when clientAndEndpoint_aaa is sent alone
-# (with network_aaa absent) via the disaggregated endpoint
-#   PUT /dna/intent/api/v1/sites/{id}/aaaSettings
-# CatC cross-checks the incoming sharedSecret against the empty legacy
-# aaa.network.server.* placeholder at the Global site and rejects the call.
-#
-# The composite-settings endpoint
-#   PUT /dna/intent/api/v1/network/{siteId}
-# does NOT apply the same cross-check.  Sending only clientAndEndpoint_aaa
-# (with network_aaa absent from the payload) succeeds without error.
-#
-# Credentials are NOT declared here — they are inherited from the play-level
-# module_defaults block in network_settings.yml.  site_config is the loop
-# variable supplied by the include_tasks loop in Step 7.
-#
-# Variables read from parent scope:
-#   site_config.site_name — full CatC site path (for labelling)
-#   site_config.site_id   — site UUID resolved from _site_id_map (Step 3b)
-#   site_config.settings  — camelCase settings payload (built in Step 4)
-#   _catc_token           — short-lived JWT obtained in Step 3
-#   catc_host / catc_port / catc_verify / catc_debug
+# Why a raw PUT instead of a collection module: the per-feature AAA endpoint
+# rejects client/endpoint AAA sent on its own (NCND01243) because it
+# cross-checks the shared secret against an empty placeholder inherited from
+# Global. The composite endpoint, PUT /dna/intent/api/v1/network/{siteId},
+# makes no such check and accepts the same payload.
 # =============================================================================
 
-# ── Step 1: Validate site ID is resolved ──────────────────────────────────────
-#
-# Guards against unknown site paths: if the site did not appear in
-# catalystcenter_response.response from sites_info (Phase A), its ID will be
-# an empty string and we fail fast with a clear message instead of sending a
-# PUT to /dna/intent/api/v1/network/ (no trailing ID).
-#
+# An unresolved site path leaves site_id empty, which would PUT to a URL with
+# no id on the end. Fail with something readable instead.
 - name: "Validate site ID resolved  | {{ site_config.site_name }}"
   ansible.builtin.assert:
     that: site_config.site_id | length > 0

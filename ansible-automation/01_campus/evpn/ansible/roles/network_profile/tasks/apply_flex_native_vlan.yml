@@ -2,17 +2,12 @@
 # =============================================================================
 # network_profile / apply_flex_native_vlan.yml
 # =============================================================================
-# Pins FlexConnect native VLAN at one site. Loop variable: flex_native
-#   flex_native.site_name_hierarchy — CatC site path
-#   flex_native.vlan_id             — native VLAN (1–4094)
+# Pins the FlexConnect native VLAN at one site. Loop variable: flex_native
 #
-# Why raw URI instead of wireless_design_workflow_manager?
-# The collection only UPDATES an existing native-VLAN override. A site with
-# none is skipped ("Creation is not supported") and stage 07 still succeeds,
-# so the WLC Flex profile keeps native VLAN 1. PUT the override when GET does
-# not already show this site owning native vlan_id, then GET-assert.
-#
-# Parent scope: _catc_token, site_id_map, catc_host, catc_port, catc_verify
+# Why a raw PUT: the design module only UPDATES a native-VLAN override that
+# already exists. A site with none is skipped ("Creation is not supported")
+# and the stage still reports success — leaving the controller on native
+# VLAN 1. So this writes the override, then GETs it back to prove it landed.
 # =============================================================================
 
 - name: "Reset per-site native VLAN facts  | {{ flex_native.site_name_hierarchy }}"
