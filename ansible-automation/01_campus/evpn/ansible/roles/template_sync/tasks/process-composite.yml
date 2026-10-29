@@ -9,55 +9,18 @@
 
 ---
 # =============================================================================
-# template_sync / process-composite.yml  —  Stage 06: build one composite config
+# template_sync / process-composite.yml
 # =============================================================================
-# Turns one composite definition .yml fetched from GitHub into a
-# template_workflow_manager config entry. Included once per element of
-# enriched_composite_files by process-subfolder.yml, after the member templates
-# have already been queued — CatC rejects a composite whose members do not exist.
+# Turns ONE composite definition .yml into a queue entry. `composite_file` is
+# the loop variable.
 #
-# A composite carries no content of its own; it is a named ordered list of
-# member templates (containing_templates), which is what stage 10 deploys.
+# Runs AFTER the member templates have been queued \u2014 Catalyst Center rejects a
+# composite whose members do not exist yet.
 #
-# Pre:  composite_file (loop var): { name, path, content }
-#         content is YAML: { composite_name (optional),
-#                            templates: [{name: "FABRIC-VRF.j2"}] }
-#       project_name — resolved CatC project for this subfolder
-#       default_device_types, default_software_type, default_software_variant,
-#       default_template_version
-#
-# Post: composite_def              — parsed YAML definition
-#       composite_name             — composite_def.composite_name, else the
-#                                    filename with .yml swapped for .j2
-#       composite_template_names   — ordered member template names
-#       containing_templates_list  — member stubs {name, composite: false,
-#                                    project_name, description, language,
-#                                    device_types, software_type,
-#                                    software_variant, templateParams, tags}
-#                                    reset to [] at the end of each iteration
-#       composite_workflow_configs — appended with one entry:
-#         { configuration_templates: { template_name, project_name,
-#           composite: true, language, template_content: "",
-#           template_description, device_types, software_type,
-#           software_variant, software_version, template_params,
-#           failure_policy, version, containing_templates, tags } }
+# A composite has no content of its own: it is a named, ORDERED list of member
+# templates, and that order is what stage 10 deploys.
 # =============================================================================
 
-# Example - member list trimmed to three entries so the parse is readable; the
-# real BGP-EVPN-BUILD.yml lists eleven FABRIC templates.
-#   In : composite_file = {
-#          "name":    "BGP-EVPN-BUILD.yml",
-#          "path":    "Catalyst Center Templates/Site BGP EVPN Templates/BGP-EVPN-BUILD.yml",
-#          "content": "templates:\n  - name: \"FABRIC-VRF.j2\"\n  - name: \"FABRIC-LOOPBACKS.j2\"\n  - name: \"FABRIC-EVPN.j2\"\n"
-#        }
-#   Out: composite_def = {
-#          "templates": [
-#            { "name": "FABRIC-VRF.j2" },
-#            { "name": "FABRIC-LOOPBACKS.j2" },
-#            { "name": "FABRIC-EVPN.j2" }
-#          ]
-#        }
-# composite_name is absent here, so the next task derives it from the filename.
 - name: Load composite definition from {{ composite_file.name }}
   ansible.builtin.set_fact:
     composite_def: "{{ composite_file.content | from_yaml }}"
