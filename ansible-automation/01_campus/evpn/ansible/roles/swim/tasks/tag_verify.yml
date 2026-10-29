@@ -35,26 +35,37 @@
   loop: "{{ _swim_entries }}"
   loop_control:
     label: "{{ item.device_image_family_name }} @ {{ item.tag_site_name }}"
-  register: _swim_site_products
+  register: _swim_site_products_raw
+
+# See tag_scope_check.yml: a looped assert prints its whole `item`, so the raw
+# uri results must not be the thing looped over.
+- name: "09.2 | Summarise the per-site standard images"
+  ansible.builtin.set_fact:
+    _swim_site_products: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for r in _swim_site_products_raw.results -%}
+      {%- set records = r.json.response | default([]) -%}
+      {%- set match = records | selectattr('productName', 'equalto', r.item.device_image_family_name) | list -%}
+      {%- set ns.out = ns.out + [{
+            'site': r.item.tag_site_name,
+            'family': r.item.device_image_family_name,
+            'image_file': r.item.image_file,
+            'golden': (match | first | default({})).get('imageSummary', {}).get('goldenImageCount', 0),
+            'products': records | selectattr('productName', 'defined') | map(attribute='productName') | list
+          }] -%}
+      {%- endfor -%}
+      {{ ns.out }}
 
 - name: "09.2 | Fail if the site has no standard image for the family"
   ansible.builtin.assert:
-    that: _golden | int > 0
+    that: item.golden | int > 0
     fail_msg: >-
-      {{ item.item.tag_site_name }} reports no standard image for
-      '{{ item.item.device_image_family_name }}', even though tagging
-      {{ item.item.image_file }} reported success. This is what the Images tab
-      shows as "missing standard image". Check that
+      {{ item.site }} reports no standard image for '{{ item.family }}', even
+      though tagging {{ item.image_file }} reported success. This is what the
+      Images tab shows as "missing standard image". Check that
       device_image_family_name matches a productName Catalyst Center knows at
-      this site: {{ _products | join(', ') | default('none', true) }}
-    success_msg: >-
-      {{ item.item.tag_site_name }}: standard image set for
-      {{ item.item.device_image_family_name }}
-  vars:
-    _records: "{{ item.json.response | default([]) }}"
-    _products: "{{ _records | selectattr('productName', 'defined') | map(attribute='productName') | list }}"
-    _match: "{{ _records | selectattr('productName', 'equalto', item.item.device_image_family_name) | list }}"
-    _golden: "{{ (_match | first | default({})).get('imageSummary', {}).get('goldenImageCount', 0) }}"
-  loop: "{{ _swim_site_products.results }}"
+      this site: {{ item.products | join(', ') | default('none', true) }}
+    success_msg: "{{ item.site }}: standard image set for {{ item.family }}"
+  loop: "{{ _swim_site_products }}"
   loop_control:
-    label: "{{ item.item.tag_site_name }}"
+    label: "{{ item.site }}"

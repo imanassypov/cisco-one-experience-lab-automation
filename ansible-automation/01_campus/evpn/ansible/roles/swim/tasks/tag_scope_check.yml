@@ -38,39 +38,54 @@
   loop: "{{ _swim_entries | map(attribute='tag_site_name') | unique | list }}"
   loop_control:
     label: "{{ item }}"
-  register: _swim_tag_sites
+  register: _swim_tag_sites_raw
+
+# Collapse the HTTP results before asserting on them. A looped assert prints its
+# whole `item`, and for a registered uri result that is the entire response
+# including the X-Auth-Token header — a live credential on every iteration.
+- name: "09.2 | Summarise the resolved tag sites"
+  ansible.builtin.set_fact:
+    _swim_tag_sites: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for r in _swim_tag_sites_raw.results -%}
+      {%- set hits = r.json.response | default([]) -%}
+      {%- set ns.out = ns.out + [{
+            'path': r.item,
+            'matches': hits | length,
+            'id': (hits | first | default({})).get('id'),
+            'type': (hits | first | default({})).get('type')
+          }] -%}
+      {%- endfor -%}
+      {{ ns.out }}
 
 - name: "09.2 | Fail if the tag site does not exist"
   ansible.builtin.assert:
-    that: item.json.response | default([]) | length == 1
+    that: item.matches == 1
     fail_msg: >-
-      '{{ item.item }}' does not resolve to exactly one Catalyst Center site
-      ({{ item.json.response | default([]) | length }} matches). The golden-tag
-      scope is derived from the project's HierarchyParent / HierarchyArea /
-      HierarchyBldg fields in settings.json, so one of those does not match the
-      hierarchy stage 01 built.
-  loop: "{{ _swim_tag_sites.results }}"
+      '{{ item.path }}' does not resolve to exactly one Catalyst Center site
+      ({{ item.matches }} matches). The golden-tag scope is derived from the
+      project's HierarchyParent / HierarchyArea / HierarchyBldg fields in
+      settings.json, so one of those does not match the hierarchy stage 01
+      built.
+  loop: "{{ _swim_tag_sites }}"
   loop_control:
-    label: "{{ item.item }}"
+    label: "{{ item.path }}"
 
 - name: "09.2 | Fail if the tag site is a floor"
   ansible.builtin.assert:
-    that: item.json.response[0].type != 'floor'
+    that: item.type != 'floor'
     fail_msg: >-
-      '{{ item.item }}' is a {{ item.json.response[0].type }}. Golden tagging
-      must target an area or a building: Catalyst Center accepts a floor here
-      and then cannot show or manage the tag anywhere in the Images tab, so the
-      device family reads "missing standard image" forever while the devices
-      themselves look correctly tagged.
+      '{{ item.path }}' is a {{ item.type }}. Golden tagging must target an area
+      or a building: Catalyst Center accepts a floor here and then cannot show
+      or manage the tag anywhere in the Images tab, so the device family reads
+      "missing standard image" forever while the devices themselves look
+      correctly tagged.
       Tag at the building and let the floor inherit.
-    success_msg: "{{ item.item }} is a {{ item.json.response[0].type }} — addressable in the Images tab"
-  loop: "{{ _swim_tag_sites.results }}"
+    success_msg: "{{ item.path }} is a {{ item.type }} — addressable in the Images tab"
+  loop: "{{ _swim_tag_sites }}"
   loop_control:
-    label: "{{ item.item }}"
+    label: "{{ item.path }}"
 
 - name: "09.2 | Index tag site ids"
   ansible.builtin.set_fact:
-    _swim_tag_site_ids: "{{ dict(_paths | zip(_ids)) }}"
-  vars:
-    _paths: "{{ _swim_tag_sites.results | map(attribute='item') | list }}"
-    _ids: "{{ _swim_tag_sites.results | map(attribute='json.response') | map('first') | map(attribute='id') | list }}"
+    _swim_tag_site_ids: "{{ dict(_swim_tag_sites | map(attribute='path') | zip(_swim_tag_sites | map(attribute='id'))) }}"
