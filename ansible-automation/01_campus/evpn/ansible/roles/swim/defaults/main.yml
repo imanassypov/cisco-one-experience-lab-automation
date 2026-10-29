@@ -16,6 +16,12 @@ swim_run_preflight: true
 swim_run_import: true
 swim_run_distribute: true
 
+# Limits the run to specific swim_catalog ids, comma-separated. Empty means
+# every enabled entry. Use it to upgrade one device type without touching the
+# others, rather than editing settings.json and putting it back:
+#   -e swim_images=c9300-26.01.02
+swim_images: ""
+
 # Activation reloads every targeted device, and it is ON by default so a bare
 #   ansible-playbook playbooks/09_swim.yml
 # performs the whole upgrade with no extra flags.

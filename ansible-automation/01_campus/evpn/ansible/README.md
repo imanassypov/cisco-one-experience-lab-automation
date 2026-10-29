@@ -1663,6 +1663,20 @@ Stage the image in flash without reloading — safe during business hours:
 ansible-playbook playbooks/09_swim.yml -e swim_activate=false
 ```
 
+One device type only. `swim_images` takes `swim_catalog` ids, comma-separated,
+and is the way to upgrade the switches without touching the wireless controller
+— no edit to `settings.json` and nothing to put back afterwards:
+
+```bash
+# switches only (leaves the C9800 and therefore the APs alone)
+ansible-playbook playbooks/09_swim.yml -e swim_images=c9300-26.01.02
+
+# the wireless controller only
+ansible-playbook playbooks/09_swim.yml -e swim_images=c9800-26.02.01
+```
+
+A typo there fails the stage rather than quietly upgrading nothing.
+
 Emergency rollback to the previous image. **Also reloads every device:**
 
 ```bash
@@ -1687,6 +1701,7 @@ ansible-playbook playbooks/09_swim.yml -e catc_debug=true
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `swim_images` | `""` | Comma-separated `swim_catalog` ids. Empty runs every enabled entry; set it to limit the run to one device type |
 | `swim_run_preflight` | `true` | Run 09.1 |
 | `swim_run_import` | `true` | Run 09.2 |
 | `swim_run_distribute` | `true` | Run 09.3 |
