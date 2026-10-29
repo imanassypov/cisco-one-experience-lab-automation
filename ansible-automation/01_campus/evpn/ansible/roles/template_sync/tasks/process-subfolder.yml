@@ -9,67 +9,21 @@
 
 ---
 # =============================================================================
-# template_sync / process-subfolder.yml  —  Stage 06: sync one repo subfolder
+# template_sync / process-subfolder.yml
 # =============================================================================
-# Syncs a single repository subfolder into its own Catalyst Center Template
-# Programmer project. Included once per entry of git_repo_subfolders by
-# roles/template_sync/tasks/main.yml. The source file list is built once at play
-# level and re-filtered here per subfolder.
+# Syncs ONE repository subfolder into its own Catalyst Center project.
+# `subfolder_item` is the loop variable: {path, project_name}.
 #
-# Content is read from GitHub (raw.githubusercontent.com) or from
-# template_local_root, depending on template_source. Commit metadata and diff
-# headers exist only for the Git source; local syncs get a timestamp comment.
+# Regular templates are pushed BEFORE composites, because a composite cannot
+# reference a member that does not exist yet. The order comes from reading the
+# composite definitions, not from a hardcoded list.
 #
-# Processing order is derived from the composite definitions, not hardcoded:
-# regular templates are pushed first so that composite members already exist.
-#
-# Pre:  subfolder_item (loop var): { path, project_name }
-#       repo_tree_entries — unified [{ path }] file list built at play level by
-#                           main.yml from either GitHub or template_local_root
-#       template_source, template_local_root
-#       git_repo_slug, git_branch, git_api_base, git_auth_header (git source only)
-#       template_extension (j2), include_diff_header,
-#       catc_template_summary_maxchar, default_device_types,
-#       default_software_type / _variant, default_template_version
-#
-# Post: git_tree_prefix                — "<subfolder path>/" filter prefix
-#       api_template_files             — blobs matching *.j2 under the prefix
-#       api_composite_files            — blobs matching *.yml under the prefix
-#       project_name                   — subfolder_item.project_name, else the
-#                                        subfolder basename, else the first
-#                                        template's parent folder basename
-#       enriched_template_files        — [{name, path, content, commit_message,
-#                                          diff_content}]
-#       enriched_composite_files       — [{name, path, content}]
-#       composite_referenced_templates — member names pulled from composites
-#       priority_template_list / regular_template_list
-#       sorted_template_files          — regular first, then composite members
-#       template_workflow_configs      — built by process-template.yml
-#       composite_workflow_configs     — built by process-composite.yml
-#       template_sync_result / composite_sync_result — WFM module results
-#       sync_summary                   — appended {subfolder, project,
-#                                        templates_synced, composites_synced}
-#       In Catalyst Center: one project per subfolder, populated and versioned.
-#
-# Module: cisco.dnac.template_workflow_manager (state: merged)
+# Content is read from GitHub or from the local root depending on
+# template_source. Commit metadata and diff headers only exist for Git.
 # =============================================================================
 
-# Reset per-subfolder accumulators so facts never leak across iterations/projects.
-# Example - a later git_repo_subfolders iteration after "Site-105" has already
-# been synced.
-#   In : enriched_template_files        = [ {"name": "DEFN-VRF.j2", "path": "Catalyst Center Templates/Site BGP EVPN Templates/DEFN-VRF.j2", "content": "{## CATC: ... ##}", "commit_message": "2026-08-01T09:14:22Z | Add red VRF [Igor Manassypov]", "diff_content": ""} ]
-#        enriched_composite_files       = [ {"name": "BGP-EVPN-BUILD.yml", "path": "Catalyst Center Templates/Site BGP EVPN Templates/BGP-EVPN-BUILD.yml", "content": "templates:\n  - name: FABRIC-VRF.j2\n"} ]
-#        composite_referenced_templates = ["FABRIC-VRF.j2"]
-#        priority_template_list         = [ {"name": "FABRIC-VRF.j2"} ]
-#        regular_template_list          = [ {"name": "DEFN-VRF.j2"} ]
-#        sorted_template_files          = [ {"name": "DEFN-VRF.j2"}, {"name": "FABRIC-VRF.j2"} ]
-#        template_workflow_configs      = [ {"configuration_templates": {"name": "DEFN-VRF.j2"}} ]
-#        composite_workflow_configs     = [ {"configuration_templates": {"name": "BGP-EVPN-BUILD.j2"}} ]
-#        containing_templates_list      = [ {"name": "FABRIC-VRF.j2", "id": "c3000000-0000-4000-8000-000000000021"} ]
-#        template_sync_result           = {"changed": true, "failed": false}
-#        composite_sync_result          = {"changed": true, "failed": false}
-#   Out: every one of the ten facts above is reset to [] or {}
-# Without this reset the next project would inherit the previous project's templates,
+# Reset the per-subfolder accumulators first — without this the next project
+# inherits the previous project's templates.
 # because set_fact values persist for the whole play.
 - name: Reset per-subfolder accumulators
   ansible.builtin.set_fact:

@@ -1,43 +1,20 @@
 ---
 # =============================================================================
-# template_sync / main.yml  —  Pipeline stage 6.0
+# template_sync / main.yml
 # =============================================================================
-# Pulls Jinja2 templates and composite YAML from GitHub or from a local
-# directory, pushes them into Catalyst Center Template Programmer projects via
-# template_workflow_manager.
+# Uploads the Jinja templates and composite YAML into Catalyst Center.
 #
-# Data flow:
-#   template_source == 'git'   → GitHub API tree   ┐
-#   template_source == 'local' → find under root   ├→ repo_tree_entries
-#   repo_tree_entries + git_repo_subfolders → process-subfolder.yml
-#   → process-template.yml / process-composite.yml → CatC WFM modules
+#   template_source: git    ──►  list the GitHub tree  ─┐
+#   template_source: local  ──►  find under the root   ─┘─► repo_tree_entries
+#                                                           │
+#       one project per git_repo_subfolders entry  ◄────────┘
+#            └─► process-template.yml   for each .j2
+#            └─► process-composite.yml  for each composite YAML
 #
-# Inventory: template_source, template_local_root, git_repo, git_branch,
-#            git_repo_subfolders, git_token (optional)
+# Nothing here configures a device — stage 10 is what deploys these.
 # =============================================================================
 
-# Example
-#   In : ansible_date_time (gathered fact)
-#   Out: start_timestamp = {
-#          "year":         "2026",
-#          "month":        "08",
-#          "day":          "05",
-#          "hour":         "14",
-#          "minute":       "22",
-#          "second":       "07",
-#          "date":         "2026-08-05",
-#          "time":         "14:22:07",
-#          "epoch":        "1785936127",
-#          "epoch_int":    "1785936127",
-#          "iso8601":      "2026-08-05T18:22:07Z",
-#          "iso8601_basic": "20260805T142207123456",
-#          "tz":           "EDT",
-#          "tz_offset":    "-0400",
-#          "weekday":      "Wednesday",
-#          "weekday_number": "3",
-#          "weeknumber":   "31"
-#        }
-#        Snapshotted once so the closing summary reports run start, not end.
+# Snapshot the time once, so the closing summary reports when the run STARTED.
 - name: Set execution timestamp
   ansible.builtin.set_fact:
     start_timestamp: "{{ ansible_date_time }}"

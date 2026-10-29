@@ -9,53 +9,13 @@
 
 ---
 # =============================================================================
-# template_sync / process-template.yml  —  Stage 06: build one template config
+# template_sync / process-template.yml
 # =============================================================================
-# Turns one .j2 blob fetched from GitHub into a template_workflow_manager
-# config entry. Included once per element of sorted_template_files by
-# process-subfolder.yml. Sets no CatC state itself — it only appends to the
-# queue that process-subfolder.yml submits in bulk.
-#
-# The literal {{ TEMPLATE_PROJECT_NAME }} placeholder inside each .j2 is
-# substituted with the resolved project name, so templates can `include`
-# siblings without hardcoding the CatC project.
-#
-# Pre:  template_file (loop var): { name, path, content, commit_message,
-#                                   diff_content }
-#       project_name       — resolved CatC project for this subfolder
-#       include_diff_header - prepend the last commit diff as {## ... ##} comments
-#       git_repo, git_branch, default_device_types, default_software_type,
-#       default_software_variant, default_template_version
-#
-# Post: template_name             — basename of the .j2 file
-#       template_content_raw      — blob with TEMPLATE_PROJECT_NAME substituted
-#       diff_content_raw          — diff wrapped in {## ... ##}, or ""
-#       template_content          — diff_content_raw ~ template_content_raw
-#       template_workflow_configs — appended with one entry:
-#         { configuration_templates: { template_name, project_name,
-#           language: JINJA, template_content, template_description,
-#           device_types, software_type, software_variant,
-#           failure_policy: ABORT_TARGET_ON_ERROR, version, tags } }
+# Turns ONE .j2 file into a queue entry for the bulk push that
+# process-subfolder.yml does. Changes nothing in Catalyst Center itself.
+# `template_file` is the loop variable.
 # =============================================================================
 
-# Example - include_diff_header disabled (the inventory default)
-#   In : project_name        = "Building P0"
-#        include_diff_header = false
-#        template_file = {
-#          "name":    "FABRIC-VRF.j2",
-#          "path":    "Catalyst Center Templates/Site BGP EVPN Templates/FABRIC-VRF.j2",
-#          "content": "{% include \"{{ TEMPLATE_PROJECT_NAME }}/DEFN-VRF.j2\" %}\nvrf definition red\n",
-#          "commit_message": "2026-08-01T09:14:22Z | Add red VRF definition [Igor Manassypov]",
-#          "diff_content":   "@@ -1,2 +1,5 @@\n+vrf definition red"
-#        }
-#   Out: template_name        = "FABRIC-VRF.j2"
-#        template_content_raw = "{% include \"Building P0/DEFN-VRF.j2\" %}\nvrf definition red\n"
-#        commit_message       = "2026-08-01T09:14:22Z | Add red VRF definition [Igor Manassypov]"
-#        diff_content_raw     = ""
-#
-# Example - include_diff_header enabled
-#   In : same template_file, include_diff_header = true
-#   Out: diff_content_raw = "{## @@ -1,2 +1,5 @@ ##}\n{## +vrf definition red ##}\n"
 # The literal {{ TEMPLATE_PROJECT_NAME }} placeholder is substituted here rather
 # than at render time, so a template can include a sibling without hardcoding
 # the Catalyst Center project name. TELEMETRY_* is substituted the same way, so
