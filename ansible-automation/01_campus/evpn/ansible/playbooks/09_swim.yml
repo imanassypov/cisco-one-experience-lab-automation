@@ -10,15 +10,13 @@
 # line except the safety gates.
 #
 # Phases (role: swim):
-#   09.1 preflight       resync inventory, baseline IMAGE compliance  read-only
-#   09.2 import_and_tag  pull the image, mark it golden               CatC only
-#   09.3 distribute      copy to device flash, no reload              safe
-#   09.4 activate        reload onto the new image                    DISRUPTIVE
-#   09.5 postcheck       IMAGE compliance after activation            read-only
-#   09.6 rollback        re-tag previous image and activate it        DISRUPTIVE
+#   09.1 import_and_tag  pull the image, mark it golden               CatC only
+#   09.2 distribute      copy to device flash, no reload              safe
+#   09.3 activate        reload onto the new image                    DISRUPTIVE
+#   09.4 rollback        re-tag previous image and activate it        DISRUPTIVE
 #
 # *** A DEFAULT RUN RELOADS THE FABRIC. ***
-# Phases 09.1-09.5 all run with no extra flags, so one command performs the
+# Phases 09.1-09.3 all run with no extra flags, so one command performs the
 # whole upgrade. Add -e swim_activate=false to stage the image in flash and stop
 # before the reload — that is the safe business-hours run.
 #
@@ -57,10 +55,10 @@
 #   activated.
 #
 # gather_facts is true — ansible_date_time supplies swim_run_id.
-# Modules: cisco.catalystcenter.swim_workflow_manager, inventory_workflow_manager,
-#          network_compliance_workflow_manager, and the read-only *_info lookups
-#          the role asserts on (sites_info, site_wise_product_names_info,
-#          swim_image_details_info, network_device_images_info).
+# Modules: cisco.catalystcenter.swim_workflow_manager, and the read-only *_info
+#          lookups the role asserts on (sites_info,
+#          site_wise_product_names_info, swim_image_details_info,
+#          network_device_images_info).
 #
 # cisco.catalystcenter rather than cisco.dnac, which every other stage uses.
 # cisco.dnac 6.46.0 crashes golden tagging with
@@ -119,12 +117,10 @@
     cisco.catalystcenter.site_wise_product_names_info: *catc_read
     cisco.catalystcenter.swim_image_details_info: *catc_read
     cisco.catalystcenter.network_device_images_info: *catc_read
-    cisco.catalystcenter.swim_workflow_manager: &catc_conn
+    cisco.catalystcenter.swim_workflow_manager:
       <<: *catc_read
       catalystcenter_log_level: "{{ dnac_log_level }}"
       catalystcenter_log: "{{ dnac_log }}"
-    cisco.catalystcenter.inventory_workflow_manager: *catc_conn
-    cisco.catalystcenter.network_compliance_workflow_manager: *catc_conn
   pre_tasks:
     # tags: always — a tag-filtered run such as --tags swim_import would
     # otherwise skip this, leaving settings_data unset and the role failing

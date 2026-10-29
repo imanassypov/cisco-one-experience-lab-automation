@@ -12,7 +12,7 @@
 # ── Phase selection ──────────────────────────────────────────────────────────
 # Import, tag and distribute are non-disruptive: they copy a .bin into flash and
 # leave the device running its current image.
-swim_run_preflight: true
+
 swim_run_import: true
 swim_run_distribute: true
 
@@ -41,10 +41,6 @@ swim_rollback: false
 swim_rollback_confirm: ""
 swim_reload_ack: ""
 
-# Post-activation IMAGE compliance. Only meaningful once something activated,
-# so it follows the activate phase and is skipped with it.
-swim_run_postcheck: true
-
 # ── Timing ───────────────────────────────────────────────────────────────────
 # Catalyst Center polls the device through the reload. A 9300 install/activate
 # cycle runs well past the collection's 1200s default, and a timeout here leaves
@@ -62,8 +58,6 @@ swim_import_timeout: 3600
 swim_evidence_dir: "{{ (playbook_dir ~ '/../evidence') | realpath }}"
 swim_run_id: "{{ ansible_date_time.iso8601_basic_short | default('norun') }}"
 
-# Compliance is read-only here; never let it push config back at the device.
-swim_sync_device_config: false
 
 # ── Soft-failure detection ───────────────────────────────────────────────────
 # cisco.dnac workflow managers routinely return failed=false AND status=success
