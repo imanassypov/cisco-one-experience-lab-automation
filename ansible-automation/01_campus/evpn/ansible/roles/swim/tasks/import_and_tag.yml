@@ -159,6 +159,16 @@
   loop_control:
     label: "{{ item.item.image_file }}"
 
+# Golden tagging is scoped to the BUILDING, not the floor the devices sit on.
+# tag_scope_check.yml explains why and enforces it.
+# apply: on a nested include is required for the same reason it is in main.yml —
+# an inherited tag reaches this include but not the tasks it pulls in.
+- name: "09.2 | Check the tag scope is addressable"
+  ansible.builtin.include_tasks:
+    file: tag_scope_check.yml
+    apply:
+      tags: [swim_import]
+
 - name: "09.2 | Tag the upgrade image golden for the site"
   cisco.catalystcenter.swim_workflow_manager:
     state: merged
@@ -170,18 +180,18 @@
           device_role: "{{ item.device_role | default('ALL') }}"
           # SWIM identifier, not the inventory family — see header.
           device_image_family_name: "{{ item.device_image_family_name }}"
-          site_name: "{{ item.site_name }}"
+          site_name: "{{ item.tag_site_name }}"
           tagging: true
   loop: "{{ _swim_entries }}"
   loop_control:
-    label: "{{ item.image_file }} @ {{ item.site_name }}"
+    label: "{{ item.image_file }} @ {{ item.tag_site_name }}"
   register: _swim_tag
   failed_when: false
 
 - name: "09.2 | Report tagging outcome"
   ansible.builtin.debug:
     msg: >-
-      {{ item.item.image_file }} @ {{ item.item.site_name }}:
+      {{ item.item.image_file }} @ {{ item.item.tag_site_name }}:
       {{ 'golden' if not (item.failed | default(false))
          else 'TAG FAILED — ' ~ (item.msg | default('see evidence')) }}
   loop: "{{ _swim_tag.results }}"
@@ -194,7 +204,8 @@
       - not (item.failed | default(false))
       - swim_failure_signatures | select('in', (item.msg | default('') | string | lower)) | list | length == 0
     fail_msg: >-
-      Could not tag {{ item.item.image_file }} golden at {{ item.item.site_name }}.
+      Could not tag {{ item.item.image_file }} golden at
+      {{ item.item.tag_site_name }}.
       Either the image is not in the repository, or device_image_family_name
       holds an inventory family ("Switches and Hubs") instead of the SWIM
       identifier (settings.json declares
@@ -203,6 +214,12 @@
   loop: "{{ _swim_tag.results }}"
   loop_control:
     label: "{{ item.item.image_file }}"
+
+- name: "09.2 | Confirm the tag is visible at the site scope"
+  ansible.builtin.include_tasks:
+    file: tag_verify.yml
+    apply:
+      tags: [swim_import]
 
 - name: "09.2 | Write import and tag evidence"
   ansible.builtin.copy:
@@ -213,7 +230,7 @@
     _evidence:
       phase: "09.2 import_and_tag"
       run_id: "{{ swim_run_id }}"
-      import_source: CCO
       images: "{{ _swim_entries | map(attribute='image_file') | list }}"
+      tag_sites: "{{ _swim_entries | map(attribute='tag_site_name') | list }}"
       import: "{{ _swim_import.results | map(attribute='msg') | list }}"
       tagging: "{{ _swim_tag.results | map(attribute='msg') | list }}"

@@ -23,9 +23,10 @@
 # them and stays locked behind explicit flags — see defaults/main.yml.
 #
 # Sourced:
-#   settings_data.project[].swim  — image, site, device targeting (settings.json)
-#   catc_username / catc_password — Lab Topology/lab_access.yml (vault)
-#   catc_* connection vars        — inventory/group_vars/catalyst_center/
+#   settings_data.swim_catalog        — the images themselves (settings.json)
+#   settings_data.project[].swim      — which catalog ids each site wants
+#   catc_username / catc_password     — Lab Topology/lab_access.yml (vault)
+#   catc_* connection vars            — inventory/group_vars/catalyst_center/
 #
 # Produced:
 #   evidence/<run_id>-09_swim-<phase>.json per phase
@@ -37,43 +38,94 @@
 #         module_defaults in the playbook, matching every other stage.
 #
 # Depends on: stages 01-05 (devices must be discovered, managed and assigned to
-# the site, because every SWIM call targets devices by site_name + role).
+# the site, because every SWIM call targets devices by site + role).
 # =============================================================================
 
 # ── Build the work list ──────────────────────────────────────────────────────
-# One entry per settings.json project that declares swim.enabled. Projects
-# without a swim block, or with it disabled, drop out here rather than being
-# guarded at every task.
+# Images live once in settings_data.swim_catalog; a project only names the ids
+# it wants. One _swim_entries row per (project x referenced image), so two
+# device types at one site are two rows rather than a second swim block.
+#
+# Each row carries TWO site paths, because tagging and upgrading are different
+# questions:
+#   tag_site_name  the BUILDING — golden tagging is a policy statement about a
+#                  site, and the Catalyst Center Images tab can only address
+#                  areas and buildings. A floor-scoped tag is accepted by the
+#                  API and then invisible in the UI. See tag_scope_check.yml.
+#   site_name      the FLOOR — where the devices actually sit, so resync,
+#                  distribute and activate find them.
+# Both are derived from the project's Hierarchy* fields, the same way
+# catc_common/build_hierarchy_paths.yml does it, so no path is spelled twice.
 #
 # Example
-#   In : settings_data.project = [ {HierarchyBldg: "Site-105", swim: {enabled: true,
-#          image_file: "cat9k_iosxe.26.01.01.SPA.bin", ...}}, {HierarchyBldg:
-#          "Site-106"} ]
-#   Out: _swim_entries = [ {project: "Site-105", image_file: "cat9k_...bin", ...} ]
+#   In : swim_catalog.images = [ {id: "c9300-26.01.02", image_file: "cat9k_...bin", ...} ]
+#        settings_data.project = [ {HierarchyParent: "Global/NORTH CAROLINA",
+#          HierarchyArea: "Durham", HierarchyBldg: "Site-105",
+#          HierarchyFloor: "MAIN", swim: {enabled: true, images: ["c9300-26.01.02"]}} ]
+#   Out: _swim_entries = [ { image_file: "cat9k_...bin", ...,
+#          project: "Site-105",
+#          tag_site_name: "Global/NORTH CAROLINA/Durham/Site-105",
+#          site_name:     "Global/NORTH CAROLINA/Durham/Site-105/MAIN" } ]
 # tags: always on everything up to the phases. Every phase depends on
 # _swim_entries, so a tag-filtered run like --tags swim_distribute would
 # otherwise skip the setup and die on "'_swim_entries' is undefined". The reload
 # gates must be unskippable for the same reason they exist at all.
+- name: Index the SWIM catalog by image id
+  ansible.builtin.set_fact:
+    _swim_catalog_by_id: "{{ dict(_images | map(attribute='id') | zip(_images)) }}"
+    # import_source and image_base_url are catalog-wide; an image may override.
+    _swim_catalog_defaults:
+      import_source: "{{ _catalog.import_source | default('CCO') }}"
+      image_base_url: "{{ _catalog.image_base_url | default('') }}"
+  vars:
+    _catalog: "{{ settings_data.swim_catalog | default({}) }}"
+    _images: "{{ _catalog.images | default([]) | selectattr('id', 'defined') | list }}"
+  tags: [always]
+
 - name: Build SWIM work list from settings.json
   ansible.builtin.set_fact:
     _swim_entries: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for p in _enabled -%}
+      {%- set bldg = p.HierarchyParent ~ '/' ~ p.HierarchyArea ~ '/' ~ p.HierarchyBldg -%}
+      {%- set floor = bldg ~ '/' ~ p.HierarchyFloor if p.HierarchyFloor else bldg -%}
+      {%- for image_id in p.swim.images | default([]) -%}
+      {%- if image_id in _swim_catalog_by_id -%}
+      {%- set ns.out = ns.out + [
+            _swim_catalog_defaults
+            | combine(_swim_catalog_by_id[image_id])
+            | combine({'project': p.HierarchyBldg,
+                       'tag_site_name': bldg,
+                       'site_name': floor})
+          ] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.out }}
+    _swim_projects: "{{ _enabled | map(attribute='HierarchyBldg') | list }}"
+    # Named but absent from the catalog — a typo here would otherwise just
+    # upgrade nothing and report success.
+    _swim_unknown_ids: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for p in _enabled -%}
+      {%- for image_id in p.swim.images | default([]) -%}
+      {%- if image_id not in _swim_catalog_by_id -%}
+      {%- set ns.out = ns.out + [p.HierarchyBldg ~ ' -> ' ~ image_id] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.out }}
+    _swim_empty_refs: "{{ _enabled | rejectattr('swim.images', 'defined') | map(attribute='HierarchyBldg') | list
+                          + (_enabled | selectattr('swim.images', 'defined')
+                             | rejectattr('swim.images') | map(attribute='HierarchyBldg') | list) }}"
+  vars:
+    _enabled: >-
       {{
         settings_data.project
         | default([])
         | selectattr('swim', 'defined')
         | selectattr('swim.enabled', 'defined')
         | selectattr('swim.enabled')
-        | map(attribute='swim')
-        | list
-      }}
-    _swim_projects: >-
-      {{
-        settings_data.project
-        | default([])
-        | selectattr('swim', 'defined')
-        | selectattr('swim.enabled', 'defined')
-        | selectattr('swim.enabled')
-        | map(attribute='HierarchyBldg')
         | list
       }}
   tags: [always]
@@ -82,6 +134,25 @@
   ansible.builtin.debug:
     var: _swim_entries
   when: catc_debug | default(false) | bool
+  tags: [always]
+
+- name: Assert every referenced catalog image exists
+  ansible.builtin.assert:
+    that: _swim_unknown_ids | length == 0
+    fail_msg: >-
+      settings.json references SWIM catalog images that do not exist:
+      {{ _swim_unknown_ids | join(', ') }}.
+      Available ids: {{ _swim_catalog_by_id.keys() | list | join(', ') | default('none — swim_catalog is missing or empty', true) }}
+    success_msg: "All referenced catalog images resolved"
+  tags: [always]
+
+- name: Assert every swim-enabled project names at least one image
+  ansible.builtin.assert:
+    that: _swim_empty_refs | length == 0
+    fail_msg: >-
+      {{ _swim_empty_refs | join(', ') }} has swim.enabled = true but no
+      swim.images, so this stage would silently upgrade nothing. Add the
+      catalog id(s), or set enabled to false.
   tags: [always]
 
 # A stage that silently does nothing is worse than one that fails: stage 12
@@ -93,6 +164,18 @@
       No project in settings.json has swim.enabled = true. Add a swim block to
       the project you want upgraded, or skip this stage.
     success_msg: "SWIM enabled for: {{ _swim_projects | join(', ') }}"
+  tags: [always]
+
+# image_state.yml keys its up-to-date verdict by image_file, so two entries
+# sharing one .bin would overwrite each other's answer.
+- name: Assert each image file appears once
+  ansible.builtin.assert:
+    that: _files | length == _files | unique | length
+    fail_msg: >-
+      The same image file is referenced by more than one catalog entry
+      ({{ _files | join(', ') }}). Give each entry its own image_file.
+  vars:
+    _files: "{{ _swim_entries | map(attribute='image_file') | list }}"
   tags: [always]
 
 # Every phase writes evidence; create the directory once rather than per phase.
@@ -112,13 +195,24 @@
 # gets reverted by a stray --extra-var.
 - name: Warn that a default run reloads the fabric
   ansible.builtin.debug:
-    msg:
-      - "Stage 09 will ACTIVATE {{ _swim_entries | map(attribute='image_file') | join(', ') }}"
-      - "Every device at {{ _swim_projects | join(', ') }} WILL RELOAD."
-      - "To stage the image without reloading, re-run with: -e swim_activate=false"
+    msg: "Stage 09 will ACTIVATE {{ item.image_file }} at {{ item.site_name }} — those devices WILL RELOAD."
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.site_name }}"
   when:
     - swim_activate | bool
     - not (swim_rollback | bool)
+  tags: [always]
+
+- name: Warn that a wireless controller is in scope
+  ansible.builtin.debug:
+    msg:
+      - "A wireless controller is in scope. Every access point it manages drops and rejoins."
+      - "To stage the images without reloading anything: -e swim_activate=false"
+  when:
+    - swim_activate | bool
+    - not (swim_rollback | bool)
+    - _swim_entries | selectattr('device_family_name', 'equalto', 'Wireless Controller') | list | length > 0
   tags: [always]
 
 - name: Enforce rollback gates

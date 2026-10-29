@@ -1,0 +1,76 @@
+---
+# =============================================================================
+# swim / tasks/tag_scope_check.yml  —  09.2 pre-tag guard
+# =============================================================================
+# Refuses to golden-tag at a FLOOR.
+#
+# The legacy tagging API accepts a floor siteId and returns success, but the
+# Catalyst Center 3.1 Images tab can only navigate to areas and buildings. A
+# floor-scoped tag is therefore written, stored, and then invisible: the family
+# shows "missing standard image" at every scope an operator can select, and the
+# tag cannot be removed from the UI either because there is nowhere to click.
+#
+# None of the existing guards caught this. Device-level `goldenImages` DOES see
+# a floor tag, so image_state.yml and every 09.x assert passed while the tag was
+# orphaned — measured on this pod 2026-10-29, where the Site-105 building
+# reported goldenImageCount 0 and the MAIN floor reported 1.
+#
+# Resolving the site here also gives the siteId that tag_verify.yml needs after
+# tagging, so the two guards share one lookup.
+#
+# uri rather than cisco.catalystcenter.sites_info: 09_swim.yml declares
+# module_defaults only for the three workflow managers, so the info module has
+# no connection parameters.
+#
+# Pre:  _swim_entries, _catc_token
+# Post: _swim_tag_site_ids — {tag_site_name: siteId}
+# =============================================================================
+
+- name: "09.2 | Resolve the golden-tag site"
+  ansible.builtin.uri:
+    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/sites?nameHierarchy={{ item | urlencode }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify | bool }}"
+    # Several SWIM-adjacent reads answer 202 with the full body.
+    status_code: [200, 202]
+  loop: "{{ _swim_entries | map(attribute='tag_site_name') | unique | list }}"
+  loop_control:
+    label: "{{ item }}"
+  register: _swim_tag_sites
+
+- name: "09.2 | Fail if the tag site does not exist"
+  ansible.builtin.assert:
+    that: item.json.response | default([]) | length == 1
+    fail_msg: >-
+      '{{ item.item }}' does not resolve to exactly one Catalyst Center site
+      ({{ item.json.response | default([]) | length }} matches). The golden-tag
+      scope is derived from the project's HierarchyParent / HierarchyArea /
+      HierarchyBldg fields in settings.json, so one of those does not match the
+      hierarchy stage 01 built.
+  loop: "{{ _swim_tag_sites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "09.2 | Fail if the tag site is a floor"
+  ansible.builtin.assert:
+    that: item.json.response[0].type != 'floor'
+    fail_msg: >-
+      '{{ item.item }}' is a {{ item.json.response[0].type }}. Golden tagging
+      must target an area or a building: Catalyst Center accepts a floor here
+      and then cannot show or manage the tag anywhere in the Images tab, so the
+      device family reads "missing standard image" forever while the devices
+      themselves look correctly tagged.
+      Tag at the building and let the floor inherit.
+    success_msg: "{{ item.item }} is a {{ item.json.response[0].type }} — addressable in the Images tab"
+  loop: "{{ _swim_tag_sites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "09.2 | Index tag site ids"
+  ansible.builtin.set_fact:
+    _swim_tag_site_ids: "{{ dict(_paths | zip(_ids)) }}"
+  vars:
+    _paths: "{{ _swim_tag_sites.results | map(attribute='item') | list }}"
+    _ids: "{{ _swim_tag_sites.results | map(attribute='json.response') | map('first') | map(attribute='id') | list }}"
