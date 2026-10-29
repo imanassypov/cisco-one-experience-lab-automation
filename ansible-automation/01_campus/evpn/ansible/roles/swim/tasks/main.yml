@@ -39,7 +39,6 @@
 #   catc_* connection vars            — inventory/group_vars/catalyst_center/
 #
 # Produced:
-#   evidence/<run_id>-09_swim-<phase>.json per phase
 #   In Catalyst Center: image in the repository, tagged golden for the site,
 #   distributed to flash, and optionally activated.
 #
@@ -216,14 +215,6 @@
     _files: "{{ _swim_entries | map(attribute='image_file') | list }}"
   tags: [always]
 
-# Every phase writes evidence; create the directory once rather than per phase.
-- name: Ensure evidence directory exists
-  ansible.builtin.file:
-    path: "{{ swim_evidence_dir }}"
-    state: directory
-    mode: "0755"
-  tags: [always]
-
 # ── Reload gates ─────────────────────────────────────────────────────────────
 # Activation is default-on and deliberately ungated, so stage 09 runs the whole
 # upgrade in one command. The announcement below is the only warning an operator
@@ -316,8 +307,7 @@
         ['SWIM complete for: ' ~ (_swim_projects | join(', ')),
          'Mode          : ' ~ ('ROLLBACK' if swim_rollback | bool else 'upgrade'),
          'Activated     : ' ~ ('yes — devices reloaded' if swim_activate | bool or swim_rollback | bool
-                               else 'no — image staged in flash only'),
-         'Evidence      : ' ~ swim_evidence_dir]
+                               else 'no — image staged in flash only')]
         + (['Next          : ansible-playbook playbooks/12_verify_intent.yml']
            if swim_activate | bool or swim_rollback | bool
            else ['Next          : re-run without -e swim_activate=false '

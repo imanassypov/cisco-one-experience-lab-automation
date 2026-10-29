@@ -101,20 +101,7 @@
     var: _swim_rollback_activate
   when: catc_debug | default(false) | bool
 
-- name: "4.6 | Write rollback evidence"
-  ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-rollback.json"
-    mode: "0644"
-    content: "{{ _evidence | to_nice_json }}"
-  vars:
-    _evidence:
-      phase: "4 rollback"
-      run_id: "{{ swim_run_id }}"
-      rolled_back_to: "{{ _swim_entries | map(attribute='rollback_image_file') | list }}"
-      tagging: "{{ _swim_rollback_tag.results | map(attribute='msg') | list }}"
-      activation: "{{ _swim_rollback_activate.results | map(attribute='msg') | list }}"
-
-- name: "4.7 | Fail if the rollback did not complete"
+- name: "4.6 | Fail if the rollback did not complete"
   ansible.builtin.assert:
     that: not (item.failed | default(false))
     fail_msg: >-
@@ -126,7 +113,7 @@
   loop_control:
     label: "{{ item.item.site_name }}"
 
-- name: "4.8 | Next step"
+- name: "4.7 | Next step"
   ansible.builtin.debug:
     msg:
       - "Rollback complete. Confirm the fabric came back:"

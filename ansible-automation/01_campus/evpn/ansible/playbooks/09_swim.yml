@@ -50,11 +50,9 @@
 #       the building is the golden-tag scope, the floor is the upgrade target.
 #
 # Produced:
-#   evidence/<run_id>-09_swim-<phase>.json per phase
 #   In Catalyst Center: image imported, tagged golden, distributed, optionally
 #   activated.
 #
-# gather_facts is true — ansible_date_time supplies swim_run_id.
 # Modules: cisco.catalystcenter.swim_workflow_manager, and the read-only *_info
 #          lookups the role asserts on (sites_info,
 #          site_wise_product_names_info, swim_image_details_info,
@@ -98,7 +96,7 @@
 # =============================================================================
 - name: Campus fabric software image management
   hosts: catalyst_center
-  gather_facts: true
+  gather_facts: false
   vars:
     catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
   module_defaults:
