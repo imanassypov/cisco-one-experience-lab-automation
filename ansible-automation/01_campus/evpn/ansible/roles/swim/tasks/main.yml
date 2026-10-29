@@ -11,11 +11,15 @@
 # YANG models whose coverage moves between IOS-XE trains. Lifting the fabric to
 # a known image is therefore part of standing up assurance, not a side errand.
 #
-# Phase order — each is a separate file and can be run alone with tags:
-#   09.1 import_and_tag  pull image into the repository, mark it golden (CatC only)
-#   09.2 distribute      copy image to device flash, no reload            (safe)
-#   09.3 activate        reload onto the new image                  (DISRUPTIVE)
-#   09.4 rollback        re-tag prior image and activate it         (DISRUPTIVE)
+# Phase order — each is a separate file, numbered so a directory listing matches
+# the order main.yml calls them, and each can be run alone with tags:
+#   09.1 01_import_and_tag  pull image into the repository, mark it golden (CatC only)
+#   09.2 02_distribute      copy image to device flash, no reload            (safe)
+#   09.3 03_activate        reload onto the new image                  (DISRUPTIVE)
+#   09.4 04_rollback        re-tag prior image and activate it         (DISRUPTIVE)
+#
+# tag_scope_check.yml, tag_verify.yml and image_state.yml are unnumbered: they
+# are helpers included from within a phase, not phases main.yml calls.
 #
 # Phases 09.1-09.3 run by default, including the reload in 09.3. 09.4 replaces
 # them and stays locked behind explicit flags — see defaults/main.yml.
@@ -267,7 +271,7 @@
 # the include and nothing else.
 - name: "Stage 09.4 | Rollback to the previous image"
   ansible.builtin.include_tasks:
-    file: rollback.yml
+    file: 04_rollback.yml
     apply:
       tags: [swim_rollback]
   when: swim_rollback | bool
@@ -278,7 +282,7 @@
   block:
     - name: "Stage 09.1 | Import and tag golden"
       ansible.builtin.include_tasks:
-        file: import_and_tag.yml
+        file: 01_import_and_tag.yml
         apply:
           tags: [swim_import]
       when: swim_run_import | bool
@@ -286,7 +290,7 @@
 
     - name: "Stage 09.2 | Distribute image to device flash"
       ansible.builtin.include_tasks:
-        file: distribute.yml
+        file: 02_distribute.yml
         apply:
           tags: [swim_distribute]
       when: swim_run_distribute | bool
@@ -294,7 +298,7 @@
 
     - name: "Stage 09.3 | Activate image (reloads devices)"
       ansible.builtin.include_tasks:
-        file: activate.yml
+        file: 03_activate.yml
         apply:
           tags: [swim_activate]
       when: swim_activate | bool

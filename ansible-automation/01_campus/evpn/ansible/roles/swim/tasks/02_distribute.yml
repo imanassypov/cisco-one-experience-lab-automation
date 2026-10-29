@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/distribute.yml  —  Stage 09.2
+# swim / tasks/02_distribute.yml  —  Stage 09.2
 # =============================================================================
 # Copy the golden image into each device's flash. No reload, no change to the
 # running image — the device keeps forwarding throughout, which is why this
@@ -12,7 +12,7 @@
 # reported and skipped rather than corrupting the transfer.
 #
 # Targeting here uses the INVENTORY family and series, not the SWIM identifier
-# used for tagging in 09.1. See the header of import_and_tag.yml.
+# used for tagging in 09.1. See the header of 01_import_and_tag.yml.
 #
 # Pre:  image tagged golden by 09.1
 # Post: image staged in flash on every device matching site + role + family
