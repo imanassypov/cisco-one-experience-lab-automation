@@ -2,6 +2,40 @@
     "lab": {
         "wireless_ssid": "PSEUDOCO-POD{POD}"
     },
+    "swim_catalog": {
+        "import_source": "remote",
+        "image_base_url": "http://198.18.134.12:8080",
+        "images": [
+            {
+                "id": "c9300-26.01.02",
+                "image_file": "cat9k_iosxe.26.01.02.SPA.bin",
+                "image_version": "26.01.02",
+                "rollback_image_file": "cat9k_iosxe.17.12.08.SPA.bin",
+                "rollback_image_version": "17.12.08",
+                "device_role": "ALL",
+                "device_image_family_name": "Cisco Catalyst 9300 Switch",
+                "device_family_name": "Switches and Hubs",
+                "device_series_name": "Cisco Catalyst 9300 Series Switches",
+                "activate_lower_image_version": false,
+                "device_upgrade_mode": "install",
+                "distribute_if_needed": true
+            },
+            {
+                "id": "c9800-26.02.01",
+                "image_file": "C9800-CL-universalk9.26.02.01.SPA.bin",
+                "image_version": "26.02.01",
+                "rollback_image_file": "C9800-CL-universalk9.17.12.02.SPA.bin",
+                "rollback_image_version": "17.12.02",
+                "device_role": "ALL",
+                "device_image_family_name": "Cisco Catalyst 9800-CL Wireless Controller for Cloud",
+                "device_family_name": "Wireless Controller",
+                "device_series_name": "Cisco Catalyst 9800 Wireless Controllers for Cloud",
+                "activate_lower_image_version": false,
+                "device_upgrade_mode": "install",
+                "distribute_if_needed": true
+            }
+        ]
+    },
     "project": [
         {
             "HierarchyParent": "Global/CALIFORNIA",
@@ -238,6 +272,10 @@
                         ]
                     }
                 ]
+            },
+            "swim": {
+                "enabled": true,
+                "images": ["c9800-26.02.01"]
             }
         },
         {
@@ -500,20 +538,7 @@
             },
             "swim": {
                 "enabled": true,
-                "import_source": "remote",
-                "image_base_url": "http://198.18.134.12:8080",
-                "image_file": "cat9k_iosxe.26.01.02.SPA.bin",
-                "image_version": "26.01.02",
-                "rollback_image_file": "cat9k_iosxe.17.12.08.SPA.bin",
-                "rollback_image_version": "17.12.08",
-                "site_name": "Global/NORTH CAROLINA/Durham/Site-105/MAIN",
-                "device_role": "ALL",
-                "device_image_family_name": "Cisco Catalyst 9300 Switch",
-                "device_family_name": "Switches and Hubs",
-                "device_series_name": "Cisco Catalyst 9300 Series Switches",
-                "activate_lower_image_version": false,
-                "device_upgrade_mode": "install",
-                "distribute_if_needed": true
+                "images": ["c9300-26.01.02"]
             }
         },
         {

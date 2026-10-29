@@ -53,11 +53,11 @@
           image_name: "{{ item.rollback_image_file }}"
           device_role: "{{ item.device_role | default('ALL') }}"
           device_image_family_name: "{{ item.device_image_family_name }}"
-          site_name: "{{ item.site_name }}"
+          site_name: "{{ item.tag_site_name }}"
           tagging: true
   loop: "{{ _swim_entries }}"
   loop_control:
-    label: "{{ item.rollback_image_file }} @ {{ item.site_name }}"
+    label: "{{ item.rollback_image_file }} @ {{ item.tag_site_name }}"
   register: _swim_rollback_tag
   failed_when: false
 
@@ -66,8 +66,8 @@
     that: not (item.failed | default(false))
     fail_msg: >-
       Could not tag {{ item.item.rollback_image_file }} golden at
-      {{ item.item.site_name }}. If the image is not in the repository, import
-      it first: -e swim_rollback=false with swim.rollback_image_file set.
+      {{ item.item.tag_site_name }}. If the image is not in the repository,
+      import it first: -e swim_rollback=false with swim.rollback_image_file set.
       Reported: {{ item.msg | default('no message') }}
   loop: "{{ _swim_rollback_tag.results }}"
   loop_control:

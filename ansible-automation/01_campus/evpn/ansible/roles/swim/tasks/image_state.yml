@@ -13,10 +13,11 @@
 # tell them apart and the 09.x asserts used to fail a perfectly good re-run.
 #
 # Scoping comes free from golden tagging: `goldenImages` is populated only on
-# devices this image is tagged for, so the WLC and anything outside the site
-# drop out without a site-member lookup. A device tagged golden but NOT
-# `DEVICE_UP_TO_DATE` is a real target that still needs work, which is what
-# makes "nothing to do" safe to assert.
+# devices this image is tagged for, so a device outside the entry's site or
+# family drops out without a site-member lookup — including devices belonging to
+# a different catalog entry, since the verdict is per image_file. A device
+# tagged golden but NOT `DEVICE_UP_TO_DATE` is a real target that still needs
+# work, which is what makes "nothing to do" safe to assert.
 #
 # Requiring at least one tagged device is deliberate: if golden tagging silently
 # failed, zero devices are tagged, nothing is "stale", and a naive check would

@@ -97,7 +97,10 @@
 # Evidence is written before this assert so a failed activation still leaves a
 # record on disk to work from.
 - name: "09.4 | Establish whether the image is already everywhere"
-  ansible.builtin.include_tasks: image_state.yml
+  ansible.builtin.include_tasks:
+    file: image_state.yml
+    apply:
+      tags: [swim_activate]
 
 - name: "09.4 | Fail if activation did not complete"
   ansible.builtin.assert:

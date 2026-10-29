@@ -25,7 +25,7 @@ This document describes the structure and purpose of [`settings.json`](settings.
 | 🟩 Green | **REQUIRED** | Every site entry must have these four. A missing one fails the stage that reads it. |
 | 🟥 Red | **IF DEVICES** | Only for a site that actually has switches or a WLC. DC-Site-11 and Site-106 omit them and are skipped cleanly. |
 | 🟨 Amber | **IF WIRELESS** | Only for a site that owns wireless. In this lab that is DC-Site-10, which holds the WLC even though the APs live at Site-105. |
-| 🟪 Purple | **OPTIONAL** | Extra capabilities. Only Site-105 carries `telemetry` and `swim` today. A site without them simply does not get that feature — it is not an error. |
+| 🟪 Purple | **OPTIONAL** | Extra capabilities. Only Site-105 carries `telemetry`; `swim` is on Site-105 (the switches) and DC-Site-10 (the WLC). A site without them simply does not get that feature — it is not an error. |
 
 **The bold number in each block is the pipeline stage that reads it.** That is the single most useful thing on the map: if a stage misbehaves, it tells you which block to inspect. `network_profile` carries two numbers because stage 07 binds the profile and stage 10 acts on `DeployTemplate` / `TemplateTarget`.
 
@@ -48,7 +48,8 @@ This document describes the structure and purpose of [`settings.json`](settings.
 | The SSID name | **three places must agree** — `wireless_design.ssids[].ssid_name`, `wireless_profile.ssid_details[].ssid_name` and `lab.wireless_ssid` | stage 07 pushes the first two; stage 12 verifies against `lab.wireless_ssid` |
 | Which APs are provisioned | `access_points` | stages 08, 11 |
 | Where telemetry is sent | `telemetry.splunk.receiver_ip` | stage 06, then 10 |
-| The IOS-XE image the fabric runs | `swim.image_file` / `image_version` | stage 09 |
+| The IOS-XE image a device type runs | `swim_catalog.images[].image_file` / `image_version` | stage 09 |
+| Which sites get upgraded, and with what | `project[].swim.images` (a list of `swim_catalog` ids) | stage 09 |
 
 ### Mistakes this file invites
 
@@ -58,6 +59,7 @@ This document describes the structure and purpose of [`settings.json`](settings.
 | Editing `device_list` but not `discovery.ip_address_list` | Device discovered but never assigned, or vice versa | They are two independent keys that must agree |
 | Putting a real pod number in `wireless_ssid` | Another student's SSID is overwritten on the shared WLC | The `{POD}` token exists precisely to prevent this |
 | Changing the SSID in only one of its three places | Stage 07 pushes it, stage 12 then reports a mismatch | `lab.wireless_ssid` is the value stage 12 checks against; the wireless blocks are what stage 07 actually pushes |
+| Putting a `site_name` in a `swim` block | Ignored; the key no longer exists | Stage 09 derives both scopes from the `Hierarchy*` fields — the **building** for golden tagging, the **floor** for the upgrade itself |
 | Filling `access_points[].mac_address` by hand | `not found among the Unified AP devices` | Stage 11 writes the MACs into `lab.yml` for you, and it needs the **Ethernet** MAC, not the radio MAC |
 | Adding `telemetry` to a site with no fabric templates | Nothing renders | The block only has an effect where `DEFN-TELEMETRY-SPLUNK.j2` is synced |
 
@@ -186,6 +188,16 @@ The automation tooling iterates over every element in the `project` array and ap
 settings.json
 ├── lab{}                              # Pod-wide values shared by every site
 │   └── wireless_ssid                  # SSID pattern; {POD} filled from lab_pod_id
+├── swim_catalog{}                     # Software images, declared once (stage 09)
+│   ├── import_source                  # remote = pull over HTTP from the script server
+│   ├── image_base_url                 # Where the .bin files are served
+│   └── images[]                       # One entry per device type
+│       ├── id                         # The name a project refers to
+│       ├── image_file                 # Upgrade .bin filename
+│       ├── rollback_image_file        # Recovery .bin filename
+│       ├── device_image_family_name   # SWIM identifier — used for golden tagging
+│       ├── device_family_name         # Inventory family — used for distribute/activate
+│       └── device_series_name         # Inventory series — used for distribute/activate
 └── project[]                          # Array — one element per site
     ├── HierarchyParent                # Catalyst Center parent path
     ├── HierarchyArea                  # Area name under parent
@@ -232,7 +244,10 @@ settings.json
     │   ├── ssids[]                    # Enterprise/Guest SSID definitions
     │   ├── flex_connect_configuration[]     # Per-site FlexConnect native VLAN
     │   └── flex_connect_aaa_override[]      # Per-site Flex VLAN-name map (ISE AAA override)
-    └── access_points[]                # Optional — APs physically at this site
+    ├── access_points[]                # Optional — APs physically at this site
+    └── swim{}                         # Optional — software upgrade opt-in (stage 09)
+        ├── enabled                    # false or absent = this site is skipped
+        └── images[]                   # swim_catalog ids this site wants
         ├── mac_address                # {APn_MAC} token — see lab_ap_macs
         ├── ap_name                    # Friendly name to set on the AP
         ├── location                   # Free-text location description

@@ -1506,36 +1506,67 @@ consumes them, depend on YANG models whose coverage moves between IOS-XE trains
 errand.
 
 The image is declared in `settings.json` alongside everything else the pipeline
-builds, under `project[].swim`. Nothing is passed on the command line except the
-safety gates.
+builds. Images live once in the top-level `swim_catalog`; each project names the
+catalog ids it wants. Nothing is passed on the command line except the safety
+gates.
 
 ### Data read
 
-`settings.json` → `project[].swim`:
+`settings.json` → `swim_catalog` — the images, declared once:
+
+| Field | Purpose |
+| --- | --- |
+| `import_source` | `remote` — Catalyst Center pulls the `.bin` over HTTP from the script server. **This is the working path in this pod.** `CCO` (download from cisco.com) is supported by the role but is refused by this Catalyst Center — see the box below |
+| `image_base_url` | Where the `.bin` files are served, e.g. `http://198.18.134.12:8080`. Used only when `import_source` is `remote` |
+| `images[].id` | The name a project refers to, e.g. `c9300-26.01.02` |
+| `images[].image_file` | Image filename, matching the `.bin` staged on the script server |
+| `images[].image_version` | Recorded in evidence; not sent to the API |
+| `images[].rollback_image_file` | Recovery target, imported up front alongside the upgrade |
+| `images[].device_role` | `ALL`, or `ACCESS` / `DISTRIBUTION` / `CORE` / `BORDER ROUTER` |
+| `images[].device_image_family_name` | **SWIM identifier** for tagging, e.g. `Cisco Catalyst 9300 Switch` |
+| `images[].device_family_name` | **Inventory family** for distribute/activate, e.g. `Switches and Hubs` |
+| `images[].device_series_name` | **Inventory series**, e.g. `Cisco Catalyst 9300 Series Switches` |
+| `images[].activate_lower_image_version` | `false` blocks accidental downgrades |
+| `images[].device_upgrade_mode` | `install` — the IOS-XE three-step sequence |
+| `images[].distribute_if_needed` | Fallback distribution during activation |
+
+`settings.json` → `project[].swim` — which sites want which images:
 
 | Field | Purpose |
 | --- | --- |
 | `enabled` | Projects without this set to `true` are skipped entirely |
-| `import_source` | `remote` — Catalyst Center pulls the `.bin` over HTTP from the script server. **This is the working path in this pod.** `CCO` (download from cisco.com) is supported by the role but is refused by this Catalyst Center — see the box below |
-| `image_base_url` | Where the `.bin` is served, e.g. `http://198.18.134.12:8080`. Used only when `import_source` is `remote` |
-| `image_file` | Image filename, matching the `.bin` staged on the script server |
-| `image_version` | Recorded in evidence; not sent to the API |
-| `rollback_image_file` | Recovery target, imported up front alongside the upgrade |
-| `site_name` | Full hierarchy path, e.g. `Global/NORTH CAROLINA/Durham/Site-105/MAIN` |
-| `device_role` | `ALL`, or `ACCESS` / `DISTRIBUTION` / `CORE` / `BORDER ROUTER` |
-| `device_image_family_name` | **SWIM identifier** for tagging, e.g. `Cisco Catalyst 9300 Switch` |
-| `device_family_name` | **Inventory family** for distribute/activate, e.g. `Switches and Hubs` |
-| `device_series_name` | **Inventory series**, e.g. `Cisco Catalyst 9300 Series Switches` |
-| `activate_lower_image_version` | `false` blocks accidental downgrades |
-| `device_upgrade_mode` | `install` — the IOS-XE three-step sequence |
-| `distribute_if_needed` | Fallback distribution during activation |
+| `images` | List of `swim_catalog` ids. Two device types at one site is two ids, not a second block |
+
+There is no `site_name` key. Both site scopes are derived from the project's
+`HierarchyParent` / `HierarchyArea` / `HierarchyBldg` / `HierarchyFloor` fields,
+because tagging and upgrading are different questions — see the box below.
+
+> **Tag at the building, upgrade at the floor.**
+> Golden tagging is a policy statement about a *site*, and the Catalyst Center
+> Images tab can only navigate to areas and buildings. The tagging API will
+> nonetheless accept a **floor** and report success — and the tag is then
+> invisible: the family reads “missing standard image” at every scope you can
+> select, and there is nowhere to click to remove it. Worse, the per-device view
+> still shows the image as golden, so the stage passes its own checks.
+> Stage 09.2 now refuses a floor scope outright and re-reads the site afterwards
+> to confirm the tag is visible where an operator would look.
+> Re-tagging at the parent **moves** the tag rather than adding a second one:
+> the building then owns it and the floor reports it as inherited.
 
 > **Three “family” names, and they are not interchangeable.**
 > `device_image_family_name` is the SWIM identifier used for *tagging*;
 > `device_family_name` and `device_series_name` are *inventory* fields used for
 > *distribute* and *activate*. Swapping them fails with “no eligible devices
 > found” and no further explanation. Discover the SWIM identifier with
-> `GET /dna/intent/api/v1/image/importation/device-family-identifiers`.
+> `GET /dna/intent/api/v1/image/importation/device-family-identifiers`
+> (note: that endpoint answers **202**, not 200).
+
+> **🛑 The wireless controller is in scope.**
+> DC-Site-10 upgrades the C9800-CL, which serves the Site-105 access points, so
+> activation there is a wireless outage: every AP drops and rejoins. In a full
+> `00_site_deploy.yml` build this lands before stage 11 waits for the APs, so
+> the wait absorbs it. Running stage 09 **on its own, after the APs have
+> joined**, will drop them. Use `-e swim_activate=false` if that is not wanted.
 
 ### Phases
 
@@ -1693,6 +1724,10 @@ leaves a record on disk to work from.
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
 | `No project in settings.json has swim.enabled` | No `swim` block, or `enabled: false` | Add the block to the project you want upgraded |
+| `settings.json references SWIM catalog images that do not exist` | Typo in `project[].swim.images`, or the id is missing from `swim_catalog` | The message lists the available ids — use one of them |
+| `has swim.enabled = true but no swim.images` | A site opted in without naming an image, so the stage would upgrade nothing | Add the catalog id, or set `enabled: false` |
+| `is a floor. Golden tagging must target an area or a building` | The project's hierarchy resolves the tag scope to a floor | Tag scope comes from `HierarchyBldg`; check the project's hierarchy fields match what stage 01 built |
+| `reports no standard image for …` after tagging succeeded | The tag landed somewhere the site query cannot see, or `device_image_family_name` is not a product name Catalyst Center knows at that site | The message lists the product names the site reports — match one exactly |
 | Import fails 404 / “not found” | The `.bin` was never staged, or `image_file` does not match the staged filename | `ls iosxe_images/`, then `curl -sI <image_base_url>/<image_file>` |
 | Import fails NCSW10375 “not the latest or suggested image” | `import_source` is `CCO`, which this pod refuses | Set `import_source: remote` and stage the image locally |
 | Import fails with a credentials error | `import_source: CCO` without Cisco.com credentials | System > Settings > Cisco.com Credentials, or use `remote` |

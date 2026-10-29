@@ -57,7 +57,10 @@
 # instead: a distribute that failed on two of three devices must not turn into a
 # partial reload.
 - name: "09.3 | Establish whether the image is already everywhere"
-  ansible.builtin.include_tasks: image_state.yml
+  ansible.builtin.include_tasks:
+    file: image_state.yml
+    apply:
+      tags: [swim_distribute]
 
 - name: "09.3 | Fail if distribution did not complete"
   ansible.builtin.assert:

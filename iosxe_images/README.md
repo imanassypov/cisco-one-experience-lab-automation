@@ -1,7 +1,7 @@
 # iosxe_images
 
 Staging folder for the IOS-XE software images that **campus stage 09 (SWIM)**
-installs on the Site-105 switches.
+installs on the Site-105 switches and the DC-Site-10 wireless controller.
 
 The folder is deliberately empty in git. Drop your `.bin` files here on the
 **script server**, then publish them — both steps are described below.
@@ -41,28 +41,34 @@ copied by hand.
 
 ## What to put here
 
-Two files, and the names must match `settings.json` character for character:
+Four files, and the names must match `settings.json` character for character.
+They are listed under the top-level `swim_catalog`, two per device type:
 
 ```text
 iosxe_images/
-├── cat9k_iosxe.26.01.02.SPA.bin   ← swim.image_file           (the upgrade)
-├── cat9k_iosxe.17.12.08.SPA.bin   ← swim.rollback_image_file  (the fallback)
+├── cat9k_iosxe.26.01.02.SPA.bin            ← c9300-26.01.02 image_file
+├── cat9k_iosxe.17.12.08.SPA.bin            ← c9300-26.01.02 rollback_image_file
+├── C9800-CL-universalk9.26.02.01.SPA.bin   ← c9800-26.02.01 image_file
+├── C9800-CL-universalk9.17.12.02.SPA.bin   ← c9800-26.02.01 rollback_image_file
 ├── .gitkeep
 └── README.md
 ```
+
+The `cat9k_*` pair upgrades the Site-105 Catalyst 9300 switches; the `C9800-CL*`
+pair upgrades the DC-Site-10 wireless controller.
 
 Copy them from your laptop — into this folder if you are staging ahead of the
 bootstrap:
 
 ```bash
-scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+scp cat9k_iosxe.*.SPA.bin C9800-CL-universalk9.*.SPA.bin \
     cisco@198.18.134.12:~/cisco-one-experience-lab-automation/iosxe_images/
 ```
 
 …or straight to the web root if the bootstrap has already run:
 
 ```bash
-scp cat9k_iosxe.26.01.02.SPA.bin cat9k_iosxe.17.12.08.SPA.bin \
+scp cat9k_iosxe.*.SPA.bin C9800-CL-universalk9.*.SPA.bin \
     cisco@198.18.134.12:/var/www/iosxe-images/
 ```
 

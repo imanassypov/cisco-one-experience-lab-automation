@@ -1,0 +1,60 @@
+---
+# =============================================================================
+# swim / tasks/tag_verify.yml  —  09.2 post-tag guard
+# =============================================================================
+# Asks Catalyst Center the same question the Images tab asks: does this site
+# have a standard image for this device family?
+#
+# The module reporting success is not evidence. A tag can be written into a
+# scope the UI cannot read (see tag_scope_check.yml), and the per-device view
+# will still look right, so this check deliberately queries by SITE rather than
+# by device.
+#
+#   GET /dna/intent/api/v1/siteWiseProductNames?siteId=…
+#   response[]: { id, productName, productNameOrdinal, networkDeviceCount,
+#                 imageSummary: { installedImageCount, goldenImageCount,
+#                                 installedImageAdvisorCount } }
+#
+# The count is nested under imageSummary, not top level. `id` and
+# productNameOrdinal are the SWIM device family identifier, and productName is
+# the SWIM family string — the same value settings.json carries as
+# device_image_family_name, which is how an entry is matched to its record.
+#
+# Pre:  _swim_entries, _catc_token, _swim_tag_site_ids (tag_scope_check.yml)
+# Post: nothing persisted; fails the stage if a tag is not visible at its site
+# =============================================================================
+
+- name: "09.2 | Read standard images per site"
+  ansible.builtin.uri:
+    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/siteWiseProductNames?siteId={{ _swim_tag_site_ids[item.tag_site_name] }}"
+    method: GET
+    headers:
+      X-Auth-Token: "{{ _catc_token }}"
+    validate_certs: "{{ catc_verify | bool }}"
+    status_code: [200, 202]
+  loop: "{{ _swim_entries }}"
+  loop_control:
+    label: "{{ item.device_image_family_name }} @ {{ item.tag_site_name }}"
+  register: _swim_site_products
+
+- name: "09.2 | Fail if the site has no standard image for the family"
+  ansible.builtin.assert:
+    that: _golden | int > 0
+    fail_msg: >-
+      {{ item.item.tag_site_name }} reports no standard image for
+      '{{ item.item.device_image_family_name }}', even though tagging
+      {{ item.item.image_file }} reported success. This is what the Images tab
+      shows as "missing standard image". Check that
+      device_image_family_name matches a productName Catalyst Center knows at
+      this site: {{ _products | join(', ') | default('none', true) }}
+    success_msg: >-
+      {{ item.item.tag_site_name }}: standard image set for
+      {{ item.item.device_image_family_name }}
+  vars:
+    _records: "{{ item.json.response | default([]) }}"
+    _products: "{{ _records | selectattr('productName', 'defined') | map(attribute='productName') | list }}"
+    _match: "{{ _records | selectattr('productName', 'equalto', item.item.device_image_family_name) | list }}"
+    _golden: "{{ (_match | first | default({})).get('imageSummary', {}).get('goldenImageCount', 0) }}"
+  loop: "{{ _swim_site_products.results }}"
+  loop_control:
+    label: "{{ item.item.tag_site_name }}"

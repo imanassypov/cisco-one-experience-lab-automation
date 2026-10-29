@@ -5,38 +5,51 @@
 # Software Image Management for the campus fabric, so the switches run an image
 # whose YANG coverage matches what assurance expects.
 #
-# The image, the site and the device targeting are declared in settings.json
-# under project[].swim, exactly like every other thing this pipeline builds.
-# Nothing is passed on the command line except the safety gates.
+# Images are declared once in settings.json under the top-level swim_catalog;
+# each project names the catalog ids it wants. Nothing is passed on the command
+# line except the safety gates.
 #
 # Phases (role: swim):
-#   11.1 preflight       resync inventory, baseline IMAGE compliance  read-only
-#   11.2 import_and_tag  pull from CCO, mark golden                   CatC only
-#   11.3 distribute      copy to device flash, no reload              safe
-#   11.4 activate        reload onto the new image                    DISRUPTIVE
-#   11.5 postcheck       IMAGE compliance after activation            read-only
-#   11.6 rollback        re-tag previous image and activate it        DISRUPTIVE
+#   09.1 preflight       resync inventory, baseline IMAGE compliance  read-only
+#   09.2 import_and_tag  pull the image, mark it golden               CatC only
+#   09.3 distribute      copy to device flash, no reload              safe
+#   09.4 activate        reload onto the new image                    DISRUPTIVE
+#   09.5 postcheck       IMAGE compliance after activation            read-only
+#   09.6 rollback        re-tag previous image and activate it        DISRUPTIVE
 #
 # *** A DEFAULT RUN RELOADS THE FABRIC. ***
-# Phases 11.1-11.5 all run with no extra flags, so one command performs the
+# Phases 09.1-09.5 all run with no extra flags, so one command performs the
 # whole upgrade. Add -e swim_activate=false to stage the image in flash and stop
 # before the reload — that is the safe business-hours run.
+#
+# *** THE WIRELESS CONTROLLER IS IN SCOPE. ***
+# DC-Site-10 upgrades the C9800-CL, which serves the Site-105 access points. In
+# a full 00_site_deploy.yml build that reload lands before stage 11 waits for
+# the APs, so the wait absorbs it. Running stage 09 on its own AFTER the APs
+# have joined will drop them until they rejoin.
 #
 # Rollback is the exception and stays gated behind three explicit flags: making
 # a downgrade as easy as an upgrade is how a fabric gets reverted by accident.
 #
-# Import source is CCO: Catalyst Center downloads the image straight from
-# cisco.com, so no multi-GB binary is staged in the repo or on the script
-# server. This requires Cisco.com credentials under
-# System > Settings > Cisco.com Credentials.
+# Import source is `remote`: Catalyst Center pulls each .bin over HTTP from the
+# script server, published on port 8080 by 00_scriptserver_bootstrap. The `CCO`
+# source is supported by the role but refused by this cluster — every image
+# comes back NCSW10375 "not the latest or suggested image from cisco", even
+# builds its own catalogue flags as recommended.
 #
 # Sourced:
 #   Lab Topology/lab_access.yml (vault) — Catalyst Center username/password
-#   settings.json → settings_data.project[].swim (via catc_common.load_settings)
-#     {enabled, import_source, image_file, image_version, rollback_image_file,
-#      site_name, device_role, device_image_family_name, device_family_name,
-#      device_series_name, activate_lower_image_version, device_upgrade_mode,
-#      distribute_if_needed}
+#   settings.json (via catc_common.load_settings)
+#     settings_data.swim_catalog
+#       {import_source, image_base_url, images[]}
+#       images[]: {id, image_file, image_version, rollback_image_file,
+#                  rollback_image_version, device_role,
+#                  device_image_family_name, device_family_name,
+#                  device_series_name, activate_lower_image_version,
+#                  device_upgrade_mode, distribute_if_needed}
+#     settings_data.project[].swim = {enabled, images[]}
+#       The site scopes are DERIVED from the project's Hierarchy* fields:
+#       the building is the golden-tag scope, the floor is the upgrade target.
 #
 # Produced:
 #   evidence/<run_id>-09_swim-<phase>.json per phase
@@ -55,7 +68,7 @@
 # cisco.catalystcenter 2.11.0 fixed exactly that (line 4280 defaults to []
 # and skips device-tag filtering when empty).
 #
-# Depends on: stages 01-08. Every SWIM call targets devices by site_name plus
+# Depends on: stages 01-08. Every SWIM call targets devices by site plus
 # family/series/role, so devices must already be discovered, managed and
 # assigned to the site.
 #
