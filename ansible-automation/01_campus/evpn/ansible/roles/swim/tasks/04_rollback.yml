@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/rollback.yml  —  Stage 09.4
+# swim / tasks/04_rollback.yml  —  Stage 09.4
 # =============================================================================
 # DISRUPTIVE recovery path. Re-tags the previous image golden and activates it,
 # reloading every targeted device back onto the older version.

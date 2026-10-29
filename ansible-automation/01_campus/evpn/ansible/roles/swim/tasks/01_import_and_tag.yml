@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/import_and_tag.yml  —  Stage 09.1
+# swim / tasks/01_import_and_tag.yml  —  Stage 09.1
 # =============================================================================
 # Pull the image from Cisco Connection Online into the Catalyst Center image
 # repository, then mark it golden for the site and role.

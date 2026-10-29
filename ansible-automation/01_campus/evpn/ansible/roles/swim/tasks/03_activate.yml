@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/activate.yml  —  Stage 09.3
+# swim / tasks/03_activate.yml  —  Stage 09.3
 # =============================================================================
 # DISRUPTIVE. Reloads every targeted device onto the distributed image.
 #
