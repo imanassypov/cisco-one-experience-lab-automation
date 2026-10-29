@@ -1548,7 +1548,7 @@ because tagging and upgrading are different questions — see the box below.
 > invisible: the family reads “missing standard image” at every scope you can
 > select, and there is nowhere to click to remove it. Worse, the per-device view
 > still shows the image as golden, so the stage passes its own checks.
-> Stage 09.1 now refuses a floor scope outright and re-reads the site afterwards
+> Phase 1 now refuses a floor scope outright and re-reads the site afterwards
 > to confirm the tag is visible where an operator would look.
 > Re-tagging at the parent **moves** the tag rather than adding a second one:
 > the building then owns it and the floor reports it as inherited.
@@ -1572,19 +1572,21 @@ because tagging and upgrading are different questions — see the box below.
 
 | Phase | Tag | Effect |
 | --- | --- | --- |
-| 09.1 import_and_tag | `swim_import` | Pull the image into the repository, mark golden — Catalyst Center only |
-| 09.2 distribute | `swim_distribute` | Copy into device flash — **no reload** |
-| 09.3 activate | `swim_activate` | Reload onto the new image — **disruptive** |
-| 09.4 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
+| 1 import_and_tag | `swim_import` | Pull the image into the repository, mark golden — Catalyst Center only |
+| 2 distribute | `swim_distribute` | Copy into device flash — **no reload** |
+| 3 activate | `swim_activate` | Reload onto the new image — **disruptive** |
+| 4 rollback | `swim_rollback` | Re-tag previous image and activate it — **disruptive** |
 
-Tasks are numbered by their position in the phase — `09.1.1`, `09.1.2`, … — and
-tasks contributed by a guard file nest under the step that pulls them in, so
-`09.1.7.3` is the third check inside step `09.1.7`.
+Phase numbers are local to the `swim` role, not the pipeline — the role carries
+no assumption that it is stage 09, so it reads correctly if reused elsewhere.
+Tasks are numbered by their position in the phase — `1.1`, `1.2`, … — and tasks
+contributed by a guard file nest under the step that pulls them in, so `1.7.3`
+is the third check inside step `1.7`.
 
-A default run executes 09.1–09.3, **including the reload in 09.3**, so a single
-command performs the whole upgrade. Add `-e swim_activate=false` to stop after
-09.2: the image lands in flash, the devices keep running their current version,
-and the fabric is untouched — the safe business-hours run.
+A default run executes phases 1–3, **including the reload in phase 3**, so a
+single command performs the whole upgrade. Add `-e swim_activate=false` to stop
+after phase 2: the image lands in flash, the devices keep running their current
+version, and the fabric is untouched — the safe business-hours run.
 
 > 🛑 **Stage 09 reloads the fabric by default.** Unlike stage 12, this stage is
 > not safe to run casually. Site-105 is three switches with no redundancy, so the
@@ -1595,7 +1597,7 @@ The stage no longer resyncs the inventory or runs IMAGE compliance. The resync
 was measured doing nothing — the module returned "No inventory actions were
 performed" while the role reported success — and neither compliance run gated
 anything. What actually proves the upgrade landed is the `DEVICE_UP_TO_DATE`
-check inside 09.2/09.3 and stage 12. Catalyst Center re-collects each device
+check inside phases 2/3 and stage 12. Catalyst Center re-collects each device
 itself as it completes an activation, so there is nothing to refresh afterwards.
 
 ### Prerequisites
@@ -1706,10 +1708,10 @@ ansible-playbook playbooks/09_swim.yml -e catc_debug=true
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `swim_images` | `""` | Comma-separated `swim_catalog` ids. Empty runs every enabled entry; set it to limit the run to one device type |
-| `swim_run_import` | `true` | Run 09.1 |
-| `swim_run_distribute` | `true` | Run 09.2 |
-| `swim_activate` | `true` | Run 09.3. **Set `false` to stage without reloading** |
-| `swim_rollback` | `false` | Run 09.4 instead of the forward phases |
+| `swim_run_import` | `true` | Run phase 1 |
+| `swim_run_distribute` | `true` | Run phase 2 |
+| `swim_activate` | `true` | Run phase 3. **Set `false` to stage without reloading** |
+| `swim_rollback` | `false` | Run phase 4 instead of the forward phases |
 | `swim_rollback_confirm` | `""` | Must be `YES` to roll back |
 | `swim_reload_ack` | `""` | Must be `RELOAD_OK` to roll back |
 | `swim_task_timeout` | `7200` | Seconds; must outlast a reload |
@@ -1748,7 +1750,7 @@ leaves a record on disk to work from.
 | Import fails with a credentials error | `import_source: CCO` without Cisco.com credentials | System > Settings > Cisco.com Credentials, or use `remote` |
 | Tagging fails | `device_image_family_name` holds an inventory family | Use the SWIM identifier — see the box above |
 | “No eligible devices found” on distribute | `device_family_name` / `device_series_name` wrong, or inventory stale | Confirm both against the Catalyst Center inventory record for the device |
-| “No eligible devices” on a fabric that is already upgraded | Nothing to do — this is the idempotent case | Not a failure. 09.2/09.3 pass it once Catalyst Center reports every golden-tagged device `DEVICE_UP_TO_DATE` |
+| “No eligible devices” on a fabric that is already upgraded | Nothing to do — this is the idempotent case | Not a failure. Phases 2/3 pass it once Catalyst Center reports every golden-tagged device `DEVICE_UP_TO_DATE` |
 | Distribute fails on flash space | Older images filling flash | Catalyst Center auto-cleans; check the device manually if it persists |
 | Activation “succeeds” but version unchanged | On Catalyst Center ≥ 3.1.3.0 `schedule_validate` is never sent, so a dry run is not the cause — check `networkDeviceImageUpdates` for the real per-device status | See the activation note below |
 | Rollback refused | `activate_lower_image_version` not true | The rollback phase sets this automatically, **but see the note below — the flag is not sent on Catalyst Center ≥ 3.1.3.0** |

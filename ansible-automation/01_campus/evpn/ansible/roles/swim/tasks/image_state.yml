@@ -2,8 +2,8 @@
 # =============================================================================
 # swim / tasks/image_state.yml  —  shared helper
 # =============================================================================
-# Answers one question for 09.2 and 09.3: is this image ALREADY running on every
-# device it is tagged golden for?
+# Answers one question for phases 2 and 3: is this image ALREADY running on
+# every device it is tagged golden for?
 #
 # Both phases report "No eligible devices" for two opposite reasons:
 #   nothing to do   — the fabric already runs the image (a clean re-run)
@@ -21,7 +21,8 @@
 #
 # Requiring at least one tagged device is deliberate: if golden tagging silently
 # failed, zero devices are tagged, nothing is "stale", and a naive check would
-# call that success — the exact failure this role already guards against in 09.1.
+# call that success — the exact failure this role already guards against in
+# phase 1.
 #
 # _swim_step comes from the caller, because this file runs inside two different
 # phases and the task numbering has to say which one. The index trails the name
