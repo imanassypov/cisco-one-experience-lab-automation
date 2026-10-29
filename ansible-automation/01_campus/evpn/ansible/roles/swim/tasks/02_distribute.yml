@@ -2,20 +2,19 @@
 # =============================================================================
 # swim / tasks/02_distribute.yml  —  Phase 2
 # =============================================================================
-# Copy the golden image into each device's flash. No reload, no change to the
-# running image — the device keeps forwarding throughout, which is why this
-# phase is safe outside a maintenance window and runs by default.
+# Copy the image into each device's flash. No reload, and the running image is
+# untouched, so the device keeps forwarding — which is why this phase runs by
+# default and is safe outside a maintenance window.
 #
-# Catalyst Center runs its own prechecks per device before transferring:
-# free flash space (cleaning older images when needed), reachability, NTP clock
-# sanity, and a post-transfer checksum. A device that fails a precheck is
-# reported and skipped rather than corrupting the transfer.
+# Catalyst Center prechecks each device first (free flash, reachability, clock)
+# and verifies a checksum afterwards, skipping any device that fails rather
+# than corrupting the transfer.
 #
 # Targeting here uses the INVENTORY family and series, not the SWIM identifier
 # used for tagging in phase 1. See the header of 01_import_and_tag.yml.
 #
-# Pre:  image tagged golden by phase 1
-# Post: image staged in flash on every device matching site + role + family
+# Pre:  image tagged as the site standard by phase 1
+# Post: image in flash on every device matching site + role + family
 # =============================================================================
 
 - name: "2.1 | Distribute image to devices"

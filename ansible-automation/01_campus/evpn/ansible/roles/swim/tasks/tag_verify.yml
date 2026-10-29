@@ -2,26 +2,20 @@
 # =============================================================================
 # swim / tasks/tag_verify.yml  —  step 1.11 post-tag guard
 # =============================================================================
-# Asks Catalyst Center the same question the Images tab asks: does this site
-# have a standard image for this device family?
+# Asks Catalyst Center the question the Images tab asks: does this site have a
+# standard image for this device family?
 #
-# The module reporting success is not evidence. A tag can be written into a
-# scope the UI cannot read (see tag_scope_check.yml), and the per-device view
-# will still look right, so this check deliberately queries by SITE rather than
-# by device.
+# The tagging module reporting success is not enough. A tag can land in a scope
+# the UI cannot read (see tag_scope_check.yml) while the per-device view still
+# looks right, so this check queries by SITE rather than by device.
 #
-#   GET /dna/intent/api/v1/siteWiseProductNames?siteId=…
-#   response[]: { id, productName, productNameOrdinal, networkDeviceCount,
-#                 imageSummary: { installedImageCount, goldenImageCount,
-#                                 installedImageAdvisorCount } }
+# siteWiseProductNames returns one record per product, and the count sits under
+# `imageSummary.goldenImageCount`, not at the top level. `productName` is the
+# same string settings.json carries as device_image_family_name, which is how
+# an entry is matched to its record.
 #
-# The count is nested under imageSummary, not top level. `id` and
-# productNameOrdinal are the SWIM device family identifier, and productName is
-# the SWIM family string — the same value settings.json carries as
-# device_image_family_name, which is how an entry is matched to its record.
-#
-# Pre:  _swim_entries, _swim_tag_site_ids (tag_scope_check.yml)
-# Post: nothing persisted; fails the stage if a tag is not visible at its site
+# Pre:  _swim_entries, _swim_tag_site_ids (from tag_scope_check.yml)
+# Post: nothing stored; fails the run if a tag is not visible at its site
 # =============================================================================
 
 - name: "1.11.1 | Read standard images per site"

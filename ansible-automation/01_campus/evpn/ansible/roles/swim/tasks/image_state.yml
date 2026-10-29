@@ -3,32 +3,24 @@
 # swim / tasks/image_state.yml  —  shared helper
 # =============================================================================
 # Answers one question for phases 2 and 3: is this image ALREADY running on
-# every device it is tagged golden for?
+# every device it is tagged for?
 #
-# Both phases report "No eligible devices" for two opposite reasons:
-#   nothing to do   — the fabric already runs the image (a clean re-run)
-#   nothing worked  — the image is missing, untagged, or the family/series
-#                     filters match no device
-# The module returns `status: success` either way, so the message alone cannot
-# tell them apart and the 09.x asserts used to fail a perfectly good re-run.
+# Both phases say "No eligible devices" for two opposite reasons — the fabric
+# already runs the image (a clean re-run), or nothing worked at all. The module
+# returns success either way, so the message cannot tell them apart and the
+# asserts used to fail a perfectly good re-run.
 #
-# Scoping comes free from golden tagging: `goldenImages` is populated only on
-# devices this image is tagged for, so a device outside the entry's site or
-# family drops out without a site-member lookup — including devices belonging to
-# a different catalog entry, since the verdict is per image_file. A device
-# tagged golden but NOT `DEVICE_UP_TO_DATE` is a real target that still needs
-# work, which is what makes "nothing to do" safe to assert.
+# Scoping is free: `goldenImages` appears only on devices this image is tagged
+# for, so anything outside the job drops out with no site lookup. A tagged
+# device that is NOT `DEVICE_UP_TO_DATE` still needs work, which is what makes
+# "nothing to do" safe to assert. Requiring at least one tagged device is
+# deliberate — if tagging silently failed, nothing is tagged, nothing is stale,
+# and a naive check would call that success.
 #
-# Requiring at least one tagged device is deliberate: if golden tagging silently
-# failed, zero devices are tagged, nothing is "stale", and a naive check would
-# call that success — the exact failure this role already guards against in
-# phase 1.
-#
-# _swim_step comes from the caller, because this file runs inside two different
-# phases and the task numbering has to say which one. The index trails the name
-# here, unlike every other task, and the step suffix is built inside the
-# expression: ansible-lint name[template] requires the Jinja to be the very last
-# thing in the string, because --start-at-task cannot resolve it.
+# _swim_step comes from the caller because this file runs in two phases. Its
+# index trails the task name, unlike every other task, and the suffix is built
+# inside the expression: ansible-lint name[template] needs the Jinja to be the
+# very last thing in the string.
 #
 # Pre:  _swim_entries, _swim_step
 # Post: swim_image_up_to_date — {image_file: bool}

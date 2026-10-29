@@ -2,21 +2,18 @@
 # =============================================================================
 # swim / tasks/tag_scope_check.yml  —  step 1.7 pre-tag guard
 # =============================================================================
-# Refuses to golden-tag at a FLOOR.
+# Refuses to tag at a FLOOR.
 #
-# The legacy tagging API accepts a floor siteId and returns success, but the
-# Catalyst Center 3.1 Images tab can only navigate to areas and buildings. A
-# floor-scoped tag is therefore written, stored, and then invisible: the family
-# shows "missing standard image" at every scope an operator can select, and the
-# tag cannot be removed from the UI either because there is nowhere to click.
+# The tagging API accepts a floor and reports success, but the Catalyst Center
+# Images tab can only navigate to areas and buildings. The tag is then written,
+# stored, and invisible: the family reads "missing standard image" at every
+# scope an operator can select, with nowhere to click to remove it.
 #
-# None of the existing guards caught this. Device-level `goldenImages` DOES see
-# a floor tag, so image_state.yml and every assert in the role passed while the tag was
-# orphaned — measured on this pod 2026-10-29, where the Site-105 building
-# reported goldenImageCount 0 and the MAIN floor reported 1.
+# Nothing else catches this, because the per-device view DOES see a floor tag —
+# so every other check in this role passes. Measured on this pod 2026-10-29:
+# the Site-105 building reported goldenImageCount 0, the floor below it 1.
 #
-# Resolving the site here also gives the siteId that tag_verify.yml needs after
-# tagging, so the two guards share one lookup.
+# Also hands tag_verify.yml the siteId, so the two guards share one lookup.
 #
 # Pre:  _swim_entries
 # Post: _swim_tag_site_ids — {tag_site_name: siteId}
