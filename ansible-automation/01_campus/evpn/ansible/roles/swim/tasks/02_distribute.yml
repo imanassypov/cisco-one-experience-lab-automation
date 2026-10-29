@@ -48,7 +48,7 @@
     msg: >-
       {{ item.item.image_file }} -> {{ item.item.site_name }}:
       {{ 'distributed / already in flash' if not (item.failed | default(false))
-         else 'DISTRIBUTION FAILED — ' ~ (item.msg | default('see evidence')) }}
+         else 'DISTRIBUTION FAILED — ' ~ (item.msg | default('no message')) }}
   loop: "{{ _swim_distribute.results }}"
   loop_control:
     label: "{{ item.item.site_name }}"
@@ -93,19 +93,7 @@
     _only_no_eligible: "{{ _hits | reject('equalto', 'no eligible devices') | list | length == 0 }}"
     _already_running: "{{ swim_image_up_to_date[item.item.image_file] | default(false) }}"
 
-- name: "2.5 | Write distribution evidence"
-  ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-distribute.json"
-    mode: "0644"
-    content: "{{ _evidence | to_nice_json }}"
-  vars:
-    _evidence:
-      phase: "2 distribute"
-      run_id: "{{ swim_run_id }}"
-      images: "{{ _swim_entries | map(attribute='image_file') | list }}"
-      distribution: "{{ _swim_distribute.results | map(attribute='msg') | list }}"
-
-- name: "2.6 | Distribution complete — no devices reloaded"
+- name: "2.5 | Distribution complete — no devices reloaded"
   ansible.builtin.debug:
     msg:
       - "Image is staged in flash. Nothing has reloaded and the fabric is unchanged."

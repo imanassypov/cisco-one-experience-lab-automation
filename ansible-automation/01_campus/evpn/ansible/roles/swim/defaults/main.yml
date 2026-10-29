@@ -53,12 +53,6 @@ swim_task_poll_interval: 60
 # Import pulls a ~1.2 GB image from cisco.com into the CatC repository.
 swim_import_timeout: 3600
 
-# ── Evidence ─────────────────────────────────────────────────────────────────
-# One JSON per phase, alongside the stage 12 reports. Gitignored.
-swim_evidence_dir: "{{ (playbook_dir ~ '/../evidence') | realpath }}"
-swim_run_id: "{{ ansible_date_time.iso8601_basic_short | default('norun') }}"
-
-
 # ── Soft-failure detection ───────────────────────────────────────────────────
 # cisco.dnac workflow managers routinely return failed=false AND status=success
 # while doing nothing, putting the real outcome in msg. A 2026-09-19 run reported

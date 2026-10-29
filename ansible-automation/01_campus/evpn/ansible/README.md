@@ -1722,20 +1722,6 @@ ansible-playbook playbooks/09_swim.yml -e catc_debug=true
 > upgrade — it would only stop Ansible watching it, leaving the fabric
 > mid-activation with no record of the outcome.
 
-### Evidence
-
-One JSON per phase in `evidence/`, gitignored:
-
-```text
-evidence/<run_id>-09_swim-import_and_tag.json
-evidence/<run_id>-09_swim-distribute.json
-evidence/<run_id>-09_swim-activate.json
-evidence/<run_id>-09_swim-rollback.json
-```
-
-Evidence is written **before** the phase asserts, so a failed activation still
-leaves a record on disk to work from.
-
 ### Troubleshooting
 
 | Symptom | Likely cause | Resolution |
@@ -2610,7 +2596,7 @@ virtualenv lives outside the tree at `~/venv`.
             │   ├── catalyst_center.yml
             │   └── group_vars/all/lab.yml  # your POD number and AP MACs
             ├── playbooks/                  # 00 orchestrator + stages 01–12
-            └── evidence/                   # stage 09 and 12 output (gitignored)
+            └── evidence/                   # stage 12 reports (gitignored)
 
 ~/venv/                                     # Kali Ansible venv (on PATH)
 ```

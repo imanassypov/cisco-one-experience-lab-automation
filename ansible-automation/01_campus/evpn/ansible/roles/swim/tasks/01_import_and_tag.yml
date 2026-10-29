@@ -119,7 +119,7 @@
     msg: >-
       {{ item.item.image_file }}:
       {{ 'imported / already present' if not (item.failed | default(false) or _hit)
-         else 'IMPORT FAILED — ' ~ (item.msg | default('see evidence')) }}
+         else 'IMPORT FAILED — ' ~ (item.msg | default('no message')) }}
   vars:
     _hit: >-
       {{ swim_failure_signatures
@@ -198,7 +198,7 @@
     msg: >-
       {{ item.item.image_file }} @ {{ item.item.tag_site_name }}:
       {{ 'golden' if not (item.failed | default(false))
-         else 'TAG FAILED — ' ~ (item.msg | default('see evidence')) }}
+         else 'TAG FAILED — ' ~ (item.msg | default('no message')) }}
   loop: "{{ _swim_tag.results }}"
   loop_control:
     label: "{{ item.item.image_file }}"
@@ -225,17 +225,3 @@
     file: tag_verify.yml
     apply:
       tags: [swim_import]
-
-- name: "1.12 | Write import and tag evidence"
-  ansible.builtin.copy:
-    dest: "{{ swim_evidence_dir }}/{{ swim_run_id }}-09_swim-import_and_tag.json"
-    mode: "0644"
-    content: "{{ _evidence | to_nice_json }}"
-  vars:
-    _evidence:
-      phase: "1 import_and_tag"
-      run_id: "{{ swim_run_id }}"
-      images: "{{ _swim_entries | map(attribute='image_file') | list }}"
-      tag_sites: "{{ _swim_entries | map(attribute='tag_site_name') | list }}"
-      import: "{{ _swim_import.results | map(attribute='msg') | list }}"
-      tagging: "{{ _swim_tag.results | map(attribute='msg') | list }}"
