@@ -58,7 +58,9 @@
 #
 # gather_facts is true — ansible_date_time supplies swim_run_id.
 # Modules: cisco.catalystcenter.swim_workflow_manager, inventory_workflow_manager,
-#          network_compliance_workflow_manager
+#          network_compliance_workflow_manager, and the read-only *_info lookups
+#          the role asserts on (sites_info, site_wise_product_names_info,
+#          swim_image_details_info, network_device_images_info).
 #
 # cisco.catalystcenter rather than cisco.dnac, which every other stage uses.
 # cisco.dnac 6.46.0 crashes golden tagging with
@@ -102,7 +104,11 @@
   vars:
     catc_debug: "{{ lookup('env', 'DEBUG') | default(false) | bool }}"
   module_defaults:
-    cisco.catalystcenter.swim_workflow_manager: &catc_conn
+    # Read-only lookups the role asserts on. This collection ships no
+    # module_defaults action group, so each one has to be named — and the
+    # auto-generated *_info modules REJECT catalystcenter_log and
+    # catalystcenter_log_level, so those two cannot be in the shared anchor.
+    cisco.catalystcenter.sites_info: &catc_read
       catalystcenter_host: "{{ catc_host }}"
       catalystcenter_username: "{{ catc_username }}"
       catalystcenter_password: "{{ catc_password }}"
@@ -110,20 +116,19 @@
       catalystcenter_port: "{{ catc_port }}"
       catalystcenter_version: "{{ catc_version }}"
       catalystcenter_debug: "{{ catc_debug }}"
+    cisco.catalystcenter.site_wise_product_names_info: *catc_read
+    cisco.catalystcenter.swim_image_details_info: *catc_read
+    cisco.catalystcenter.network_device_images_info: *catc_read
+    cisco.catalystcenter.swim_workflow_manager: &catc_conn
+      <<: *catc_read
       catalystcenter_log_level: "{{ dnac_log_level }}"
       catalystcenter_log: "{{ dnac_log }}"
     cisco.catalystcenter.inventory_workflow_manager: *catc_conn
     cisco.catalystcenter.network_compliance_workflow_manager: *catc_conn
   pre_tasks:
     # tags: always — a tag-filtered run such as --tags swim_import would
-    # otherwise skip these, leaving settings_data unset and the role failing
+    # otherwise skip this, leaving settings_data unset and the role failing
     # with "No project in settings.json has swim.enabled = true".
-    - name: Obtain Catalyst Center auth token
-      ansible.builtin.import_role:
-        name: catc_common
-        tasks_from: auth_token
-      tags: [always]
-
     - name: Load settings.json
       ansible.builtin.import_role:
         name: catc_common

@@ -131,13 +131,8 @@
 
 # Authoritative check: ask the repository rather than believe the module.
 - name: "09.2 | Confirm the image actually reached the repository"
-  ansible.builtin.uri:
-    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/image/importation?imageName={{ item.image_file | urlencode }}"
-    method: GET
-    headers:
-      X-Auth-Token: "{{ _catc_token }}"
-    validate_certs: "{{ catc_verify | bool }}"
-    status_code: 200
+  cisco.catalystcenter.swim_image_details_info:
+    imageName: "{{ item.image_file }}"
   loop: "{{ _swim_entries }}"
   loop_control:
     label: "{{ item.image_file }}"
@@ -155,14 +150,14 @@
         GET /dna/intent/api/v1/images
       (note: offset/limit return an empty set on this build — call it plain).
     success_msg: "{{ item.image_file }} present in the repository"
-  # Summarised rather than looped over _swim_repo_check.results: a looped assert
-  # prints its whole item, which for a uri result includes the auth token.
+  # Summarised rather than looped over the raw results: a looped assert prints
+  # its whole item.
   vars:
     _summary: >-
       {%- set ns = namespace(out=[]) -%}
       {%- for r in _swim_repo_check.results -%}
       {%- set ns.out = ns.out + [{'image_file': r.item.image_file,
-                                  'present': (r.json.response | default([]) | length > 0)}] -%}
+                                  'present': (r.catalystcenter_response.response | default([]) | length > 0)}] -%}
       {%- endfor -%}
       {{ ns.out }}
   loop: "{{ _summary }}"

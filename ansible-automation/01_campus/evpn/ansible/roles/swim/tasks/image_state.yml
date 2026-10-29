@@ -23,18 +23,14 @@
 # failed, zero devices are tagged, nothing is "stale", and a naive check would
 # call that success — the exact failure this role already guards against in 09.2.
 #
-# Pre:  _swim_entries, _catc_token
+# Pre:  _swim_entries
 # Post: swim_image_up_to_date — {image_file: bool}
 # =============================================================================
 
 - name: "Read per-device image state"
-  ansible.builtin.uri:
-    url: "https://{{ catc_host }}:{{ catc_port }}/dna/intent/api/v1/networkDeviceImages?limit=500&offset=1"
-    method: GET
-    headers:
-      X-Auth-Token: "{{ _catc_token }}"
-    validate_certs: "{{ catc_verify | bool }}"
-    status_code: 200
+  cisco.catalystcenter.network_device_images_info:
+    limit: 500
+    offset: 1
   register: _swim_device_images
   # Never block a phase on this: it only ever downgrades a failure to a pass,
   # so losing it just restores the old, stricter behaviour.
@@ -49,7 +45,7 @@
   loop_control:
     label: "{{ item.image_file }}"
   vars:
-    _devices: "{{ _swim_device_images.json.response | default([], true) }}"
+    _devices: "{{ _swim_device_images.catalystcenter_response.response | default([], true) }}"
     # goldenImages is ABSENT, not null, on untagged devices, so .get() is
     # required: d.goldenImages raises inside `or []` and that failure silently
     # leaves this whole fact undefined rather than erroring here.
