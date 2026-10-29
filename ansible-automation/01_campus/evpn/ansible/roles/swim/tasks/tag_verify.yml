@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/tag_verify.yml  —  09.1.11 post-tag guard
+# swim / tasks/tag_verify.yml  —  step 1.11 post-tag guard
 # =============================================================================
 # Asks Catalyst Center the same question the Images tab asks: does this site
 # have a standard image for this device family?
@@ -24,7 +24,7 @@
 # Post: nothing persisted; fails the stage if a tag is not visible at its site
 # =============================================================================
 
-- name: "09.1.11.1 | Read standard images per site"
+- name: "1.11.1 | Read standard images per site"
   cisco.catalystcenter.site_wise_product_names_info:
     siteId: "{{ _swim_tag_site_ids[item.tag_site_name] }}"
   loop: "{{ _swim_entries }}"
@@ -34,7 +34,7 @@
 
 # Unfiltered on purpose: productName would narrow the response to the family
 # being checked, and the failure message needs the ones the site DOES know.
-- name: "09.1.11.2 | Summarise the per-site standard images"
+- name: "1.11.2 | Summarise the per-site standard images"
   ansible.builtin.set_fact:
     _swim_site_products: >-
       {%- set ns = namespace(out=[]) -%}
@@ -51,7 +51,7 @@
       {%- endfor -%}
       {{ ns.out }}
 
-- name: "09.1.11.3 | Fail if the site has no standard image for the family"
+- name: "1.11.3 | Fail if the site has no standard image for the family"
   ansible.builtin.assert:
     that: item.golden | int > 0
     fail_msg: >-

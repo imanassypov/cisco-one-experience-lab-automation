@@ -1,6 +1,6 @@
 ---
 # =============================================================================
-# swim / tasks/tag_scope_check.yml  —  09.1.7 pre-tag guard
+# swim / tasks/tag_scope_check.yml  —  step 1.7 pre-tag guard
 # =============================================================================
 # Refuses to golden-tag at a FLOOR.
 #
@@ -11,7 +11,7 @@
 # tag cannot be removed from the UI either because there is nowhere to click.
 #
 # None of the existing guards caught this. Device-level `goldenImages` DOES see
-# a floor tag, so image_state.yml and every 09.x assert passed while the tag was
+# a floor tag, so image_state.yml and every assert in the role passed while the tag was
 # orphaned — measured on this pod 2026-10-29, where the Site-105 building
 # reported goldenImageCount 0 and the MAIN floor reported 1.
 #
@@ -22,7 +22,7 @@
 # Post: _swim_tag_site_ids — {tag_site_name: siteId}
 # =============================================================================
 
-- name: "09.1.7.1 | Resolve the golden-tag site"
+- name: "1.7.1 | Resolve the golden-tag site"
   cisco.catalystcenter.sites_info:
     nameHierarchy: "{{ item }}"
   loop: "{{ _swim_entries | map(attribute='tag_site_name') | unique | list }}"
@@ -32,7 +32,7 @@
 
 # Collapse the results before asserting on them. A looped assert prints its
 # whole `item`, so the thing looped over has to be small.
-- name: "09.1.7.2 | Summarise the resolved tag sites"
+- name: "1.7.2 | Summarise the resolved tag sites"
   ansible.builtin.set_fact:
     _swim_tag_sites: >-
       {%- set ns = namespace(out=[]) -%}
@@ -47,7 +47,7 @@
       {%- endfor -%}
       {{ ns.out }}
 
-- name: "09.1.7.3 | Fail if the tag site does not exist"
+- name: "1.7.3 | Fail if the tag site does not exist"
   ansible.builtin.assert:
     that: item.matches == 1
     fail_msg: >-
@@ -60,7 +60,7 @@
   loop_control:
     label: "{{ item.path }}"
 
-- name: "09.1.7.4 | Fail if the tag site is a floor"
+- name: "1.7.4 | Fail if the tag site is a floor"
   ansible.builtin.assert:
     that: item.type != 'floor'
     fail_msg: >-
@@ -75,6 +75,6 @@
   loop_control:
     label: "{{ item.path }}"
 
-- name: "09.1.7.5 | Index tag site ids"
+- name: "1.7.5 | Index tag site ids"
   ansible.builtin.set_fact:
     _swim_tag_site_ids: "{{ dict(_swim_tag_sites | map(attribute='path') | zip(_swim_tag_sites | map(attribute='id'))) }}"

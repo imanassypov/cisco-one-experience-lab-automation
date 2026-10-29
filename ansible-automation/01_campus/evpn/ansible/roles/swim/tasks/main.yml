@@ -13,20 +13,24 @@
 #
 # Phase order — each is a separate file, numbered so a directory listing matches
 # the order main.yml calls them, and each can be run alone with tags:
-#   09.1 01_import_and_tag  pull image into the repository, mark it golden (CatC only)
-#   09.2 02_distribute      copy image to device flash, no reload            (safe)
-#   09.3 03_activate        reload onto the new image                  (DISRUPTIVE)
-#   09.4 04_rollback        re-tag prior image and activate it         (DISRUPTIVE)
+#   1  01_import_and_tag  pull image into the repository, mark it golden (CatC only)
+#   2  02_distribute      copy image to device flash, no reload            (safe)
+#   3  03_activate        reload onto the new image                  (DISRUPTIVE)
+#   4  04_rollback        re-tag prior image and activate it         (DISRUPTIVE)
+#
+# Phase numbers are role-local. This role happens to be stage 09 of the campus
+# pipeline, but nothing inside it says so, so the numbering still reads
+# correctly wherever the role is reused.
 #
 # tag_scope_check.yml, tag_verify.yml and image_state.yml are unnumbered: they
 # are helpers included from within a phase, not phases main.yml calls.
 #
-# Phases 09.1-09.3 run by default, including the reload in 09.3. 09.4 replaces
+# Phases 1-3 run by default, including the reload in phase 3. Phase 4 replaces
 # them and stays locked behind explicit flags — see defaults/main.yml.
 #
-# Tasks are numbered by their position within a phase (09.1.1, 09.1.2, …), and
-# tasks pulled in from a guard file nest under the step that includes them
-# (09.1.7.1 …) so inserting one cannot renumber its caller.
+# Tasks are numbered by their position within a phase (1.1, 1.2, …), and tasks
+# pulled in from a guard file nest under the step that includes them (1.7.1 …)
+# so inserting one cannot renumber its caller.
 #
 # Sourced:
 #   settings_data.swim_catalog        — the images themselves (settings.json)
@@ -188,8 +192,9 @@
   when: swim_images | length > 0
   tags: [always]
 
-# A stage that silently does nothing is worse than one that fails: stage 12
-# would then report the old version with no clue why. Fail loudly instead.
+# A stage that silently does nothing is worse than one that fails: a later
+# verification stage would report the old version with no clue why. Fail loudly
+# instead.
 - name: Assert at least one project declares swim
   ansible.builtin.assert:
     that: _swim_entries | length > 0
@@ -261,15 +266,15 @@
   tags: [always]
 
 # ── Phases ───────────────────────────────────────────────────────────────────
-# Rollback REPLACES the forward phases rather than following them. If 09.1-09.3
+# Rollback REPLACES the forward phases rather than following them. If phases 1-3
 # ran first they would import, tag and activate the image being backed away
 # from: distributing it into flash, where Catalyst Center's auto-clean can evict
 # the rollback target, and reloading the fabric twice. Rollback needs nothing
-# from them — 09.1 imports the rollback image during the upgrade that preceded.
+# from them — phase 1 imports the rollback image during the upgrade that preceded.
 # apply: is required on every include below. A tag on include_tasks selects the
 # include itself but not the tasks it pulls in, so --tags swim_import would run
 # the include and nothing else.
-- name: "Stage 09.4 | Rollback to the previous image"
+- name: "Phase 4 | Rollback to the previous image"
   ansible.builtin.include_tasks:
     file: 04_rollback.yml
     apply:
@@ -280,7 +285,7 @@
 - name: Run the forward upgrade phases
   when: not (swim_rollback | bool)
   block:
-    - name: "Stage 09.1 | Import and tag golden"
+    - name: "Phase 1 | Import and tag golden"
       ansible.builtin.include_tasks:
         file: 01_import_and_tag.yml
         apply:
@@ -288,7 +293,7 @@
       when: swim_run_import | bool
       tags: [swim_import]
 
-    - name: "Stage 09.2 | Distribute image to device flash"
+    - name: "Phase 2 | Distribute image to device flash"
       ansible.builtin.include_tasks:
         file: 02_distribute.yml
         apply:
@@ -296,7 +301,7 @@
       when: swim_run_distribute | bool
       tags: [swim_distribute]
 
-    - name: "Stage 09.3 | Activate image (reloads devices)"
+    - name: "Phase 3 | Activate image (reloads devices)"
       ansible.builtin.include_tasks:
         file: 03_activate.yml
         apply:
@@ -304,11 +309,11 @@
       when: swim_activate | bool
       tags: [swim_activate]
 
-- name: Stage 09 summary
+- name: SWIM summary
   ansible.builtin.debug:
     msg: >-
       {{
-        ['SWIM stage 09 complete for: ' ~ (_swim_projects | join(', ')),
+        ['SWIM complete for: ' ~ (_swim_projects | join(', ')),
          'Mode          : ' ~ ('ROLLBACK' if swim_rollback | bool else 'upgrade'),
          'Activated     : ' ~ ('yes — devices reloaded' if swim_activate | bool or swim_rollback | bool
                                else 'no — image staged in flash only'),
