@@ -2,31 +2,24 @@
 # =============================================================================
 # 04_device_discovery.yml  —  Pipeline stage 04
 # =============================================================================
-# Submits Catalyst Center discovery jobs for the management IPs declared in
-# settings.json, adding reachable devices to the CatC inventory under Global.
-# Role: device_discovery.
+# Tells Catalyst Center to go and find the devices, so they appear in its
+# inventory. Until a device is in inventory, no later stage can touch it.
 #
-# Sourced:
-#   settings.json → settings_data.project[] (via catc_common.load_settings):
-#     discovery — job name, RANGE, ip_address_list, UseLoopBack/None,
-#                 credential descriptions, enable_netconf
-#     device_list — IPs CatC will store (used by stage 05 assign)
-#     HierarchyParent/Area/Bldg/Floor — assign site for stage 05
-#   connection.yml: dnac_* plus fallback discovery_* descriptions
-#   Lab Topology/lab_access.yml (vault): Catalyst Center username/password
-#   env DEBUG → catc_debug
+#   settings.json project[].discovery  ──►  role: device_discovery  ──►  one
+#     IP range, protocol order,              discovery job per project row
+#     credential DESCRIPTIONS                that declares one
 #
-# Produced:
-#   discovery_list — one job per project row with a discovery{} block
-#     (Site-105-Discovery RANGE 172.30.255.1-3, C9800-WLC RANGE 198.18.5.103)
-#   In Catalyst Center: devices in inventory; stage 05 assigns them to
-#     Site-105/MAIN and DC-Site-10/MAIN.
+# The job names the stage 03 credentials by description, which is why those
+# descriptions must be unique.
 #
-# Depends on: stage 03 (global credentials must exist by description)
-# Module: cisco.dnac.discovery_workflow_manager (state: merged)
+# Re-running DELETES the job of the same name and starts a new one, so both
+# items report "changed" even when the devices are already in inventory.
 #
+# A successful play means the jobs were submitted and completed — not that
+# every IP answered. Check Tools > Discovery for the per-device result.
+#
+# Depends on: stage 03
 # Run: ansible-playbook playbooks/04_device_discovery.yml
-#      DEBUG=true ansible-playbook playbooks/04_device_discovery.yml
 # =============================================================================
 - name: Discover Devices in Catalyst Center from settings.json
   hosts: catalyst_center
