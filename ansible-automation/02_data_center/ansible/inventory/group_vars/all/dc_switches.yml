@@ -1,0 +1,56 @@
+---
+# Declared DC switch table - the tracked half of the topology.
+#
+# Hostnames, management addresses, and fabric roles are identical in every pod
+# (see Lab Topology/PseudoCo_Lab_Access_Lookup.md), so they live in git.
+# Serial numbers are pod-specific hardware and are NOT here:
+# 00_discover_dc_switch_serials.yml reads them off the switches and writes
+# them into playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml, which
+# is generated and gitignored.
+#
+# Interface definitions are maintained only in topology_switches.nac.yaml.example,
+# the authoritative shape template. Stage 00 copies that template and stamps in
+# serial numbers and roles from this table and the discovered devices.
+#
+# This table is the single source of truth for the switch list. Stage 00 turns
+# it into an SSH inventory group at run time with add_host, rather than the
+# names and addresses being repeated in static_inventory.yml where the two
+# copies could drift, and it substitutes the role below into the generated
+# model so that cannot drift either. The names here must match the names in
+# topology_switches.nac.yaml.example, because that substitution anchors on
+# them.
+#
+# Roles come from the guide: Nexus 9300s default to leaf and 9500s to spine on
+# import, but DC-Service-Leaf must be set to border and the two spines must be
+# set explicitly rather than trusted to the model-based default.
+
+dc_fabric_name: Pseudoco-DC1
+
+# Management default gateway for the switch mgmt0 interfaces. Left undefined on
+# purpose: NDFC will push whatever is declared here, and the correct value for
+# this pod has not been verified against a device. Uncomment only once
+# confirmed, otherwise the generated model omits the key entirely.
+# dc_management_default_gateway: 198.18.128.1
+
+dc_switches:
+  - name: DC-Leaf1
+    management_ipv4_address: 198.18.128.101
+    role: leaf
+
+  - name: DC-Leaf2
+    management_ipv4_address: 198.18.128.102
+    role: leaf
+
+  - name: DC-SPINE-1
+    management_ipv4_address: 198.18.128.11
+    role: spine
+
+  - name: DC-SPINE-2
+    management_ipv4_address: 198.18.128.12
+    role: spine
+
+  # Border leaf. This is the switch the guide retags from leaf to Border, and
+  # the one that will carry the VRF-Lite extensions to the external router.
+  - name: DC-Service-Leaf
+    management_ipv4_address: 198.18.128.13
+    role: border
