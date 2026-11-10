@@ -214,6 +214,8 @@ dc_vrf_lite_mtu: 1500
 #
 # The order below is the order the guide works through - PROD, then IOT, then
 # MAIN - which is also ascending dot1q and ascending address.
+dc_vrf_lite_only: all
+
 dc_vrf_lite_extensions:
   - vrf: PROD
     peer_vrf: PROD
