@@ -1,12 +1,16 @@
 ---
 # Declared DC switch table - the tracked half of the topology.
 #
-# Hostnames, management addresses, fabric roles and endpoint port-channels are
-# identical in every pod (see Lab Topology/PseudoCo_Lab_Access_Lookup.md), so
-# they live in git. Serial numbers are pod-specific hardware and are NOT here:
+# Hostnames, management addresses, and fabric roles are identical in every pod
+# (see Lab Topology/PseudoCo_Lab_Access_Lookup.md), so they live in git.
+# Serial numbers are pod-specific hardware and are NOT here:
 # 00_discover_dc_switch_serials.yml reads them off the switches and writes
 # them into playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml, which
 # is generated and gitignored.
+#
+# Interface definitions are maintained only in topology_switches.nac.yaml.example,
+# the authoritative shape template. Stage 00 copies that template and stamps in
+# serial numbers and roles from this table and the discovered devices.
 #
 # This table is the single source of truth for the switch list. Stage 00 turns
 # it into an SSH inventory group at run time with add_host, rather than the
@@ -32,70 +36,21 @@ dc_switches:
   - name: DC-Leaf1
     management_ipv4_address: 198.18.128.101
     role: leaf
-    # Three Linux workloads land on DC-Leaf1/DC-Leaf2 as vPCs 3, 4 and 5,
-    # one per business segment. Access VLAN is deliberately left unset: the
-    # network attachment in networks.nac.yaml is what binds each port-channel
-    # to its overlay VLAN, exactly as the guide's Network Attachments step does.
-    #
-    # Descriptions stay ASCII-only and must match the .example, which is the
-    # copy that reaches Nexus Dashboard - see the note on the interfaces in
-    # playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml.example.
-    interfaces:
-      - name: Port-channel3
-        mode: access
-        vpc_id: 3
-        description: "MAIN server - vPC3"
-        members:
-          - Ethernet1/3
-      - name: Port-channel4
-        mode: access
-        vpc_id: 4
-        description: "PROD server - vPC4"
-        members:
-          - Ethernet1/4
-      - name: Port-channel5
-        mode: access
-        vpc_id: 5
-        description: "IOT server - vPC5"
-        members:
-          - Ethernet1/5
 
   - name: DC-Leaf2
     management_ipv4_address: 198.18.128.102
     role: leaf
-    interfaces:
-      - name: Port-channel3
-        mode: access
-        vpc_id: 3
-        description: "MAIN server - vPC3"
-        members:
-          - Ethernet1/3
-      - name: Port-channel4
-        mode: access
-        vpc_id: 4
-        description: "PROD server - vPC4"
-        members:
-          - Ethernet1/4
-      - name: Port-channel5
-        mode: access
-        vpc_id: 5
-        description: "IOT server - vPC5"
-        members:
-          - Ethernet1/5
 
   - name: DC-SPINE-1
     management_ipv4_address: 198.18.128.11
     role: spine
-    interfaces: []
 
   - name: DC-SPINE-2
     management_ipv4_address: 198.18.128.12
     role: spine
-    interfaces: []
 
   # Border leaf. This is the switch the guide retags from leaf to Border, and
   # the one that will carry the VRF-Lite extensions to the external router.
   - name: DC-Service-Leaf
     management_ipv4_address: 198.18.128.13
     role: border
-    interfaces: []
