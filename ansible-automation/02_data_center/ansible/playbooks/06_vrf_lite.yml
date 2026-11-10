@@ -13,14 +13,12 @@
 # the tag or the neighbour address. So this stage writes the attachment itself,
 # from the intent declared in inventory/group_vars/all/dc_vrf_lite.yml.
 #
-# It posts to the controller's own attachments endpoint rather than calling
-# cisco.dcnm's dcnm_vrf. The module sends seven extension fields and no others -
-# DOT1Q_ID, IF_NAME, IP_MASK, IPV6_MASK, IPV6_NEIGHBOR, NEIGHBOR_IP and
-# PEER_VRF_NAME - so it cannot carry the sub-interface MTU or the neighbour
-# ASN, and it hardcodes Ext_VRF_Lite_Jython rather than using the controller's
-# offered template. This stage preserves the prototype's ASN and template and
-# adds the declared extension fields, including MTU. The UI's Edit Extension
-# Details dialog writes these fields in one payload, and so does this stage.
+# It uses cisco.dcnm.dcnm_rest with Nexus Dashboard's Manage API because
+# cisco.nd 1.5.0 has no VRF/resource-manager module and its nd_rest rejects
+# HTTP 207. The unreleased cisco.nd 2.0.0 Manage modules should be reconsidered
+# when they ship; their documented VRF attach options do not yet expose these
+# VRF-Lite extension fields. The Manage API stores typed extensionValues and
+# has no template field in that structure.
 #
 # Like stages 02 to 04, it writes intent to the controller and changes nothing
 # on a switch, so a deploy has to follow it before the sub-interfaces and BGP
@@ -36,15 +34,17 @@
 #     explicitly creates or reconciles the VRF-Lite IFC with dcnm_links and
 #     ext_fabric_setup. Manual mode means this pipeline does not rely on
 #     controller auto-creation of that link. Stage 05 deploys the parent-link
-#     configuration and recalculates the fabric. On fresh builds in this lab,
-#     the extension prototypes became available only after that deployment
-#     and recalculation; this is an observed dependency, not a universal
-#     Cisco requirement to deploy before adding a VRF-Lite extension.
-#     Stage 06 requires those prototypes to construct the per-VRF intent,
-#     and stage 07 deploys the resulting sub-interfaces and BGP neighbours.
+#     configuration and recalculates the fabric. Stage 06 checks that Manage
+#     returns the stage-04 DCI link resource and an attached VRF with a VLAN;
+#     stage 07 deploys the resulting sub-interfaces and BGP neighbours.
 #     Run stages 04 -> 05 -> 06 -> 07. 01_dc_deploy.yml already imports them
 #     in that order. Keeping IFC creation in stage 04 puts it before the
 #     stage 05 deployment boundary; stage 06 does not create the IFC itself.
+#   - 2026-11-10, observed on ND 4.2.1.10: the UI's Edit VRF attachment page
+#     showed the IFC default address pair (192.168.252.1/30, 192.168.252.2)
+#     while MAIN's saved Manage record contained .13/30 and .14. Cancel that
+#     page; do not Save. Verify saved values with stage 08 or vrfAttachments/query.
+#     Whether Save persists the displayed defaults is untested.
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
@@ -59,8 +59,7 @@
   any_errors_fatal: true
 
   vars:
-    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
-    dc_rm_root: /appcenter/cisco/ndfc/api/v1/lan-fabric/rest/resource-manager
+    nd_manage_root: /api/v1/manage
 
   tasks:
     # --------------------------------------------------- declared intent
@@ -190,6 +189,26 @@
       vars:
         dot1q_tags: "{{ dc_vrf_lite_extensions | map(attribute='dot1q') | list }}"
 
+    - name: Select VRFs for this run
+      ansible.builtin.set_fact:
+        dc_vrf_lite_selected_extensions: >-
+          {{ dc_vrf_lite_extensions
+             if dc_vrf_lite_only | string | lower == 'all'
+             else dc_vrf_lite_extensions
+                  | selectattr('vrf', 'in',
+                      [dc_vrf_lite_only] if dc_vrf_lite_only is string
+                      else dc_vrf_lite_only | list)
+                  | list }}
+
+    - name: Fail when dc_vrf_lite_only selects no declared VRFs
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_selected_extensions | length > 0
+        fail_msg: >-
+          dc_vrf_lite_only={{ dc_vrf_lite_only }} selects no declared VRFs.
+          Use 'all' or one or more names from
+          {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }}.
+
     # ------------------------------------------------------------- preview
     - name: Show what will be attached
       ansible.builtin.debug:
@@ -201,7 +220,7 @@
         dc_vrf_lite_attachment_table: >-
           {%- set rows = ['| VRF | Dot1q | Local address | Neighbor | MTU |',
                           '| --- | ---: | --- | --- | ---: |'] -%}
-          {%- for ext in dc_vrf_lite_extensions -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
           {{- rows.append('| ' ~ ext.vrf ~ ' | ' ~ ext.dot1q ~ ' | '
                           ~ ext.ipv4_addr ~ ' | ' ~ ext.neighbor_ipv4 ~ ' | '
                           ~ dc_vrf_lite_mtu ~ ' |') or '' -}}
@@ -236,132 +255,225 @@
           playbooks/00_discover_dc_switch_serials.yml, which reads the serials
           off the switches and regenerates that file.
 
-    # ------------------------------------------------- reserve the dot1q tags
-    # Nexus Dashboard allocates a dot1q ID per VRF out of the TOP_DOWN_L3_DOT1Q
-    # pool, scoped to this border leaf, and it does so DURING the attachment
-    # POST below: it reserves a tag for every VRF in the payload before it
-    # applies the values that payload declares. The order is its own, and when
-    # it disagrees with the declared order the POST dies half way through with
-    #
-    #   Id[3]is already allocated to MAIN        (HTTP 500)
-    #
-    # because the POST is not atomic - the first VRF is written, then the next
-    # asks for a tag one of its neighbours is already squatting on. In the
-    # failure that named MAIN, two of the three allocations carried
-    # allocatedFlag false and timestamps 2 seconds AHEAD of the one that
-    # succeeded: reservations the controller had just made for itself.
-    #
-    # So the tags are reserved here first, from the data model, with
-    # isManual=true. Once every declared ID is already held by the VRF that
-    # declares it, the controller has nothing left to choose and the POST below
-    # simply writes what it was given. Re-running changes nothing, because a
-    # reservation that already matches is neither released nor recreated.
-    - name: Read the dot1q pool for the border leaf
+    - name: Probe the Manage API through dcnm_rest
       cisco.dcnm.dcnm_rest:
         method: GET
-        path: "{{ dc_rm_root }}/fabric/{{ dc_fabric_name }}/pools/TOP_DOWN_L3_DOT1Q"
-      register: dc_vrf_lite_pool_read
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/pools"
+      register: dc_probe
       changed_when: false
+      check_mode: false
+      tags: [manage_api_probe]
 
-    # Only allocations on this border leaf, in this pool, whose entity is one of
-    # the declared VRFs are considered. Anything else in the pool belongs to
-    # another switch or another feature and is left alone.
-    - name: Work out which dot1q tags are already held as declared
+    - name: Fail when the Manage API probe has an unexpected response
+      ansible.builtin.assert:
+        that:
+          - dc_probe.response.RETURN_CODE | default(0) | int == 200
+          - dc_probe.response.DATA is mapping
+          - dc_probe.response.DATA.pools is defined
+          - dc_probe.response.DATA.pools is sequence
+          - dc_probe.response.DATA.pools is not string
+          - "'topDownL3Dot1q' in (dc_probe.response.DATA.pools | map(attribute='poolName') | list)"
+        fail_msg: >-
+          The Manage API probe through cisco.dcnm.dcnm_rest did not return
+          HTTP 200 with response.DATA.pools including topDownL3Dot1q. Stop here
+          and inspect the probe response before changing Resource Manager state.
+      tags: [manage_api_probe]
+
+    # ------------------------------------------------- reconcile dot1q tags
+    - name: Read the Manage resources
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/resources?max=1000"
+      register: dc_vrf_lite_resource_read
+      changed_when: false
+      check_mode: false
+
+    - name: Validate the Manage resources response
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_resource_read.response.RETURN_CODE | default(0) | int == 200
+          - dc_vrf_lite_resource_read.response.DATA is mapping
+          - dc_vrf_lite_resource_read.response.DATA.resources is defined
+          - dc_vrf_lite_resource_read.response.DATA.resources is sequence
+          - dc_vrf_lite_resource_read.response.DATA.resources is not string
+        fail_msg: >-
+          The Manage resources request did not return HTTP 200 with
+          response.DATA.resources. Stop and inspect the response before
+          changing Resource Manager state.
+
+    # 2026-11-10, observed on ND 4.2.1.10: this link row uses scopeType=link,
+    # srcSwitchId and srcInterfaceName. It is stage-04 state and is never edited.
+    - name: Require the stage-05 DCI link resource
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_link_resources | length > 0
+        fail_msg: >-
+          Manage has no DCI subnet pool link resource for
+          {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }}. Run stage
+          05, then re-run stage 06.
+      vars:
+        dc_vrf_lite_link_resources: >-
+          {%- set links = [] -%}
+          {%- for r in dc_vrf_lite_resource_read.response.DATA.resources
+                if r.get('poolName', '') == 'DCI subnet pool'
+                   and r.get('scopeDetails', {}).get('scopeType', '') == 'link'
+                   and r.get('scopeDetails', {}).get('srcSwitchId', '') == dc_vrf_lite_border_serial
+                   and r.get('scopeDetails', {}).get('srcInterfaceName', '') == dc_vrf_lite_interface -%}
+          {{- links.append(r) or '' -}}
+          {%- endfor -%}
+          {{ links }}
+
+    - name: Select dot1q resources owned by the selected VRFs on this border leaf
+      ansible.builtin.set_fact:
+        dc_vrf_lite_pool_rows: >-
+          {%- set declared = dc_vrf_lite_selected_extensions | map(attribute='vrf') | list -%}
+          {%- set rows = [] -%}
+          {%- for r in dc_vrf_lite_resource_read.response.DATA.resources
+                if r.get('poolName', '') == 'topDownL3Dot1q'
+                   and r.get('scopeDetails', {}).get('switchId', '') == dc_vrf_lite_border_serial
+                   and r.get('entityName', '') in declared -%}
+          {{- rows.append(r) or '' -}}
+          {%- endfor -%}
+          {{ rows }}
+
+    - name: Work out held and stale dot1q resources
       ansible.builtin.set_fact:
         dc_vrf_lite_pool_held: >-
-          {%- set held = [] -%}
-          {%- for e in dc_vrf_lite_extensions -%}
-          {%- for r in ((dc_vrf_lite_pool_read.response | default({})).DATA | default([]))
-                if r.get('allocatedScopeValue', '') == dc_vrf_lite_border_serial
-                   and r.get('entityName', '') == e.vrf
-                   and (r.get('allocatedIp', '') | string) == (e.dot1q | string) -%}
-          {{- held.append(e.vrf) or '' -}}
-          {%- endfor -%}
-          {%- endfor -%}
-          {{ held }}
-        dc_vrf_lite_pool_stale: >-
-          {%- set stale = [] -%}
           {%- set declared = {} -%}
-          {%- for e in dc_vrf_lite_extensions -%}
+          {%- set held = [] -%}
+          {%- for e in dc_vrf_lite_selected_extensions -%}
           {{- declared.update({e.vrf: e.dot1q | string}) or '' -}}
           {%- endfor -%}
-          {%- for r in ((dc_vrf_lite_pool_read.response | default({})).DATA | default([]))
-                if r.get('allocatedScopeValue', '') == dc_vrf_lite_border_serial
-                   and r.get('entityName', '') in declared
-                   and (r.get('allocatedIp', '') | string) != declared[r.get('entityName', '')] -%}
-          {{- stale.append(r.get('id')) or '' -}}
+          {%- for r in dc_vrf_lite_pool_rows
+                if r.get('entityName', '') in declared
+                   and (r.get('resourceValue', '') | string) == declared[r.get('entityName', '')] -%}
+          {{- held.append(r.get('entityName')) or '' -}}
+          {%- endfor -%}
+          {{ held | unique | list }}
+        dc_vrf_lite_pool_stale: >-
+          {%- set declared = {} -%}
+          {%- set stale = [] -%}
+          {%- for e in dc_vrf_lite_selected_extensions -%}
+          {{- declared.update({e.vrf: e.dot1q | string}) or '' -}}
+          {%- endfor -%}
+          {%- for r in dc_vrf_lite_pool_rows
+                if r.get('entityName', '') in declared
+                   and (r.get('resourceValue', '') | string) != declared[r.get('entityName', '')] -%}
+          {{- stale.append(r.get('resourceId')) or '' -}}
           {%- endfor -%}
           {{ stale }}
 
-    - name: Release the reservations that do not match intent
+    - name: Release stale dot1q resources
       cisco.dcnm.dcnm_rest:
         method: DELETE
-        path: "{{ dc_rm_root }}/resources?id={{ dc_vrf_lite_pool_stale | join(',') }}"
-      when: dc_vrf_lite_pool_stale | length > 0
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/resources/{{ item }}"
+      loop: "{{ dc_vrf_lite_pool_stale }}"
+      register: dc_vrf_lite_release_result
+      changed_when: true
+      when: not ansible_check_mode
+      failed_when: >-
+        (dc_vrf_lite_release_result.response.RETURN_CODE | default(0) | int)
+        not in [200, 204, 207]
+        or ((dc_vrf_lite_release_result.response.RETURN_CODE | default(0) | int) == 207
+          and ((dc_vrf_lite_release_result.response.DATA.results | default([])) is not sequence
+             or (dc_vrf_lite_release_result.response.DATA.results | default([])) is string
+             or (dc_vrf_lite_release_result.response.DATA.results | default([]) | length != 1)
+             or ((dc_vrf_lite_release_result.response.DATA.results | default([]))
+               | rejectattr('status', 'equalto', 'success') | list | length > 0)))
 
-    # The bulk endpoint answers 207 Multi-Status when it accepts a mixed batch,
-    # which is a success here and has to be allowed alongside 200.
-    - name: Reserve the declared dot1q tags
+    - name: Reserve the selected VRFs' declared dot1q tags
       cisco.dcnm.dcnm_rest:
         method: POST
-        path: "{{ dc_rm_root }}/createResource?isManual=true"
-        data: "{{ dc_vrf_lite_reservation | to_json }}"
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/resources"
+        data: "{{ dc_vrf_lite_resource_payload | to_json }}"
       vars:
-        dc_vrf_lite_reservation:
-          fabricName: "{{ dc_fabric_name }}"
-          Body:
-            resources: >-
-              {%- set out = [] -%}
-              {%- for e in dc_vrf_lite_extensions if e.vrf not in dc_vrf_lite_pool_held -%}
-              {{- out.append({
-                   'entityName': e.vrf,
-                   'isPreAllocated': true,
-                   'poolName': 'TOP_DOWN_L3_DOT1Q',
-                   'vrfName': 'default',
-                   'resourceValue': e.dot1q | string,
-                   'scopeDetails': {
-                     'scopeType': 'DeviceInterface',
-                     'switchId': dc_vrf_lite_border_serial,
-                     'interfaceName': dc_vrf_lite_interface}}) or '' -}}
-              {%- endfor -%}
-              {{ out }}
+        dc_vrf_lite_resource_payload:
+          resources: >-
+            {%- set resources = [] -%}
+            {%- for e in dc_vrf_lite_selected_extensions if e.vrf not in dc_vrf_lite_pool_held -%}
+            {{- resources.append({
+                 'poolName': 'topDownL3Dot1q',
+                 'entityName': e.vrf,
+                 'resourceValue': e.dot1q | string,
+                 'isPreAllocated': true,
+                 'scopeDetails': {
+                   'scopeType': 'deviceInterface',
+                   'switchId': dc_vrf_lite_border_serial,
+                   'interfaceName': dc_vrf_lite_interface}}) or '' -}}
+            {%- endfor -%}
+            {{ resources }}
       register: dc_vrf_lite_pool_create
-      failed_when: >-
-        (dc_vrf_lite_pool_create.response.RETURN_CODE | default(0) | int)
-        not in [200, 207]
-      when: (dc_vrf_lite_extensions | rejectattr('vrf', 'in', dc_vrf_lite_pool_held) | list) | length > 0
+      changed_when: true
+      when: not ansible_check_mode and (dc_vrf_lite_selected_extensions
+             | rejectattr('vrf', 'in', dc_vrf_lite_pool_held) | list) | length > 0
 
-    - name: Read the dot1q pool back
-      cisco.dcnm.dcnm_rest:
-        method: GET
-        path: "{{ dc_rm_root }}/fabric/{{ dc_fabric_name }}/pools/TOP_DOWN_L3_DOT1Q"
-      register: dc_vrf_lite_pool_confirm
-      changed_when: false
-
-    - name: Fail when a declared dot1q tag is still not held
+    - name: Validate Manage resource reservation results
       ansible.builtin.assert:
         that:
-          - unheld | length == 0
+          - dc_vrf_lite_pool_create.response.RETURN_CODE | default(0) | int in [200, 207]
+          - dc_vrf_lite_pool_create.response.RETURN_CODE | int != 207 or (dc_vrf_lite_create_results is sequence and dc_vrf_lite_create_results is not string)
+          - dc_vrf_lite_pool_create.response.RETURN_CODE | int != 207 or dc_vrf_lite_create_results | length == dc_vrf_lite_reservation_count
+          - dc_vrf_lite_create_failures | length == 0
         fail_msg: >-
-          {{ unheld | join(', ') }} could not be reserved in TOP_DOWN_L3_DOT1Q on
-          {{ dc_vrf_lite_border_leaf }} ({{ dc_vrf_lite_border_serial }}).
-          Attaching the extensions now would let the controller pick its own
-          tags, so this stops here. Check the pool under Resource Manager for
-          an allocation of the same ID to another entity.
-        success_msg: >-
-          {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }} hold
-          the declared dot1q tags
-          ({{ dc_vrf_lite_extensions | map(attribute='dot1q') | join(', ') }}).
+          {{ dc_vrf_lite_selected_extensions | map(attribute='vrf') | join(', ') }}
+          could not be reserved in TOP_DOWN_L3_DOT1Q on {{ dc_vrf_lite_border_leaf }}
+          ({{ dc_vrf_lite_border_serial }}). Check the pool under Resource Manager
+          for an allocation of the same ID to another entity. Manage reported:
+          {{ dc_vrf_lite_create_failures | map(attribute='message') | join('; ') }}
       vars:
-        reread: "{{ (dc_vrf_lite_pool_confirm.response | default({})).DATA | default([]) }}"
-        unheld: >-
+        dc_vrf_lite_reservation_count: >-
+          {{ dc_vrf_lite_selected_extensions
+             | rejectattr('vrf', 'in', dc_vrf_lite_pool_held) | list | length }}
+        dc_vrf_lite_create_results: >-
+          {{ (dc_vrf_lite_pool_create.response | default({})).DATA.results | default([]) }}
+        dc_vrf_lite_create_failures: >-
+          {{ dc_vrf_lite_create_results
+             | rejectattr('status', 'equalto', 'success') | list }}
+      when: dc_vrf_lite_pool_create is not skipped
+
+    - name: Read Manage resources back
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/resources?max=1000"
+      register: dc_vrf_lite_pool_confirm
+      changed_when: false
+      check_mode: false
+
+    - name: Validate the Manage resource read-back response
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_pool_confirm.response.RETURN_CODE | default(0) | int == 200
+          - dc_vrf_lite_pool_confirm.response.DATA is mapping
+          - dc_vrf_lite_pool_confirm.response.DATA.resources is defined
+          - dc_vrf_lite_pool_confirm.response.DATA.resources is sequence
+          - dc_vrf_lite_pool_confirm.response.DATA.resources is not string
+        fail_msg: >-
+          The Manage resource read-back did not return HTTP 200 with
+          response.DATA.resources. Stop and inspect the response.
+
+    - name: Fail when a selected VRF's declared dot1q tag is not held
+      when: not ansible_check_mode
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_unheld | length == 0
+        fail_msg: >-
+          {{ dc_vrf_lite_unheld | join(', ') }} could not be reserved in
+          TOP_DOWN_L3_DOT1Q on {{ dc_vrf_lite_border_leaf }}
+          ({{ dc_vrf_lite_border_serial }}). Attaching the extensions now
+          would let the controller pick its own tags, so this stops here.
+          Check the pool under Resource Manager for an allocation of the same
+          ID to another entity.
+      vars:
+        dc_vrf_lite_unheld: >-
           {%- set missing = [] -%}
-          {%- for e in dc_vrf_lite_extensions -%}
+          {%- set resources = dc_vrf_lite_pool_confirm.response.DATA.resources -%}
+          {%- for e in dc_vrf_lite_selected_extensions -%}
           {%- set found = [] -%}
-          {%- for r in reread
-                if r.get('allocatedScopeValue', '') == dc_vrf_lite_border_serial
+          {%- for r in resources
+                if r.get('poolName', '') == 'topDownL3Dot1q'
+                   and r.get('scopeDetails', {}).get('switchId', '') == dc_vrf_lite_border_serial
                    and r.get('entityName', '') == e.vrf
-                   and (r.get('allocatedIp', '') | string) == (e.dot1q | string) -%}
+                   and (r.get('resourceValue', '') | string) == (e.dot1q | string) -%}
           {{- found.append(r) or '' -}}
           {%- endfor -%}
           {%- if found | length == 0 -%}
@@ -370,93 +482,45 @@
           {%- endfor -%}
           {{ missing }}
 
-    # ----------------------------------------------------- read the current
-    # The controller's prototype carries the fields only it knows: the
-    # neighbour ASN and the Jython template both come from the inter-fabric
-    # link. Starting from it, rather than building a connection from scratch,
-    # is what keeps ios_xe_Ext_VRF_Lite_Jython on an IOS-XE peer.
-    #
-    # The same response also carries the extension currently in place, which is
-    # what makes a re-run a no-op. The attachments endpoint does NOT return
-    # extensionValues, so reading the current state from there finds nothing
-    # and rewrites the extension on every run.
-    - name: Read the VRF-Lite prototypes and the extensions in place
+    # -------------------------------------------------- read attachments
+    - name: Query the Manage VRF attachments
       cisco.dcnm.dcnm_rest:
-        method: GET
-        path: >-
-          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{ dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}&serial-numbers={{ dc_vrf_lite_border_serial }}
-      register: dc_vrf_lite_switch_read
-      changed_when: false
-
-    # The VLAN and the per-switch instance values come from the attachments
-    # endpoint. The response above reports the VLAN as -1 and returns no
-    # instance values, and posting either of those back would damage the
-    # attachment stage 02 made.
-    - name: Read the current attachments
-      cisco.dcnm.dcnm_rest:
-        method: GET
-        path: >-
-          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/attachments?vrf-names={{ dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}
+        method: POST
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/vrfAttachments/query"
+        data: "{{ dc_vrf_lite_query | to_json }}"
+      vars:
+        dc_vrf_lite_query:
+          switchIds:
+            - "{{ dc_vrf_lite_border_serial }}"
+          vrfNames: "{{ dc_vrf_lite_selected_extensions | map(attribute='vrf') | list }}"
       register: dc_vrf_lite_attach_read
       changed_when: false
+      check_mode: false
 
-    # extensionValues nests JSON inside JSON, and the controller is not
-    # consistent about it: the prototype's copy arrives as a string while the
-    # switch's own arrives as a mapping whose values are strings. Hence the
-    # from_json plus 'is mapping' guard at each level.
-    - name: Index the controller state by VRF
+    - name: Validate the Manage attachment query response
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_attach_read.response.RETURN_CODE | default(0) | int == 200
+          - dc_vrf_lite_attach_read.response.DATA is mapping
+          - dc_vrf_lite_attach_read.response.DATA.attachments is defined
+          - dc_vrf_lite_attach_read.response.DATA.attachments is sequence
+          - dc_vrf_lite_attach_read.response.DATA.attachments is not string
+        fail_msg: >-
+          The Manage VRF attachment query did not return HTTP 200 with
+          response.DATA.attachments. Stop and inspect the response.
+
+    - name: Index Manage attachments by VRF
       ansible.builtin.set_fact:
         dc_vrf_lite_state: >-
           {%- set state = {} -%}
-          {%- for record in ((dc_vrf_lite_switch_read.response | default({})).DATA | default([])) -%}
-          {%- set switch = (record.get('switchDetailsList', []) | first | default({})) -%}
-          {%- set proto = namespace(values={}) -%}
-          {%- for candidate in switch.get('extensionPrototypeValues', []) -%}
-          {%- if candidate.get('extensionType', '') == 'VRF_LITE' and proto.values == {} -%}
-          {%- set raw = candidate.get('extensionValues', '') -%}
-          {%- set decoded = (raw | from_json) if raw is string and raw | length > 0 else raw -%}
-          {%- if decoded is mapping -%}
-          {%- set proto.values = decoded -%}
-          {%- endif -%}
-          {%- endif -%}
-          {%- endfor -%}
-          {%- set raw_values = switch.get('extensionValues', '') -%}
-          {%- set values = (raw_values | from_json) if raw_values is string and raw_values | length > 0 else raw_values -%}
-          {%- set raw_conn = values.get('VRF_LITE_CONN', '') if values is mapping else '' -%}
-          {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else raw_conn -%}
-          {%- set connections = conn_doc.get('VRF_LITE_CONN', []) if conn_doc is mapping else [] -%}
-          {%- set _ = state.update({record.get('vrfName', ''): {
-                'prototype': proto.values,
-                'current': (connections | first | default({})),
-                'multisite': ((values.get('MULTISITE_CONN') or '{"MULTISITE_CONN":[]}')
-                              if values is mapping else '{"MULTISITE_CONN":[]}'),
-                'freeform': switch.get('freeformConfig') or ''}}) -%}
+          {%- set declared = dc_vrf_lite_selected_extensions | map(attribute='vrf') | list -%}
+          {%- for record in dc_vrf_lite_attach_read.response.DATA.attachments
+                if record.get('switchId', '') == dc_vrf_lite_border_serial
+                   and record.get('vrfName', '') in declared -%}
+          {{- state.update({record.get('vrfName'): record}) or '' -}}
           {%- endfor -%}
           {{ state }}
 
-    - name: Fail when the controller offers no VRF-Lite extension
-      ansible.builtin.assert:
-        that:
-          - without_prototype | length == 0
-        fail_msg: >-
-          Nexus Dashboard offers {{ dc_vrf_lite_border_leaf }}
-          ({{ dc_vrf_lite_border_serial }}) no VRF-Lite extension for
-          {{ without_prototype | join(', ') }}, so there is no neighbour ASN or
-          peer template to build the attachment from. An extension is offered
-          only where a VRF-Lite inter-fabric link terminates on
-          {{ dc_vrf_lite_interface }}, and the controller builds that link
-          during a Recalculate and Deploy once the edge router is in the
-          External fabric. Run stage 05, then re-run this stage.
-      vars:
-        without_prototype: >-
-          {{ dc_vrf_lite_extensions | map(attribute='vrf')
-             | reject('in', dc_vrf_lite_state
-                            | dict2items
-                            | selectattr('value.prototype')
-                            | map(attribute='key') | list)
-             | list }}
-
-    # ---------------------------------------------------------------- write
     - name: Fail when stage 02 has not attached the VRFs to the border leaf
       ansible.builtin.assert:
         that:
@@ -467,84 +531,232 @@
           stage 02 before this stage.
       vars:
         unattached: >-
-          {%- set records = ((dc_vrf_lite_attach_read.response | default({})).DATA | default([])) -%}
           {%- set missing = [] -%}
-          {%- for ext in dc_vrf_lite_extensions -%}
-          {%- set record = (records | selectattr('vrfName', 'equalto', ext.vrf)
-                            | list | first | default({})) -%}
-          {%- if (record.get('lanAttachList', [])
-                  | selectattr('switchSerialNo', 'equalto', dc_vrf_lite_border_serial)
-                  | selectattr('vlanId', 'defined') | list | length) == 0 -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {%- set record = dc_vrf_lite_state.get(ext.vrf, {}) -%}
+          {%- if 'vlanId' not in record or record.get('vlanId') is none -%}
           {{- missing.append(ext.vrf) or '' -}}
           {%- endif -%}
           {%- endfor -%}
           {{ missing }}
 
-    # One payload for all three VRFs, carrying the declared values and the MTU
-    # together - the same write the UI's Edit Extension Details dialog makes.
-    # Only the fields declared here are compared against the controller, so
-    # fields it adds of its own do not make every run look like a change.
-    - name: Build the attachment payload
-      ansible.builtin.set_fact:
-        dc_vrf_lite_payload: >-
-          {%- set records = ((dc_vrf_lite_attach_read.response | default({})).DATA | default([])) -%}
-          {%- set rows = [] -%}
-          {%- for ext in dc_vrf_lite_extensions -%}
-          {%- set record = (records | selectattr('vrfName', 'equalto', ext.vrf)
-                            | list | first | default({})) -%}
-          {%- set attachment = (record.get('lanAttachList', [])
-                                | selectattr('switchSerialNo', 'equalto', dc_vrf_lite_border_serial)
-                                | list | first | default({})) -%}
-          {%- set state = dc_vrf_lite_state.get(ext.vrf, {}) -%}
-          {%- set current = state.get('current', {}) -%}
-          {%- set declared_fields = {
-                'IF_NAME': dc_vrf_lite_interface,
-                'DOT1Q_ID': ext.dot1q | string,
-                'IP_MASK': ext.ipv4_addr,
-                'NEIGHBOR_IP': ext.neighbor_ipv4,
-                'PEER_VRF_NAME': ext.peer_vrf,
-                'MTU': dc_vrf_lite_mtu | string} -%}
-          {%- set desired = state.get('prototype', {}) | combine(declared_fields) -%}
-          {%- set drift = [] -%}
-          {%- for key, value in declared_fields.items() -%}
-          {%- if current.get(key, '') | string != value | string -%}
-          {{- drift.append(key) or '' -}}
+    - name: Fail when a Manage attachment omits preserved context
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_missing_context | length == 0
+          - dc_vrf_lite_malformed_extensions | length == 0
+        fail_msg: >-
+          The Manage attachment query omitted instanceValues or extraConfig,
+          or returned extensionValues in an unexpected shape for
+          {{ dc_vrf_lite_missing_context | union(dc_vrf_lite_malformed_extensions) | join(', ') }}.
+          Stop and inspect the response rather than replacing those values.
+      vars:
+        dc_vrf_lite_missing_context: >-
+          {%- set missing = [] -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {%- set record = dc_vrf_lite_state.get(ext.vrf, {}) -%}
+          {%- if 'instanceValues' not in record or 'extraConfig' not in record -%}
+          {{- missing.append(ext.vrf) or '' -}}
           {%- endif -%}
           {%- endfor -%}
+          {{ missing }}
+        dc_vrf_lite_malformed_extensions: >-
+          {%- set malformed = [] -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {%- set values = dc_vrf_lite_state.get(ext.vrf, {}).get('extensionValues', []) -%}
+          {%- if values is not sequence or values is string -%}
+          {{- malformed.append(ext.vrf) or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ malformed }}
+
+    - name: Build typed Manage attachment rows for changed VRFs
+      ansible.builtin.set_fact:
+        dc_vrf_lite_payload_attachments: >-
+          {%- set rows = [] -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {%- set attachment = dc_vrf_lite_state.get(ext.vrf, {}) -%}
+          {%- set current = attachment.get('extensionValues', []) | first | default({}) -%}
+          {%- set drift = [] -%}
+          {%- if current.get('interfaceName', '') | string != dc_vrf_lite_interface | string -%}
+          {{- drift.append('interfaceName') or '' -}}
+          {%- endif -%}
+          {%- if current.get('dot1qId', -1) | int != ext.dot1q | int -%}
+          {{- drift.append('dot1qId') or '' -}}
+          {%- endif -%}
+          {%- if current.get('ipv4Address', '') != ext.ipv4_addr -%}
+          {{- drift.append('ipv4Address') or '' -}}
+          {%- endif -%}
+          {%- if current.get('neighborIpv4Address', '') != ext.neighbor_ipv4 -%}
+          {{- drift.append('neighborIpv4Address') or '' -}}
+          {%- endif -%}
+          {%- if current.get('peerVrfName', '') != ext.peer_vrf -%}
+          {{- drift.append('peerVrfName') or '' -}}
+          {%- endif -%}
+          {%- if current.get('mtu', -1) | int != dc_vrf_lite_mtu | int -%}
+          {{- drift.append('mtu') or '' -}}
+          {%- endif -%}
           {%- if drift | length > 0 -%}
           {{- rows.append({
                 'vrfName': ext.vrf,
-                'lanAttachList': [{
-                  'fabric': dc_fabric_name,
-                  'vrfName': ext.vrf,
-                  'serialNumber': dc_vrf_lite_border_serial,
-                  'vlan': attachment.get('vlanId'),
-                  'deployment': true,
-                  'instanceValues': attachment.get('instanceValues') or '',
-                  'freeformConfig': state.get('freeform', ''),
-                  'extensionValues': ({'VRF_LITE_CONN': ({'VRF_LITE_CONN': [desired]} | to_json),
-                                       'MULTISITE_CONN': state.get('multisite', '{\"MULTISITE_CONN\":[]}')}) | to_json
-                }]
-              }) or '' -}}
+                'switchId': dc_vrf_lite_border_serial,
+                'vlanId': attachment.get('vlanId') | int,
+                'attach': true,
+                'instanceValues': attachment.get('instanceValues'),
+                'extraConfig': attachment.get('extraConfig'),
+                'extensionValues': [{
+                  'interfaceName': dc_vrf_lite_interface,
+                  'dot1qId': ext.dot1q | int,
+                  'ipv4Address': ext.ipv4_addr,
+                  'neighborIpv4Address': ext.neighbor_ipv4,
+                  'neighborAsn': current.get('neighborAsn')
+                                 | default(dc_external_fabric_settings.BGP_AS, true)
+                                 | string,
+                  'mtu': dc_vrf_lite_mtu | int,
+                  'peerVrfName': ext.peer_vrf,
+                  'autoPeerConfig': false}]}) or '' -}}
           {%- endif -%}
           {%- endfor -%}
           {{ rows }}
 
-    - name: Attach the VRF-Lite extensions on {{ dc_vrf_lite_border_leaf }}
+    - name: Report the check-mode plan
+      ansible.builtin.debug:
+        msg:
+          - "Would release resource IDs: {{ dc_vrf_lite_pool_stale | join(', ') | default('none', true) }}"
+          - "Would reserve VRFs: {{ dc_vrf_lite_selected_extensions | rejectattr('vrf', 'in', dc_vrf_lite_pool_held) | map(attribute='vrf') | join(', ') | default('none', true) }}"
+          - "Would write VRFs: {{ dc_vrf_lite_payload_attachments | map(attribute='vrfName') | join(', ') | default('none', true) }}"
+      when: ansible_check_mode
+
+    - name: Write changed VRF-Lite extensions on {{ dc_vrf_lite_border_leaf }}
       cisco.dcnm.dcnm_rest:
         method: POST
-        path: "{{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/attachments"
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/vrfAttachments"
         data: "{{ dc_vrf_lite_payload | to_json }}"
+      vars:
+        dc_vrf_lite_payload:
+          attachments: "{{ dc_vrf_lite_payload_attachments }}"
       register: dc_vrf_lite_result
-      when: dc_vrf_lite_payload | length > 0
+      changed_when: true
+      when: not ansible_check_mode and dc_vrf_lite_payload_attachments | length > 0
 
-    - name: Report the outcome
+    - name: Validate Manage attachment write results
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_result.response.RETURN_CODE | default(0) | int in [200, 207]
+          - dc_vrf_lite_result.response.RETURN_CODE | int != 207 or (dc_vrf_lite_write_results is sequence and dc_vrf_lite_write_results is not string)
+          - dc_vrf_lite_result.response.RETURN_CODE | int != 207 or dc_vrf_lite_write_results | length == dc_vrf_lite_payload_attachments | length
+          - dc_vrf_lite_write_failures | length == 0
+        fail_msg: >-
+          Manage failed to write the VRF-Lite attachment payload
+          (HTTP {{ dc_vrf_lite_result.response.RETURN_CODE | default('unknown') }}).
+          Failing items: {{ dc_vrf_lite_write_failures | map(attribute='message') | join('; ') }}
+      vars:
+        dc_vrf_lite_write_results: >-
+          {{ ((dc_vrf_lite_result.response | default({})).DATA | default({})).results | default([]) }}
+        dc_vrf_lite_write_failures: >-
+          {{ dc_vrf_lite_write_results
+             | rejectattr('status', 'equalto', 'success') | list }}
+      when: dc_vrf_lite_result is not skipped
+
+    - name: Read back VRF-Lite attachments from Manage
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/vrfAttachments/query"
+        data: "{{ dc_vrf_lite_readback_query | to_json }}"
+      vars:
+        dc_vrf_lite_readback_query:
+          switchIds:
+            - "{{ dc_vrf_lite_border_serial }}"
+          vrfNames: "{{ dc_vrf_lite_selected_extensions | map(attribute='vrf') | list }}"
+      register: dc_vrf_lite_readback
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Validate the Manage attachment read-back response
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_readback.response.RETURN_CODE | default(0) | int == 200
+          - dc_vrf_lite_readback.response.DATA is mapping
+          - dc_vrf_lite_readback.response.DATA.attachments is defined
+          - dc_vrf_lite_readback.response.DATA.attachments is sequence
+          - dc_vrf_lite_readback.response.DATA.attachments is not string
+        fail_msg: >-
+          The Manage attachment read-back did not return HTTP 200 with
+          response.DATA.attachments. Stop and inspect the response.
+      when: not ansible_check_mode
+
+    - name: Index Manage read-back by VRF
+      when: not ansible_check_mode
+      ansible.builtin.set_fact:
+        dc_vrf_lite_readback_state: >-
+          {%- set state = {} -%}
+          {%- set declared = dc_vrf_lite_selected_extensions | map(attribute='vrf') | list -%}
+          {%- for record in dc_vrf_lite_readback.response.DATA.attachments
+                if record.get('switchId', '') == dc_vrf_lite_border_serial
+                   and record.get('vrfName', '') in declared -%}
+          {{- state.update({record.get('vrfName'): record}) or '' -}}
+          {%- endfor -%}
+          {{ state }}
+
+    - name: Fail when a Manage read-back differs from intent
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_readback_mismatches | length == 0
+        fail_msg: >-
+          Manage read-back does not match the declared VRF-Lite extension fields:
+          {{ dc_vrf_lite_readback_mismatches | join('; ') }}.
+      when: not ansible_check_mode
+      vars:
+        dc_vrf_lite_readback_mismatches: >-
+          {%- set mismatches = [] -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {%- set record = dc_vrf_lite_readback_state.get(ext.vrf, {}) -%}
+          {%- set current = record.get('extensionValues', []) | first | default({}) -%}
+          {%- set drift = [] -%}
+          {%- if current.get('interfaceName', '') | string != dc_vrf_lite_interface | string -%}
+          {{- drift.append('interfaceName') or '' -}}
+          {%- endif -%}
+          {%- if current.get('dot1qId', -1) | int != ext.dot1q | int -%}
+          {{- drift.append('dot1qId') or '' -}}
+          {%- endif -%}
+          {%- if current.get('ipv4Address', '') != ext.ipv4_addr -%}
+          {{- drift.append('ipv4Address') or '' -}}
+          {%- endif -%}
+          {%- if current.get('neighborIpv4Address', '') != ext.neighbor_ipv4 -%}
+          {{- drift.append('neighborIpv4Address') or '' -}}
+          {%- endif -%}
+          {%- if current.get('peerVrfName', '') != ext.peer_vrf -%}
+          {{- drift.append('peerVrfName') or '' -}}
+          {%- endif -%}
+          {%- if current.get('mtu', -1) | int != dc_vrf_lite_mtu | int -%}
+          {{- drift.append('mtu') or '' -}}
+          {%- endif -%}
+          {%- if drift | length > 0 -%}
+          {{- mismatches.append(ext.vrf ~ ' (' ~ (drift | join(', ')) ~ ')') or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ mismatches }}
+
+    - name: Report the Manage read-back
       ansible.builtin.debug:
         msg: >-
-          {{ dc_vrf_lite_payload | map(attribute='vrfName') | join(', ')
-             | default('nothing', true) }} written on
-          {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }} with MTU
-          {{ dc_vrf_lite_mtu }}.
-          {{ 'Stage 07 will push it to the switch.'
-             if dc_vrf_lite_payload | length > 0
-             else 'Every extension already matched the declared intent.' }}
+          Read back on {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }}:
+          {{ dc_vrf_lite_readback_summary }}.
+          {{ 'Stage 07 will deploy the staged changes.'
+             if dc_vrf_lite_payload_attachments | length > 0
+             else 'No attachment write was needed; saved extensions matched intent.' }}
+      when: not ansible_check_mode
+      vars:
+        dc_vrf_lite_readback_summary: >-
+          {%- set summary = [] -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {%- set record = dc_vrf_lite_readback_state.get(ext.vrf, {}) -%}
+          {%- set values = record.get('extensionValues', []) | first | default({}) -%}
+          {{- summary.append(ext.vrf ~ ': dot1q ' ~ values.get('dot1qId', 'absent')
+              ~ ', ' ~ values.get('ipv4Address', 'absent') ~ ' -> '
+              ~ values.get('neighborIpv4Address', 'absent') ~ ', peer '
+              ~ values.get('peerVrfName', 'absent') ~ ', MTU '
+              ~ values.get('mtu', 'absent')) or '' -}}
+          {%- endfor -%}
+          {{ summary | join('; ') }}

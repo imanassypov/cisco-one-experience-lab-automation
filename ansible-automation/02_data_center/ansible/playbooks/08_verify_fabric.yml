@@ -19,9 +19,8 @@
 #   - every network in networks.nac.yaml exists with the declared gateway, and
 #     is attached to the declared port-channels
 #   - every VRF-Lite extension in inventory/group_vars/all/dc_vrf_lite.yml is
-#     attached and DEPLOYED on the border leaf, with the declared interface,
-#     dot1q tag and neighbour address. This is what catches a stage 02 re-run
-#     that cleared the extensions stage 05 made
+#     attached and deployed on the border leaf, with all six declared fields.
+#     This catches a stage 02 re-run that cleared the extensions stage 06 wrote
 #   - every attachment the controller reports as attached (isLanAttached: true)
 #     is DEPLOYED. Switches the controller lists but has not attached come back
 #     as NA and are not judged - see the comment in Compare VRFs
@@ -237,6 +236,7 @@
 
   vars:
     ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+    nd_manage_root: /api/v1/manage
     dc_verify_fail_on_mismatch: true
     dc_verify_bgp_sessions: true
     dc_verify_subinterfaces: true
@@ -426,57 +426,81 @@
       changed_when: false
       when: dc_declared_vrfs | length > 0
 
-    # The attachments response carries no extensionValues at all, so the
-    # VRF-Lite comparison below has to read them from the switches endpoint -
-    # the same asymmetry stage 06 works around. Matching extensions against the
-    # attachments response reports every one of them as missing even when the
-    # controller has them and has deployed them.
-    #
-    # Illustrative subset of dc_observed_vrf_switches (not captured live;
-    # VRF, interface, tag and neighbor values are examples):
-    # response:
-    #   DATA:
-    #     - vrfName: MAIN
-    #       switchDetailsList:
-    #         - extensionValues: >-
-    #             {"VRF_LITE_CONN":"{\"VRF_LITE_CONN\":[{\"IF_NAME\":\"Ethernet1/8\",\"DOT1Q_ID\":\"300\",\"NEIGHBOR_IP\":\"192.168.252.14\"}]}"}
-    #
-    # extensionValues is a JSON string whose VRF_LITE_CONN value is another
-    # JSON string. Index the extensions by VRF decodes both layers and stores
-    # the first connection under dc_vrf_lite_extension_values.MAIN:
-    #   IF_NAME: Ethernet1/8
-    #   DOT1Q_ID: "300"
-    #   NEIGHBOR_IP: "192.168.252.14"
-    # These fields prove the controller has the declared extension parameters,
-    # not that the BGP session is up; that needs the separate switch read.
-    - name: Read the VRF-Lite extensions in place
-      cisco.dcnm.dcnm_rest:
-        method: GET
-        path: >-
-          {{ ndfc_api_root }}/rest/top-down/fabrics/{{ dc_fabric_name }}/vrfs/switches?vrf-names={{
-          dc_vrf_lite_extensions | map(attribute='vrf') | join(',') }}&serial-numbers={{
-          dc_device_serials[dc_vrf_lite_border_leaf] }}
-      register: dc_observed_vrf_switches
-      changed_when: false
+    - name: Read the generated switch model for the VRF-Lite border serial
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml"
+        name: dc_vrf_lite_switch_model
+      delegate_to: localhost
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
-    # extensionValues nests JSON inside JSON: a string holding a mapping whose
-    # VRF_LITE_CONN value is itself a string holding the connection list. Both
-    # levels are unwrapped here so the comparison below can read named fields.
-    - name: Index the extensions by VRF
+    - name: Resolve the VRF-Lite border serial from topology_switches.nac.yaml
       ansible.builtin.set_fact:
-        dc_vrf_lite_extension_values: >-
-          {%- set out = {} -%}
-          {%- for record in ((dc_observed_vrf_switches.response | default({})).DATA | default([])) -%}
-          {%- set switch = record.get('switchDetailsList', []) | first | default({}) -%}
-          {%- set raw = switch.get('extensionValues', '') -%}
-          {%- set values = (raw | from_json) if raw is string and raw | length > 0 else raw -%}
-          {%- set raw_conn = values.get('VRF_LITE_CONN', '') if values is mapping else '' -%}
-          {%- set conn_doc = (raw_conn | from_json) if raw_conn is string and raw_conn | length > 0 else raw_conn -%}
-          {%- set connections = conn_doc.get('VRF_LITE_CONN', []) if conn_doc is mapping else [] -%}
-          {%- set _ = out.update({record.get('vrfName', ''): (connections | first | default({}))}) -%}
+        dc_vrf_lite_border_serial: >-
+          {{ (dc_vrf_lite_switch_model.vxlan.topology.switches | default([])
+              | selectattr('name', 'equalto', dc_vrf_lite_border_leaf)
+              | map(attribute='serial_number') | list | first | default('')) }}
+      when: dc_vrf_lite_extensions | default([]) | length > 0
+
+    - name: Fail when the generated topology has no border serial
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_border_serial | length > 0
+        fail_msg: >-
+          DATA MODEL ERROR. playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml
+          declares no serial_number for {{ dc_vrf_lite_border_leaf }}. Re-run
+          playbooks/00_discover_dc_switch_serials.yml.
+      when: dc_vrf_lite_extensions | default([]) | length > 0
+
+    # 2026-11-10, observed on ND 4.2.1.10: status was pending before stage 07;
+    # the exact post-deploy value has not yet been confirmed without deploying.
+    - name: Read the VRF-Lite extensions through Manage
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ nd_manage_root }}/fabrics/{{ dc_fabric_name }}/vrfAttachments/query"
+        data: "{{ dc_vrf_lite_query | to_json }}"
+      vars:
+        dc_vrf_lite_query:
+          switchIds:
+            - "{{ dc_vrf_lite_border_serial }}"
+          vrfNames: "{{ dc_vrf_lite_extensions | map(attribute='vrf') | list }}"
+      register: dc_observed_vrf_lite_query
+      changed_when: false
+      check_mode: false
+      when: dc_vrf_lite_extensions | default([]) | length > 0
+
+    - name: Validate the Manage VRF-Lite query response
+      ansible.builtin.assert:
+        that:
+          - dc_observed_vrf_lite_query.response.RETURN_CODE | default(0) | int == 200
+          - dc_observed_vrf_lite_query.response.DATA is mapping
+          - dc_observed_vrf_lite_query.response.DATA.attachments is defined
+          - dc_observed_vrf_lite_query.response.DATA.attachments is sequence
+          - dc_observed_vrf_lite_query.response.DATA.attachments is not string
+          - dc_vrf_lite_malformed_extensions | length == 0
+        fail_msg: >-
+          The Manage VRF-Lite query did not return HTTP 200 with a typed
+          response.DATA.attachments list. Stop and inspect the response.
+      vars:
+        dc_vrf_lite_malformed_extensions: >-
+          {%- set malformed = [] -%}
+          {%- for record in dc_observed_vrf_lite_query.response.DATA.attachments -%}
+          {%- set values = record.get('extensionValues', []) -%}
+          {%- if values is not sequence or values is string -%}
+          {{- malformed.append(record.get('vrfName', 'unknown')) or '' -}}
+          {%- endif -%}
           {%- endfor -%}
-          {{ out }}
+          {{ malformed }}
+      when: dc_vrf_lite_extensions | default([]) | length > 0
+
+    - name: Index Manage VRF-Lite attachments by VRF
+      ansible.builtin.set_fact:
+        dc_vrf_lite_extension_state: >-
+          {%- set state = {} -%}
+          {%- for record in dc_observed_vrf_lite_query.response.DATA.attachments
+                if record.get('switchId', '') == dc_vrf_lite_border_serial -%}
+          {{- state.update({record.get('vrfName', ''): record}) or '' -}}
+          {%- endfor -%}
+          {{ state }}
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
     # Illustrative subset of dc_observed_network_attachments (not captured
@@ -940,23 +964,9 @@
                and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
                and (missing_attachments | length == 0) }}
 
-    # A VRF-Lite extension is the one part of the fabric that stage 02 can
-    # silently undo: its create role runs dcnm_vrf with state: replaced, which
-    # clears extensionValues on an attachment whose extension the data model
-    # cannot describe. An attach group can name the border leaf but never the
-    # extension, so without this comparison the regression is invisible here -
-    # the VRF exists, all three leaves are attached and DEPLOYED, and external
-    # connectivity is simply gone.
-    #
-    # extensionValues is a JSON document encoded into a string field, and its
-    # inner keys (VRF_LITE_CONN, IF_NAME, DOT1Q_ID, NEIGHBOR_IP) are an NDFC
-    # implementation detail rather than a documented contract. They are still
-    # read by name, because a substring test against the encoded field cannot
-    # work here: a template that yields JSON text is literal_eval'd back into a
-    # list, so `x in field` tests membership rather than containment and read as
-    # false for all three extensions while the switch carried every one of them.
-    # A renamed key still fails visibly - the declared value is compared against
-    # an absent one, not against nothing on both sides.
+    # Stage 02 can clear the VRF-Lite extension because its data model cannot
+    # describe that extension. Manage returns typed extensionValues and status
+    # together, so all declared fields and deployed state are checked here.
     - name: Compare the VRF-Lite extensions
       ansible.builtin.set_fact:
         dc_vrf_lite_rows: "{{ dc_vrf_lite_rows | default([]) + [row] }}"
@@ -972,23 +982,32 @@
               | selectattr('switchName', 'defined')
               | selectattr('switchName', 'equalto', dc_vrf_lite_border_leaf)
               | list | first) | default({}) }}
-        extension: "{{ (dc_vrf_lite_extension_values | default({}))[item.vrf] | default({}, true) }}"
+        extension_record: "{{ (dc_vrf_lite_extension_state | default({})).get(item.vrf, {}) }}"
+        extension: >-
+          {{ extension_record.get('extensionValues', []) | first | default({}, true) }}
         row:
           name: "VRF-Lite {{ item.vrf }} on {{ dc_vrf_lite_border_leaf }}"
           attached: "{{ border_attachment.isLanAttached | default(false, true) }}"
-          state: "{{ border_attachment.lanAttachState | default('absent', true) }}"
+          state: "{{ extension_record.status | default('absent', true) }}"
           declared: >-
             {{ dc_vrf_lite_interface }} dot1q {{ item.dot1q }}
             {{ item.ipv4_addr }} -> {{ item.neighbor_ipv4 }}
-          interface_seen: "{{ extension.IF_NAME | default('', true) == dc_vrf_lite_interface }}"
-          dot1q_seen: "{{ extension.DOT1Q_ID | default('', true) | string == item.dot1q | string }}"
-          neighbor_seen: "{{ extension.NEIGHBOR_IP | default('', true) == item.neighbor_ipv4 }}"
+            peer {{ item.peer_vrf }} MTU {{ dc_vrf_lite_mtu }}
+          interface_seen: "{{ extension.interfaceName | default('', true) == dc_vrf_lite_interface }}"
+          dot1q_seen: "{{ extension.dot1qId | default(-1) | int == item.dot1q | int }}"
+          ipv4_seen: "{{ extension.ipv4Address | default('', true) == item.ipv4_addr }}"
+          neighbor_seen: "{{ extension.neighborIpv4Address | default('', true) == item.neighbor_ipv4 }}"
+          peer_vrf_seen: "{{ extension.peerVrfName | default('', true) == item.peer_vrf }}"
+          mtu_seen: "{{ extension.mtu | default(-1) | int == dc_vrf_lite_mtu | int }}"
           ok: >-
             {{ (border_attachment.isLanAttached | default(false, true) | bool)
-               and (border_attachment.lanAttachState | default('', true) == 'DEPLOYED')
-               and (extension.IF_NAME | default('', true) == dc_vrf_lite_interface)
-               and (extension.DOT1Q_ID | default('', true) | string == item.dot1q | string)
-               and (extension.NEIGHBOR_IP | default('', true) == item.neighbor_ipv4) }}
+               and (extension_record.status | default('', true) == 'deployed')
+               and (extension.interfaceName | default('', true) == dc_vrf_lite_interface)
+               and (extension.dot1qId | default(-1) | int == item.dot1q | int)
+               and (extension.ipv4Address | default('', true) == item.ipv4_addr)
+               and (extension.neighborIpv4Address | default('', true) == item.neighbor_ipv4)
+               and (extension.peerVrfName | default('', true) == item.peer_vrf)
+               and (extension.mtu | default(-1) | int == dc_vrf_lite_mtu | int) }}
 
     # The switch's own account of the same three extensions, parsed by Genie.
     # The controller check above proves intent was written and deployed; this

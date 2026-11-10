@@ -76,7 +76,7 @@ The orchestrator runs the stages in this order:
 08_verify_fabric.yml
 ```
 
-The stages follow the execution order. Stage 04 creates the VRF-Lite inter-fabric link that stage 06 needs, and stage 05 deploys it, which is what makes Nexus Dashboard offer stage 06 a prototype to build on. Stage 06 then adds the three VRF-Lite extensions, and stage 07 pushes those extensions to DC-Service-Leaf.
+The stages follow the execution order. Stage 04 creates the VRF-Lite inter-fabric link that stage 06 needs, and stage 05 deploys its parent interface. Stage 06 uses the Manage API to reconcile dot1q resources and the three VRF-Lite extensions; stage 07 deploys those extensions to DC-Service-Leaf.
 
 ## Intent and configuration
 
@@ -95,12 +95,18 @@ The model is the source of truth for the objects it describes. To change those o
 
 - Stage 02 imports all five switches with `preserve_config: false`. This erases their existing running configuration without prompting. Use a pod that is safe to rebuild.
 - Stage 02 can remain silent for several minutes while Nexus Dashboard discovers the switches. Do not interrupt that request unless it has clearly exceeded the expected time.
-- Stage 06 requires Nexus Dashboard to offer a VRF-Lite extension prototype on `Ethernet1/8`. Stage 04 creates the link and stage 05 deploys it; the prototype appears only once both have run. If the precondition is missing, stage 06 reports the required deployment order.
+- Stage 06 requires a Manage `DCI subnet pool` link resource on the border serial and `Ethernet1/8`, plus a VRF attachment with `vlanId`. Stage 04 creates the link and stage 05 deploys its parent interface; if either precondition is missing, stage 06 names the required earlier stage.
 - The External edge router is not configured by this repository. Its side of the VRF-Lite links must remain consistent with the fixed values in `dc_vrf_lite.yml`.
+
+2026-11-10, observed on ND 4.2.1.10: the UI's **Edit VRF attachment** page
+showed the IFC default address pair (`192.168.252.1/30`, `192.168.252.2`)
+while MAIN's saved Manage record held `.13/30` and `.14`. Cancel that page;
+do not Save. Verify saved values with stage 08 or `vrfAttachments/query`.
+Whether Save persists the displayed defaults is untested.
 
 ## Verification
 
-Stage 08 is read-only and writes `ansible/evidence/stage08-verification.md` together with `stage08-verification.html`, the same findings laid out as a formal report. It compares the controller state with the declared model for switches, VRFs, networks, and VRF-Lite extensions, and it also reads DC-Service-Leaf itself: the three sub-interfaces are parsed from `show interface` with pyATS/Genie and compared on dot1q tag, address and MTU.
+Stage 08 is read-only and writes `ansible/evidence/stage08-verification.md` together with `stage08-verification.html`, the same findings laid out as a formal report. It compares the controller state with the declared model for switches, VRFs, networks, and all six Manage VRF-Lite extension fields, requiring status `deployed`. It also reads DC-Service-Leaf: the three sub-interfaces are parsed from `show interface` with pyATS/Genie and compared on dot1q tag, address and MTU.
 
 It also reads BGP session state from DC-Service-Leaf over SSH when `dc_verify_bgp_sessions` is enabled. A reachable switch adds three BGP checks; an unreachable switch produces `not determined` rows rather than claiming that the sessions are down. The BGP check can be skipped with:
 

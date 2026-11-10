@@ -187,8 +187,8 @@ Two things to expect from a first run, both normal:
 | `02_create_dc_fabric.yml` | Creates the whole intent on the controller: fabric, switch import, roles, vPC pair, port-channels, VRFs, networks |
 | `03_fabric_advanced_settings.yml` | Applies the settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
 | `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode, adds the IOS-XE edge router to it, and builds the VRF-Lite inter-fabric link that stage 06 needs |
-| `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric, which configures the parent interface of that link - the point at which the controller starts offering stage 06 a prototype |
-| `06_vrf_lite.yml` | Reserves the declared dot1q tags out of `TOP_DOWN_L3_DOT1Q`, then adds the three VRF-Lite extensions to the border leaf's VRF attachments, from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
+| `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric and configures the parent interface of the inter-fabric link required by stage 06 |
+| `06_vrf_lite.yml` | Uses the Nexus Dashboard Manage API to reconcile declared dot1q resources and write only changed VRF-Lite extensions from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
 | `07_recalculate_and_deploy.yml` | Second "Recalculate and Deploy". Pushes the extensions staged by stage 06 and is the **only** stage that changes running configuration |
 | `08_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes `evidence/stage08-verification.md` |
 | `09_cleanup.yml` | Destructive teardown: overlays, inter-fabric link, switches, both fabrics, then the sub-interfaces on the border leaf. Needs `-e dc_cleanup_confirm=CLEANUP_OK` |
@@ -198,13 +198,13 @@ because they are exactly what `01_dc_deploy.yml` imports. Stage 00 sits below
 that range because it is the prerequisite you run yourself, once per pod, and
 09 sits above it because it is deliberately outside the orchestrated run.
 
+the switch. Stage 07 then carries the three dot1q sub-interfaces and their BGP
 Stages 03 and 04 run before the first deploy because their settings and
 External fabric are inputs to the inter-fabric link, and stage 04 is what
-creates that link. Stage 06 runs after stage 05 because the controller will not
-offer it a prototype until the link's parent interface has been configured on
-the switch. Stage 07 then carries the three dot1q sub-interfaces and their BGP
-neighbours to the border leaf. The execution order is `02, 03, 04, 05, 06, 07,
-08`.
+creates that link. Stage 06 runs after stage 05, which configures the link's
+parent interface and makes its DCI resource available. Stage 07 then deploys
+the three dot1q sub-interfaces and their BGP neighbours to the border leaf.
+The execution order is `02, 03, 04, 05, 06, 07, 08`.
 
 Useful overrides:
 
@@ -521,23 +521,20 @@ detaches anything the model does not list.
 Nexus Dashboard, attached to DC-Leaf1, DC-Leaf2 and DC-Service-Leaf - and
 `PENDING`, because nothing has been pushed.
 
-**5. Extended.** Stage 06 reads `dc_vrf_lite.yml`, reads the prototype the
-controller offers on `Ethernet1/8` for the neighbour ASN and the peer's Jython
-template, and reads the attachment stage 02 made for its VLAN and instance
-values. It merges the declared values over the prototype - `Ethernet1/8`,
 dot1q `2`, `192.168.252.5/30`, neighbour `192.168.252.6`, plus the
-sub-interface MTU - and posts all three VRFs to the attachments endpoint in a
-single payload, naming only DC-Service-Leaf. The other two attachments from
-step 4 are untouched because they are not in the payload, and a re-run sends
-nothing because each declared field is compared against the controller first.
-Still nothing on a switch.
+**5. Extended.** Stage 06 reads the declared values and the Manage attachment
+record for the border serial. It preserves `vlanId`, `instanceValues` and
+`extraConfig`, compares interface, dot1q, local address, neighbor, peer VRF and
+MTU, then posts only changed VRFs to `/api/v1/manage/fabrics/<fabric>/vrfAttachments`.
+The Manage extension has no template field; `neighborAsn` comes from the saved
+extension or, when absent, the External fabric BGP ASN. Stage 06 reads the
+saved values back and verifies them. Still nothing on a switch.
 
-**6. Deployed.** Stage 06 runs `cisco.nac_dc_vxlan.dtc.deploy`, which asks the
-controller which switches have pending configuration and deploys them. PROD's
-VRF and SVIs land on all three leaves; on the border leaf the same push carries the
-parent `Ethernet1/8`, the `.2` sub-interface and the eBGP neighbour, because
-step 5 staged them before this ran. Every attachment flips `PENDING` ->
-`DEPLOYED`.
+**6. Deployed.** Stage 07 performs the second "Recalculate and Deploy". PROD's
+VRF and SVIs land on all three leaves; on the border leaf the same push carries
+the parent `Ethernet1/8`, the `.2` sub-interface and the eBGP neighbour, because
+step 5 staged them before this ran. The Manage query returned `pending` before
+stage 07; its post-deploy status is to be confirmed after that stage runs.
 
 **7. Verified.** Stage 07 reads `vrfs.nac.yaml` again - the same file, not a
 copy - and compares it against the controller: PROD exists with VNI 50001, is
@@ -882,12 +879,33 @@ rather than an error.
 
 ## What stage 06 needs from the controller
 
-**Stage 06 needs a VRF-Lite inter-fabric link to already exist on
-`Ethernet1/8`, and it needs that link's parent interface to have been
-configured on the switch.** Stage 04 creates the link; stage 05 deploys it.
-That is why `01_dc_deploy.yml` puts a deploy between them.
+Stage 06 now uses the Manage API, not the legacy switches/prototype endpoint.
+It requires the stage-04 `DCI subnet pool` resource to exist with link scope on
+the border serial and `Ethernet1/8`, plus a stage-02 attachment with `vlanId`.
+Stage 04 creates the link and stage 05 deploys its parent interface, which is
+why `01_dc_deploy.yml` keeps stage 05 before stage 06. A fresh-build Manage
+query without an extension has not yet been tested; these resource and VLAN
+preconditions remain in place.
 
-The symptom when the precondition is missing is
+2026-11-10, observed on ND 4.2.1.10: `dcnm_rest` returned HTTP 200 from
+`GET /api/v1/manage/fabrics/Pseudoco-DC1/pools`, including `topDownL3Dot1q`.
+The three-VRF Manage query returned typed extension values and `status:
+pending` before stage 07. The exact post-deploy status has not been confirmed
+without running stage 07.
+
+2026-11-10, observed on ND 4.2.1.10: the UI's **Edit VRF attachment** page
+showed the IFC default pair (`192.168.252.1/30`, `192.168.252.2`) while MAIN's
+saved Manage record held `.13/30` and `.14`. Cancel that page; do not Save.
+Verify saved values with stage 08 or `vrfAttachments/query`. Whether Save
+persists the displayed defaults is untested.
+
+### Historical prototype investigation for the legacy API
+
+The following notes describe the former prototype-based stage and are retained
+as historical troubleshooting context; they do not describe the current
+Manage API flow.
+
+The old stage's symptom when its precondition was missing was
 `Prototype extensionType(s) returned: []` from stage 06's precheck; once
 stage 05 has run it reports `Controller offers 1 VRF_LITE extension
 prototype(s)` and attaches all three VRFs.
@@ -1040,9 +1058,9 @@ field**. Its `vrf_lite` suboptions are exactly `peer_vrf`, `interface`,
 the list of properties it writes into `VRF_LITE_CONN` is `DOT1Q_ID`,
 `IF_NAME`, `IP_MASK`, `IPV6_MASK`, `IPV6_NEIGHBOR`, `NEIGHBOR_IP`,
 `PEER_VRF_NAME`. There is no MTU in either. That gap is the reason stage 06
-posts the attachment itself instead of calling the module. The controller's own UI does not
-have this problem, because the prototype it offers carries the link's own MTU
-and the UI writes it through.
+uses the Manage API rather than `dcnm_vrf`. The Manage API accepts the MTU as a
+typed `extensionValues[].mtu` field. The Edit VRF attachment page is not a
+reliable read-back of those per-VRF values; see the dated warning above.
 
 **Why the value is 1500.** The parent rules 9216 out, but a parent on its own
 does not choose a value: anything from 576 up to the parent's MTU is accepted
@@ -1130,16 +1148,12 @@ switch itself, which rejected the configuration, and the controller repeated
 the rejection verbatim. Treat the error string as the evidence. 1500 is
 comfortably inside that range, so the switch accepts it.
 
-`06_vrf_lite.yml` sends it in the same payload as the rest of the extension,
-with a single `POST` to `top-down/fabrics/<fabric>/vrfs/attachments`. It starts
-from the prototype the controller offers rather than building a connection from
-nothing, because the controller enriches the prototype from the IFC -
-`NEIGHBOR_ASN` and `AUTO_VRF_LITE_FLAG` are server-side, and a hand-built
-replacement would drop them. The
-VLAN and `instanceValues` come from the attachments endpoint, not from
-`vrfs/switches`, which reports the VLAN as `-1` and returns no instance
-values. The task only posts for a VRF whose MTU is not already the declared
-value, so a second run sends nothing.
+`06_vrf_lite.yml` sends the MTU with the other typed extension fields through
+`POST /api/v1/manage/fabrics/<fabric>/vrfAttachments`. It carries `vlanId`,
+`instanceValues` and `extraConfig` forward from `vrfAttachments/query`, and
+posts only when one of the six declared fields differs. `neighborAsn` comes
+from the saved extension or falls back to the External fabric BGP ASN. The
+stage then queries Manage again and verifies the saved values.
 
 **The `lanAttachList` in that POST holds only `DC-Service-Leaf`, and that is
 safe.** MAIN, PROD and IOT are attached to DC-Leaf1 and DC-Leaf2 as well, by
@@ -1208,29 +1222,13 @@ missing from the product, since Nexus Dashboard's newer model exposes it as
 [vrfAttachmentDetail](https://developer.cisco.com/docs/nexus-dashboard/latest/one-manage-one-manage-model-vrfattachmentdetail/),
 but no module reaches it, so the hand-built POST stays.
 
-**What the POST echoes back, and why each field is safe to echo.**
-`freeformConfig` is *"any configuration not included in overlay templates
-which is needed as part of this VRF attachment"* in the payload schema above,
-so dropping it would erase per-attachment config. The module treats it the
-same way and says so in a comment: *"copy freeformConfig from have as module
-is not managing it"* (lines 1436-1437). Stage 05 reads it from
-`switchDetailsList` on `vrfs/switches`, which is where the module reads it too
-(lines 2600 and 2714). `instanceValues` carries the controller-owned
-`loopbackId`, `loopbackIpAddress` and `loopbackIpV6Address`, which the module
-also copies forward from the controller rather than rebuilding (lines
-1451-1470).
-`MULTISITE_CONN` defaulting to the literal `{"MULTISITE_CONN":[]}` cannot wipe
-real multi-site state here: the stage echoes the controller's value whenever
-the key is present and falls back only when it is absent, and the module
-hard-codes that same literal unconditionally in both directions anyway, when
-building a VRF-Lite extension to write (lines 1703-1705) and when reading one
-back (lines 2707-2709). Any `merged` run of stage 05 has already set it.
-`vlan` is the one field where the stage and the module differ: the module
-zeroes it before sending (`push_diff_attach` at line 5039, with
-`vrf_attach.update(vlan=0)` at line 5070) while the stage sends
-the VLAN it has just read from the attachments endpoint. Both are no-ops
-against an already-attached switch, and sending the current value is the
-narrower change of the two.
+**What the Manage payload preserves.** The query response supplies
+`vlanId`, `instanceValues` and `extraConfig`; stage 06 carries those values
+forward unchanged while setting `attach: true`. `extensionValues` is a typed
+list containing the interface, integer dot1q and MTU, local CIDR, neighbor
+address, neighbor ASN, peer VRF and `autoPeerConfig: false`. It does not build
+JSON-in-JSON, copy a template, or send `MULTISITE_CONN`. A second run sends no
+attachment POST when the six declared fields match.
 
 The rest of this section is the evidence for the asynchronous correlation and
 the Cisco framing around it, which still stand on their own.
@@ -1246,7 +1244,8 @@ External":
 > the External fabric external router by staging the IP addresses for use on
 > the sub-interfaces between your border leaf and external router.
 
-Stage 06 *is* that click. Section 7 sets up the precondition it depends on -
+Stage 07 is that click; stage 06 only stages intent through Manage and never
+deploys. Section 7 sets up the precondition it depends on -
 the guide's note there says the External fabric exists *"so that ND can detect
 the physical connection using CDP and can make the configuration in the border
 switch"* - and section 8 opens by saying *"Your border leaf and external
@@ -1328,9 +1327,9 @@ skips them deliberately and reports them as skipped.
 - **Network** - exists in the declared VRF with the declared anycast gateway,
   each declared port-channel attached on every switch it was declared on, and
   every attachment `DEPLOYED`.
-- **VRF-Lite extension** - attached and `DEPLOYED` on the border leaf, with
-  the declared interface, dot1q tag and neighbour address present in the
-  attachment's `extensionValues`. This is the check that catches a stage 02
+- **VRF-Lite extension** - attached on the border leaf, with Manage status
+  `deployed` and all six declared fields present in typed `extensionValues`.
+  This is the check that catches a stage 02
   re-run that silently reset what stage 05 attached: without it the VRF still
   exists, all three leaves are still attached and `DEPLOYED`, and external
   connectivity is simply gone. Putting `DC-Service-Leaf` in
@@ -1512,19 +1511,18 @@ already contain it. Skip the router with `-e
 dc_external_add_edge_router=false`.
 
 **The VRF-Lite extensions themselves** - MAIN, PROD and IOT reaching out of
-DC-Service-Leaf to the edge router - are stage 05, `06_vrf_lite.yml`. They are
+DC-Service-Leaf to the edge router - are stage 06, `06_vrf_lite.yml`. They are
 the one part of the build that does not come from the Nexus as Code model,
 because that model cannot express them: a `vrf_attach_group` entry names a
 switch and nothing else, with no key for `EXTEND: VRF_LITE`, the
 sub-interface, the dot1q tag or the neighbour address. The model does the half
-it can - `DC-Service-Leaf` is in the `dc_leaves` attach group, so stage 02
-attaches the three VRFs to it - and stage 06 posts the extension to the
-controller's attachments endpoint for the other half. `dcnm_vrf` does support
-`attach[].vrf_lite[]`, but it writes only seven extension fields and so cannot
-carry the sub-interface MTU or the neighbour ASN, and it hardcodes the Nexus
-Jython template where this pod's IOS-XE peer needs its own. That split is the
 guide's own: section 8 has two Detach/Attach sliders per VRF, one for the
-attachment and one for the extension.
+it can - `DC-Service-Leaf` is in the `dc_leaves` attach group, so stage 02
+attaches the three VRFs to it - and stage 06 writes typed extension values
+through the Manage API for the other half. `dcnm_vrf` does not expose the MTU
+or neighbor ASN in its `vrf_lite` options, and Manage `extensionValues` has no
+template field. That split is the guide's own: section 8 has two Detach/Attach
+sliders per VRF, one for the attachment and one for the extension.
 
 The intent is still declared in git, in
 `inventory/group_vars/all/dc_vrf_lite.yml`. It restates only what the model

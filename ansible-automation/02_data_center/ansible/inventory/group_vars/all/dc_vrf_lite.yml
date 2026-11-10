@@ -9,13 +9,10 @@
 # VRF-Lite settings and extensions are declared here and applied by stages 03,
 # 04, and 06.
 #
-# Stage 06 does NOT use dcnm_vrf. That module's vrf_lite block accepts only
-# DOT1Q_ID, IF_NAME, IP_MASK, IPV6_MASK, IPV6_NEIGHBOR, NEIGHBOR_IP and
-# PEER_VRF_NAME - it has no key for MTU, and it hardcodes the Jython template
-# to Ext_VRF_Lite_Jython, which is wrong for an IOS-XE peer. Stage 06 posts to
-# rest/top-down/fabrics/<fabric>/vrfs/attachments directly instead, starting
-# from the prototype the controller offers so that the neighbour ASN and the
-# template come from the inter-fabric link rather than from a guess.
+# Stage 06 uses cisco.dcnm.dcnm_rest with the Nexus Dashboard Manage API to
+# read, reserve and write the VRF-Lite attachment fields. The Manage
+# extensionValues contract has no template field; neighborAsn comes from the
+# saved extension when present, otherwise from the External fabric BGP ASN.
 #
 # The plain ATTACHMENT is a different matter and is NOT declared here. Since
 # 2026-09-27 DC-Service-Leaf is listed in vrfs.nac.yaml's dc_leaves attach
@@ -37,18 +34,15 @@
 # asserts the extensions exist, so a create-without-06 run fails rather than
 # being discovered later as broken external connectivity.
 #
-# What stage 06 depends on, which is not any of the above. The controller will
-# not offer a VRF-Lite extension on this interface until a VRF-Lite
-# inter-fabric link terminates there and the parent interface has actually been
-# configured on the switch. Stage 04 creates the link from dc_vrf_lite_ifc
-# below; stage 05 deploys it. So stage 05 has to run before stage 06 on a fresh
-# build. If the prototype is missing, stage 06 says so and names stage 05.
+# What stage 06 depends on, which is not any of the above. Stage 04 creates the
+# VRF-Lite inter-fabric link from dc_vrf_lite_ifc below; stage 05 deploys it.
+# Stage 06 requires the resulting DCI subnet pool link resource and an attached
+# VRF with a VLAN before it can write the extension. If either is missing, it
+# stops and names the required earlier stage.
 #
-# The dot1q tags below are also RESERVED by stage 06 before it attaches
-# anything, out of the TOP_DOWN_L3_DOT1Q pool. Left to itself the controller
-# allocates its own tags during the attachment POST and the run dies half way
-# through with "Id[3]is already allocated to MAIN"; see the comment on that
-# block in playbooks/06_vrf_lite.yml.
+# Stage 06 reserves the declared dot1q tags through the Manage Resource Manager
+# API before it writes attachments. Manual stops the controller auto-creating
+# the IFC; Resource Manager bookkeeping still applies.
 #
 # The parent interface the sub-interfaces below sit on is built by the
 # controller from dc_vrf_lite_ifc, not declared per sub-interface here. It
@@ -63,8 +57,8 @@
 # Note what that does NOT prove. It has no ip address and no encapsulation,
 # so it is equally consistent with an ext_fabric_setup VRF-Lite IFC and with
 # a plain discovered external link that the controller converted to Layer 3.
-# Only the link's templateName distinguishes them; stage 06 reports when the
-# required prototype is absent.
+# Manage extensionValues do not expose templateName; stage 06 gates on the DCI
+# link resource and the attachment VLAN instead.
 
 # Fabric-wide VRF-Lite behavior and allocation pool. Stage 03 applies these
 # Easy_Fabric nvPairs; they live here with the link and extensions they govern.
@@ -111,13 +105,14 @@ dc_vrf_lite_peer_interface: GigabitEthernet2
 # allocation happens before stage 06 runs.
 #
 # So dc_vrf_lite_fabric_settings sets VRF_LITE_AUTOCONFIG to Manual and the
-# values below are declared. Nothing
-# is auto-allocated, and the data model is authoritative end to end.
+# values below are declared. Manual stops the controller auto-creating the
+# IFC; Resource Manager bookkeeping still applies.
 #
 # Stage 04 consumes this block through dcnm_links and ext_fabric_setup:
 # ipv4_addr -> ipv4_subnet, neighbor_ipv4 -> neighbor_ip, mtu -> Link MTU.
-# The IFC identifies Ethernet1/8 -> GigabitEthernet2 and supplies the link
-# context from which stage 06 reads the VRF-Lite extension prototypes.
+# The IFC identifies Ethernet1/8 -> GigabitEthernet2. Stage 06 uses the
+# neighbor ASN from dc_external_fabric_settings.BGP_AS when the saved extension
+# does not already carry one.
 #
 # The IP pair is an OVERRIDABLE DEFAULT for VRF-extension sub-interfaces,
 # not necessarily an address configured on the physical parent interface.
