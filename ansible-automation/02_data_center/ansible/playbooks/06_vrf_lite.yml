@@ -412,14 +412,20 @@
         that:
           - dc_vrf_lite_pool_create.response.RETURN_CODE | default(0) | int in [200, 207]
           - dc_vrf_lite_pool_create.response.RETURN_CODE | int != 207 or (dc_vrf_lite_create_results is sequence and dc_vrf_lite_create_results is not string)
-          - dc_vrf_lite_pool_create.response.RETURN_CODE | int != 207 or dc_vrf_lite_create_results | length == dc_vrf_lite_reservation_count
+          - dc_vrf_lite_pool_create.response.RETURN_CODE | int != 207 or (dc_vrf_lite_create_results | length) == (dc_vrf_lite_reservation_count | int)
           - dc_vrf_lite_create_failures | length == 0
         fail_msg: >-
           {{ dc_vrf_lite_selected_extensions | map(attribute='vrf') | join(', ') }}
           could not be reserved in TOP_DOWN_L3_DOT1Q on {{ dc_vrf_lite_border_leaf }}
-          ({{ dc_vrf_lite_border_serial }}). Check the pool under Resource Manager
-          for an allocation of the same ID to another entity. Manage reported:
-          {{ dc_vrf_lite_create_failures | map(attribute='message') | join('; ') }}
+          ({{ dc_vrf_lite_border_serial }}). HTTP
+          {{ dc_vrf_lite_pool_create.response.RETURN_CODE | default(0) | int }};
+          results returned: {{ dc_vrf_lite_create_results | length }};
+          expected: {{ dc_vrf_lite_reservation_count | int }}.
+          Non-success messages:
+          {{ dc_vrf_lite_create_failures | map(attribute='message') | join('; ') or 'none' }}.
+          {% if dc_vrf_lite_create_failures | length > 0 %}
+          Check Resource Manager for a conflicting allocation of the same ID to another entity.
+          {% endif %}
       vars:
         dc_vrf_lite_reservation_count: >-
           {{ dc_vrf_lite_selected_extensions
