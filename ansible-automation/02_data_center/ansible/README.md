@@ -190,7 +190,7 @@ Two things to expect from a first run, both normal:
 | `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric and configures the parent interface of the inter-fabric link required by stage 06 |
 | `06_vrf_lite.yml` | Uses the Nexus Dashboard Manage API to reconcile declared dot1q resources and write only changed VRF-Lite extensions from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
 | `07_recalculate_and_deploy.yml` | Second "Recalculate and Deploy". Pushes the extensions staged by stage 06 and is the **only** stage that changes running configuration |
-| `08_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes `evidence/stage08-verification.md` |
+| `08_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes timestamped Markdown and HTML reports in `evidence/` |
 | `09_cleanup.yml` | Destructive teardown: overlays, inter-fabric link, switches, both fabrics, then the sub-interfaces on the border leaf. Needs `-e dc_cleanup_confirm=CLEANUP_OK` |
 
 The numbering tells you who runs a playbook. Stages 02 to 08 are contiguous
@@ -1306,7 +1306,9 @@ The habits worth keeping from all of this generalise past one stage:
 `08_verify_fabric.yml` compares the declared model against what the controller
 actually holds, and then asks the border leaf one question the controller
 cannot answer. It is read-only throughout and can be re-run freely. It writes
-`evidence/stage08-verification.md` and fails on a mismatch.
+`evidence/stage08-verification-<UTC timestamp>.md` and a matching `.html` report,
+and fails on a mismatch. Each run uses a new timestamp with microsecond precision
+(for example, `20261110T143025123456Z`), preserving evidence from previous runs.
 
 Seventeen checks: five switches, three VRFs, three networks, three VRF-Lite
 extensions and three VRF-Lite BGP sessions.

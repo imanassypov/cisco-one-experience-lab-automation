@@ -30,7 +30,7 @@
 #     established, down, or not determined because the switch was unreachable.
 #     Not determined never counts as down and never fails the run
 #
-# It writes evidence/stage08-verification.md and fails at the end on any
+# It writes timestamped reports in evidence/ and fails at the end on any
 # mismatch.
 #
 # Run from the collection root, the directory holding ansible.cfg:
@@ -265,10 +265,10 @@
     # Same convention as the campus collection: evidence/ sits beside
     # playbooks/, and realpath collapses the ../ hop so the closing summary
     # prints a path worth copying.
-    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification.md') | realpath }}"
+    dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification-' ~ dc_evidence_run_id ~ '.md') | realpath }}"
     # Same data, audit presentation. The campus collection's stage 12 writes the
     # pair the same way, and this one matches its layout so the two read alike.
-    dc_evidence_html_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification.html') | realpath }}"
+    dc_evidence_html_path: "{{ (playbook_dir ~ '/../evidence/stage08-verification-' ~ dc_evidence_run_id ~ '.html') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
@@ -1173,6 +1173,10 @@
           {{ dc_subif_rows | default([]) | rejectattr('determined') | list }}
 
     # ------------------------------------------------------------- evidence
+    - name: Set the verification evidence run ID
+      ansible.builtin.set_fact:
+        dc_evidence_run_id: "{{ now(utc=true).strftime('%Y%m%dT%H%M%S%fZ') }}"
+
     - name: Make sure the evidence directory exists
       ansible.builtin.file:
         path: "{{ dc_evidence_path | dirname }}"
