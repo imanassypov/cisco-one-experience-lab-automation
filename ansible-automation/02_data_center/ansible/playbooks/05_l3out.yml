@@ -1,0 +1,363 @@
+---
+# Stage 05 - build the VRF-Lite handoff to the edge router as three Nexus
+# Dashboard L3Outs, one per VRF, on the border leaf.
+#
+# Guide section 8, "Create VRF-Lite Connections to External". The values on
+# the wire are main's: dot1q 2, 3 and 4 on Ethernet1/8, 192.168.252.5, .9 and
+# .13/30, MTU 1500, eBGP to the router in AS 65531.
+#
+# EVALUATION BRANCH (eval/nd-l3out). This stage replaces main's 06_vrf_lite.yml
+# and its eight dcnm_rest calls (Manage API probe, resource reads, dot1q
+# release and reservation, VRF attachment query, write and read-back) with
+# cisco.nd.nd_manage_l3out. The module compares before it writes, so main's
+# own drift comparison, read-back and HTTP 207 handling are gone. The data
+# checks on this repository's own variables stay.
+#
+# It writes intent and attaches it; it deploys nothing. The module never calls
+# a save or deploy endpoint - attach posts to /api/v1/manage/l3OutActions/attach
+# and nothing else - so stage 06 is what reaches the switch.
+#
+# Three known module behaviours shape the tasks below (docs/eval-nd-l3out.md,
+# blocker B4):
+#   - attach is not idempotent. With attach set the module reports changed on
+#     every run, and Nexus Dashboard exposes no attach state the module reads.
+#     So the intent and the attach are separate tasks, and the attach task's
+#     changed is the module's own - honest, and always true.
+#   - attach failures come back as warnings, not as a failed task. failed_when
+#     turns them into failures.
+#   - changing an L3Out's routing protocol is rejected with HTTP 400. All
+#     three are bgp from creation, so this cannot arise here.
+#
+# Values: inventory/group_vars/all/dc_vrf_lite.yml. The border-leaf serial
+# comes from stage 00's generated model, the router serial from stage 00's
+# lookup, the DC ASN from global.nac.yaml and the peer ASN from
+# dc_external_settings.yml.
+#
+# Run from the collection root as its own ansible-playbook run (see
+# 01_dc_deploy.yml for why):
+#
+#   cd ansible-automation/02_data_center/ansible
+#   ansible-playbook playbooks/05_l3out.yml
+#
+# Useful overrides:
+#   -e dc_vrf_lite_only=PROD                     one VRF only
+#   -e dc_vrf_lite_interface_form=subinterface   interface_name as Ethernet1/8.2
+#   -e dc_l3out_attach=false                     write intent, skip attach
+
+- name: Stage 05 - create and attach the L3Outs on the border leaf
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    ansible_network_os: cisco.nd.nd
+    dc_l3out_attach: true
+    dc_external_router_serial: >-
+      {{ dc_device_serials[dc_external_edge_router.hostname] | default('') }}
+
+  tasks:
+    # --------------------------------------------------- declared intent
+    # vrfs.nac.yaml is the same model stage 02 consumed, so the two files
+    # cannot disagree about which VRFs exist or where they are attached.
+    - name: Read the declared VRFs
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/vrfs.nac.yaml"
+        name: dc_vrf_lite_vrf_model
+      delegate_to: localhost
+
+    - name: Read the declared fabric ASN
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/global.nac.yaml"
+        name: dc_global_model
+      delegate_to: localhost
+
+    - name: Read the switch model stage 00 generated
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml"
+        name: dc_vrf_lite_switch_model
+      delegate_to: localhost
+
+    - name: Flatten the declared VRFs and resolve the border leaf serial
+      ansible.builtin.set_fact:
+        dc_vrf_lite_declared_vrfs: "{{ dc_vrf_lite_vrf_model.vxlan.overlay.vrfs | default([]) }}"
+        dc_vrf_lite_border_serial: >-
+          {{ (dc_vrf_lite_switch_model.vxlan.topology.switches | default([])
+              | selectattr('name', 'equalto', dc_vrf_lite_border_leaf)
+              | map(attribute='serial_number') | list | first | default('')) }}
+
+    # ------------------------------------------------------- data checks
+    # Every assert below runs before the first write, so a typo in the declared
+    # intent reads as a data error rather than as a confusing controller
+    # rejection.
+    - name: Fail when the declared border leaf is not in the switch table
+      ansible.builtin.assert:
+        that:
+          - matching_switches | length == 1
+        fail_msg: >-
+          DATA MODEL ERROR, not a fabric fault. dc_vrf_lite_border_leaf is
+          '{{ dc_vrf_lite_border_leaf }}', which matches
+          {{ matching_switches | length }} entries in dc_switches.yml
+          (declared switches: {{ dc_switches | map(attribute='name') | join(', ') }}).
+          Fix inventory/group_vars/all/dc_vrf_lite.yml.
+      vars:
+        matching_switches: >-
+          {{ dc_switches | selectattr('name', 'equalto', dc_vrf_lite_border_leaf) | list }}
+
+    # Kept from main: Cisco scopes external VRF-Lite connectivity to a switch
+    # holding the Border role. Whether an L3Out enforces the same is not
+    # documented; the check is cheap and the lab's design depends on it.
+    - name: Fail when the declared border leaf does not hold the border role
+      ansible.builtin.assert:
+        that:
+          - declared_role == 'border'
+        fail_msg: >-
+          DATA MODEL ERROR. {{ dc_vrf_lite_border_leaf }} is declared with
+          role '{{ declared_role }}' in dc_switches.yml, but the external
+          handoff is built from a switch holding the border role.
+      vars:
+        declared_role: >-
+          {{ (dc_switches
+              | selectattr('name', 'equalto', dc_vrf_lite_border_leaf)
+              | list | first).role | default('') }}
+
+    - name: Fail when a row names a VRF that vrfs.nac.yaml never declares
+      ansible.builtin.assert:
+        that:
+          - undeclared | length == 0
+        fail_msg: >-
+          DATA MODEL ERROR, not a fabric fault. {{ undeclared | join(', ') }}
+          named in dc_vrf_lite.yml but not declared in vrfs.nac.yaml
+          (declared VRFs: {{ dc_vrf_lite_declared_vrfs | map(attribute='name') | join(', ') }}).
+      vars:
+        declared_names: "{{ dc_vrf_lite_declared_vrfs | map(attribute='name') | list }}"
+        undeclared: >-
+          {{ dc_vrf_lite_extensions | map(attribute='vrf')
+             | reject('in', declared_names) | list }}
+
+    # The L3Out routes a VRF out of the border leaf, so the VRF has to be on
+    # the border leaf. Stage 02 attaches it only if the model says so.
+    - name: Fail when the model does not attach the border leaf to every handed-off VRF
+      ansible.builtin.assert:
+        that:
+          - unattached | length == 0
+        fail_msg: >-
+          DATA MODEL ERROR. {{ dc_vrf_lite_border_leaf }} is not in the
+          vrf_attach_group of {{ unattached | join(', ') }} in
+          playbooks/host_vars/{{ inventory_hostname }}/vrfs.nac.yaml, so stage
+          02 will not attach the VRF to it. Add
+          '- hostname: {{ dc_vrf_lite_border_leaf }}' to the attach group
+          those VRFs name.
+      vars:
+        dc_vrf_lite_attach_groups: >-
+          {{ dc_vrf_lite_vrf_model.vxlan.overlay.vrf_attach_groups | default([]) }}
+        unattached: >-
+          {%- set missing = [] -%}
+          {%- for ext in dc_vrf_lite_extensions -%}
+          {%- set declared = (dc_vrf_lite_declared_vrfs
+                              | selectattr('name', 'equalto', ext.vrf)
+                              | list | first) | default({}) -%}
+          {%- set group = (dc_vrf_lite_attach_groups
+                           | selectattr('name', 'equalto',
+                                        declared.vrf_attach_group | default(''))
+                           | list | first) | default({}) -%}
+          {%- set hosts = (group.switches | default([]))
+                          | map(attribute='hostname') | list -%}
+          {%- if dc_vrf_lite_border_leaf not in hosts -%}
+          {{- missing.append(ext.vrf) or '' -}}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ missing }}
+
+    # One sub-interface per dot1q tag on one parent interface, and one L3Out
+    # per name. The module identifies an L3Out by name alone, so two rows with
+    # one name would silently become a single object.
+    - name: Fail on a duplicate dot1q tag or L3Out name
+      ansible.builtin.assert:
+        that:
+          - dot1q_tags | length == dot1q_tags | unique | length
+          - l3out_names | length == l3out_names | unique | length
+          - l3out_names | reject('match', '^[A-Za-z0-9_-]{1,64}$') | list | length == 0
+        fail_msg: >-
+          DATA MODEL ERROR. dc_vrf_lite.yml reuses a dot1q tag
+          ({{ dot1q_tags | join(', ') }}) or an L3Out name
+          ({{ l3out_names | join(', ') }}), or a name is not 1-64 letters,
+          digits, _ or -.
+      vars:
+        dot1q_tags: "{{ dc_vrf_lite_extensions | map(attribute='dot1q') | list }}"
+        l3out_names: "{{ dc_vrf_lite_extensions | map(attribute='name') | list }}"
+
+    # The switch refuses a sub-interface larger than its parent: "MTU of
+    # sub-interface greater than parent interface detected".
+    - name: Fail when the sub-interface MTU exceeds the link MTU
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_mtu | int <= dc_vrf_lite_ifc.link_mtu | int
+        fail_msg: >-
+          DATA MODEL ERROR. dc_vrf_lite_mtu {{ dc_vrf_lite_mtu }} is larger
+          than dc_vrf_lite_ifc.link_mtu {{ dc_vrf_lite_ifc.link_mtu }}, the
+          parent interface MTU.
+
+    # The module takes the address and the mask length as separate fields.
+    - name: Fail when an address is not written as address/prefix
+      ansible.builtin.assert:
+        that:
+          - bad_rows | length == 0
+        fail_msg: >-
+          DATA MODEL ERROR. ipv4_addr must be address/prefix-length, for
+          example 192.168.252.5/30. Rows: {{ bad_rows | join(', ') }}.
+      vars:
+        bad_rows: >-
+          {{ dc_vrf_lite_extensions
+             | rejectattr('ipv4_addr', 'match', '^[0-9.]+/[0-9]{1,2}$')
+             | map(attribute='name') | list }}
+
+    - name: Fail when stage 00 left a serial unresolved
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_border_serial | length > 0
+          - dc_external_router_serial | length > 0
+        fail_msg: >-
+          No serial for {{ dc_vrf_lite_border_leaf }} in
+          playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml
+          or for {{ dc_external_edge_router.hostname }} in
+          inventory/group_vars/all/dc_device_serials.yml. Re-run
+          playbooks/00_discover_dc_switch_serials.yml.
+
+    - name: Select VRFs for this run
+      ansible.builtin.set_fact:
+        dc_vrf_lite_selected_extensions: >-
+          {{ dc_vrf_lite_extensions
+             if dc_vrf_lite_only | string | lower == 'all'
+             else dc_vrf_lite_extensions
+                  | selectattr('vrf', 'in',
+                      [dc_vrf_lite_only] if dc_vrf_lite_only is string
+                      else dc_vrf_lite_only | list)
+                  | list }}
+
+    - name: Fail when dc_vrf_lite_only selects no declared VRFs
+      ansible.builtin.assert:
+        that:
+          - dc_vrf_lite_selected_extensions | length > 0
+        fail_msg: >-
+          dc_vrf_lite_only={{ dc_vrf_lite_only }} selects no declared VRFs.
+          Use 'all' or one or more names from
+          {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }}.
+
+    # ------------------------------------------------ prerequisite: the link
+    # The L3Out sub-interfaces sit on the inter-fabric link stage 04 builds.
+    # Checked here so a stage run out of order names stage 04 rather than
+    # surfacing as a controller rejection.
+    - name: Read the inter-fabric links of the DC fabric
+      cisco.nd.nd_manage_links:
+        fabric_name: "{{ dc_fabric_name }}"
+        link_scope: manage
+        state: gathered
+      register: dc_l3out_links
+
+    - name: Fail when the inter-fabric link is missing
+      ansible.builtin.assert:
+        that:
+          - matching_links | length > 0
+        fail_msg: >-
+          No link from {{ dc_vrf_lite_border_leaf }} {{ dc_vrf_lite_interface }}
+          to {{ dc_external_fabric_name }} {{ dc_vrf_lite_peer_interface }}.
+          Run playbooks/04_external_fabric.yml first.
+      vars:
+        matching_links: >-
+          {{ dc_l3out_links.gathered | default([])
+             | selectattr('dst_fabric_name', 'defined')
+             | selectattr('dst_fabric_name', 'equalto', dc_external_fabric_name)
+             | selectattr('src_interface_name', 'equalto', dc_vrf_lite_interface)
+             | list }}
+
+    # ------------------------------------------------------------- intent
+    # One entry per selected row. switch_id is a serial on both sides: the
+    # module would resolve a management IP to one anyway, and a serial makes
+    # the diff exact. The peer ASN goes in fabric2_details.local_asn - the
+    # module has no neighbour-ASN field. No route maps on either side: main
+    # applies none to this handoff, and every peering-policy field is
+    # optional.
+    - name: Build the L3Out definitions
+      ansible.builtin.set_fact:
+        dc_l3out_config: >-
+          {{ dc_l3out_config | default([]) + [{
+               'name': item.name,
+               'fabric1_name': dc_fabric_name,
+               'fabric2_name': dc_external_fabric_name,
+               'vrf1_name': item.vrf,
+               'vrf2_name': item.peer_vrf,
+               'configured_fabrics': 'fabric1',
+               'ip_version': 'ipv4',
+               'connectivity_details': {
+                 'routing_interface_type': 'subInterface',
+                 'links': [{
+                   'vlan_id': item.dot1q | int,
+                   'mtu': dc_vrf_lite_mtu | int,
+                   'ipv4_mask_length': item.ipv4_addr.split('/')[1] | int,
+                   'switch1_details': {
+                     'switch_id': dc_vrf_lite_border_serial,
+                     'interface_name': dc_vrf_lite_interface ~ dc_l3out_subif,
+                     'interface_ipv4_address': item.ipv4_addr.split('/')[0]},
+                   'switch2_details': {
+                     'switch_id': dc_external_router_serial,
+                     'interface_name': dc_vrf_lite_peer_interface ~ dc_l3out_subif,
+                     'interface_ipv4_address': item.neighbor_ipv4}}]},
+               'routing_details': {
+                 'routing_protocol': 'bgp',
+                 'bgp': {
+                   'fabric1_details': {'local_asn': dc_global_model.vxlan.global.ibgp.bgp_asn | string},
+                   'fabric2_details': {'local_asn': dc_external_fabric_settings.bgp_asn | string}}}}] }}
+      vars:
+        dc_l3out_subif: >-
+          {{ ('.' ~ item.dot1q) if dc_vrf_lite_interface_form == 'subinterface' else '' }}
+      loop: "{{ dc_vrf_lite_selected_extensions }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Show what will be created
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['L3Outs on ' ~ dc_vrf_lite_border_leaf ~ ' ' ~ dc_vrf_lite_interface
+              ~ ' (interface_name form: ' ~ dc_vrf_lite_interface_form ~ '):']
+             + dc_l3out_table }}
+      vars:
+        dc_l3out_table: >-
+          {%- set rows = ['| L3Out | VRF | Peer VRF | Dot1q | Local address | Neighbor | MTU |',
+                          '| --- | --- | --- | ---: | --- | --- | ---: |'] -%}
+          {%- for ext in dc_vrf_lite_selected_extensions -%}
+          {{- rows.append('| ' ~ ext.name ~ ' | ' ~ ext.vrf ~ ' | ' ~ ext.peer_vrf
+                          ~ ' | ' ~ ext.dot1q ~ ' | ' ~ ext.ipv4_addr ~ ' | '
+                          ~ ext.neighbor_ipv4 ~ ' | ' ~ dc_vrf_lite_mtu ~ ' |') or '' -}}
+          {%- endfor -%}
+          {{ rows }}
+
+    - name: Create or update the L3Outs
+      cisco.nd.nd_manage_l3out:
+        fabric_name: "{{ dc_fabric_name }}"
+        state: merged
+        config: "{{ dc_l3out_config }}"
+      register: dc_l3out_result
+
+    # Same definitions plus attach, so the diff above runs again (and finds
+    # nothing) before the attach call. failed_when catches what the module
+    # only warns about.
+    - name: Attach the L3Outs
+      cisco.nd.nd_manage_l3out:
+        fabric_name: "{{ dc_fabric_name }}"
+        state: merged
+        config: "{{ dc_l3out_config | map('combine', {'attach': true}) | list }}"
+      register: dc_l3out_attach_result
+      failed_when: >-
+        dc_l3out_attach_result.failed | default(false)
+        or (dc_l3out_attach_result.warnings | default([])
+            | select('search', 'Attachment operation failed') | list | length > 0)
+      when: dc_l3out_attach | bool
+
+    - name: Report the L3Out result
+      ansible.builtin.debug:
+        msg: >-
+          L3Out intent: {{ 'created or updated' if dc_l3out_result.changed
+                           else 'already matched, nothing sent' }}.
+          Attach: {{ 'sent for ' ~ (dc_l3out_config | map(attribute='name') | join(', '))
+                     if dc_l3out_attach | bool else 'skipped (dc_l3out_attach=false)' }}.
+          Stage 06 deploys it to {{ dc_vrf_lite_border_leaf }}.

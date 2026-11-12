@@ -85,7 +85,7 @@ dc_vrf_lite_mtu: 1500
 #   -e dc_vrf_lite_interface_form=subinterface
 dc_vrf_lite_interface_form: parent
 
-# Which rows stages 05, 07 and 08 act on: all, or one L3Out name.
+# Which rows stages 05 and 07 act on: all, or one or more VRF names.
 dc_vrf_lite_only: all
 
 # THE THREE HANDOFFS, one L3Out each. The addresses are pinned because the
