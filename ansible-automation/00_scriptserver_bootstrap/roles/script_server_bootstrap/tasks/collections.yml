@@ -27,6 +27,20 @@
     'Nothing to do.' not in script_server_galaxy.stdout
     and 'is already installed' not in script_server_galaxy.stdout
 
+# --no-deps keeps a second ansible.netcommon out of the DC folder; the venv
+# already has the pinned one above.
+- name: Install the DC track's pre-release cisco.nd into its own folder
+  ansible.builtin.command:
+    cmd: >-
+      {{ script_server_venv_path }}/bin/ansible-galaxy collection install
+      -r {{ script_server_dc_nd_requirements }}
+      -p {{ script_server_dc_collections_dir }} --no-deps --force
+  register: script_server_dc_nd_galaxy
+  until: script_server_dc_nd_galaxy.rc == 0
+  retries: 4
+  delay: 10
+  changed_when: true
+
 - name: Remove leftover placeholder working directory
   ansible.builtin.file:
     path: "{{ ansible_user_dir }}/cisco-one-automation"

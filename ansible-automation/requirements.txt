@@ -38,3 +38,9 @@ macaddress==2.0.2
 packaging==24.2
 jmespath==1.0.1
 requests==2.32.3
+# cisco.nd (02_data_center stages 03-05, 07, 08) builds its module models with
+# pydantic and lists these in its own requirements.txt. Nothing installs a
+# collection's Python deps automatically. Versions are the ones the DC track was
+# tested with on the pod; pydantic is also what typer (nac-validate) resolves to.
+pydantic==2.14.3
+jsonpath-ng==1.16.0

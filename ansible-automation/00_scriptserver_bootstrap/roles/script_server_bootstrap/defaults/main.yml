@@ -54,6 +54,12 @@ script_server_resolv_conf_path: /etc/resolv.conf
 script_server_lab_dns_check_hosts:
   - cat-center.corp.pseudoco.com
 
+# The DC track's cisco.nd is a pre-release taken from git. It is installed into
+# that track's own collections folder, which only the DC ansible.cfg searches, so
+# no other track sees it.
+script_server_dc_nd_requirements: "{{ script_server_repo_dest }}/ansible-automation/02_data_center/ansible/collections/requirements-cisco-nd.yml"
+script_server_dc_collections_dir: "{{ script_server_repo_dest }}/ansible-automation/02_data_center/ansible/collections"
+
 # Shared pins live in ansible-automation/requirements.txt - the same file
 # stage-script-server.sh installs - so a bump cannot land in only one of them.
 script_server_requirements_file: "{{ script_server_repo_dest }}/ansible-automation/requirements.txt"

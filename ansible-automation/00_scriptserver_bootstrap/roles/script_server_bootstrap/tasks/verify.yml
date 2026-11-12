@@ -49,6 +49,20 @@
   loop_control:
     label: "{{ item.name }} {{ item.version }}"
 
+- name: Check the DC track's cisco.nd is installed
+  ansible.builtin.stat:
+    path: "{{ script_server_dc_collections_dir }}/ansible_collections/cisco/nd/MANIFEST.json"
+  register: script_server_dc_nd_manifest
+
+- name: Verify the DC track's cisco.nd
+  ansible.builtin.assert:
+    that:
+      - script_server_dc_nd_manifest.stat.exists
+    fail_msg: >-
+      cisco.nd is missing from {{ script_server_dc_collections_dir }}. Re-run the
+      bootstrap; the 02_data_center stages 03-05, 07 and 08 need it.
+    success_msg: cisco.nd for the DC track is installed.
+
 - name: Check Python package dependency consistency
   ansible.builtin.command:
     cmd: "{{ script_server_venv_path }}/bin/python -m pip check"

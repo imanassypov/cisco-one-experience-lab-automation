@@ -57,5 +57,6 @@ venv/
 # Ansible local cache
 .ansible/
 
-# Unreleased collections installed for an evaluation branch (eval/nd-l3out).
-.eval_collections/
+# The DC track's pre-release cisco.nd, installed by the bootstrap from
+# 02_data_center/ansible/collections/requirements-cisco-nd.yml.
+ansible-automation/02_data_center/ansible/collections/ansible_collections/

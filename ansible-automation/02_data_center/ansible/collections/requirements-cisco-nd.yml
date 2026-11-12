@@ -1,0 +1,8 @@
+---
+# cisco.nd for the data center track only, from its develop branch at a tested commit.
+# It is not released yet, so the bootstrap installs it into this folder rather than the
+# shared venv; ansible.cfg in the DC track looks here first.
+collections:
+  - name: https://github.com/CiscoDevNet/ansible-nd.git
+    type: git
+    version: 671e596
