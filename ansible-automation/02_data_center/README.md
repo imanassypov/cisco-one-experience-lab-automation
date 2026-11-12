@@ -4,7 +4,7 @@ This directory contains the Infrastructure as Code track for the data center fab
 
 The automation is an alternative to the manual Nexus Dashboard deployment in the student guide. Run one track or the other. Both tracks build the same `Pseudoco-DC1` fabric on the same pod.
 
-> **Evaluation branch `eval/nd-l3out`.** This branch builds the VRF-Lite handoff as three Nexus Dashboard **L3Out** objects instead of VRF attachment extensions, and replaces most `cisco.dcnm` and `dcnm_rest` calls in stages 03 to 08 with native `cisco.nd` modules from the unreleased `develop` branch (commit `671e596`). The stages are renumbered. It is not merged to `main` and has not yet been run on a pod. Findings, open questions and the test plan: [`docs/eval-nd-l3out.md`](../../docs/eval-nd-l3out.md).
+Each VRF leaves the fabric to the edge router through one Nexus Dashboard **L3Out**: a routed sub-interface on the border leaf plus an eBGP session. In the Nexus Dashboard UI they appear under **Manage > Routing Policies > L3Outs**; the VRF attachments themselves show Extend `NONE`.
 
 ## What the automation builds
 
@@ -66,13 +66,12 @@ ansible-playbook playbooks/01_dc_deploy.yml
 
 The first command is a prerequisite, not part of the orchestrator. It reads each switch serial over SSH and generates `playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml`. That file is build output and is overwritten on every run. Change the tracked `dc_switches.yml` or `topology_switches.nac.yaml.example` instead.
 
-On this branch, `cisco.nd` must be installed into the git-ignored `.eval_collections/` at the repository root, with its Python requirements. `ansible.cfg` searches that path first, for this track only:
+Stages 03 to 05, 07 and 08 use `cisco.nd`, a pre-release collection taken from git at a tested commit. The script-server bootstrap installs it into this track's own `ansible/collections/` folder, which only this track's `ansible.cfg` searches. On a server bootstrapped before this change, install it once by hand:
 
 ```bash
-cd ~/cisco-one-experience-lab-automation
-ansible-galaxy collection install 'git+https://github.com/CiscoDevNet/ansible-nd.git,671e596' \
-  -p .eval_collections --no-deps
-pip install 'pydantic==2.12.5' requests_toolbelt jsonpath-ng lxml
+cd ~/cisco-one-experience-lab-automation/ansible-automation/02_data_center/ansible
+ansible-galaxy collection install -r collections/requirements-cisco-nd.yml -p collections --no-deps --force
+pip install -r ../../requirements.txt
 ```
 
 The orchestrator runs each stage as its own `ansible-playbook` process, in this order, and stops at the first failure:

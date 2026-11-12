@@ -16,12 +16,30 @@ implementation detail that used to live in playbook comments.
 - Comment-only edits must not change content. Compare the parsed YAML before
   and after (`yaml.safe_load_all`), and run `ansible-playbook --syntax-check`.
 
-## Branch context
+## Design decision: L3Outs and cisco.nd
 
-`eval/nd-l3out` builds the VRF-Lite handoff as Nexus Dashboard L3Outs with
-`cisco.nd` from the unreleased develop branch (commit `671e596`), installed in
-the git-ignored `.eval_collections/` at the repository root. Findings, pod
-results and open questions: `docs/eval-nd-l3out.md` at the repository root.
+- The handoff used to be built as VRF attachment extensions over the Manage
+  API (`06_vrf_lite.yml`). Cisco NaC engineering and PM position that method
+  only for customers who already use it, and recommend the L3Out object for
+  new work. The track moved to L3Outs after a pod evaluation on 2026-11-12
+  (steps 1-10 passed). The full history is in the git commits after tag
+  `eval-nd-l3out-base`.
+- What changed on the wire: nothing. The sub-interfaces, addresses, VRFs,
+  neighbours, route-map and received prefixes matched the old build. The one
+  extra line is `local-as 65000` per neighbour.
+- `cisco.nd` is a pre-release from `CiscoDevNet/ansible-nd` develop at commit
+  `671e596` (galaxy.yml says 1.5.0; the modules are `version_added: 2.0.0`).
+  It is pinned in `ansible/collections/requirements-cisco-nd.yml`. The
+  bootstrap installs it with `--no-deps` into `ansible/collections/`
+  (git-ignored), which only this track's `ansible.cfg` searches. When
+  `cisco.nd` 2.0.0 is released, move it to the normal pinned requirements and
+  re-test.
+- Python: `pydantic` and `jsonpath-ng` are pinned in
+  `ansible-automation/requirements.txt`. Upstream pins pydantic 2.12.5; the
+  venv runs 2.14.3 (required by `typer`), and the pod run passed on it.
+- Before bumping the commit, re-check the open L3Out and links PRs upstream
+  (#629, #626, #657 at the time). PR #657 was still changing
+  `nd_manage_links`.
 
 ## How stages run
 
@@ -117,15 +135,15 @@ results and open questions: `docs/eval-nd-l3out.md` at the repository root.
   recreate instead.
 - `nd_manage_l3out` identifies an L3Out by name only, hence the duplicate-name
   check. Names are 1-64 characters from `[A-Za-z0-9_-]`.
-- `advertise_default_route: true` reproduces main's `network 0.0.0.0/0` per
-  VRF. The L3Out template already applies `route-map extcon-rmap-filter out`.
+- `advertise_default_route: true` reproduces the old extension template's
+  `network 0.0.0.0/0` per VRF. The L3Out template already applies `route-map extcon-rmap-filter out`.
   `fabric1_details.local_asn` adds `local-as 65000` per neighbour, which is
   inert.
 - An attached L3Out leaves the VRF attachment's `extensionValues` empty. The UI
   shows Extend `NONE`, and stage 02's `dcnm_vrf state: replaced` cannot strip
   it.
-- The border-role check is kept from main. Whether an L3Out enforces it is
-  undocumented.
+- The border-role check is kept from the old VRF-Lite stage. Whether an L3Out
+  enforces it is undocumented.
 - The address check exists because the module takes the address and the mask
   length as separate fields.
 - `switch_id` is a serial on both sides, which makes the module diff exact.
@@ -144,7 +162,7 @@ results and open questions: `docs/eval-nd-l3out.md` at the repository root.
 
 ### 07 - verify
 - The inventory, VRF, network and attachment reads use `nd_rest` against the
-  same lan-fabric endpoints main reads with `dcnm_rest`. `gathered` output from
+  legacy lan-fabric endpoints, so the whole stage runs on `cisco.nd`. `gathered` output from
   `nd_manage_switches/vrfs/networks` drops `lanAttachState`, serial and mode,
   which the report needs.
 - The L3Out check runs `nd_manage_l3out` in check mode without `attach`;
@@ -249,3 +267,30 @@ results and open questions: `docs/eval-nd-l3out.md` at the repository root.
 - `topology_switches.nac.yaml.example`: port-channel descriptions must be
   ASCII. An em dash produced HTTP 500 "unexpected error during template
   execution" for vPC 3/4/5.
+
+## Observed on the pod, not yet explained
+
+- Nexus Dashboard keeps a second, policy-less link `Ethernet1/8 -> Gi2`,
+  discovered over CDP, beside the declared `ebgpVrfLite` link to
+  `GigabitEthernet2`. It is harmless: everything stays in sync and the
+  sessions come up.
+- `show bgp vrf all summary` is not valid on this NX-OS release; use
+  `show ip bgp summary vrf all`.
+
+## Open questions for Cisco
+
+- ND BU: why does an L3Out update reset `attach`? Can the module expose the
+  attach state and make `attach` idempotent?
+- ND BU: should a declared `ebgpVrfLite` link and the CDP-discovered link to
+  the same wire coexist?
+- ND BU: can `fabric1_details.local_asn` be left unset, avoiding a `local-as`
+  equal to the fabric ASN?
+- ND BU: does `VRF_LITE_AUTOCONFIG` or the link's IP pair matter for an L3Out,
+  or can both be dropped?
+- Upstream (`cisco.nd`): `nd_manage_links` resolves endpoints even for
+  `deleted`; `nd_manage_switches` cannot send `force` on removal and does not
+  expose `max_hop` or `use_credential_for_write`.
+- NaC: issue #772 (`vxlan.routing_policies.l3out`) was closed as completed, but
+  no code existed on any branch on 2026-11-12. When it lands, consider moving
+  the L3Outs into the data model.
+

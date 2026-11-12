@@ -1,7 +1,7 @@
 ---
 # VRF-Lite handoff: how each DC VRF leaves the fabric to the edge router (guide section 8).
 # VRF-Lite means one routed sub-interface plus one eBGP session per VRF on a shared wire.
-# Evaluation branch: the handoffs are built as Nexus Dashboard "L3Out" objects (stages 03-05).
+# Each handoff is built as a Nexus Dashboard "L3Out" object (stages 03-05).
 
 # Fabric-wide VRF-Lite behaviour. "manual" stops Nexus Dashboard picking its own VLAN tags,
 # which would not match the pre-built router. The subnet values are the controller's
