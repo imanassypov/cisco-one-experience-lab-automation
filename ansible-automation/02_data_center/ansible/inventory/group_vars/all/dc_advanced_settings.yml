@@ -4,25 +4,26 @@
 # inventory/group_vars/all/dc_vrf_lite.yml. Stage 03 applies both sources.
 
 # --------------------------------------------------------------------------
-# Nexus Dashboard fabric object properties, written with cisco.dcnm.dcnm_rest.
+# Nexus Dashboard fabric object properties, written with
+# cisco.nd.nd_manage_fabric_ibgp_vxlan.
 #
 # These properties are NOT nvPairs. Their names do not appear in the 423 nvPairs
 # of the live fabric; they live on the Nexus Dashboard 4.2 fabric object at
-# /api/v1/manage/fabrics/<fabric>, alongside a camelCase mirror of the
-# nvPairs. dcnm_fabric cannot reach them, so stage 03 does a read-modify-write
-# on that object instead. Names and values here are exactly as the API
-# returns them, lower case included.
+# /api/v1/manage/fabrics/<fabric>. Key names here are the module's top-level
+# config options (license_tier, telemetry_collection, location), so stage 03
+# passes this dictionary straight into the module and Ansible's argument check
+# rejects a misspelled key before anything is sent.
 # --------------------------------------------------------------------------
 dc_advanced_nd_fabric_settings:
   # UI: fabric settings, "License Tier". Premier is the tier the guide
   # selects; the fabric is created as essentials.
-  licenseTier: premier
+  license_tier: premier
 
   # UI: fabric settings, "Telemetry". Unchecked, so Nexus Dashboard does not
   # stream fabric telemetry into Insights. Already false on a freshly created
   # fabric, so declaring it here is enforcement rather than a change - it
   # stops a later UI click from drifting away unnoticed.
-  telemetryCollection: false
+  telemetry_collection: false
 
   # UI: fabric settings, "Location". San Jose, California, US.
   #
@@ -34,9 +35,8 @@ dc_advanced_nd_fabric_settings:
   # drops a pin on the fabric map. So the place name lives in this comment and
   # nowhere else, which is the reason the comment is here.
   #
-  # Both keys have to be given together. The stage applies this dictionary
-  # with a non-recursive combine, so a partial location would replace the
-  # whole object and leave the other coordinate at zero.
+  # Both keys have to be given together: the module declares latitude and
+  # longitude as required sub-options of location.
   location:
     latitude: 37.3382
     longitude: -121.8863
