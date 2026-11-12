@@ -1,10 +1,41 @@
 # Changelog
 
-The five changes that matter from this repository's history, newest first. This
+The changes that matter from this repository's history, newest first. This
 file replaces the per-date notes that used to live here: 91 entries across seven
 dated files, consolidated into the arcs they actually formed. Exact error
 strings, version numbers and API paths are kept deliberately — they are the
 reason these notes exist. Full history is in `git log`.
+
+- **02_data_center — the VRF-Lite handoff is now three Nexus Dashboard L3Outs, built with `cisco.nd`.** *2026-11-12.* The three handoffs out of DC-Service-Leaf
+  are no longer VRF attachment extensions written over the Manage API; each VRF
+  gets one L3Out (`05_l3out.yml`, `nd_manage_l3out`) on an eBGP VRF-Lite
+  inter-fabric link (`nd_manage_links`, policy `ebgpVrfLite`). Cisco recommends
+  the L3Out object for new work. The wire result is unchanged and was diffed
+  against the old build on the pod: same sub-interfaces, addresses, VRFs,
+  neighbours, `extcon-rmap-filter` route-map and received prefixes; the only
+  extra line is `local-as 65000`. In the UI, VRF attachments now show Extend
+  `NONE` and the handoff lives under Routing Policies > L3Outs.
+
+  Stages 03 to 08 moved from `cisco.dcnm`/`dcnm_rest` to `cisco.nd` modules
+  (35 `dcnm_rest` calls down to 2), and the stages were renumbered: one deploy
+  (06) instead of two, verify is 07, cleanup is 08. `01_dc_deploy.yml` now runs
+  each stage as its own `ansible-playbook` process, because ansible-core does
+  not key persistent connections on `ansible_network_os` and a `cisco.nd` stage
+  could otherwise reuse stage 02's `cisco.dcnm` connection. The "VRF-Lite stage
+  must follow stage 02" rule is gone: an attached L3Out leaves
+  `extensionValues` empty, so `dcnm_vrf state: replaced` cannot strip it.
+
+  `cisco.nd` is a pre-release from git (`CiscoDevNet/ansible-nd` develop,
+  `671e596`). The bootstrap installs it into the DC track's own
+  `ansible/collections/`, so no other track sees it; `pydantic` and
+  `jsonpath-ng` are now pinned in `requirements.txt`. Three things the pod
+  forced: `interface_name` must be the sub-interface ("Subinterface name should
+  contain dot1q ID as well. Ex: Ethernet1/1.300"); `advertise_default_route`
+  is needed to keep `network 0.0.0.0/0`; and an L3Out update resets its
+  `attach` flag, which no module output shows, so stage 05 reads it from the
+  L3Out GET and attaches only when needed. Playbook comments were cut to
+  three plain-English lines per block for students; the detail moved to
+  `02_data_center/AGENTS.md`.
 
 - **02_data_center — the DC VXLAN EVPN fabric is now automated, built on Cisco Nexus as Code.** *2026-09-25 to 2026-09-27.* A one-paragraph stub became a working
   pipeline at `ansible/` that builds the DC fabric end to end,
