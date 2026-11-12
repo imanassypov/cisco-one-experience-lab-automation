@@ -1,7 +1,7 @@
 ---
-# Underlay settings. Guide section 4, Advanced Settings > General Parameters.
+# Underlay: the routed IP network between spines and leaves that carries VXLAN traffic.
 vxlan:
   underlay:
     ipv4:
-      # Guide: "Underlay Subnet IP Mask: select 31". Upstream default is 30.
+      # Each spine-leaf link gets a /31 (two addresses, no waste), as the guide asks.
       subnet_mask: 31

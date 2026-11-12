@@ -1,54 +1,21 @@
 ---
-# Non-VRF fabric-object properties not represented in the Network as Code
-# model. VRF-Lite fabric behavior and its link/extension values are declared in
-# inventory/group_vars/all/dc_vrf_lite.yml. Stage 03 applies both sources.
+# Fabric settings that the Nexus as Code data model cannot express. Stage 03 applies them.
+# VRF-Lite settings live separately in dc_vrf_lite.yml.
 
-# --------------------------------------------------------------------------
-# Nexus Dashboard fabric object properties, written with
-# cisco.nd.nd_manage_fabric_ibgp_vxlan.
-#
-# These properties are NOT nvPairs. Their names do not appear in the 423 nvPairs
-# of the live fabric; they live on the Nexus Dashboard 4.2 fabric object at
-# /api/v1/manage/fabrics/<fabric>. Key names here are the module's top-level
-# config options (license_tier, telemetry_collection, location), so stage 03
-# passes this dictionary straight into the module and Ansible's argument check
-# rejects a misspelled key before anything is sent.
-# --------------------------------------------------------------------------
+# Properties of the Pseudoco-DC1 fabric in Nexus Dashboard (fabric settings in the UI).
 dc_advanced_nd_fabric_settings:
-  # UI: fabric settings, "License Tier". Premier is the tier the guide
-  # selects; the fabric is created as essentials.
+  # "License Tier": Premier, as the guide selects (the fabric starts as Essentials).
   license_tier: premier
 
-  # UI: fabric settings, "Telemetry". Unchecked, so Nexus Dashboard does not
-  # stream fabric telemetry into Insights. Already false on a freshly created
-  # fabric, so declaring it here is enforcement rather than a change - it
-  # stops a later UI click from drifting away unnoticed.
+  # "Telemetry": off, so the fabric does not stream data into Insights.
+  # Already off on a new fabric; declaring it stops a later UI click drifting unnoticed.
   telemetry_collection: false
 
-  # UI: fabric settings, "Location". San Jose, California, US.
-  #
-  # Coordinates, not a place name, and that is not a shortcut taken here:
-  # Nexus Dashboard has no field for the name. There is no city, country or
-  # address key anywhere on the fabric object, in its management sub-object or
-  # among the fabric's 423 nvPairs - checked, not assumed. The UI's location
-  # picker geocodes whatever you type and stores only these two numbers, then
-  # drops a pin on the fabric map. So the place name lives in this comment and
-  # nowhere else, which is the reason the comment is here.
-  #
-  # Both keys have to be given together: the module declares latitude and
-  # longitude as required sub-options of location.
+  # "Location": San Jose, California, US. Nexus Dashboard stores only coordinates,
+  # so this comment is the only place the city name is kept. Give both values together.
   location:
     latitude: 37.3382
     longitude: -121.8863
 
-# --------------------------------------------------------------------------
-# Deliberately NOT here
-#
-# "Add Switches without Reload" is the Advanced-tab dropdown behind the
-# GRFIELD_DEBUG_FLAG nvPair, and Nexus as Code does model it - as
-# vxlan.global.ibgp.greenfield_cleanup in
-# playbooks/host_vars/Pseudoco-DC1/global.nac.yaml, already set to Enable.
-# It is not duplicated here on purpose. Two files setting one nvPair is a
-# drift bug waiting to happen, and the rule for this stage is that it carries
-# only what Nexus as Code cannot express.
-# --------------------------------------------------------------------------
+# "Add Switches without Reload" is deliberately not here: Nexus as Code already sets it
+# (greenfield_cleanup in global.nac.yaml), and two files setting one value would drift.

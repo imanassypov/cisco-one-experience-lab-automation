@@ -1,28 +1,7 @@
 ---
-# Shape reference for the switch topology. This file is tracked in git and is
-# read by exactly one thing: the generator in stage 00.
-#
-#   cd ansible-automation/02_data_center/ansible
-#   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
-#
-# Stage 00 SSHes to the switches, reads ansible_net_serialnum from
-# cisco.nxos.nxos_facts, copies this file to topology_switches.nac.yaml beside
-# it and substitutes each switch's serial_number and role. Nothing has to
-# exist in Nexus Dashboard first, so it runs before anything else here. That
-# generated copy is what the create role reads, and it is gitignored because
-# serial numbers are the hardware of one dCloud pod.
-#
-# Edit this file to change the SHAPE of the model - which switches exist, what
-# port-channels they carry. Edit inventory/group_vars/all/dc_switches.yml to
-# change the switch TABLE - names, management addresses, roles. The two must
-# agree on the names, because the generator anchors its substitution on the
-# switch name: a switch named differently here never receives its serial, and
-# stage 00's own post-write check fails the run rather than let a placeholder
-# reach the create role. That matters because rule 301 in the validate role
-# only checks that serial_number is non-empty, so a placeholder passes
-# validation and fails much later, deep inside the create role.
-#
-# REPLACE_ME is the placeholder the generator overwrites. Leave it in place.
+# Template for the fabric's switches and their server port-channels. Stage 00 copies it
+# to topology_switches.nac.yaml and fills in each serial number (REPLACE_ME - leave it).
+# Switch names must match inventory/group_vars/all/dc_switches.yml exactly.
 vxlan:
   topology:
     switches:
@@ -31,27 +10,8 @@ vxlan:
         role: leaf
         management:
           management_ipv4_address: 198.18.128.101
-        # Keep every description below ASCII-only. These strings are the only
-        # free text in this file that reaches Nexus Dashboard: the create role
-        # sends them as PEER1_PO_DESC/PEER2_PO_DESC in the globalInterface
-        # payload, and NDFC renders them through a Velocity template.
-        #
-        # They read "MAIN server - vPC3" with an em dash until 2026-09-25, and
-        # step 13/21 (interface_all, dcnm_interface) failed with HTTP 500 on
-        # POST .../lan-fabric/rest/globalInterface - "An unexpected error
-        # occurred during template execution" - against the three vPCs
-        # DC-Leaf2:DC-Leaf1:vPC3, vPC4 and vPC5. Every other nvPair in that
-        # payload was the collection's own default from
-        # roles/validate/files/defaults.yml (MTU jumbo, SPEED Auto, PC_MODE
-        # active, PEER1_ACCESS_VLAN 1 and so on), and the em dash was the only
-        # non-ASCII byte in the entire request, in a field NDFC feeds to a
-        # template renderer.
-        #
-        # That is suspicion, not a proven root cause: Cisco documents no
-        # character restriction on interface descriptions, and NDFC returns
-        # that same generic message for unrelated faults. But it is the one
-        # variable we control, and dropping it costs nothing. The rest of this
-        # repo uses em dashes freely in prose, so the reflex here is wrong.
+        # Each port-channel below is one vPC to a server, built on both leaves.
+        # Keep descriptions plain ASCII (hyphens, not dashes); they become switch config.
         interfaces:
           - name: Port-channel3
             mode: access

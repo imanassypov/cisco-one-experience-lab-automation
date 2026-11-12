@@ -1,22 +1,7 @@
 ---
-# Overlay networks and their attachments. Guide section 6, "Create Networks"
-# and "Create Attachments - Assign Switch Interfaces to Networks".
-#
-# One network per business segment, each anycast-gatewayed and bound to the
-# vPC that its Linux workload hangs off. The guide does this in two passes -
-# create the network, then edit its Network Attachments tab and add the
-# port-channel - and the data model collapses both into one declaration.
-#
-# is_l2_only stays false, which is the data model's spelling of the guide's
-# "Network Mode: Layer 3".
-#
-# vlan_id is pinned on every network, taken in declaration order from the
-# fabric's L2 VLAN range 2300-2999 (layer2_vlan_range in the collection's
-# validate defaults). The guide clicks "Propose VLAN", which is safe one
-# network at a time; in a batched run the resource-manager lookup hands back
-# the same next-free VLAN for all three, because reading it reserves nothing,
-# and the two that lose the race fail with "Entered network VLAN id 2300 is
-# already in use".
+# Overlay networks (guide section 6): one subnet per VRF, stretched across the leaves.
+# gw_ip_address is the anycast gateway: the same default gateway on every leaf.
+# net_id is the L2 VNI. Always set vlan_id yourself (2300-2999) to avoid clashes.
 vxlan:
   overlay:
     networks:
@@ -50,10 +35,8 @@ vxlan:
         gw_ip_address: "10.102.252.1/24"
         network_attach_group: iot_vpc5
 
-    # Each group attaches one port-channel on BOTH leaves, matching the guide's
-    # "select port-channel3 in the DC-Leaf1 and in the DC-Leaf2 switches".
-    # The port-channels themselves are declared in the generated
-    # topology_switches.nac.yaml, sourced from inventory/group_vars/all/dc_switches.yml.
+    # Attach groups: which server ports each network reaches. Each lists the same
+    # vPC port-channel on both leaves; the port-channels are defined in topology_switches.
     network_attach_groups:
       - name: main_vpc3
         switches:

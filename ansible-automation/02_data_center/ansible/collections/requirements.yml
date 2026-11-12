@@ -1,25 +1,7 @@
 ---
-# Pins for Nexus as Code against Nexus Dashboard 4.2.1.10.
-#
-# cisco.nac_dc_vxlan is the declarative layer; it renders cisco.dcnm module
-# calls from the host_vars data model. It declares cisco.dcnm >= 3.13.0 as a
-# hard dependency, and that floor matters: ND 4.2.1 support landed in
-# cisco.dcnm 3.12.1 and 3.13.0 adds 4.3.1. Do not pin cisco.dcnm lower.
-#
-# cisco.nxos is used by one stage only - 00_discover_dc_switch_serials.yml,
-# which SSHes to the switches to read their serial numbers. Every other stage
-# talks to Nexus Dashboard over httpapi and needs none of it.
-#
-# The four supporting collections match the versions in the upstream example
-# repo (netascode/ansible-dc-vxlan-example requirements.yaml). All four declare
-# requires_ansible ">=2.15.0", so they are compatible with the ansible-core
-# 2.17.14 pinned in ansible-automation/requirements.txt, and community.general
-# 10.1.0 still satisfies the campus collection's ">=8.0.0,<11.0.0" constraint.
-#
-# Keep this file and
-# 00_scriptserver_bootstrap/roles/script_server_bootstrap/files/requirements.yml
-# identical. The bootstrap is what actually installs, so a higher pin here that
-# the bootstrap never applies is silently a no-op.
+# Ansible collections (add-on modules) this project needs, pinned for Nexus Dashboard 4.2.1.10.
+# cisco.nac_dc_vxlan turns the data model into config; it needs cisco.dcnm 3.13.0 or later.
+# Keep identical to the script server bootstrap's requirements.yml, which does the install.
 collections:
   - name: cisco.nac_dc_vxlan
     version: "0.9.0"

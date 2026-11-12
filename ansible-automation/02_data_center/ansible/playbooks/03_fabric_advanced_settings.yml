@@ -1,29 +1,7 @@
 ---
-# Stage 03 - apply the fabric settings Nexus as Code cannot express.
-#
-# These are the guide's Resources-tab and General-tab settings that
-# cisco.nac_dc_vxlan 0.9.0 has no data model key for: VRF-Lite deployment
-# mode and subnet pool, license tier, telemetry and location. Values live in
-# inventory/group_vars/all/dc_vrf_lite.yml (dc_vrf_lite_fabric_settings) and
-# inventory/group_vars/all/dc_advanced_settings.yml
-# (dc_advanced_nd_fabric_settings). This playbook holds none of its own.
-#
-# EVALUATION BRANCH (eval/nd-l3out). One cisco.nd.nd_manage_fabric_ibgp_vxlan
-# task replaces main's dcnm_fabric call and its read-modify-write of the
-# fabric object over dcnm_rest. state: merged sends only the keys declared
-# here: the module's argument spec carries no defaults, unset options are
-# stripped before the diff, and the update starts from the controller's own
-# copy of the fabric. So everything stage 02 wrote is left alone, and a second
-# run sends nothing.
-#
-# config_actions is left out, which for this module means no save and no
-# deploy. Nothing here touches a switch.
-#
-# Run from the collection root, the directory holding ansible.cfg, as its own
-# ansible-playbook run (see 01_dc_deploy.yml for why):
-#
-#   cd ansible-automation/02_data_center/ansible
-#   ansible-playbook playbooks/03_fabric_advanced_settings.yml
+# Stage 03: sets fabric options Nexus as Code has no field for (VRF-Lite mode, license, telemetry, location).
+# Values live in group_vars (dc_vrf_lite.yml, dc_advanced_settings.yml). Only the fabric changes, no switch.
+# Run from the folder holding ansible.cfg: ansible-playbook playbooks/03_fabric_advanced_settings.yml
 
 - name: Stage 03 - apply advanced fabric settings
   hosts: Pseudoco-DC1
@@ -31,8 +9,7 @@
   any_errors_fatal: true
 
   vars:
-    # cisco.nd modules need their own httpapi plugin. Stage 02 needs
-    # cisco.dcnm.dcnm, which group_vars/nd/connection.yml sets.
+    # The cisco.nd modules talk to Nexus Dashboard through this connection plugin.
     ansible_network_os: cisco.nd.nd
 
   pre_tasks:
@@ -50,9 +27,7 @@
           inventory/group_vars/all/dc_advanced_settings.yml.
       tags: [always]
 
-    # Read first because state: merged would otherwise try to CREATE a missing
-    # fabric, and fail on the absent BGP ASN with a message that reads like a
-    # bug here rather than a stage run out of order.
+    # Make sure stage 02 has created the fabric, so a run out of order gives a clear error.
     - name: Look for the fabric on the controller
       cisco.nd.nd_manage_fabric_ibgp_vxlan:
         state: gathered
@@ -75,6 +50,7 @@
       tags: [always]
 
   tasks:
+    # merged = send only these settings and leave the rest of the fabric as it is.
     - name: Apply the fabric settings Nexus as Code cannot express
       cisco.nd.nd_manage_fabric_ibgp_vxlan:
         state: merged

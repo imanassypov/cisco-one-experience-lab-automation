@@ -1,65 +1,7 @@
 ---
-# Stage 07 - verify the deployed fabric against the declared intent.
-#
-# Read-only throughout: API GETs to Nexus Dashboard and show commands on one
-# switch, so it is safe to re-run as often as you like while debugging.
-#
-# Two sources of truth, deliberately kept apart. Almost every check reads the
-# Nexus Dashboard API, which needs no SSH and works when the VPN cannot reach
-# the 198.18.128.x management range. One check reads the real BGP session state
-# off the border leaf over SSH, because "the controller deployed the extension"
-# and "the eBGP session came up" are different claims, and only the second one
-# means external connectivity works.
-#
-# What it compares:
-#   - every switch in inventory/group_vars/all/dc_switches.yml is in the
-#     fabric, holding the role declared for it
-#   - every VRF in vrfs.nac.yaml exists and is attached to every switch in its
-#     vrf_attach_group
-#   - every network in networks.nac.yaml exists with the declared gateway, and
-#     is attached to the declared port-channels
-#   - every L3Out declared in inventory/group_vars/all/dc_vrf_lite.yml exists
-#     on the controller with the declared VRF, dot1q tag, addresses and MTU,
-#     and the module finds no drift against the definition stage 05 writes
-#   - every attachment the controller reports as attached (isLanAttached: true)
-#     is DEPLOYED. Switches the controller lists but has not attached come back
-#     as NA and are not judged - see the comment in Compare VRFs
-#   - every VRF-Lite eBGP session declared in dc_vrf_lite.yml is Established on
-#     the border leaf. This is the only check that reads a switch instead of the
-#     controller, and the only one with three possible answers rather than two:
-#     established, down, or not determined because the switch was unreachable.
-#     Not determined never counts as down and never fails the run
-#
-# It writes timestamped reports in evidence/ and fails at the end on any
-# mismatch.
-#
-# Run from the collection root, the directory holding ansible.cfg:
-#
-#   cd ansible-automation/02_data_center/ansible
-#   ansible-playbook playbooks/07_verify_fabric.yml
-#
-# Useful overrides:
-#   -e dc_verify_fail_on_mismatch=false   write the report without failing the
-#                                         run
-#   -e dc_verify_bgp_sessions=false       skip the SSH read of the BGP sessions
-#                                         and compare only what the controller
-#                                         knows
-#
-# EVALUATION BRANCH (eval/nd-l3out). Every controller read goes through
-# cisco.nd, so this stage runs as its own ansible-playbook process on the
-# cisco.nd.nd httpapi plugin:
-#   - the L3Out check is nd_manage_l3out in check mode, built by the same task
-#     file stage 05 writes with (tasks/l3out_config.yml)
-#   - the inventory, VRF, network and attachment reads are nd_rest against the
-#     same endpoints main reads with dcnm_rest. nd_manage_switches,
-#     nd_manage_vrfs and nd_manage_networks were checked: their gathered
-#     output is replay-safe config and drops the per-attachment deploy state
-#     (lanAttachState) and switch serial and mode this report is built on
-#   - the raw L3Out collection is saved next to the report, because no
-#     module output says whether an L3Out is attached (docs/eval-nd-l3out.md,
-#     blocker B4). The switch reads below are what prove it was deployed
-#
-# Background: "What the verification stage proves" in the README.
+# Stage 07 - read-only check that the deployed fabric matches the declared intent; writes reports to evidence/.
+# Most checks ask Nexus Dashboard; BGP and sub-interfaces are read off the border leaf ("deployed" is not "BGP is up").
+# Run from ansible-automation/02_data_center/ansible: ansible-playbook playbooks/07_verify_fabric.yml
 
 - name: Stage 07a - name the border leaf as the target of the BGP session check
   hosts: Pseudoco-DC1
@@ -67,21 +9,13 @@
   any_errors_fatal: true
 
   vars:
-    # Set false to skip the BGP session check. With it off no SSH session is
-    # opened at all, and the report says the check was skipped rather than
-    # making any claim about the sessions.
+    # Set false (-e dc_verify_bgp_sessions=false) to skip the SSH read of the switch.
+    # The report then says the BGP check was skipped instead of guessing.
     dc_verify_bgp_sessions: true
 
   tasks:
-    # add_host creates an inventory host while the play is running, which is how
-    # stage 00 builds its switch group too. The group is dc_fabric_switches
-    # because that is where the SSH settings and the vault credentials already
-    # live, in inventory/group_vars/dc_fabric_switches/connection.yml, so
-    # nothing about the connection is repeated here.
-    #
-    # The management address is looked up in
-    # inventory/group_vars/all/dc_switches.yml, the same table stage 00 reads. A
-    # border leaf missing from that table falls back to being resolved by name.
+    # Adds the border leaf to the switch group that already holds the SSH settings
+    # and vault credentials, using its management address from dc_switches.yml.
     - name: Add the border leaf to the switch group so it can be read over SSH
       ansible.builtin.add_host:
         name: "{{ dc_vrf_lite_border_leaf }}"
@@ -97,71 +31,22 @@
         - dc_vrf_lite_extensions | default([]) | length > 0
 
 - name: Stage 07b - read the VRF-Lite BGP session state off the border leaf
-  # Only the border leaf carries the VRF-Lite extensions, and the task below is
-  # limited to it. The play still names the whole group because that is the one
-  # the credentials are attached to, and because stage 00 may already have
-  # filled it with all five switches when both stages run from
-  # 01_dc_deploy.yml. A task that is skipped opens no SSH session, so naming the
-  # group costs nothing.
+  # Only the border leaf is read. The play targets the whole switch group because
+  # that is where the SSH credentials live; skipped hosts open no SSH session.
   hosts: dc_fabric_switches
   gather_facts: false
-  # vars declared in one play are not visible in the next, so the default for
-  # this flag is repeated in each play that reads it. -e on the command line
-  # overrides all of them at once.
+  # Play variables do not carry over to the next play, so defaults are repeated.
   vars:
     dc_verify_bgp_sessions: true
     dc_verify_subinterfaces: true
-  # A border leaf this play cannot reach must not fail stage 07. Every other
-  # check in this stage talks to Nexus Dashboard and does not need the VPN to
-  # the switch management range, so an unreachable switch costs one check rather
-  # than the whole report. ignore_unreachable lets the play finish anyway; the
-  # next play sees an empty result and reports those rows as "not determined".
+  # If the border leaf cannot be reached, keep going: every other check uses the
+  # controller API, so an unreachable switch is reported as "not determined", not down.
   ignore_unreachable: true
 
   tasks:
-    # One show command per extension declared in
-    # inventory/group_vars/all/dc_vrf_lite.yml, with independent convergence retries.
-    #
-    # The command is `show bgp sessions [vrf vrf-name]`, from the "Monitor BGP
-    # Statistics" table of the Cisco Nexus 9000 Series NX-OS Unicast Routing
-    # Configuration Guide, Release 10.6(x), BGP chapter:
-    # https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/106x/configuration/unicast-routing-configuration/cisco-nexus-9000-series-nx-os-unicast-routing-configuration-guide/configuring-bgp.html
-    # A VRF-Lite peering lives inside its VRF, not in the default VRF and not in
-    # the EVPN address family, so the VRF name has to be on the command or the
-    # neighbour is not in the output at all. A BGP session is one TCP session per
-    # neighbour whatever address families it carries, so the session state is
-    # read here rather than per address family.
-    #
-    # `output: json` asks NX-OS for the machine-readable form of the output, and
-    # the module hands back a parsed dictionary. Nothing downstream matches
-    # against screen text.
-    #
-    # Illustrative current-attempt result (remoteas is an example, not a
-    # verified switch value). dc_bgp_session_output.stdout is the list below:
-    # stdout:
-    #   - TABLE_vrf:
-    #       ROW_vrf:
-    #         vrf-name-out: main
-    #         TABLE_neighbor:
-    #           ROW_neighbor:
-    #             neighbor-id: "192.168.252.14"
-    #             remoteas: "65001"
-    #             state: Established
-    #
-    # `first` extracts TABLE_vrf's containing dictionary. ROW_vrf and
-    # ROW_neighbor can each be a dictionary or a list; the check handles both.
-    # A session still coming up might instead have state: Idle. During retries,
-    # stdout holds the current item's latest attempt; after the loop completes,
-    # each final output is under dc_bgp_session_output.results[index].stdout.
-    #
-    # A VRF that does not exist on this switch returns an empty string rather
-    # than an error, so a fabric that was never built reads as "no session"
-    # instead of stopping the run here.
-    #
-    # ignore_errors leaves the verdict to the next play instead of taking it
-    # here: a command that failed has to read as "not determined", not as a down
-    # session. register saves the result so the next play can read it out of
-    # hostvars.
+    # Ask the border leaf for each VRF-Lite BGP neighbour's state, as structured JSON.
+    # The VRF name is needed because VRF-Lite peerings live inside their VRF.
+    # Retries give a session time to come up; errors are left for the next play to judge.
     - name: Ask the border leaf for the BGP session state of each VRF-Lite VRF
       cisco.nxos.nxos_command:
         commands:
@@ -198,36 +83,9 @@
           {%- endfor -%}
           {{ matched | length > 0 }}
 
-    # Every other check in this stage asks Nexus Dashboard what it believes.
-    # This one asks the switch, and it exists because the two can disagree
-    # silently: the controller reported all three extensions attached and
-    # DEPLOYED while the report called them missing, and only the running
-    # configuration settled which was right.
-    #
-    # pyATS/Genie turns `show interface` into a structure, so the dot1q tag, the
-    # address, the MTU and the operational state are read as named fields rather
-    # than matched out of screen text. Genie resolves the parser from
-    # ansible_network_os, which the inventory already sets to nxos.
-    #
-    # One command per sub-interface: NX-OS rejects more than two ranges in a
-    # single `show interface` and a sub-interface is not covered by a `show
-    # running-config interface Ethernet1/8` of its parent.
-    #
-    # Illustrative subset of one dc_subinterface_output.results entry
-    # (not captured live; all interface values are examples):
-    # parsed:
-    #   Ethernet1/8.300:
-    #     oper_status: up
-    #     mtu: 9216
-    #     encapsulations:
-    #       first_dot1q: "300"
-    #     ipv4:
-    #       "192.168.252.13/30": {}
-    #
-    # Unlike the BGP task's JSON stdout, Genie puts structured data in parsed.
-    # The comparison looks up the full interface name, then checks operational
-    # state, dot1q tag, address/prefix membership and MTU. Each loop result is
-    # stored under dc_subinterface_output.results[index].parsed.
+    # The controller can say DEPLOYED while the switch disagrees, so read each
+    # VRF-Lite sub-interface off the switch too. pyATS/Genie parses the output
+    # into named fields (VLAN tag, address, MTU, up/down) instead of screen text.
     - name: Read each VRF-Lite sub-interface off the border leaf
       ansible.utils.cli_parse:
         command: "show interface {{ dc_vrf_lite_interface }}.{{ item.dot1q }}"
@@ -256,41 +114,31 @@
     dc_verify_bgp_sessions: true
     dc_verify_subinterfaces: true
 
-    # What stage 07b registered on the border leaf. The `in hostvars` test
-    # covers the case where the flag is off and that host was never created.
+    # Results that stage 07b saved on the border leaf (empty if it never ran).
     dc_bgp_output: >-
       {{ (hostvars[dc_vrf_lite_border_leaf].dc_bgp_session_output | default({}))
          if dc_vrf_lite_border_leaf in hostvars else {} }}
     dc_bgp_results: "{{ dc_bgp_output.results | default([]) }}"
 
-    # The pyATS-parsed sub-interfaces from the same play, one result per
-    # declared extension.
     dc_subinterface_results: >-
       {{ ((hostvars[dc_vrf_lite_border_leaf].dc_subinterface_output | default({})).results | default([]))
          if dc_vrf_lite_border_leaf in hostvars else [] }}
 
-    # The transport's own explanation, shown in the report when the read did not
-    # happen, so the student is not left guessing between a VPN that is down and
-    # a password that is wrong.
+    # Why the switch could not be read (e.g. VPN down, bad password), shown in the report.
     dc_bgp_undetermined_reason: >-
       {{ (dc_bgp_results | selectattr('msg', 'defined')
           | map(attribute='msg') | unique | join('; '))
          | default(dc_bgp_output.msg
                    | default('stage 07b did not run, so nothing was read', true), true) }}
-    # Same convention as the campus collection: evidence/ sits beside
-    # playbooks/, and realpath collapses the ../ hop so the closing summary
-    # prints a path worth copying.
+    # Reports go to evidence/ beside playbooks/, named with the run time.
     dc_evidence_path: "{{ (playbook_dir ~ '/../evidence/stage07-verification-' ~ dc_evidence_run_id ~ '.md') | realpath }}"
-    # Same data, audit presentation. The campus collection's stage 12 writes the
-    # pair the same way, and this one matches its layout so the two read alike.
     dc_evidence_html_path: "{{ (playbook_dir ~ '/../evidence/stage07-verification-' ~ dc_evidence_run_id ~ '.html') | realpath }}"
     dc_evidence_l3out_path: "{{ (playbook_dir ~ '/../evidence/stage07-l3outs-' ~ dc_evidence_run_id ~ '.json') | realpath }}"
 
   tasks:
     # ------------------------------------------------------- declared intent
-    # Read from the same .nac.yaml files the create role consumes, so the report
-    # can never drift from what was deployed. include_vars loads a YAML file
-    # into a variable; delegate_to: localhost reads it from this machine.
+    # Load the same .nac.yaml model files that built the fabric, so the report
+    # always compares against exactly what was meant to be deployed.
     - name: Read the declared VRFs
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/vrfs.nac.yaml"
@@ -312,16 +160,9 @@
         dc_declared_network_attach_groups: >-
           {{ dc_declared_network_model.vxlan.overlay.network_attach_groups | default([]) }}
 
-    # Naming no attach group at all is allowed: the object is attached to
-    # nothing, and the comparisons below fail its row without help here. Naming
-    # a group that does not exist is the dangerous case. The lookup then matches
-    # nothing, the declared switch list comes back empty, and the
-    # missing-switches and missing-attachments checks pass having proved nothing
-    # - so a VRF attached to one leaf of two would be reported as a pass.
-    # Checked before the first API call, so a typo reads as a typo. It is
-    # deliberately not gated on dc_verify_fail_on_mismatch: that flag means
-    # "report the mismatch instead of failing", and a model this stage cannot
-    # resolve produces no report worth showing.
+    # Stop early if a VRF or network names an attach group that does not exist.
+    # Otherwise its switch list would be empty and the attachment checks would pass
+    # without proving anything. This is a typo in the model, not a fabric fault.
     - name: Fail on an attach group that is named but never declared
       ansible.builtin.assert:
         that:
@@ -337,8 +178,7 @@
           {{ dc_declared_vrf_attach_groups | map(attribute='name') | list }}
         network_group_names: >-
           {{ dc_declared_network_attach_groups | map(attribute='name') | list }}
-        # default('', true) is boolean mode so a key that is present but null
-        # reads as absent rather than as a group literally named None.
+        # A group key that is present but empty counts as "no group named".
         unresolved_groups: >-
           {%- set unresolved = [] -%}
           {%- for vrf in dc_declared_vrfs -%}
@@ -360,19 +200,8 @@
           {{ unresolved }}
 
     # ------------------------------------------------------- observed state
-    # Illustrative subset of dc_observed_inventory (not captured live;
-    # names, addresses and serial numbers are examples):
-    # jsondata:
-    #     - switchName: example-leaf
-    #       ipAddress: "198.18.128.10"
-    #       switchRole: leaf
-    #       serialNumber: EXAMPLE-SERIAL
-    #       mode: Normal
-    #
-    # jsondata is a list with one record per switch. Normalisation saves
-    # it as dc_switches_observed; the comparison finds each declared switch by
-    # ipAddress and checks switchRole. Serial and mode are informational, as is
-    # the optional ccStatus field (shown as 'not reported' when absent).
+    # Read what the controller actually has: switches (with their roles), VRFs,
+    # networks, and which switches and ports each one is attached to.
     - name: Read the fabric inventory
       cisco.nd.nd_rest:
         method: get
@@ -380,14 +209,6 @@
       register: dc_observed_inventory
       changed_when: false
 
-    # Illustrative subset of dc_observed_vrf_response (not captured live;
-    # VRF names and IDs are examples):
-    # jsondata:
-    #     - vrfName: MAIN
-    #       vrfId: 50000
-    #
-    # jsondata becomes dc_vrfs_observed. The comparison selects vrfName
-    # and checks vrfId against the declared vrf_id; attachments are read below.
     - name: Read the fabric VRFs
       cisco.nd.nd_rest:
         method: get
@@ -395,16 +216,6 @@
       register: dc_observed_vrf_response
       changed_when: false
 
-    # Illustrative subset of dc_observed_network_response (not captured live;
-    # names and addresses are examples):
-    # jsondata:
-    #     - networkName: MAIN-EXAMPLE
-    #       vrf: MAIN
-    #       networkTemplateConfig: '{"gatewayIpAddress":"10.10.10.1/24"}'
-    #
-    # jsondata becomes dc_networks_observed. networkTemplateConfig is a
-    # JSON string, so from_json decodes it before gatewayIpAddress is compared
-    # with gw_ip_address. The network's vrf is checked against vrf_name.
     - name: Read the fabric networks
       cisco.nd.nd_rest:
         method: get
@@ -412,22 +223,7 @@
       register: dc_observed_network_response
       changed_when: false
 
-    # Illustrative subset of dc_observed_vrf_attachments (not captured live;
-    # switch and VRF names are examples):
-    # jsondata:
-    #     - vrfName: MAIN
-    #       lanAttachList:
-    #         - switchName: example-leaf
-    #           isLanAttached: true
-    #           lanAttachState: DEPLOYED
-    #         - switchName: example-spine
-    #           isLanAttached: false
-    #           lanAttachState: NA
-    #
-    # jsondata becomes dc_vrf_attach_observed. lanAttachList is flattened
-    # for each VRF; only attached records are judged for DEPLOYED state. Their
-    # switch names are also compared with the declared attach group, so a
-    # missing required attachment still fails even though NA is not judged.
+    # One record per switch per VRF, saying whether it is attached and deployed.
     - name: Read the VRF attachments
       cisco.nd.nd_rest:
         method: get
@@ -439,20 +235,16 @@
       when: dc_declared_vrfs | length > 0
 
     # ------------------------------------------------------------ L3Outs
-    # The definition stage 05 writes, rebuilt here by the same task file. All
-    # declared rows are checked, whatever dc_vrf_lite_only selected at write
-    # time.
+    # An L3Out is the external VRF-Lite handoff on the border leaf. Rebuild the
+    # definitions stage 05 wrote, using the same task file, so they match exactly.
     - name: Build the declared L3Out definitions
       ansible.builtin.include_tasks: tasks/l3out_config.yml
       vars:
         dc_l3out_rows: "{{ dc_vrf_lite_extensions | default([]) }}"
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
-    # check_mode makes the module read and diff without writing anything.
-    # changed then means the controller differs from the declared definition;
-    # before is the controller's copy, in the same shape as the input. attach
-    # is left out on purpose: with attach set the module reports changed in
-    # check mode whatever the controller holds.
+    # check_mode makes the module compare without writing anything:
+    # "changed" would mean the controller differs from the declared L3Out.
     - name: Compare the L3Outs on the controller with the declared definitions
       cisco.nd.nd_manage_l3out:
         fabric_name: "{{ dc_fabric_name }}"
@@ -462,11 +254,8 @@
       register: dc_observed_l3out
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
-    # Kept as REST: nd_manage_l3out was checked, and none of its outputs says
-    # whether an L3Out is attached. The GET carries an "attach" field
-    # (observed on ND 4.2.1.10, 2026-11-12), checked per row below; the raw
-    # collection is also saved with the evidence. Path from cisco.nd's own
-    # endpoint definition, EpManageL3OutsGet.
+    # Raw read of the L3Outs, kept because it is the only place that says whether
+    # each L3Out is attached. It is also saved beside the report as evidence.
     - name: Read the raw L3Out collection
       cisco.nd.nd_rest:
         path: "{{ nd_manage_root }}/l3Outs?fabricName={{ dc_fabric_name }}"
@@ -483,24 +272,7 @@
                   | zip(dc_observed_l3out.before | default([]))) }}
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
-    # Illustrative subset of dc_observed_network_attachments (not captured
-    # live; network, switch and port names are examples):
-    # jsondata:
-    #     - networkName: MAIN-EXAMPLE
-    #       lanAttachList:
-    #         - switchName: example-leaf
-    #           isLanAttached: true
-    #           lanAttachState: DEPLOYED
-    #           portNames: "port-channel10,port-channel20"
-    #         - switchName: example-spine
-    #           isLanAttached: false
-    #           lanAttachState: NA
-    #           portNames: null
-    #
-    # jsondata becomes dc_net_attach_observed. Attached records must be
-    # DEPLOYED; portNames is split on commas to build switch-and-port pairs
-    # for comparison with the declared attach group. Unattached NA records
-    # are excluded, but missing required pairs still fail the comparison.
+    # Same as for VRFs, plus the ports (port-channels) each network uses on each switch.
     - name: Read the network attachments
       cisco.nd.nd_rest:
         method: get
@@ -520,93 +292,8 @@
         dc_net_attach_observed: "{{ dc_observed_network_attachments.jsondata | default([], true) }}"
 
     # ---------------------------------------------------------- comparisons
-    # Each comparison loops over the declared objects and appends one result row
-    # per object with set_fact, which saves a variable for later tasks. Both
-    # sides of an object have to be in scope at once, which is clearer as an
-    # explicit loop than as a chain of Jinja filters.
-    #
-    # SWITCH COMPARISON WALKTHROUGH
-    # All values below are illustrative, not captured from a live controller.
-    # The declared input comes from inventory/group_vars/all/dc_switches.yml:
-    # dc_switches:
-    #   - name: example-border
-    #     management_ipv4_address: "198.18.128.10"
-    #     role: border_leaf
-    #
-    # The discovery task registers a controller response shaped like this:
-    # dc_observed_inventory:
-    #   jsondata:
-    #       - switchName: example-border
-    #         ipAddress: "198.18.128.10"
-    #         switchRole: Border Leaf
-    #         serialNumber: EXAMPLE-SERIAL
-    #         mode: Normal
-    # Normalise the controller responses extracts jsondata into
-    # dc_switches_observed, so this task searches a list of switch dictionaries,
-    # not the response wrapper. ccStatus is deliberately omitted in this sample
-    # to demonstrate the informational 'not reported' fallback.
-    #
-    # 1. LOOP AND LOOKUP
-    # Each iteration binds item to one declared switch. loop_control.label
-    # prints item.name in Ansible output; it does not select the observed switch.
-    # observed is evaluated for that item using the following filter chain:
-    #   selectattr('ipAddress', 'defined') -> discard records without that key
-    #   selectattr('ipAddress', 'eq', item.management_ipv4_address)
-    #                                      -> keep exact management-IP matches
-    #   list | first                     -> take the first matching record
-    #   default({})                      -> use {} if no match was found
-    # For the sample, observed is the dictionary containing switchRole:
-    # Border Leaf. The lookup does not compare item.name with switchName.
-    # Duplicate matching IP records are not rejected; only the first is used.
-    #
-    # 2. BUILD THE REPORT ROW AND EVALUATE ok
-    # name, ip and declared_role come from intent. observed_role, serial, mode
-    # and cc_status come from observed, with readable defaults for missing keys.
-    # Plain default(...) replaces undefined values, not explicit JSON nulls.
-    # ok requires BOTH a nonempty observed dictionary AND a matching role.
-    # Both roles are normalised with lower | replace(' ', '_'):
-    #   observed: "Border Leaf" -> "border leaf" -> "border_leaf"
-    #   declared: "border_leaf" -> "border_leaf" -> "border_leaf"
-    #   comparison: true; observed is nonempty, so ok: true
-    # This normalisation handles casing and spaces, not arbitrary aliases.
-    # Serial, mode and ccStatus do not affect ok. This task proves inventory
-    # presence and role only; attachment deployment is checked in later tasks.
-    #
-    # 3. APPEND THE RESULT
-    # set_fact saves dc_switch_rows for later tasks on this play's host.
-    # default([]) supplies the starting list when it is undefined; + [row]
-    # appends a one-element list without replacing earlier switch results.
-    # After the sample's first iteration, assuming no existing rows:
-    # dc_switch_rows:
-    #   - name: example-border
-    #     ip: "198.18.128.10"
-    #     declared_role: border_leaf
-    #     observed_role: Border Leaf
-    #     serial: EXAMPLE-SERIAL
-    #     mode: Normal
-    #     cc_status: not reported
-    #     ok: true
-    #
-    # FAILURE EXAMPLES
-    # If the same IP is reported with switchRole: spine, the row retains all
-    # discovered fields but has observed_role: spine and ok: false, because
-    # "spine" != "border_leaf". If the IP is not in the inventory at all,
-    # observed becomes {}, and the complete row is:
-    #   name: example-border
-    #   ip: "198.18.128.10"
-    #   declared_role: border_leaf
-    #   observed_role: absent
-    #   serial: absent
-    #   mode: unknown
-    #   cc_status: not reported
-    #   ok: false
-    # An existing record without switchRole also fails the role comparison.
-    #
-    # This task records mismatches rather than asserting immediately. Collect
-    # the failures later selects rows with ok: false into dc_failed_rows. The
-    # evidence templates render the results before Fail on any mismatch asserts
-    # that the failure list is empty (when dc_verify_fail_on_mismatch is true).
-    # No controller API calls or switch configuration changes happen here.
+    # Each check builds one pass/fail row per declared object. Mismatches are
+    # collected and reported first; the run only fails at the very end.
     - name: Compare each switch against intent
       ansible.builtin.set_fact:
         dc_switch_rows: "{{ dc_switch_rows | default([]) + [row] }}"
@@ -626,9 +313,7 @@
           observed_role: "{{ observed.switchRole | default('absent') }}"
           serial: "{{ observed.serialNumber | default('absent') }}"
           mode: "{{ observed.mode | default('unknown') }}"
-          # ccStatus is reported when Nexus Dashboard supplies it and left as
-          # 'not reported' otherwise. It is informational: the authoritative
-          # deployment signal in this report is lanAttachState below.
+          # Informational only; the deploy state of attachments is the real signal.
           cc_status: "{{ observed.ccStatus | default('not reported') }}"
           ok: >-
             {{ (observed | length > 0)
@@ -652,22 +337,9 @@
               | selectattr('vrfName', 'defined')
               | selectattr('vrfName', 'eq', item.name)
               | map(attribute='lanAttachList') | flatten | list) }}
-        # Nexus Dashboard enumerates every switch that could carry the VRF and
-        # reports the ones it does not with isLanAttached: false and
-        # lanAttachState: NA. NA is neither a fault nor a pending state, so only
-        # the records the boolean calls attached are judged. Every field on an NA
-        # record is null, so anything read off one needs default(x, true) - the
-        # second argument makes default() substitute for an empty value as well
-        # as an undefined one.
-        #
-        # The border leaf is in the dc_leaves attach group, so it appears here
-        # like the two server leaves and a missing attachment on it is a real
-        # missing_switches failure rather than a tolerated NA.
-        #
-        # The L3Out is checked separately below. An attach group can name a
-        # switch but never an L3Out, so no amount of model-derived attachment
-        # checking can see whether the dot1q sub-interface and its BGP
-        # neighbour exist.
+        # The controller lists every switch that could carry the VRF; ones it has not
+        # attached show as NA. Only attached switches are judged for DEPLOYED. The L3Out
+        # (external handoff) is checked separately, since attach groups cannot describe it.
         attached: >-
           {{ attachments
              | selectattr('isLanAttached', 'defined')
@@ -686,13 +358,8 @@
           {{ (dc_declared_vrf_attach_groups
               | selectattr('name', 'eq', item.vrf_attach_group | default(''))
               | map(attribute='switches') | flatten | list) }}
-        # Ignoring the NA records would make the check vacuous on its own - a VRF
-        # attached to nothing would look like one attached everywhere it was
-        # declared - so the declared attach group is compared against the set
-        # that is actually attached, the way the networks task compares its
-        # switch-and-port pairs. Declared hostnames keep their casing for the
-        # report and are compared case-insensitively, because Nexus Dashboard is
-        # inconsistent about it.
+        # A required switch with no attachment is still a failure, so compare the
+        # declared attach group with the attached switches (names ignore case).
         attached_switches: >-
           {%- set names = [] -%}
           {%- for a in attached -%}
@@ -721,133 +388,8 @@
                and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
                and (missing_switches | length == 0) }}
 
-    # NETWORK COMPARISON WALKTHROUGH
-    # All payloads and results below are illustrative, not captured live.
-    # This task compares each declared network with two controller reads:
-    # dc_networks_observed describes the network itself, while
-    # dc_net_attach_observed describes its switch-and-port attachments.
-    # Both lists were extracted from their discovery responses' response.DATA.
-    #
-    # 1. DECLARED INPUTS
-    # Flatten the declared intent loads these lists from networks.nac.yaml.
-    # Each loop iteration binds item to one entry in dc_declared_networks:
-    # dc_declared_networks:
-    #   - name: MAIN-EXAMPLE
-    #     vrf_name: MAIN
-    #     gw_ip_address: "10.10.10.1/24"
-    #     network_attach_group: example_pair
-    # dc_declared_network_attach_groups:
-    #   - name: example_pair
-    #     switches:
-    #       - hostname: example-leaf1
-    #         ports: [Port-channel10]
-    #       - hostname: example-leaf2
-    #         ports: [Port-channel10]
-    # loop_control.label prints item.name; it does not perform the lookup.
-    #
-    # 2. LOOK UP THE NETWORK AND DECODE ITS GATEWAY
-    # Example normalised network response:
-    # dc_networks_observed:
-    #   - networkName: MAIN-EXAMPLE
-    #     vrf: MAIN
-    #     networkTemplateConfig: '{"gatewayIpAddress":"10.10.10.1/24"}'
-    # selectattr('networkName', 'defined') excludes records without that key.
-    # selectattr('networkName', 'eq', item.name) keeps exact name matches.
-    # list | first takes the first match; default({}) handles no match.
-    # Duplicate matching names are not rejected; only the first is used.
-    # observed_config decodes networkTemplateConfig with from_json when it is
-    # a string, or uses the existing object when it is already structured:
-    # observed_config:
-    #   gatewayIpAddress: "10.10.10.1/24"
-    # Comparisons for this sample:
-    #   observed.vrf == item.vrf_name                     -> MAIN == MAIN
-    #   observed_config.gatewayIpAddress == gw_ip_address  -> exact /24 match
-    # Network names, VRFs and gateway strings are case-sensitive/exact here;
-    # gateway addresses are not converted to canonical IP-network objects.
-    # Missing template config defaults to {}, but malformed JSON is not repaired
-    # by default(): from_json raises a parsing error instead of creating a row.
-    #
-    # 3. SELECT AND PARTITION THE ATTACHMENTS
-    # Example normalised attachment response:
-    # dc_net_attach_observed:
-    #   - networkName: MAIN-EXAMPLE
-    #     lanAttachList:
-    #       - switchName: EXAMPLE-LEAF1
-    #         isLanAttached: true
-    #         lanAttachState: DEPLOYED
-    #         portNames: "port-channel10"
-    #       - switchName: EXAMPLE-LEAF2
-    #         isLanAttached: true
-    #         lanAttachState: DEPLOYED
-    #         portNames: "port-channel10"
-    #       - switchName: example-spine
-    #         isLanAttached: false
-    #         lanAttachState: NA
-    #         portNames: null
-    # The networkName filter selects this network's records, map extracts each
-    # lanAttachList, and flatten combines them into one attachments list.
-    # attached retains records whose isLanAttached exists and is truthy.
-    # not_attached_switches records the others for reporting, but their NA state
-    # is not judged. attach_states collects defined states from attached records:
-    #   attach_states: [DEPLOYED, DEPLOYED]
-    #   not_attached_switches: [example-spine]
-    # The payload assumes attached records supply their deployment state.
-    #
-    # 4. COMPARE SWITCH-AND-PORT PAIRS
-    # attach_group_switches selects example_pair by item.network_attach_group
-    # and flattens its switches list. The nested loop produces one pair for
-    # every declared port on every declared switch; '|' separates the two:
-    # declared_attachments:
-    #   - example-leaf1|Port-channel10
-    #   - example-leaf2|Port-channel10
-    # observed_attachments splits each attached record's comma-separated
-    # portNames, trims whitespace, ignores empty port entries, and lowercases
-    # the complete pair. default('', true) substitutes for absent/null ports:
-    # observed_attachments:
-    #   - example-leaf1|port-channel10
-    #   - example-leaf2|port-channel10
-    # Each declared pair is lowercased for membership testing, but keeps its
-    # original spelling in the report. Both sample pairs exist, so:
-    #   missing_attachments: []
-    # Checking pairs prevents a port found on leaf1 from satisfying leaf2's
-    # requirement. Extra observed pairs are not rejected; this is a required-
-    # attachment check, not exact equality between the two attachment sets.
-    #
-    # 5. BUILD THE RESULT AND EVALUATE ok
-    # All conditions must hold: the network exists, its VRF and gateway match,
-    # at least one attachment is present, every collected attachment state is
-    # DEPLOYED, and no declared switch-and-port pair is missing.
-    # dc_network_rows receives this row for the successful sample:
-    #   - name: MAIN-EXAMPLE
-    #     declared_vrf: MAIN
-    #     observed_vrf: MAIN
-    #     declared_gateway: "10.10.10.1/24"
-    #     observed_gateway: "10.10.10.1/24"
-    #     declared_attachments:
-    #       - example-leaf1|Port-channel10
-    #       - example-leaf2|Port-channel10
-    #     missing_attachments: []
-    #     not_attached_switches: [example-spine]
-    #     attach_states: [DEPLOYED, DEPLOYED]
-    #     ok: true
-    # set_fact starts dc_network_rows with default([]) when undefined and
-    # appends [row], retaining rows from earlier loop iterations.
-    #
-    # FAILURE EXAMPLES
-    # If leaf2 reports no Port-channel10 attachment, the final row instead has
-    # missing_attachments: [example-leaf2|Port-channel10] and ok: false, even
-    # if leaf1 is DEPLOYED. If leaf2 is isLanAttached: false with state NA, it
-    # is also listed under not_attached_switches and its required pair is still
-    # missing: excluding NA does not waive the declared attachment requirement.
-    # A collected PENDING state fails the deployment condition. A gateway of
-    # 10.10.10.254/24 or an observed VRF of PROD fails its exact comparison.
-    # No matching network gives observed: {}, readable 'absent' fields and
-    # ok: false. No attached records also fails, even if network fields match.
-    #
-    # The row records the mismatch rather than failing this task immediately.
-    # Collect the failures later selects rows with ok: false; evidence is
-    # written before the final assertion fails when fail-on-mismatch is enabled.
-    # This task performs no API requests or network configuration changes.
+    # A network passes when it exists in the declared VRF with the declared gateway,
+    # every declared switch-and-port pair is attached, and every attachment is DEPLOYED.
     - name: Compare networks
       ansible.builtin.set_fact:
         dc_network_rows: "{{ dc_network_rows | default([]) + [row] }}"
@@ -860,8 +402,7 @@
               | selectattr('networkName', 'defined')
               | selectattr('networkName', 'eq', item.name)
               | list | first) | default({}) }}
-        # The gateway lives inside networkTemplateConfig, which Nexus Dashboard
-        # returns as a JSON *string*, not as a nested object.
+        # The gateway is stored inside a JSON text field, so it is decoded first.
         observed_config: >-
           {{ (observed.networkTemplateConfig | default('{}') | from_json)
              if (observed.networkTemplateConfig | default('')) is string
@@ -871,9 +412,7 @@
               | selectattr('networkName', 'defined')
               | selectattr('networkName', 'eq', item.name)
               | map(attribute='lanAttachList') | flatten | list) }}
-        # Same partition as Compare VRFs: the controller lists every switch
-        # that could carry the network and marks the ones it has not attached
-        # NA, so only the isLanAttached records are judged.
+        # Same idea as Compare VRFs: only attached switches are judged.
         attached: >-
           {{ attachments
              | selectattr('isLanAttached', 'defined')
@@ -892,13 +431,8 @@
           {{ (dc_declared_network_attach_groups
               | selectattr('name', 'eq', item.network_attach_group | default(''))
               | map(attribute='switches') | flatten | list) }}
-        # Attachments are compared as switch-and-port pairs, not as a flat list
-        # of port names. The guide attaches each port-channel on *both* leaves,
-        # and a network that landed on only one of them is a real fault that a
-        # fabric-wide "is this port named anywhere" check waves through.
-        # Declared pairs keep their original casing so the report reads the way
-        # the model is written; the comparison is done case-insensitively
-        # because Nexus Dashboard is inconsistent about it.
+        # Compare switch-and-port pairs, not just port names: each port-channel must
+        # be attached on both leaves, and a network on only one leaf is a real fault.
         declared_attachments: >-
           {%- set pairs = [] -%}
           {%- for sw in attach_group_switches -%}
@@ -907,9 +441,7 @@
           {%- endfor -%}
           {%- endfor -%}
           {{ pairs }}
-        # default('', true) is boolean mode on purpose: portNames is present
-        # but null on the switches the controller lists without attaching,
-        # and plain default() only ever substitutes for undefined.
+        # Switches that are listed but not attached have no ports, so treat that as empty.
         observed_attachments: >-
           {%- set pairs = [] -%}
           {%- for a in attached -%}
@@ -942,13 +474,8 @@
                and (attach_states | reject('eq', 'DEPLOYED') | list | length == 0)
                and (missing_attachments | length == 0) }}
 
-    # One row per declared L3Out, read off the controller's own copy (the
-    # check-mode before). Interface names are accepted in either form - parent
-    # or parent.dot1q - because which one Nexus Dashboard stores is open
-    # question B2; the dot1q tag is checked on its own field either way.
-    # attached comes from the raw GET, the one place Nexus Dashboard reports
-    # it. The sub-interface and BGP tables below, read off the switch, prove
-    # the attach was also deployed.
+    # One row per declared L3Out: it must exist, be attached, and match the declared
+    # VRFs, interface, VLAN (dot1q) tag, addresses, MTU and peer AS number.
     - name: Compare the L3Outs
       ansible.builtin.set_fact:
         dc_vrf_lite_rows: "{{ dc_vrf_lite_rows | default([]) + [row] }}"
@@ -1010,15 +537,8 @@
                and ((bgp.fabric2_details | default({})).local_asn | default('', true) | string
                     == dc_external_fabric_settings.bgp_asn | string) }}
 
-    # The switch's own account of the same three extensions, parsed by Genie.
-    # The controller check above proves intent was written and deployed; this
-    # proves the sub-interface exists and carries the declared tag, address and
-    # MTU. Keeping both is the point - when they disagree, the disagreement is
-    # the finding.
-    #
-    # Genie returns the interface detail under the full interface name, mtu as
-    # an integer, first_dot1q as a string, and ipv4 keyed by address/prefix -
-    # so each field is compared in its own type rather than as text.
+    # The switch's own view of each sub-interface: it must be up with the declared
+    # tag, address and MTU. If the switch and controller disagree, that is the finding.
     - name: Compare the VRF-Lite sub-interfaces on the switch
       ansible.builtin.set_fact:
         dc_subif_rows: "{{ dc_subif_rows | default([]) + [row] }}"
@@ -1053,33 +573,16 @@
                and (detail.mtu | default(0, true) | int == dc_vrf_lite_mtu | int) }}
       when: dc_verify_subinterfaces | bool
 
-    # Everything above is the controller's opinion. A VRF-Lite extension that is
-    # attached and DEPLOYED means Nexus Dashboard pushed a sub-interface and a
-    # neighbour statement; it does not mean the neighbour answered. The two come
-    # apart routinely, because the far end of these three links is pre-built by
-    # the pod and Nexus Dashboard never writes to it - an address or dot1q tag
-    # that does not match the router leaves the leaf configured exactly as
-    # declared, with a session that never leaves Idle.
-    #
-    # So this check reads the switch. Stage 07b collected the output; the work
-    # here is picking each declared neighbour out of it.
-    #
-    # Nexus Dashboard has no API for this. Its LAN API is an intent and
-    # provisioning surface plus config compliance, and nothing in it reports
-    # routing protocol state - see "Why the BGP check uses SSH" in the README.
-    #
-    # Three outcomes, and the third is not the second: Established, down (any
-    # other state, or no such session on the switch), and not determined,
-    # meaning the border leaf did not answer. Only the first two are counted or
-    # judged.
+    # DEPLOYED only means the controller pushed the config, not that the neighbour
+    # answered, and Nexus Dashboard has no API for BGP state - so check the switch.
+    # Outcomes: Established, down, or "not determined" (switch unreachable, not judged).
     - name: Compare the VRF-Lite BGP sessions against intent
       ansible.builtin.set_fact:
         dc_bgp_rows: "{{ dc_bgp_rows | default([]) + [row] }}"
       loop: "{{ dc_vrf_lite_extensions | default([]) }}"
       loop_control:
         label: "{{ item.vrf }} to {{ item.neighbor_ipv4 }}"
-        # index_var exposes the loop position, which is how each command's
-        # output is matched to the extension that asked for it.
+        # index_var pairs each command result with the extension that asked for it.
         index_var: dc_bgp_index
       vars:
         # Each loop result holds the final attempt for one declared extension.
@@ -1091,17 +594,13 @@
         dc_bgp_determined: >-
           {{ (dc_verify_bgp_sessions | bool)
              and (result.stdout | default([]) | length > 0) }}
-        # A VRF the switch does not have returns an empty string, so the mapping
-        # test is what separates "no such VRF" from a real answer.
+        # A VRF the switch does not have returns an empty string, not a table.
         vrf_table: "{{ (raw.TABLE_vrf | default({})) if raw is mapping else {} }}"
-        # NX-OS returns ROW_vrf and ROW_neighbor as a single object when there is
-        # one of them and as a list when there are several. Both shapes are
-        # wrapped into a list so the lookups below do not have to care.
+        # NX-OS returns one item as an object and several as a list; always use a list.
         vrf_rows: >-
           {%- set r = vrf_table.ROW_vrf | default([]) -%}
           {{ [r] if r is mapping else r }}
-        # The switch reports vrf-name-out in lower case ("prod") where the data
-        # model declares PROD, so the two names are compared case-insensitively.
+        # The switch may print the VRF name in lower case, so compare ignoring case.
         vrf_row: >-
           {%- set matched = [] -%}
           {%- for v in vrf_rows
@@ -1114,10 +613,7 @@
           {%- set n = (vrf_row.TABLE_neighbor | default({})).ROW_neighbor
                       | default([]) -%}
           {{ [n] if n is mapping else n }}
-        # Matched on the exact neighbour address declared in dc_vrf_lite.yml.
-        # Every value in this output is a string even where it reads as a number,
-        # so the address is compared as text and the peer ASN is reported as
-        # text.
+        # Find the exact neighbour address declared in dc_vrf_lite.yml.
         neighbor_row: >-
           {%- set matched = [] -%}
           {%- for n in neighbor_rows
@@ -1125,8 +621,7 @@
           {{- matched.append(n) or '' -}}
           {%- endfor -%}
           {{ (matched | first) | default({}, true) }}
-        # 'absent' is a distinct answer from a state name: it means the switch
-        # answered and has no session to this neighbour in this VRF at all.
+        # 'absent' means the switch answered but has no session to this neighbour.
         observed_state: "{{ neighbor_row.state | default('absent', true) }}"
         row:
           name: "BGP session {{ item.vrf }} to {{ item.neighbor_ipv4 }}"
@@ -1134,10 +629,8 @@
           neighbor: "{{ item.neighbor_ipv4 }}"
           expected_state: Established
           observed_state: "{{ observed_state if dc_bgp_determined | bool else 'not determined' }}"
-          # The peer ASN is reported, not asserted: dc_vrf_lite.yml declares no
-          # ASN, so there is nothing to compare it against. It is here because
-          # the wrong AS on the far end is a common reason a session sits in
-          # Idle or Active.
+          # Shown, not checked: a wrong AS number on the far end is a common reason
+          # a session stays in Idle or Active.
           peer_as: >-
             {{ (neighbor_row.remoteas | default('not reported', true))
                if dc_bgp_determined | bool else 'not determined' }}
@@ -1145,9 +638,8 @@
           ok: "{{ observed_state == 'Established' }}"
       when: dc_verify_bgp_sessions | bool
 
-    # Rows the border leaf never answered for are left out of both the failure
-    # list and the total, so an unreachable switch neither fails the run nor
-    # inflates the "all checks match" count with checks that were not made.
+    # Checks the border leaf never answered are left out of the failures and the
+    # total, so an unreachable switch neither fails the run nor inflates the count.
     - name: Collect the failures
       ansible.builtin.set_fact:
         dc_failed_rows: >-
@@ -1219,9 +711,8 @@
           Markdown: {{ dc_evidence_path }}.
           HTML: {{ dc_evidence_html_path }}
 
-    # Said out loud rather than left to the report, because a run that could not
-    # read the switch still ends in a green "all checks match" for everything it
-    # could read, and that is easy to mistake for a fabric that works.
+    # Say this on screen: a green result for everything readable is easy to
+    # mistake for a working fabric when the BGP sessions were not checked.
     - name: Say so when the BGP sessions could not be read
       ansible.builtin.debug:
         msg: >-

@@ -1,27 +1,7 @@
 ---
-# vPC pairing. Guide section 5, "Create vPC Pairing".
-#
-# Peer-link member interfaces are deliberately NOT declared. The guide relies
-# on Nexus Dashboard auto-detecting the pair ("DC-Leaf2 shows as set to true
-# and the only recommended switch capable of being a peer because it is
-# connected to DC-Leaf1") and never names the peer-link ports, so hardcoding a
-# guess here would be inventing topology. Both peerlink_interfaces keys are
-# optional in the schema. If a future run shows Nexus Dashboard cannot infer
-# them, add peer1_peerlink_interfaces / peer2_peerlink_interfaces once the
-# physical ports are confirmed on the box.
-#
-# domain_id is also omitted so Nexus Dashboard allocates from
-# vxlan.global.ibgp.vpc.domain_id_range. That is the same controller-side
-# allocation that had to be abandoned for VRF and network VLANs (see the
-# header of vrfs.nac.yaml): the lookup returns a free value without reserving
-# it, so a batched run hands every object the same one. It is safe here only
-# because there is exactly one vpc_peers entry, leaving nothing to collide
-# with. Pin domain_id explicitly before declaring a second pair.
-#
-# CAUTION: the data model documents vPC pairs as provision-and-decommission
-# only. Once deployed, a pair cannot be edited to change peers or to scale
-# peer-link members - the supported change is delete and recreate. Get this
-# right before 05_recalculate_and_deploy.yml runs.
+# vPC pair (guide section 5): two leaves act as one switch to dual-homed servers.
+# Nexus Dashboard detects the peer-link and picks the vPC domain ID by itself.
+# CAUTION: once deployed, a pair cannot be edited, only deleted and recreated.
 vxlan:
   topology:
     vpc_peers:

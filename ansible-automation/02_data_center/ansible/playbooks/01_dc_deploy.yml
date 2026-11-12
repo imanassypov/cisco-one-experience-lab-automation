@@ -1,72 +1,7 @@
 ---
-# Build the PseudoCo data center fabric end to end.
-#
-# Run from the collection root, the directory holding ansible.cfg:
-#
-#   cd ansible-automation/02_data_center/ansible
-#   ansible-playbook playbooks/01_dc_deploy.yml
-#
-# EVALUATION BRANCH (eval/nd-l3out). On main this playbook import_playbooks
-# every stage into one run. Here it runs each stage as its own
-# ansible-playbook process instead, in order, stopping at the first failure.
-#
-# Why: stage 02 and stage 06 talk to Nexus Dashboard through cisco.dcnm's
-# httpapi plugin, stages 03, 04, 05, 07 and 08 through cisco.nd's. Both use
-# the same inventory host. ansible-core keys a persistent connection on
-# (address, port, user, connection type, playbook process id) - not on
-# ansible_network_os - so inside one run a cisco.nd stage can silently reuse
-# the cisco.dcnm connection stage 02 left open (ansible-core 2.17.14,
-# lib/ansible/cli/scripts/ansible_connection_cli_stub.py line 268). A new
-# process gets a new connection. Details: docs/eval-nd-l3out.md, Platform Q1.
-#
-# What that changes for you:
-#   - Each stage's output appears when that stage finishes, not line by line.
-#     The full output of every stage is also written to
-#     evidence/dc-deploy-<run>/<stage>.log.
-#   - Extra variables for the stages go in one dictionary, forwarded to each:
-#       -e '{"dc_deploy_extra_vars": {"dc_verify_fail_on_mismatch": false}}'
-#   - Any stage can still be run on its own with ansible-playbook.
-#
-# Stage 00 is a prerequisite and is not run here. It reads a serial number off
-# each switch over SSH and generates
-# playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml, and stage 02
-# refuses to start without that file. Run it once per pod, and again whenever
-# the pod hardware or the switch table changes:
-#
-#   ansible-playbook playbooks/00_discover_dc_switch_serials.yml
-#
-# Stages, in apply order:
-#
-#   02  the whole fabric intent through Nexus as Code: the fabric, the
-#       switches, their roles, the vPC pair, the port-channels, the VRFs, the
-#       networks and their attachments
-#   03  the fabric settings Nexus as Code cannot express: VRF-Lite mode and
-#       pool, license tier, telemetry, location
-#   04  the External connectivity fabric in Monitor Mode, the IOS-XE edge
-#       router in it, and the eBGP VRF-Lite inter-fabric link to it
-#   05  three L3Outs on the border leaf, one per VRF, attached
-#   06  recalculate and deploy: pushes the fabric and the L3Outs to the
-#       switches
-#   07  verify the result, against Nexus Dashboard and against the switch
-#
-# One deploy, where main has two. main deploys before its VRF-Lite stage
-# because Nexus Dashboard only offers a VRF-Lite extension once the parent
-# interface is configured; an L3Out names its interfaces itself. If the pod
-# shows the L3Out still needs a deployed parent interface, add stage 06 before
-# stage 05 in dc_deploy_stages below.
-#
-# Things to expect from a plain run:
-#   - It is a greenfield build with no confirmation prompt. Stage 02 imports
-#     the five switches with preserveConfig false, which erases each switch's
-#     running configuration as it joins the fabric.
-#   - Stage 04 needs the edge router to answer SSH and to have a vault entry.
-#   - Stage 06 changes running configuration and takes several minutes.
-#   - Stage 07 fails the run on any mismatch; forward
-#     dc_verify_fail_on_mismatch: false for the report without the failure.
-#
-# To tear it all down again:
-#
-#   ansible-playbook playbooks/08_cleanup.yml -e dc_cleanup_confirm=CLEANUP_OK
+# Builds the whole data centre fabric by running stages 02-07 in order, stopping at the first failure.
+# WARNING: stage 02 erases every switch's config; run stage 00 first. Teardown is 08_cleanup.yml.
+# Run from the folder holding ansible.cfg: ansible-playbook playbooks/01_dc_deploy.yml
 
 - name: Build the DC fabric, one stage per ansible-playbook process
   hosts: localhost
@@ -75,18 +10,19 @@
   any_errors_fatal: true
 
   vars:
+    # Order matters: each stage builds on the one before it.
     dc_deploy_stages:
-      - 02_create_dc_fabric.yml
-      - 03_fabric_advanced_settings.yml
-      - 04_external_fabric.yml
-      - 05_l3out.yml
-      - 06_recalculate_and_deploy.yml
-      - 07_verify_fabric.yml
-    dc_deploy_extra_vars: {}
+      - 02_create_dc_fabric.yml  # fabric, switches, VRFs, networks (wipes switches)
+      - 03_fabric_advanced_settings.yml  # extra fabric settings
+      - 04_external_fabric.yml  # edge router fabric and the link to it
+      - 05_l3out.yml  # per-VRF handoff to the edge router
+      - 06_recalculate_and_deploy.yml  # pushes config to the switches
+      - 07_verify_fabric.yml  # read-only checks and report
+    dc_deploy_extra_vars: {}  # extra -e variables passed to every stage
     dc_deploy_root: "{{ (playbook_dir ~ '/..') | realpath }}"
 
   tasks:
-    # Fixed once: a template using now() is re-evaluated on every use.
+    # Save the timestamp once, so every stage logs into the same folder.
     - name: Name this run's log directory
       ansible.builtin.set_fact:
         dc_deploy_log_dir: >-
@@ -98,6 +34,7 @@
         state: directory
         mode: "0755"
 
+    # Each stage runs as its own ansible-playbook process; its output shows when it finishes.
     - name: Run each stage
       ansible.builtin.include_tasks: tasks/run_stage.yml
       loop: "{{ dc_deploy_stages }}"

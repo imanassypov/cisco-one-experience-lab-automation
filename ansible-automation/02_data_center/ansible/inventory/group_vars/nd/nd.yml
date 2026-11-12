@@ -1,11 +1,7 @@
 ---
-# Control parameters for the cisco.nac_dc_vxlan 'remove' role.
-#
-# Every one of these stays false. The remove role only deletes state from
-# Nexus Dashboard when the matching flag is true, and upstream defaults them
-# false precisely so that dropping a stanza from the data model cannot silently
-# tear down live fabric config. Flip one only for a deliberate, gated teardown
-# via 09_remove.yml, never in a normal run.
+# Safety switches for the cleanup (remove) role. Each flag lets it delete one kind of object.
+# Keep them all false so removing something from the data model never deletes live config.
+# Turn one on only for a deliberate teardown with 09_remove.yml - deletion is destructive.
 edge_connections_delete_mode: false
 interface_delete_mode: false
 inventory_delete_mode: false

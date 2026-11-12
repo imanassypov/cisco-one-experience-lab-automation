@@ -1,115 +1,44 @@
 ---
-# VRF-Lite handoff from the border leaf to the edge router, built as Nexus
-# Dashboard L3Out objects. Guide section 8, "Create VRF-Lite Connections to
-# External".
-#
-# EVALUATION BRANCH (eval/nd-l3out). On main this file drives the VRF
-# attachment "extension" method through the Manage API. Here the same three
-# handoffs are declared as L3Outs (cisco.nd.nd_manage_l3out) on an eBGP
-# VRF-Lite inter-fabric link (cisco.nd.nd_manage_links). The values that reach
-# the wire are unchanged: same sub-interfaces, same addresses, same MTU, same
-# BGP peers. Findings and open questions: docs/eval-nd-l3out.md.
-#
-# Why this file exists at all: the Nexus as Code data model has no L3Out and
-# no VRF-Lite extension key for a VXLAN fabric, so the handoff is declared here
-# and applied by stages 03, 04 and 05.
-#
-# Which stage reads what:
-#   03  dc_vrf_lite_fabric_settings   -> nd_manage_fabric_ibgp_vxlan management
-#   04  dc_vrf_lite_ifc and the names -> nd_manage_links (ebgpVrfLite)
-#   05  dc_vrf_lite_extensions        -> nd_manage_l3out, one L3Out per row
-#   07  everything here               -> verification
-#   08  everything here               -> cleanup
+# VRF-Lite handoff: how each DC VRF leaves the fabric to the edge router (guide section 8).
+# VRF-Lite means one routed sub-interface plus one eBGP session per VRF on a shared wire.
+# Evaluation branch: the handoffs are built as Nexus Dashboard "L3Out" objects (stages 03-05).
 
-# Fabric-wide VRF-Lite behaviour. Keys are nd_manage_fabric_ibgp_vxlan
-# config.management options, passed through unchanged.
-#
-# manual is also the Nexus Dashboard default, and it is declared anyway because
-# the other value, back2BackAndToExternal, makes the controller auto-create an
-# inter-fabric link and allocate a dot1q per VRF in an order of its own
-# choosing. Measured on 2026-09-27 it handed PROD 2, MAIN 3 and IOT 4, where
-# the pre-built router needs PROD 2, IOT 3 and MAIN 4. Every value below is
-# pinned instead.
-#
-# The subnet range and mask only feed the controller's default IP allocation
-# for inter-fabric links. Every address here is pinned, so they may not matter
-# for an L3Out; they are kept until the pod shows they can go.
+# Fabric-wide VRF-Lite behaviour. "manual" stops Nexus Dashboard picking its own VLAN tags,
+# which would not match the pre-built router. The subnet values are the controller's
+# default address pool; every address below is pinned, so they are a fallback only.
 dc_vrf_lite_fabric_settings:
   vrf_lite_auto_config: manual
   vrf_lite_subnet_range: 192.168.252.0/24
   vrf_lite_subnet_target_mask: 30
 
-# The border leaf that carries every handoff, and the interface on it that
-# faces the edge router. Nexus Dashboard detects Ethernet1/8 over CDP and the
-# guide confirms it; it is declared so the run is deterministic.
+# The border leaf that carries every handoff, and its port that faces the edge router.
 dc_vrf_lite_border_leaf: DC-Service-Leaf
 dc_vrf_lite_interface: Ethernet1/8
 
-# The far end of the same wire, on DC-SITE11-CEDGE8Kv. Nothing is ever written
-# to it - the External fabric is in Monitor Mode.
+# The router's end of the same wire. Nothing is ever written to the router (Monitor Mode).
 dc_vrf_lite_peer_interface: GigabitEthernet2
 
-# THE INTER-FABRIC LINK. nd_manage_l3out does not create links (its own
-# documentation says the link lifecycle belongs to a separate module), so
-# stage 04 creates this one with nd_manage_links, policy type ebgpVrfLite.
-# Keys are that policy's template_inputs, passed through unchanged; stage 04
-# adds the two ASNs and turns every auto-generate option off.
-#
-# src_ip_address_mask and dst_ip_address are defaults the controller offers
-# per-VRF sub-interfaces, not addresses on the parent interface - neither end
-# of the physical link carries an IP. Every L3Out below overrides them. The
-# ebgpVrfLite policy makes them optional; they are kept until the pod shows
-# the link is accepted without them.
-#
-# link_mtu is the parent interface MTU. It must be set: omitted, the module
-# sends the policy default of 9216, which would leave the two ends of one wire
-# disagreeing. GigabitEthernet2 on the router is at the IOS-XE default of 1500.
-# Every sub-interface below has to stay at or below this.
+# The inter-fabric link: the physical cable between the two fabrics, created by stage 04.
+# The parent ports carry no IP; these addresses are only defaults that each L3Out overrides.
+# link_mtu must match the router's GigabitEthernet2 (1500) so both ends of the wire agree.
 dc_vrf_lite_ifc:
   src_ip_address_mask: 192.168.252.1/30
   dst_ip_address: 192.168.252.2
   link_mtu: 1500
 
-# MTU on the three sub-interfaces. 1500 because the router's sub-interfaces
-# inherit 1500 from GigabitEthernet2 and Monitor Mode means the controller can
-# never raise them; anything larger would be dropped rather than fragmented.
-# It must also not exceed dc_vrf_lite_ifc.link_mtu - the switch refuses a
-# sub-interface larger than its parent ("MTU of sub-interface greater than
-# parent interface detected").
+# MTU on the three sub-interfaces. The router's side is fixed at 1500, so ours must match,
+# and a sub-interface can never be larger than its parent (link_mtu above).
 dc_vrf_lite_mtu: 1500
 
-# How interface_name is written in each L3Out link: parent.dot1q, for example
-# Ethernet1/8.2. Settled on the pod 2026-11-12 (ND 4.2.1.10): with the parent
-# name the create is rejected with "Subinterface name should contain dot1q ID
-# as well. Ex: Ethernet1/1.300". The module's EXAMPLES are right and its
-# integration tests, which use the parent name, are not. 'parent' is kept as
-# a value only to reproduce that rejection.
+# Sub-interface names are written as parent.tag, e.g. Ethernet1/8.2 (Nexus Dashboard requires it).
 dc_vrf_lite_interface_form: subinterface
 
-# Which rows stages 05 and 07 act on: all, or one or more VRF names.
+# Which handoffs stages 05 and 07 act on: all, or one or more VRF names.
 dc_vrf_lite_only: all
 
-# THE THREE HANDOFFS, one L3Out each. The addresses are pinned because the
-# router's side is pre-built by the pod and the controller can never change
-# it: "show ip interface brief" on DC-SITE11-CEDGE8Kv lists
-# GigabitEthernet2.2, .3 and .4 up/up with 192.168.252.6, .10 and .14, and it
-# has an eBGP neighbour for each of .5, .9 and .13 in AS 65000 - the DC
-# fabric ASN. Its own ASN is 65531, the External fabric's BGP ASN.
-#
-#   name          L3Out name. 1-64 characters, letters, digits, _ and -.
-#   vrf           the DC fabric VRF (vrf1_name), from vrfs.nac.yaml.
-#   peer_vrf      vrf2_name. Required by the module even though fabric 2 is
-#                 not configured. Open question B1: the router's VRFs are
-#                 named 10, 101 and 102 (vManage names them by VPN id), and
-#                 the External fabric holds no VRF objects at all. The fabric
-#                 VRF name is used, which is what main stores today; the pod
-#                 decides whether Nexus Dashboard accepts it.
-#   dot1q         the sub-interface tag (vlan_id). Integer: the module
-#                 declares vlan_id type int.
-#   ipv4_addr     the leaf address, with prefix length.
-#   neighbor_ipv4 the router address.
-#
-# The order is the order the guide works through: ascending dot1q and address.
+# The three handoffs, one L3Out each. Addresses and tags are pinned because the edge router
+# is pre-built and cannot be changed: it already expects these peers in AS 65000 (the DC ASN).
+# dot1q = sub-interface VLAN tag; ipv4_addr = leaf side; neighbor_ipv4 = router side.
 dc_vrf_lite_extensions:
   - name: PROD-External
     vrf: PROD

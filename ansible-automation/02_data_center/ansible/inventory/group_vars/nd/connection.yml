@@ -1,13 +1,7 @@
 ---
-# Connection parameters for the 'nd' inventory group.
-#
-# DEVIATION FROM UPSTREAM: the netascode example repo reads these from the
-# ND_HOST / ND_USERNAME / ND_PASSWORD / NDFC_SW_USERNAME / NDFC_SW_PASSWORD
-# environment variables. This repo has exactly one credential source - the
-# vault-encrypted Lab Topology/lab_access.yml, injected as lab_access by
-# ansible-automation/plugins/vars/lab_access.py - so the env lookups are
-# replaced with vault lookups. Do not reintroduce environment variables and do
-# not put passwords in this file.
+# How Ansible connects to Nexus Dashboard (the "nd" group) over its HTTPS API.
+# Credentials come only from the vault-encrypted Lab Topology/lab_access.yml.
+# Do not reintroduce environment variables and do not put passwords in this file.
 ansible_connection: ansible.netcommon.httpapi
 ansible_network_os: cisco.dcnm.dcnm
 ansible_httpapi_port: 443
@@ -15,34 +9,16 @@ ansible_httpapi_use_ssl: true
 ansible_httpapi_validate_certs: false
 ansible_httpapi_login_domain: local
 
-# Nexus Dashboard 4.2.1.10 API account.
+# Nexus Dashboard login.
 ansible_user: "{{ lab_access['Cisco Nexus Dashboard'].username }}"
 ansible_password: "{{ lab_access['Cisco Nexus Dashboard'].password }}"
 
-# Credentials Nexus Dashboard uses to reach the switches themselves, both for
-# discovery and for ongoing management. Every DC switch in this pod shares one
-# account, so DC-Leaf1 is representative; see Lab Topology/lab_access.yml.
+# The login Nexus Dashboard uses to reach and manage the switches.
+# All DC switches share one account, so the DC-Leaf1 entry stands for all of them.
 ndfc_switch_username: "{{ lab_access['DC-Leaf1'].username }}"
 ndfc_switch_password: "{{ lab_access['DC-Leaf1'].password }}"
 
-# The inventory step of the create pipeline POSTs to
-# fabrics/{fabric}/inventory/discover - once per switch role, since
-# dcnm_inventory groups the switches into one payload per role - and Nexus
-# Dashboard holds each request open while it SSHes to those switches,
-# discovers them and imports them: minutes, not seconds. The httpapi
-# persistent connection defaults to 30s, so it tore the call down
-# mid-discovery and surfaced a bare "command timeout triggered, timeout value
-# is 30 secs" ConnectionError that reads like a credential or fabric error.
-# (It reads that way because cisco.dcnm's httpapi plugin appends "Please
-# verify your login credentials..." to every transport exception.)
-#
-# 1000 is not a comfort margin: cisco.dcnm's own
-# plugins/action/dcnm_inventory.py hard-fails unless both timeouts are >= 1000,
-# and its README sets exactly these two. That guard never fired here because
-# cisco.nac_dc_vxlan's dtc.manage_resources drives the dcnm modules itself
-# through plugins/plugin_utils/ndfc_executor.py, and only dcnm_vrf and
-# dcnm_network are routed via their action plugins - everything else goes
-# straight to _execute_module. So dcnm_inventory never sees its own check and
-# nothing upstream will tell a future reader these lines are load-bearing.
+# Long timeouts (seconds): adding switches to the fabric can take minutes.
+# With the 30 s default the run fails with an error that looks like a bad password.
 ansible_command_timeout: 1000
 ansible_connect_timeout: 1000

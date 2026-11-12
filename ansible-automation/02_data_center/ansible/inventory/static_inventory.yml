@@ -1,46 +1,21 @@
 ---
-# Nexus as Code inventory. Every host here is a FABRIC, not a device - the
-# collection is 1 host = 1 fabric, and the host name must equal
-# vxlan.fabric.name in that fabric's host_vars directory.
-#
-# The data model is resolved by the validate role as
-#   {{ playbook_dir }}/host_vars/{{ inventory_hostname }}
-# which is hardcoded in the role and has no override. So the data model lives
-# at playbooks/host_vars/, beside the playbooks - NOT next to this file, where
-# Ansible's own host_vars convention would put it. group_vars does sit here,
-# because that is plain Ansible and the collection has no say in it.
-#
-# ansible_host is the Nexus Dashboard appliance in both cases; the switches
-# themselves are never SSHed to by this collection.
+# Inventory. Each "host" in the nd group is a FABRIC, not a device; Ansible reaches it
+# through Nexus Dashboard. A fabric's data model is in playbooks/host_vars/<host name>/.
+# The host name must equal the fabric name.
 all:
   children:
     nd:
       hosts:
-        # Data Center VXLAN EVPN fabric - the one the guide builds.
+        # The Data Center VXLAN EVPN fabric that the guide builds.
         Pseudoco-DC1:
           ansible_host: ndfc.corp.pseudoco.com
-        # External connectivity fabric, created in Monitor Mode by
-        # 04_external_fabric.yml, which is part of 01_dc_deploy.yml. That
-        # stage also adds the IOS-XE edge router to it, over the Nexus
-        # Dashboard 4.x manage API - the legacy API that dcnm_inventory and
-        # Nexus as Code drive cannot discover a non-NX-OS device.
-        #
-        # This is the one host here with no data model under
-        # playbooks/host_vars/. The collection's create role cannot build a
-        # switchless fabric - it config-saves, and the controller answers 500
-        # - so this fabric is built from
-        # inventory/group_vars/all/dc_external_settings.yml instead.
+        # The External fabric holding the edge router, created in Monitor Mode by stage 04.
+        # It has no data model; its settings are in group_vars/all/dc_external_settings.yml.
         External:
           ansible_host: ndfc.corp.pseudoco.com
 
-    # The one group that is NOT a fabric. These are the switches themselves,
-    # reached over SSH, and only 00_discover_dc_switch_serials.yml uses them -
-    # every other stage drives Nexus Dashboard.
-    #
-    # Deliberately empty. The hosts are added at run time from the dc_switches
-    # table in group_vars/all/dc_switches.yml, which is the single source of
-    # truth for names and management addresses; repeating them here is how the
-    # two would drift. The group is declared anyway so that
-    # group_vars/dc_fabric_switches/ binds to the hosts add_host creates.
+    # The DC switches themselves, reached over SSH by stage 00 only.
+    # Empty on purpose: stage 00 adds them at run time from group_vars/all/dc_switches.yml,
+    # so the switch list lives in one place.
     dc_fabric_switches:
       hosts: {}

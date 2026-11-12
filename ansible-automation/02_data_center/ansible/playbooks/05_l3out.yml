@@ -1,49 +1,7 @@
 ---
-# Stage 05 - build the VRF-Lite handoff to the edge router as three Nexus
-# Dashboard L3Outs, one per VRF, on the border leaf.
-#
-# Guide section 8, "Create VRF-Lite Connections to External". The values on
-# the wire are main's: dot1q 2, 3 and 4 on Ethernet1/8, 192.168.252.5, .9 and
-# .13/30, MTU 1500, eBGP to the router in AS 65531.
-#
-# EVALUATION BRANCH (eval/nd-l3out). This stage replaces main's 06_vrf_lite.yml
-# and its eight dcnm_rest calls (Manage API probe, resource reads, dot1q
-# release and reservation, VRF attachment query, write and read-back) with
-# cisco.nd.nd_manage_l3out. The module compares before it writes, so main's
-# own drift comparison, read-back and HTTP 207 handling are gone. The data
-# checks on this repository's own variables stay.
-#
-# It writes intent and attaches it; it deploys nothing. The module never calls
-# a save or deploy endpoint - attach posts to /api/v1/manage/l3OutActions/attach
-# and nothing else - so stage 06 is what reaches the switch.
-#
-# Three known module behaviours shape the tasks below (docs/eval-nd-l3out.md,
-# blocker B4):
-#   - attach is not idempotent. With attach set the module reports changed on
-#     every run, and none of its outputs carries the attach state. The L3Out
-#     GET does (an "attach" field, observed on ND 4.2.1.10 on 2026-11-12), so
-#     this stage reads it and attaches only the L3Outs that are not attached
-#     yet. A converged run then reports no change.
-#   - attach failures come back as warnings, not as a failed task. failed_when
-#     turns them into failures.
-#   - changing an L3Out's routing protocol is rejected with HTTP 400. All
-#     three are bgp from creation, so this cannot arise here.
-#
-# Values: inventory/group_vars/all/dc_vrf_lite.yml. The border-leaf serial
-# comes from stage 00's generated model, the router serial from stage 00's
-# lookup, the DC ASN from global.nac.yaml and the peer ASN from
-# dc_external_settings.yml.
-#
-# Run from the collection root as its own ansible-playbook run (see
-# 01_dc_deploy.yml for why):
-#
-#   cd ansible-automation/02_data_center/ansible
-#   ansible-playbook playbooks/05_l3out.yml
-#
-# Useful overrides:
-#   -e dc_vrf_lite_only=PROD                     one VRF only
-#   -e dc_vrf_lite_interface_form=subinterface   interface_name as Ethernet1/8.2
-#   -e dc_l3out_attach=false                     write intent, skip attach
+# Stage 05: one L3Out per VRF carries that VRF out to the edge router (a dot1q sub-interface plus eBGP).
+# Data checks run before any write. It creates and attaches the L3Outs; stage 06 pushes them to the switch.
+# Run from the folder holding ansible.cfg: ansible-playbook playbooks/05_l3out.yml
 
 - name: Stage 05 - create and attach the L3Outs on the border leaf
   hosts: Pseudoco-DC1
@@ -52,12 +10,11 @@
 
   vars:
     ansible_network_os: cisco.nd.nd
-    dc_l3out_attach: true
+    dc_l3out_attach: true  # false = create the L3Outs but do not attach them
 
   tasks:
     # --------------------------------------------------- declared intent
-    # vrfs.nac.yaml is the same model stage 02 consumed, so the two files
-    # cannot disagree about which VRFs exist or where they are attached.
+    # Read the same VRF file stage 02 used, so both stages agree on the VRFs.
     - name: Read the declared VRFs
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/vrfs.nac.yaml"
@@ -69,9 +26,7 @@
         dc_vrf_lite_declared_vrfs: "{{ dc_vrf_lite_vrf_model.vxlan.overlay.vrfs | default([]) }}"
 
     # ------------------------------------------------------- data checks
-    # Every assert below runs before the first write, so a typo in the declared
-    # intent reads as a data error rather than as a confusing controller
-    # rejection.
+    # These run before anything is written, so a typo shows up as a clear data error.
     - name: Fail when the declared border leaf is not in the switch table
       ansible.builtin.assert:
         that:
@@ -86,9 +41,7 @@
         matching_switches: >-
           {{ dc_switches | selectattr('name', 'equalto', dc_vrf_lite_border_leaf) | list }}
 
-    # Kept from main: Cisco scopes external VRF-Lite connectivity to a switch
-    # holding the Border role. Whether an L3Out enforces the same is not
-    # documented; the check is cheap and the lab's design depends on it.
+    # Cisco supports external VRF-Lite only on a switch with the border role.
     - name: Fail when the declared border leaf does not hold the border role
       ansible.builtin.assert:
         that:
@@ -117,8 +70,7 @@
           {{ dc_vrf_lite_extensions | map(attribute='vrf')
              | reject('in', declared_names) | list }}
 
-    # The L3Out routes a VRF out of the border leaf, so the VRF has to be on
-    # the border leaf. Stage 02 attaches it only if the model says so.
+    # A VRF can only leave through the border leaf if it exists on that leaf.
     - name: Fail when the model does not attach the border leaf to every handed-off VRF
       ansible.builtin.assert:
         that:
@@ -151,9 +103,8 @@
           {%- endfor -%}
           {{ missing }}
 
-    # One sub-interface per dot1q tag on one parent interface, and one L3Out
-    # per name. The module identifies an L3Out by name alone, so two rows with
-    # one name would silently become a single object.
+    # Each VRF needs its own dot1q (VLAN) tag and its own L3Out name.
+    # Two rows with the same name would silently merge into one L3Out.
     - name: Fail on a duplicate dot1q tag or L3Out name
       ansible.builtin.assert:
         that:
@@ -169,8 +120,7 @@
         dot1q_tags: "{{ dc_vrf_lite_extensions | map(attribute='dot1q') | list }}"
         l3out_names: "{{ dc_vrf_lite_extensions | map(attribute='name') | list }}"
 
-    # The switch refuses a sub-interface larger than its parent: "MTU of
-    # sub-interface greater than parent interface detected".
+    # A sub-interface MTU cannot be bigger than its parent interface's MTU.
     - name: Fail when the sub-interface MTU exceeds the link MTU
       ansible.builtin.assert:
         that:
@@ -180,7 +130,6 @@
           than dc_vrf_lite_ifc.link_mtu {{ dc_vrf_lite_ifc.link_mtu }}, the
           parent interface MTU.
 
-    # The module takes the address and the mask length as separate fields.
     - name: Fail when an address is not written as address/prefix
       ansible.builtin.assert:
         that:
@@ -215,9 +164,7 @@
           {{ dc_vrf_lite_extensions | map(attribute='vrf') | join(', ') }}.
 
     # ------------------------------------------------ prerequisite: the link
-    # The L3Out sub-interfaces sit on the inter-fabric link stage 04 builds.
-    # Checked here so a stage run out of order names stage 04 rather than
-    # surfacing as a controller rejection.
+    # The L3Outs sit on the link stage 04 builds, so check that it exists.
     - name: Read the inter-fabric links of the DC fabric
       cisco.nd.nd_manage_links:
         fabric_name: "{{ dc_fabric_name }}"
@@ -242,8 +189,7 @@
              | list }}
 
     # ------------------------------------------------------------- intent
-    # Built by the same task file stage 07 uses to check them, so what is
-    # written and what is verified cannot drift apart.
+    # Stage 07 builds the same definitions to check them, so build and check always agree.
     - name: Build the L3Out definitions
       ansible.builtin.include_tasks: tasks/l3out_config.yml
       vars:
@@ -273,9 +219,8 @@
         config: "{{ dc_l3out_config }}"
       register: dc_l3out_result
 
-    # Kept as REST: nd_manage_l3out was checked, and none of its outputs
-    # carries the attach state. Path from cisco.nd's own endpoint definition,
-    # EpManageL3OutsGet.
+    # Attach only what is not attached yet; the module would report a change every run.
+    # This plain API call is the only way to see which L3Outs are already attached.
     - name: Read which L3Outs are already attached
       cisco.nd.nd_rest:
         path: "/api/v1/manage/l3Outs?fabricName={{ dc_fabric_name }}"
@@ -295,9 +240,8 @@
              | list }}
       when: dc_l3out_attach | bool
 
-    # Same definitions plus attach, so the diff above runs again (and finds
-    # nothing) before the attach call. failed_when catches what the module
-    # only warns about.
+    # Attaching marks the L3Out for deployment. The module only warns when attach fails,
+    # so failed_when turns that warning into a real failure.
     - name: Attach the L3Outs
       cisco.nd.nd_manage_l3out:
         fabric_name: "{{ dc_fabric_name }}"

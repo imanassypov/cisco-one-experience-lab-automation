@@ -1,6 +1,6 @@
-{#- Formal verification report. Monochrome, print-friendly, no external assets, -#}
-{#- because it is read on the script server or copied to a laptop offline.      -#}
-{#- Companion to stage08-verification.md.j2 - same data, audit presentation.    -#}
+{#- Printable HTML version of the stage 07 fabric verification report.        -#}
+{#- Self-contained (no external files) so it can be opened offline.           -#}
+{#- Same data as stage07-verification.md.j2, formatted for auditors.          -#}
 {% set n_fail = dc_failed_rows | default([]) | length %}
 {% set n_total = dc_total_checks | int %}
 {% set n_pass = n_total - n_fail %}

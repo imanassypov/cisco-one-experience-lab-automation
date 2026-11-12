@@ -1,13 +1,8 @@
 ---
-# Run one stage as its own ansible-playbook process. Used by 01_dc_deploy.yml,
-# which explains why each stage needs its own process.
-#
-# Input: dc_stage, dc_deploy_root, dc_deploy_log_dir, dc_deploy_extra_vars
+# Runs one stage as a separate ansible-playbook process, for 01_dc_deploy.yml (which explains why).
+# Each stage's output is saved to a log file. Input: dc_stage, dc_deploy_root, dc_deploy_log_dir, dc_deploy_extra_vars.
 
-# The ansible-playbook beside the interpreter running this play, so a stage
-# runs in the same virtualenv as the entry point rather than whatever is first
-# on PATH. The vault password file and ansible.cfg resolve exactly as they do
-# for a stage run by hand, because chdir is the collection root.
+# Uses the same Python environment and settings as running the stage by hand.
 - name: Run {{ dc_stage }}
   ansible.builtin.command:
     argv: >-
@@ -15,8 +10,7 @@
          + (['-e', dc_deploy_extra_vars | to_json] if dc_deploy_extra_vars | length > 0 else []) }}
     chdir: "{{ dc_deploy_root }}"
   register: dc_stage_run
-  # The verdict is taken below, after the log is written, so a failed stage
-  # still leaves its full output behind.
+  # Don't fail yet: save the log first, then check the result at the end.
   failed_when: false
   changed_when: dc_stage_run.stdout is search('changed=[1-9]')
 
