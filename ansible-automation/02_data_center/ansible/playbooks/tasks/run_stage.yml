@@ -1,0 +1,43 @@
+---
+# Run one stage as its own ansible-playbook process. Used by 01_dc_deploy.yml,
+# which explains why each stage needs its own process.
+#
+# Input: dc_stage, dc_deploy_root, dc_deploy_log_dir, dc_deploy_extra_vars
+
+# The ansible-playbook beside the interpreter running this play, so a stage
+# runs in the same virtualenv as the entry point rather than whatever is first
+# on PATH. The vault password file and ansible.cfg resolve exactly as they do
+# for a stage run by hand, because chdir is the collection root.
+- name: Run {{ dc_stage }}
+  ansible.builtin.command:
+    argv: >-
+      {{ [ansible_playbook_python | dirname ~ '/ansible-playbook', 'playbooks/' ~ dc_stage]
+         + (['-e', dc_deploy_extra_vars | to_json] if dc_deploy_extra_vars | length > 0 else []) }}
+    chdir: "{{ dc_deploy_root }}"
+  register: dc_stage_run
+  # The verdict is taken below, after the log is written, so a failed stage
+  # still leaves its full output behind.
+  failed_when: false
+  changed_when: dc_stage_run.stdout is search('changed=[1-9]')
+
+- name: Write the log of {{ dc_stage }}
+  ansible.builtin.copy:
+    content: "{{ dc_stage_run.stdout }}\n{{ dc_stage_run.stderr }}\n"
+    dest: "{{ dc_deploy_log_dir }}/{{ dc_stage | regex_replace('\\.yml$', '') }}.log"
+    mode: "0644"
+
+- name: Show the recap of {{ dc_stage }}
+  ansible.builtin.debug:
+    msg: >-
+      {{ dc_stage_run.stdout_lines
+         | select('search', '^(PLAY RECAP|\\S+\\s+: ok=)') | list }}
+
+- name: Stop on a failure of {{ dc_stage }}
+  ansible.builtin.assert:
+    that:
+      - dc_stage_run.rc == 0
+    fail_msg: >-
+      {{ dc_stage }} failed (rc {{ dc_stage_run.rc }}). Full output:
+      {{ dc_deploy_log_dir }}/{{ dc_stage | regex_replace('\.yml$', '') }}.log.
+      Last lines: {{ (dc_stage_run.stdout_lines + dc_stage_run.stderr_lines)[-25:] | join(' | ') }}
+    quiet: true

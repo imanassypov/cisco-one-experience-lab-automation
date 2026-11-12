@@ -1,15 +1,34 @@
 ---
-# Build the PseudoCo data center fabric end to end. This playbook runs no
-# tasks of its own: import_playbook pulls in the other stages and runs them in
-# order, as if you had run them by hand.
+# Build the PseudoCo data center fabric end to end.
 #
 # Run from the collection root, the directory holding ansible.cfg:
 #
 #   cd ansible-automation/02_data_center/ansible
 #   ansible-playbook playbooks/01_dc_deploy.yml
 #
-# Stage 00 is a prerequisite and is not imported here. It reads a serial number
-# off each switch over SSH and generates
+# EVALUATION BRANCH (eval/nd-l3out). On main this playbook import_playbooks
+# every stage into one run. Here it runs each stage as its own
+# ansible-playbook process instead, in order, stopping at the first failure.
+#
+# Why: stage 02 and stage 06 talk to Nexus Dashboard through cisco.dcnm's
+# httpapi plugin, stages 03, 04, 05, 07 and 08 through cisco.nd's. Both use
+# the same inventory host. ansible-core keys a persistent connection on
+# (address, port, user, connection type, playbook process id) - not on
+# ansible_network_os - so inside one run a cisco.nd stage can silently reuse
+# the cisco.dcnm connection stage 02 left open (ansible-core 2.17.14,
+# lib/ansible/cli/scripts/ansible_connection_cli_stub.py line 268). A new
+# process gets a new connection. Details: docs/eval-nd-l3out.md, Platform Q1.
+#
+# What that changes for you:
+#   - Each stage's output appears when that stage finishes, not line by line.
+#     The full output of every stage is also written to
+#     evidence/dc-deploy-<run>/<stage>.log.
+#   - Extra variables for the stages go in one dictionary, forwarded to each:
+#       -e '{"dc_deploy_extra_vars": {"dc_verify_fail_on_mismatch": false}}'
+#   - Any stage can still be run on its own with ansible-playbook.
+#
+# Stage 00 is a prerequisite and is not run here. It reads a serial number off
+# each switch over SSH and generates
 # playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml, and stage 02
 # refuses to start without that file. Run it once per pod, and again whenever
 # the pod hardware or the switch table changes:
@@ -18,80 +37,69 @@
 #
 # Stages, in apply order:
 #
-#   02  the whole fabric intent: the fabric, the switches, their roles, the
-#       vPC pair, the port-channels, the VRFs, the networks and their
-#       attachments
-#   03  the fabric settings Nexus as Code cannot express: the VRF-Lite
-#       resources, the license tier, the telemetry toggle and the location
-#   04  the External connectivity fabric, in Monitor Mode, with the IOS-XE
-#       edge router added to it, and the VRF-Lite inter-fabric link between
-#       the border leaf and that router
-#   05  first deploy: pushes the fabric to the switches
-#   06  the VRF-Lite extensions on the border leaf, as intent
-#   07  second deploy: pushes those extensions to the border leaf
-#   08  verify the result, against Nexus Dashboard and against the switch
+#   02  the whole fabric intent through Nexus as Code: the fabric, the
+#       switches, their roles, the vPC pair, the port-channels, the VRFs, the
+#       networks and their attachments
+#   03  the fabric settings Nexus as Code cannot express: VRF-Lite mode and
+#       pool, license tier, telemetry, location
+#   04  the External connectivity fabric in Monitor Mode, the IOS-XE edge
+#       router in it, and the eBGP VRF-Lite inter-fabric link to it
+#   05  three L3Outs on the border leaf, one per VRF, attached
+#   06  recalculate and deploy: pushes the fabric and the L3Outs to the
+#       switches
+#   07  verify the result, against Nexus Dashboard and against the switch
 #
-# The deploy runs before stage 06 because stage 06 depends on it.
+# One deploy, where main has two. main deploys before its VRF-Lite stage
+# because Nexus Dashboard only offers a VRF-Lite extension once the parent
+# interface is configured; an L3Out names its interfaces itself. If the pod
+# shows the L3Out still needs a deployed parent interface, add stage 06 before
+# stage 05 in dc_deploy_stages below.
 #
-# Stage 06 can only add an extension where Nexus Dashboard is already offering
-# the border leaf one, and it offers one only where a VRF-Lite inter-fabric
-# link terminates. Stage 04 creates that link explicitly, with dcnm_links and
-# the ext_fabric_setup template, from dc_vrf_lite_ifc in
-# inventory/group_vars/all/dc_vrf_lite.yml. Nothing is left to the controller:
-# dc_vrf_lite.yml sets VRF_LITE_AUTOCONFIG to Manual, so Nexus
-# Dashboard never invents a link or picks an address of its own.
-#
-# The link still needs a deploy before the extension can be attached, because
-# the controller only offers the prototype once the parent interface has been
-# configured on the switch. So the first deploy has to come first.
-#
-# The deploy runs again after stage 06 because stage 06 only stages intent.
-#
-# Stage 06 writes intent to the controller and changes no running
-# configuration. Without a deploy after it, the three dot1q sub-interfaces and
-# their BGP neighbours stay staged and never reach the switch. This is the
-# deploy, edit, deploy sequence the manual guide walks through in section 8.
-#
-# Four things to expect from a plain run:
+# Things to expect from a plain run:
 #   - It is a greenfield build with no confirmation prompt. Stage 02 imports
 #     the five switches with preserveConfig false, which erases each switch's
-#     running configuration as it joins the fabric. No flag changes that, so
-#     point this at a pod you are willing to rebuild.
-#   - Stage 04 targets the External inventory host and reads its settings from
-#     inventory/group_vars/all/dc_external_settings.yml rather than from a
-#     Nexus as Code model, so the edge router must answer SSH and have a vault
-#     entry.
-#   - Both deploys change running configuration and take several minutes.
-#     Switches show as out of sync while they run.
-#   - Stage 08 fails the run on any mismatch; add
-#     -e dc_verify_fail_on_mismatch=false for the report without the failure.
+#     running configuration as it joins the fabric.
+#   - Stage 04 needs the edge router to answer SSH and to have a vault entry.
+#   - Stage 06 changes running configuration and takes several minutes.
+#   - Stage 07 fails the run on any mismatch; forward
+#     dc_verify_fail_on_mismatch: false for the report without the failure.
 #
-# To tear it all down again, including the sub-interfaces stage 07 wrote onto
-# the border leaf, run:
+# To tear it all down again:
 #
-#   ansible-playbook playbooks/09_cleanup.yml -e dc_cleanup_confirm=CLEANUP_OK
-#
-# On a re-run the inter-fabric link already exists, so stage 04 converges it
-# rather than creating it. The first deploy is still needed: stage 02 runs
-# dcnm_vrf with state: replaced, which clears the VRF-Lite extension off the
-# border leaf, and the first deploy pushes that removal. Stage 06 then puts the
-# extension back and the second deploy restores it, so external connectivity is
-# down for the few minutes between the two deploys.
-#
-# Background: "What stage 06 needs from the controller" in the README.
+#   ansible-playbook playbooks/08_cleanup.yml -e dc_cleanup_confirm=CLEANUP_OK
 
-- import_playbook: 02_create_dc_fabric.yml
-- import_playbook: 03_fabric_advanced_settings.yml
-- import_playbook: 04_external_fabric.yml
+- name: Build the DC fabric, one stage per ansible-playbook process
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  any_errors_fatal: true
 
-# First deploy. Pushes the fabric, and configures the parent interface of the
-# inter-fabric link - which is what makes the controller offer stage 06 a
-# VRF-Lite prototype to build on.
-- import_playbook: 05_recalculate_and_deploy.yml
+  vars:
+    dc_deploy_stages:
+      - 02_create_dc_fabric.yml
+      - 03_fabric_advanced_settings.yml
+      - 04_external_fabric.yml
+      - 05_l3out.yml
+      - 06_recalculate_and_deploy.yml
+      - 07_verify_fabric.yml
+    dc_deploy_extra_vars: {}
+    dc_deploy_root: "{{ (playbook_dir ~ '/..') | realpath }}"
 
-- import_playbook: 06_vrf_lite.yml
+  tasks:
+    # Fixed once: a template using now() is re-evaluated on every use.
+    - name: Name this run's log directory
+      ansible.builtin.set_fact:
+        dc_deploy_log_dir: >-
+          {{ dc_deploy_root }}/evidence/dc-deploy-{{ now(utc=true).strftime('%Y%m%dT%H%M%SZ') }}
 
-# Second deploy. Pushes the sub-interfaces and BGP neighbours stage 06 staged.
-- import_playbook: 07_recalculate_and_deploy.yml
+    - name: Make the log directory
+      ansible.builtin.file:
+        path: "{{ dc_deploy_log_dir }}"
+        state: directory
+        mode: "0755"
 
-- import_playbook: 08_verify_fabric.yml
+    - name: Run each stage
+      ansible.builtin.include_tasks: tasks/run_stage.yml
+      loop: "{{ dc_deploy_stages }}"
+      loop_control:
+        loop_var: dc_stage
