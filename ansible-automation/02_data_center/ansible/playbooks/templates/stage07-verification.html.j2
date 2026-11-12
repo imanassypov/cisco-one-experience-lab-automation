@@ -280,7 +280,7 @@
 </h3>
 <table>
   <caption>Table 7 &mdash; L3Outs held by the controller</caption>
-  <thead><tr><th style="width:26%">L3Out</th><th>Result</th><th>Declared</th><th>Present</th><th>State</th><th>Differs</th></tr></thead>
+  <thead><tr><th style="width:26%">L3Out</th><th>Result</th><th>Declared</th><th>Present</th><th>Attached</th><th>State</th><th>Differs</th></tr></thead>
   <tbody>
   {% for row in dc_vrf_lite_rows | default([]) %}
     <tr{% if not row.ok %} class="exception"{% endif %}>
@@ -288,6 +288,7 @@
       <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
       <td class="mono">{{ row.declared }}</td>
       <td>{{ 'yes' if row.present else 'no' }}</td>
+      <td>{{ 'yes' if row.attached else 'no' }}</td>
       <td>{{ row.state }}</td>
       <td>{% set differs = [] %}{% for key, label in [('vrf_seen', 'VRF'), ('interface_seen', 'interface'), ('dot1q_seen', 'dot1q'), ('ipv4_seen', 'address'), ('neighbor_seen', 'neighbour'), ('mtu_seen', 'MTU'), ('peer_asn_seen', 'peer ASN')] %}{% if row.present and not row[key] %}{{ differs.append(label) or '' }}{% endif %}{% endfor %}{{ differs | join(', ') if differs else 'none' }}</td>
     </tr>
@@ -301,9 +302,8 @@
 <p class="small muted">
   Each L3Out must exist on the controller with the declared VRF, interface,
   dot1q tag, addresses, MTU and peer ASN, read from the controller's own copy.
-  Whether it is attached is not reported by any module; the raw L3Out
-  collection is saved beside this report, and sections 4.5 and 4.6 are what
-  prove it reached the switch.
+  Attached is read from the controller's L3Out collection, also saved beside
+  this report; sections 4.5 and 4.6 prove the attach reached the switch.
 </p>
 
 <h3 id="f5">4.5 VRF-Lite sub-interfaces
@@ -403,8 +403,7 @@
 </p>
 {% endif %}
 <p class="small muted">
-  Outside the scope of this report in all cases: whether each L3Out is
-  attached, which no module reports; the edge router's side of the
+  Outside the scope of this report in all cases: the edge router's side of the
   VRF-Lite links, which is pre-built by the pod and which Nexus Dashboard never
   writes to; the fabric underlay and the EVPN overlay, since the session table
   covers only the three VRF-Lite eBGP sessions; and the data plane, since

@@ -462,12 +462,12 @@
       register: dc_observed_l3out
       when: dc_vrf_lite_extensions | default([]) | length > 0
 
-    # Kept as REST: nd_manage_l3out was checked, and it has no gathered state
-    # and no output that says whether an L3Out is attached. The raw collection
-    # is saved with the evidence so the attach state can be read off it by
-    # hand until the module exposes one (docs/eval-nd-l3out.md, blocker B4).
-    # Path from cisco.nd's own endpoint definition, EpManageL3OutsGet.
-    - name: Read the raw L3Out collection for the evidence
+    # Kept as REST: nd_manage_l3out was checked, and none of its outputs says
+    # whether an L3Out is attached. The GET carries an "attach" field
+    # (observed on ND 4.2.1.10, 2026-11-12), checked per row below; the raw
+    # collection is also saved with the evidence. Path from cisco.nd's own
+    # endpoint definition, EpManageL3OutsGet.
+    - name: Read the raw L3Out collection
       cisco.nd.nd_rest:
         path: "{{ nd_manage_root }}/l3Outs?fabricName={{ dc_fabric_name }}"
         method: get
@@ -946,9 +946,9 @@
     # check-mode before). Interface names are accepted in either form - parent
     # or parent.dot1q - because which one Nexus Dashboard stores is open
     # question B2; the dot1q tag is checked on its own field either way.
-    # Whether the L3Out is attached is not judged here: no module reports it.
-    # The sub-interface and BGP tables below, read off the switch, are what
-    # prove it was attached and deployed.
+    # attached comes from the raw GET, the one place Nexus Dashboard reports
+    # it. The sub-interface and BGP tables below, read off the switch, prove
+    # the attach was also deployed.
     - name: Compare the L3Outs
       ansible.builtin.set_fact:
         dc_vrf_lite_rows: "{{ dc_vrf_lite_rows | default([]) + [row] }}"
@@ -962,9 +962,13 @@
         leaf: "{{ link.switch1_details | default({}) }}"
         peer: "{{ link.switch2_details | default({}) }}"
         bgp: "{{ (observed.routing_details | default({})).bgp | default({}) }}"
+        raw: >-
+          {{ ((dc_observed_l3out_raw.jsondata | default({})).l3Outs | default([])
+              | selectattr('name', 'equalto', item.name) | list | first) | default({}, true) }}
         row:
           name: "L3Out {{ item.name }} ({{ item.vrf }}) on {{ dc_vrf_lite_border_leaf }}"
           present: "{{ observed | length > 0 }}"
+          attached: "{{ raw.attach | default(false) | bool }}"
           state: >-
             {{ 'absent' if observed | length == 0
                else ('matches' if (observed.vrf1_name | default('', true) == item.vrf)
@@ -993,6 +997,7 @@
                == dc_external_fabric_settings.bgp_asn | string }}
           ok: >-
             {{ (observed | length > 0)
+               and (raw.attach | default(false) | bool)
                and (observed.vrf1_name | default('', true) == item.vrf)
                and (observed.vrf2_name | default('', true) == item.peer_vrf)
                and (leaf.interface_name | default('', true)

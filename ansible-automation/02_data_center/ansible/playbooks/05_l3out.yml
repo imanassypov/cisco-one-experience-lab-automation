@@ -20,9 +20,10 @@
 # Three known module behaviours shape the tasks below (docs/eval-nd-l3out.md,
 # blocker B4):
 #   - attach is not idempotent. With attach set the module reports changed on
-#     every run, and Nexus Dashboard exposes no attach state the module reads.
-#     So the intent and the attach are separate tasks, and the attach task's
-#     changed is the module's own - honest, and always true.
+#     every run, and none of its outputs carries the attach state. The L3Out
+#     GET does (an "attach" field, observed on ND 4.2.1.10 on 2026-11-12), so
+#     this stage reads it and attaches only the L3Outs that are not attached
+#     yet. A converged run then reports no change.
 #   - attach failures come back as warnings, not as a failed task. failed_when
 #     turns them into failures.
 #   - changing an L3Out's routing protocol is rejected with HTTP 400. All
@@ -272,6 +273,28 @@
         config: "{{ dc_l3out_config }}"
       register: dc_l3out_result
 
+    # Kept as REST: nd_manage_l3out was checked, and none of its outputs
+    # carries the attach state. Path from cisco.nd's own endpoint definition,
+    # EpManageL3OutsGet.
+    - name: Read which L3Outs are already attached
+      cisco.nd.nd_rest:
+        path: "/api/v1/manage/l3Outs?fabricName={{ dc_fabric_name }}"
+        method: get
+      register: dc_l3out_raw
+      changed_when: false
+      when: dc_l3out_attach | bool
+
+    - name: Select the L3Outs that still need attaching
+      ansible.builtin.set_fact:
+        dc_l3out_to_attach: >-
+          {{ dc_l3out_config | map(attribute='name')
+             | reject('in', (dc_l3out_raw.jsondata | default({})).l3Outs | default([])
+                            | selectattr('attach', 'defined')
+                            | selectattr('attach')
+                            | map(attribute='name') | list)
+             | list }}
+      when: dc_l3out_attach | bool
+
     # Same definitions plus attach, so the diff above runs again (and finds
     # nothing) before the attach call. failed_when catches what the module
     # only warns about.
@@ -279,19 +302,24 @@
       cisco.nd.nd_manage_l3out:
         fabric_name: "{{ dc_fabric_name }}"
         state: merged
-        config: "{{ dc_l3out_config | map('combine', {'attach': true}) | list }}"
+        config: >-
+          {{ dc_l3out_config | selectattr('name', 'in', dc_l3out_to_attach)
+             | map('combine', {'attach': true}) | list }}
       register: dc_l3out_attach_result
       failed_when: >-
         dc_l3out_attach_result.failed | default(false)
         or (dc_l3out_attach_result.warnings | default([])
             | select('search', 'Attachment operation failed') | list | length > 0)
-      when: dc_l3out_attach | bool
+      when:
+        - dc_l3out_attach | bool
+        - dc_l3out_to_attach | length > 0
 
     - name: Report the L3Out result
       ansible.builtin.debug:
         msg: >-
           L3Out intent: {{ 'created or updated' if dc_l3out_result.changed
                            else 'already matched, nothing sent' }}.
-          Attach: {{ 'sent for ' ~ (dc_l3out_config | map(attribute='name') | join(', '))
+          Attach: {{ ('sent for ' ~ (dc_l3out_to_attach | join(', '))
+                      if dc_l3out_to_attach | length > 0 else 'all already attached, nothing sent')
                      if dc_l3out_attach | bool else 'skipped (dc_l3out_attach=false)' }}.
           Stage 06 deploys it to {{ dc_vrf_lite_border_leaf }}.

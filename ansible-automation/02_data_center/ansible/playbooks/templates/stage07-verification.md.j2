@@ -70,10 +70,10 @@ the attached set is what fails, under "Attachments missing".
 
 ## L3Outs
 
-| L3Out | Declared | Present | State | VRF | Interface | Dot1q | Address | Neighbour | MTU | Peer ASN | Match |
-|---|---|---|---|---|---|---|---|---|---|---|---|
+| L3Out | Declared | Present | Attached | State | VRF | Interface | Dot1q | Address | Neighbour | MTU | Peer ASN | Match |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 {% for row in dc_vrf_lite_rows | default([]) %}
-| {{ row.name }} | {{ row.declared }} | {{ 'yes' if row.present else 'NO' }} | {{ row.state }} | {{ 'yes' if row.vrf_seen else 'NO' }} | {{ 'yes' if row.interface_seen else 'NO' }} | {{ 'yes' if row.dot1q_seen else 'NO' }} | {{ 'yes' if row.ipv4_seen else 'NO' }} | {{ 'yes' if row.neighbor_seen else 'NO' }} | {{ 'yes' if row.mtu_seen else 'NO' }} | {{ 'yes' if row.peer_asn_seen else 'NO' }} | {{ 'yes' if row.ok else 'NO' }} |
+| {{ row.name }} | {{ row.declared }} | {{ 'yes' if row.present else 'NO' }} | {{ 'yes' if row.attached else 'NO' }} | {{ row.state }} | {{ 'yes' if row.vrf_seen else 'NO' }} | {{ 'yes' if row.interface_seen else 'NO' }} | {{ 'yes' if row.dot1q_seen else 'NO' }} | {{ 'yes' if row.ipv4_seen else 'NO' }} | {{ 'yes' if row.neighbor_seen else 'NO' }} | {{ 'yes' if row.mtu_seen else 'NO' }} | {{ 'yes' if row.peer_asn_seen else 'NO' }} | {{ 'yes' if row.ok else 'NO' }} |
 {% endfor %}
 {% if not (dc_vrf_lite_rows | default([])) %}
 No L3Outs are declared in `group_vars/all/dc_vrf_lite.yml`, so none were
@@ -89,10 +89,9 @@ nd_manage_l3out's own comparison of every field it manages, so it can report a
 difference none of the columns show. It is informational and does not count
 as a check.
 
-Whether an L3Out is attached is not in this table: no module reports it. The
-raw L3Out collection is saved beside this report as
-`stage07-l3outs-<run>.json`. The two tables below are read off the switch and
-are what prove the L3Outs were attached and deployed.
+Attached is read from the controller's L3Out collection, which is also saved
+beside this report as `stage07-l3outs-<run>.json`. The two tables below are
+read off the switch and prove the attach was deployed.
 
 A row reading `absent` means the L3Out does not exist - run `05_l3out.yml`,
 then `06_recalculate_and_deploy.yml`. A `NO` in one of the value columns
@@ -183,7 +182,7 @@ values side by side.
 - **{{ row.name }}** (BGP session) - {% if row.observed_state == 'absent' %}{{ dc_vrf_lite_border_leaf }} has no BGP session to {{ row.neighbor }} in VRF {{ row.vrf }}, so the L3Out is not in its running configuration; re-run `05_l3out.yml` then `06_recalculate_and_deploy.yml`{% else %}the session to {{ row.neighbor }} in VRF {{ row.vrf }} is `{{ row.observed_state }}`, not `Established`. The neighbour is configured on the leaf, since the leaf reports a session for it, so look next at the far end on DC-SITE11-CEDGE8Kv{% endif %}
 
 {% elif row.interface_seen is defined %}
-- **{{ row.name }}** (L3Out) - {% if not row.present %}does not exist on the controller; run `05_l3out.yml`{% else %}{% set faults = [] %}{% for key, label in [('vrf_seen', 'VRF'), ('interface_seen', 'interface'), ('dot1q_seen', 'dot1q tag'), ('ipv4_seen', 'leaf address'), ('neighbor_seen', 'neighbour address'), ('mtu_seen', 'MTU'), ('peer_asn_seen', 'peer ASN')] %}{% if not row[key] %}{{ faults.append('declared ' ~ label ~ ' differs on the controller') or '' }}{% endif %}{% endfor %}{{ faults | join('; ') }}{% endif %}
+- **{{ row.name }}** (L3Out) - {% if not row.present %}does not exist on the controller; run `05_l3out.yml`{% else %}{% set faults = [] %}{% if not row.attached %}{{ faults.append('not attached; run `05_l3out.yml`') or '' }}{% endif %}{% for key, label in [('vrf_seen', 'VRF'), ('interface_seen', 'interface'), ('dot1q_seen', 'dot1q tag'), ('ipv4_seen', 'leaf address'), ('neighbor_seen', 'neighbour address'), ('mtu_seen', 'MTU'), ('peer_asn_seen', 'peer ASN')] %}{% if not row[key] %}{{ faults.append('declared ' ~ label ~ ' differs on the controller') or '' }}{% endif %}{% endfor %}{{ faults | join('; ') }}{% endif %}
 
 {% elif row.declared_id is defined %}
 - **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_id | string != row.declared_id | string %}{{ faults.append('has VNI ' ~ row.observed_id ~ ', declared as ' ~ row.declared_id) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('exists but is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attached switches report ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{% if row.missing_switches %}{{ faults.append('not attached on ' ~ row.missing_switches | join(', ')) or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
@@ -210,8 +209,6 @@ None.
   It does not say how many prefixes crossed, or that the ones that did are the
   ones you wanted. `show bgp ipv4 unicast neighbors <neighbour> vrf <vrf>` on
   the border leaf reports the prefixes sent and received on that session.
-- **Whether each L3Out is attached.** No module reports it; see the raw
-  L3Out JSON saved beside this report.
 - **The fabric underlay and the EVPN overlay.** The BGP session table covers
   only the three VRF-Lite eBGP sessions to the edge router. The iBGP EVPN
   sessions to the spines are not checked here.
