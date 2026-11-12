@@ -1,54 +1,37 @@
 ---
-# Stage 04 - create the External connectivity fabric in Monitor Mode and add
-# the IOS-XE edge router to it.
+# Stage 04 - create the External connectivity fabric in Monitor Mode, add the
+# IOS-XE edge router to it, and build the inter-fabric link the L3Outs ride on.
 #
 # This is guide section 7: a second fabric, ASN 65531, with Fabric Monitor Mode
 # enabled, holding the edge router DC-SITE11-CEDGE8Kv (198.18.133.14). Monitor
-# Mode means Nexus Dashboard reads that router and never configures it, which
-# is what this lab wants - the router's side of the VRF-Lite handoff is
-# pre-built by the pod.
+# Mode means Nexus Dashboard reads that router and never configures it - the
+# router's side of the handoff is pre-built by the pod.
 #
-# The stage runs before the deploy because it builds the fabric on the far side
-# of that handoff. Run after stage 06, the DC fabric would have been deployed
-# against a peer fabric that did not yet exist.
+# EVALUATION BRANCH (eval/nd-l3out). Every call goes through cisco.nd:
+#   nd_manage_fabric_external   the fabric, created already in Monitor Mode
+#   nd_manage_switches          discovery and add of the router
+#   nd_manage_links             the eBGP VRF-Lite inter-fabric link
+# They replace main's dcnm_fabric, five dcnm_rest calls (fabric list, switch
+# list, shallowDiscovery, add, poll) and dcnm_links. Each module compares
+# before it writes, so the existence checks main did by hand are gone.
 #
-# External fabric and edge-router settings come from
-# inventory/group_vars/all/dc_external_settings.yml. VRF-Lite link settings
-# come from inventory/group_vars/all/dc_vrf_lite.yml; the source fabric and
-# border-leaf identity come from inventory/group_vars/all/dc_switches.yml.
-# The link play reads the DC ASN from host_vars/Pseudoco-DC1/global.nac.yaml,
-# relative to this playbook directory.
+# Values come from inventory/group_vars/all/dc_external_settings.yml (fabric
+# and router) and inventory/group_vars/all/dc_vrf_lite.yml (link). The link
+# play reads the DC ASN from host_vars/Pseudoco-DC1/global.nac.yaml.
 #
-# On re-run, dcnm_fabric and dcnm_links reconcile their declared settings with
-# state: merged. Router discovery and addition are separately guarded by a
-# read of the External fabric's switch list, matched on the management IP.
+# This fabric is not built from a Nexus as Code model: the collection's create
+# role config-saves after its inventory step, and on a switchless fabric the
+# controller answers HTTP 500. The fabric also holds no VRFs, networks or
+# interfaces, so there is nothing for the model to express.
 #
-# Two decisions shape the whole play.
-#
-# This fabric is not built from a Nexus as Code model. The collection's create
-# role runs a config-save after its inventory step, and on a fabric with no
-# switches the controller answers HTTP 500, "Fabric External cannot be deployed
-# without any switches". The fabric also holds no VRFs, networks or interfaces,
-# so there is nothing for the model to express.
-#
-# Every call here uses the Nexus Dashboard 4.x manage API under /api/v1/manage/
-# rather than the legacy NDFC API under /appcenter/. Only the manage API can
-# onboard a non-NX-OS device, which is also why cisco.dcnm's dcnm_inventory
-# cannot add this router. The two APIs do not share a schema:
-# snmpV3AuthProtocol is the string "md5" here and an integer on the legacy API,
-# which rejects the string with HTTP 400, "Cannot deserialize value of type int
-# from String md5".
-#
-# Run from the collection root, the directory holding ansible.cfg:
+# Run from the collection root as its own ansible-playbook run (see
+# 01_dc_deploy.yml for why):
 #
 #   cd ansible-automation/02_data_center/ansible
 #   ansible-playbook playbooks/04_external_fabric.yml
 #
 # Useful override:
 #   -e dc_external_add_edge_router=false   create the fabric, skip the router
-#
-# Background: "Scope" in the README, which carries both API payloads and why
-# dcnm_inventory fails on this device.
 
 - name: Stage 04 - create the External connectivity fabric
   hosts: External
@@ -56,13 +39,8 @@
   any_errors_fatal: true
 
   vars:
-    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
-    nd_fabric_switches: "/api/v1/manage/fabrics/{{ inventory_hostname }}/switches"
+    ansible_network_os: cisco.nd.nd
     dc_external_add_edge_router: true
-    # The add is asynchronous, so the last task polls for the result. The UI's
-    # own call completed in about 14 seconds; these values allow five minutes.
-    dc_external_add_retries: 30
-    dc_external_add_delay: 10
     # Read off the router by stage 00, the same lookup the switches come from.
     dc_external_router_serial: >-
       {{ dc_device_serials[dc_external_edge_router.hostname] | default('') }}
@@ -72,19 +50,20 @@
       ansible.builtin.assert:
         that:
           - dc_external_fabric_settings is mapping
-          - dc_external_fabric_settings | length > 0
+          - dc_external_fabric_settings.bgp_asn is defined
+          - dc_external_fabric_settings.monitored_mode | default(false) | bool
           - dc_external_edge_router.ip is defined
           - dc_external_edge_router.platform_type is defined
           - dc_external_edge_router.credential_key is defined
         fail_msg: >-
-          dc_external_fabric_settings or dc_external_edge_router is incomplete.
-          Both are expected in
-          inventory/group_vars/all/dc_external_settings.yml.
+          dc_external_fabric_settings or dc_external_edge_router is incomplete,
+          or monitored_mode is not true. Both are expected in
+          inventory/group_vars/all/dc_external_settings.yml, and this lab
+          never lets Nexus Dashboard write to the edge router.
       tags: [always]
 
-    # The serial comes from stage 00's lookup rather than from the controller,
-    # so a missing lookup is an ordering problem worth naming here rather than
-    # a confusing empty serial in the add payload later.
+    # The serial is checked against what the controller reports after the
+    # add, so a missing stage 00 lookup is worth naming before anything runs.
     - name: Require stage 00 to have read the edge router serial
       ansible.builtin.assert:
         that:
@@ -96,277 +75,129 @@
       when: dc_external_add_edge_router | bool
       tags: [always]
 
-    # Existence is read from the fabric list rather than from a GET of the
-    # fabric itself, because a GET of a fabric that does not exist returns 4xx
-    # and dcnm_rest turns that into a module failure with no usable body -
-    # leaving no way to tell an absent fabric from a failed call. The list
-    # endpoint answers 200 either way.
-    - name: List the fabrics on the controller
-      cisco.dcnm.dcnm_rest:
-        method: GET
-        path: "{{ ndfc_api_root }}/rest/control/fabrics"
-      register: dc_fabrics_all
-      changed_when: false
-      tags: [always]
-
-    - name: Report whether the fabric will be created or converged
-      ansible.builtin.debug:
-        msg: >-
-          Fabric {{ inventory_hostname }}
-          {{ 'already exists and will be converged onto the declared settings'
-             if inventory_hostname in
-                ((dc_fabrics_all.response | default({})).DATA | default([])
-                 | map(attribute='fabricName') | list)
-             else 'is absent and will be created' }}.
-      tags: [always]
-
   tasks:
-    # FABRIC_NAME, FABRIC_TYPE and DEPLOY are set here rather than in the
-    # settings file because they are fixed properties of this stage. BGP_AS is
-    # in the settings file, but dcnm_fabric requires it on every call for an
-    # External fabric. DEPLOY is false because none of these values needs
-    # pushing to a device, and because a deploy on a switchless fabric returns
-    # HTTP 500. Monitor Mode is set in this same call, so the fabric is never
-    # briefly writable.
-    #
-    # state: merged is non-destructive on Nexus Dashboard 4.x: the module
-    # rebuilds the update payload from the controller's own nvPairs before
-    # overlaying these keys, so no other fabric setting is changed.
+    # Monitor Mode is set in the same call that creates the fabric, so the
+    # fabric is never briefly writable. config_actions is left out, which for
+    # this module means no save and no deploy - a deploy on a switchless
+    # fabric returns HTTP 500 anyway.
     - name: Create the External fabric with the declared settings
-      cisco.dcnm.dcnm_fabric:
+      cisco.nd.nd_manage_fabric_external:
         state: merged
         config:
-          - "{{ {'FABRIC_NAME': inventory_hostname,
-                 'FABRIC_TYPE': 'External',
-                 'DEPLOY': false}
-                | combine(dc_external_fabric_settings) }}"
+          - fabric_name: "{{ inventory_hostname }}"
+            management: "{{ dc_external_fabric_settings }}"
       register: dc_external_fabric_result
 
     - name: Report the fabric result
       ansible.builtin.debug:
         msg: >-
-          {{ 'Fabric created with Monitor Mode enabled. Nexus Dashboard
-              will not configure devices in this fabric.'
+          {{ 'Fabric created or updated, Monitor Mode on. Nexus Dashboard will
+              not configure devices in this fabric.'
              if dc_external_fabric_result.changed
              else 'Fabric already matches the declared settings. No change
               sent.' }}
 
     # ---------------------------------------------------------------- router
 
-    # The fabric is created through the lan-fabric API, but its switch list
-    # belongs to the manage API, and that one does not see a brand new fabric
-    # straight away: the read below returns 404 "Fabric not found" for a few
-    # seconds after creation. Retry until it appears rather than failing the
-    # whole build on a propagation delay.
-    - name: Read the fabric's current switch list
-      cisco.dcnm.dcnm_rest:
-        method: GET
-        path: "{{ nd_fabric_switches }}"
-      register: dc_external_switches_before
-      changed_when: false
-      ignore_errors: true
-      until: (dc_external_switches_before.response | default({})).RETURN_CODE | default(0) | int == 200
-      retries: "{{ dc_external_add_retries }}"
-      delay: "{{ dc_external_add_delay }}"
+    # config_actions is set explicitly. For nd_manage_switches the defaults
+    # are save: true and deploy: true, unlike every other module this stage
+    # uses, and nothing may be deployed toward this router. Monitor Mode is
+    # the second guard, not the only one.
+    #
+    # preserve_config true: the controller must read the router's running
+    # configuration, not replace it. The module requires it for External
+    # fabrics anyway. No role is sent: the controller assigns edge_router to
+    # an IOS-XE device in an External fabric, which is the role the guide
+    # specifies, and an omitted role is not enforced as drift.
+    #
+    # Two discovery settings main sends cannot be set through this module:
+    # maxHop (main 0, module 2) and useCredentialForWrite (main false, module
+    # unset). Both are listed as risks in docs/eval-nd-l3out.md.
+    - name: Discover and add the edge router
+      cisco.nd.nd_manage_switches:
+        fabric: "{{ inventory_hostname }}"
+        state: merged
+        config_actions:
+          save: false
+          deploy: false
+        config:
+          - seed_ip: "{{ dc_external_edge_router.ip }}"
+            username: "{{ lab_access[dc_external_edge_router.credential_key].username }}"
+            password: "{{ lab_access[dc_external_edge_router.credential_key].password }}"
+            platform_type: "{{ dc_external_edge_router.platform_type }}"
+            preserve_config: true
+      register: dc_external_router_result
+      when: dc_external_add_edge_router | bool
 
-    - name: Fail when the new fabric never became readable
+    # Kept as REST: nd_manage_switches was checked, and none of its outputs
+    # (before, after, gathered) carries a serial number - only seed_ip, role
+    # and platform_type. The check catches a seed address that now answers as
+    # a different device, which no module comparison would notice.
+    #
+    # nd_rest accepts the response as-is, so the assert below is the check.
+    - name: Read the External fabric inventory
+      cisco.nd.nd_rest:
+        path: "/api/v1/manage/fabrics/{{ inventory_hostname }}/switches"
+        method: get
+      register: dc_external_inventory
+      changed_when: false
+      when: dc_external_add_edge_router | bool
+
+    - name: Require the added router to be the device stage 00 read
       ansible.builtin.assert:
         that:
-          - (dc_external_switches_before.response | default({})).RETURN_CODE | default(0) | int == 200
+          - dc_external_router_row | length == 1
+          - dc_external_router_row[0].serialNumber | default(dc_external_router_row[0].switchId | default(''))
+            == dc_external_router_serial
         fail_msg: >-
-          {{ inventory_hostname }} exists on the controller but
-          {{ nd_fabric_switches }} still reports "Fabric not found" after
-          {{ (dc_external_add_retries | int) * (dc_external_add_delay | int) }}s.
-          That is longer than a propagation delay, so check the fabric really
-          was created and that the manage API is healthy.
-
-    # Matched on the management IP rather than the hostname. The IP is
-    # declared here; the hostname is whatever the device reports.
-    - name: Determine whether the edge router is already in the fabric
-      ansible.builtin.set_fact:
-        dc_external_router_present: >-
-          {{ dc_external_edge_router.ip in
-             (((dc_external_switches_before.response | default({})).DATA
-               | default({})).switches | default([])
-              | map(attribute='fabricManagementIp') | list) }}
-
-    # Discovery is read-only: it queries the seed address and reports what it
-    # found without adding anything, so it is safe to re-run. platformType is
-    # the API form of the UI's "Device type: IOS XE" dropdown and selects the
-    # discovery protocol - leave it out and the controller uses the NX-OS
-    # SNMPv3 path, which this router does not answer. no_log keeps the vault
-    # credentials in the payload out of the run output.
-    - name: Discover the edge router over SSH
-      cisco.dcnm.dcnm_rest:
-        method: POST
-        path: "/api/v1/manage/fabrics/{{ inventory_hostname }}/actions/shallowDiscovery"
-        data: >-
-          {{ {'seedIpCollection': [dc_external_edge_router.ip],
-              'platformType': dc_external_edge_router.platform_type,
-              'snmpV3AuthProtocol': 'md5',
-              'username': lab_access[dc_external_edge_router.credential_key].username,
-              'password': lab_access[dc_external_edge_router.credential_key].password,
-              'maxHop': 0,
-              'discoveryCredForLan': false} | to_json }}
-      register: dc_external_discovery
-      changed_when: false
-      no_log: true
-      when:
-        - dc_external_add_edge_router | bool
-        - not (dc_external_router_present | bool)
-
-    # The controller returns HTTP 200 even for a candidate it cannot use, so the
-    # status has to be read rather than inferred from the response code. A
-    # successful IOS-XE discovery reports "manageable" and carries a serial
-    # number; the SNMPv3 fallback reports "SNMPv3 Timeout" and no serial.
-    #
-    # The serial it reports is checked against the one stage 00 read off the
-    # router itself rather than trusted on its own. The two disagreeing means
-    # the seed address now answers as a different device, and posting either
-    # value would be wrong.
-    - name: Require the discovered router to be manageable
-      ansible.builtin.assert:
-        that:
-          - dc_external_discovered | length == 1
-          - dc_external_discovered[0].status == 'manageable'
-          - dc_external_discovered[0].serialNumber | default('') | length > 0
-          - dc_external_discovered[0].serialNumber == dc_external_router_serial
-        fail_msg: >-
-          Discovery of {{ dc_external_edge_router.ip }} did not return a
-          manageable switch matching the declared model:
-          {{ dc_external_discovered | to_json }}.
-          Stage 00 read serial '{{ dc_external_router_serial }}' off that
-          address. A statusReason of "SNMPv3 Timeout" indicates platformType
-          did not reach the controller, which then used the NX-OS discovery
-          path. A serial mismatch instead means the address now answers as a
-          different device - re-run stage 00.
+          {{ dc_external_edge_router.ip }} in {{ inventory_hostname }} does not
+          match stage 00's serial '{{ dc_external_router_serial }}':
+          {{ dc_external_router_row | to_json }}. Either the router never
+          joined the fabric or the address now answers as a different device -
+          re-run stage 00.
       vars:
-        dc_external_discovered: >-
-          {{ ((dc_external_discovery.response | default({})).DATA
-              | default({})).switches | default([]) }}
-      when:
-        - dc_external_add_edge_router | bool
-        - not (dc_external_router_present | bool)
-
-    # preserveConfig is true because the fabric is in Monitor Mode: the
-    # controller must read the router's running configuration rather than
-    # replace it. useCredentialForWrite is false for the same reason.
-    #
-    # No role is sent. The controller assigns edgeRouter to an IOS-XE device in
-    # an external connectivity fabric, which is the role the guide specifies.
-    #
-    # model, softwareVersion and hostname come from the discovery above because
-    # they are pod-specific, but the switch entry is rebuilt key by key rather
-    # than passed through whole: the discovery response also carries status and
-    # statusReason, which are outputs rather than inputs, and omits vdcMac,
-    # which the add requires. serialNumber comes from the stage 00 lookup, the
-    # same source every other stage uses, and the assert above has already
-    # proved discovery agrees with it.
-    - name: Add the edge router to the fabric
-      cisco.dcnm.dcnm_rest:
-        method: POST
-        path: "{{ nd_fabric_switches }}?ticketId="
-        data: >-
-          {{ {'platformType': dc_external_edge_router.platform_type,
-              'snmpV3AuthProtocol': 'md5',
-              'username': lab_access[dc_external_edge_router.credential_key].username,
-              'password': lab_access[dc_external_edge_router.credential_key].password,
-              'preserveConfig': true,
-              'useCredentialForWrite': false,
-              'switches': [{
-                'ip': dc_external_discovered[0].ip,
-                'hostname': dc_external_discovered[0].hostname,
-                'model': dc_external_discovered[0].model,
-                'softwareVersion': dc_external_discovered[0].softwareVersion,
-                'serialNumber': dc_external_router_serial,
-                'vdcId': dc_external_discovered[0].vdcId | default(0),
-                'vdcMac': ''}]}
-             | to_json }}
-      register: dc_external_add
-      changed_when: true
-      no_log: true
-      vars:
-        dc_external_discovered: >-
-          {{ ((dc_external_discovery.response | default({})).DATA
-              | default({})).switches | default([]) }}
-      when:
-        - dc_external_add_edge_router | bool
-        - not (dc_external_router_present | bool)
-
-    # The add returns HTTP 202 with an empty body, which confirms only that the
-    # request was accepted, so the outcome has to be polled. until/retries/delay
-    # repeat this GET until the router shows up in the fabric's switch list or
-    # the retries run out.
-    - name: Wait for the edge router to appear in the fabric
-      cisco.dcnm.dcnm_rest:
-        method: GET
-        path: "{{ nd_fabric_switches }}"
-      register: dc_external_switches_after
-      changed_when: false
-      until: >-
-        dc_external_edge_router.ip in
-        (((dc_external_switches_after.response | default({})).DATA
-          | default({})).switches | default([])
-         | map(attribute='fabricManagementIp') | list)
-      retries: "{{ dc_external_add_retries }}"
-      delay: "{{ dc_external_add_delay }}"
-      when:
-        - dc_external_add_edge_router | bool
-        - not (dc_external_router_present | bool)
+        dc_external_router_row: >-
+          {{ (dc_external_inventory.jsondata | default({})).switches
+             | default([])
+             | selectattr('fabricManagementIp', 'defined')
+             | selectattr('fabricManagementIp', 'equalto', dc_external_edge_router.ip)
+             | list }}
+      when: dc_external_add_edge_router | bool
 
     - name: Report the edge router result
       ansible.builtin.debug:
         msg: >-
-          {{ dc_external_report }}
-      vars:
-        dc_external_now: >-
-          {{ (((dc_external_switches_after if not (dc_external_router_present | bool)
-                else dc_external_switches_before).response | default({})).DATA
-              | default({})).switches | default([]) }}
-        dc_external_report: >-
-          {{ 'Edge router already in the fabric. No change sent. Devices: '
-             + (dc_external_now | map(attribute='hostname') | join(', ')) + '.'
-             if dc_external_router_present | bool
-             else ('Edge router added. Devices: '
-                   + (dc_external_now | map(attribute='hostname') | join(', '))
-                   + '.'
-                   if dc_external_add_edge_router | bool
-                   else 'Edge router skipped because
-                   dc_external_add_edge_router is false. VRF-Lite extensions
-                   to it cannot be built until it is in the fabric.') }}
+          {{ ('Edge router ' + ('added.' if dc_external_router_result.changed
+                                else 'already in the fabric. No change sent.'))
+             if dc_external_add_edge_router | bool
+             else 'Edge router skipped because dc_external_add_edge_router is
+                   false. The L3Outs cannot be built until it is in the
+                   fabric.' }}
 
 # ---------------------------------------------------------------------------
-# The inter-fabric link stage 06 depends on.
+# The inter-fabric link the L3Outs ride on.
 #
-# VRF_LITE_AUTOCONFIG is Manual, so the controller creates no IFC of its own.
-# That is deliberate: an auto-created IFC also auto-allocates a dot1q ID per
-# VRF, and this pod's router has fixed tags that the controller's allocation
-# does not match. Declaring the link here means nothing is allocated behind the
-# data model's back.
+# nd_manage_l3out does not create links; its documentation leaves the link
+# lifecycle to a separate module. VRF_LITE_AUTOCONFIG is manual, so the
+# controller creates none of its own either. This play runs against the DC
+# fabric because the link belongs to the source fabric, and after the play
+# above because the router has to be in the External fabric first.
 #
-# This runs against the DC fabric rather than the External one because the link
-# belongs to the source fabric, and it runs after the play above because the
-# router has to be in the External fabric before a link can terminate on it.
+# Policy ebgpVrfLite is the replacement for main's ext_fabric_setup template.
+# Field mapping: ipv4_subnet -> src_ip_address_mask, neighbor_ip ->
+# dst_ip_address, src_asn -> src_ebgp_asn, dst_asn -> dst_ebgp_asn, mtu ->
+# link_mtu, auto_deploy false -> every auto_gen_config_* option false.
+# Whether it produces the same link on the controller is a Phase 3 check.
 #
-# Cisco's "VRF Lite" guide, General Parameters, defines the IFC source IP/mask
-# and destination IP as defaults for VRF-extension sub-interfaces that can be
-# overridden. This profile consumes dc_vrf_lite_ifc's .1/30 and .2 defaults;
-# stage 06 replaces them in each extension with PROD .5/.6, IOT .9/.10,
-# and MAIN .13/.14. These link fields do not by themselves prove that the
-# physical Ethernet1/8 or GigabitEthernet2 has an IP address; neither does in
-# this deployment. Physical-interface IP/eBGP generation is a separate option
-# documented under "Auto Generate Configuration on default VRF".
-# ext_fabric_setup prepares the Layer 3 parent interface and its Link MTU;
-# the per-VRF sub-interfaces and peerings are supplied by stage 06's intent.
-#
-# Official source (NDFC 12.2.1, not release-specific 4.2.1 verification):
-# https://www.cisco.com/c/en/us/td/docs/dcn/ndfc/1221/articles/ndfc-vrf-lite/vrf-lite.html
-# The guide does not establish whether these IFC IP fields can be omitted from
-# this module/controller payload, so the profile retains the declared defaults.
-- name: Stage 04 - build the VRF-Lite inter-fabric link
+# state: merged, never overridden - overridden deletes every link in scope
+# that is not listed here.
+- name: Stage 04 - build the inter-fabric link
   hosts: Pseudoco-DC1
   gather_facts: false
   any_errors_fatal: true
+
+  vars:
+    ansible_network_os: cisco.nd.nd
 
   tasks:
     # The DC fabric's ASN lives in the NAC model rather than in group_vars, so
@@ -377,26 +208,31 @@
         name: dc_global_model
       delegate_to: localhost
 
+    # auto_gen_config_peer false is main's auto_deploy false: no config is
+    # generated for the router. The two default-VRF options stay false so no
+    # eBGP session is built on the parent interface in the default VRF; the
+    # per-VRF sessions belong to the L3Outs.
     - name: Create the inter-fabric link on {{ dc_vrf_lite_interface }}
-      cisco.dcnm.dcnm_links:
+      cisco.nd.nd_manage_links:
+        fabric_name: "{{ dc_fabric_name }}"
+        link_scope: manage
         state: merged
-        src_fabric: "{{ dc_fabric_name }}"
         config:
-          - dst_fabric: "{{ dc_external_fabric_name }}"
-            src_interface: "{{ dc_vrf_lite_interface }}"
-            dst_interface: "{{ dc_vrf_lite_peer_interface }}"
-            src_device: "{{ dc_vrf_lite_border_leaf }}"
-            dst_device: "{{ dc_external_edge_router.hostname }}"
-            template: ext_fabric_setup
-            profile:
-              ipv4_subnet: "{{ dc_vrf_lite_ifc.ipv4_addr }}"
-              neighbor_ip: "{{ dc_vrf_lite_ifc.neighbor_ipv4 }}"
-              src_asn: "{{ dc_global_model.vxlan.global.ibgp.bgp_asn }}"
-              dst_asn: "{{ dc_external_fabric_settings.BGP_AS }}"
-              mtu: "{{ dc_vrf_lite_ifc.mtu }}"
-              # False because the far end is in Monitor Mode: the controller
-              # must not try to generate configuration on the router.
-              auto_deploy: false
+          - src_fabric_name: "{{ dc_fabric_name }}"
+            dst_fabric_name: "{{ dc_external_fabric_name }}"
+            src_switch_name: "{{ dc_vrf_lite_border_leaf }}"
+            dst_switch_ip: "{{ dc_external_edge_router.ip }}"
+            src_interface_name: "{{ dc_vrf_lite_interface }}"
+            dst_interface_name: "{{ dc_vrf_lite_peer_interface }}"
+            config_data:
+              policy_type: ebgpVrfLite
+              template_inputs: >-
+                {{ dc_vrf_lite_ifc
+                   | combine({'src_ebgp_asn': dc_global_model.vxlan.global.ibgp.bgp_asn | string,
+                              'dst_ebgp_asn': dc_external_fabric_settings.bgp_asn | string,
+                              'auto_gen_config_peer': false,
+                              'auto_gen_config_default_vrf': false,
+                              'auto_gen_config_nx_peer_default_vrf': false}) }}
       register: dc_external_link
 
     - name: Report the link result
@@ -404,9 +240,6 @@
         msg: >-
           Inter-fabric link {{ dc_vrf_lite_border_leaf }}
           {{ dc_vrf_lite_interface }} -> {{ dc_external_edge_router.hostname }}
-          {{ dc_vrf_lite_peer_interface }},
-          {{ dc_vrf_lite_ifc.ipv4_addr }} to {{ dc_vrf_lite_ifc.neighbor_ipv4 }},
-          MTU {{ dc_vrf_lite_ifc.mtu }}.
+          {{ dc_vrf_lite_peer_interface }}, link MTU
+          {{ dc_vrf_lite_ifc.link_mtu }}.
           changed={{ dc_external_link.changed | default(false) }}.
-          Stage 05 deploys it; stage 06 reads the extension prototype it
-          produces.

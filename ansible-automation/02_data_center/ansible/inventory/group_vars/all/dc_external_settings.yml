@@ -8,19 +8,16 @@
 # config-save after its inventory step, and on a fabric with no switches
 # Nexus Dashboard returns HTTP 500 "Fabric External cannot be deployed
 # without any switches". The fabric also holds no VRFs, networks or
-# interfaces, so there is nothing for the collection to express. Stage 04
-# creates it with cisco.dcnm.dcnm_fabric and adds the edge router over REST,
-# both from this file.
+# interfaces, so there is nothing for the collection to express.
 #
-# Keys are External_Fabric template parameters, spelled exactly as the
-# controller spells them. dcnm_fabric raises
-#   ValueError: Key X not found in fabric configuration for fabric External
-# on anything it does not recognise, so a typo fails loudly rather than
-# silently doing nothing. Values are natural YAML types - the module
-# stringifies them before comparing against the controller, so true and 65531
-# are both idempotent.
+# EVALUATION BRANCH (eval/nd-l3out): stage 04 creates the fabric with
+# cisco.nd.nd_manage_fabric_external and adds the edge router with
+# cisco.nd.nd_manage_switches, both from this file. Keys under
+# dc_external_fabric_settings are that module's config.management options,
+# passed through unchanged, so Ansible's argument check rejects a typo before
+# anything is sent.
 #
-# Everything not listed here is left at the template default. That is
+# Everything not listed here is left at the controller default. That is
 # deliberate: the fewer values declared, the fewer that can drift from a
 # controller upgrade.
 
@@ -33,25 +30,24 @@ dc_external_fabric_name: External
 dc_external_fabric_settings:
   # Guide: ASN 65531. Distinct from the DC fabric's 65000 - this is the other
   # side of the eBGP VRF-Lite handoff, so the two must differ.
-  BGP_AS: "65531"
+  bgp_asn: "65531"
 
   # Fabric Monitor Mode. The guide leaves it checked so Nexus Dashboard reads
   # the external device and never writes to it. It is set at creation rather
   # than afterwards so the fabric is never briefly writable.
-  IS_READ_ONLY: true
+  monitored_mode: true
 
 # The IOS-XE edge router that lives in this fabric. Guide section 7, "Add
 # Switches": Seed IP 198.18.133.14, Device Type "IOS XE and CSR/CAT8K".
 #
-# platform_type is the API spelling of that Device Type dropdown. It selects
-# the discovery protocol rather than labelling the device: with it the
-# controller queries the seed over SSH, without it the seed gets the NX-OS
-# SNMPv3 path and comes back without an identity. See the playbook header.
+# platform_type is nd_manage_switches' spelling of that Device Type dropdown.
+# It selects the discovery protocol rather than labelling the device: without
+# it the module defaults to nx-os and the seed gets the NX-OS SNMPv3 path,
+# which this router does not answer.
 #
-# model, softwareVersion and serialNumber are not declared here, although the
-# add call requires all three. They are pod-specific, so the stage discovers
-# them and uses what the controller reports rather than a hardcoded serial
-# that would be wrong on the next pod.
+# model, software version and serial number are not declared here. They are
+# pod-specific; the module discovers them, and stage 04 checks the serial it
+# reports against the one stage 00 read off the router.
 #
 # credential_key names the vault entry holding the router's login. The
 # credential itself stays in the vault-encrypted lab_access.yml; nothing in
