@@ -1,0 +1,89 @@
+---
+# Build the nd_manage_l3out config for a list of dc_vrf_lite_extensions rows.
+#
+# Shared by 05_l3out.yml, which writes these definitions, and
+# 07_verify_fabric.yml, which checks the controller against them, so the two
+# cannot drift apart.
+#
+# Input:  dc_l3out_rows   rows from dc_vrf_lite_extensions
+# Output: dc_l3out_config one nd_manage_l3out config entry per row
+#         dc_vrf_lite_border_serial, dc_external_router_serial
+
+- name: Read the declared fabric ASN
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/global.nac.yaml"
+    name: dc_global_model
+  delegate_to: localhost
+
+- name: Read the switch model stage 00 generated
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml"
+    name: dc_vrf_lite_switch_model
+  delegate_to: localhost
+
+# Both serials come from stage 00, which read them off the devices. The
+# border leaf's is in the generated NAC model, the router's in the lookup.
+- name: Resolve the border leaf and edge router serials
+  ansible.builtin.set_fact:
+    dc_vrf_lite_border_serial: >-
+      {{ (dc_vrf_lite_switch_model.vxlan.topology.switches | default([])
+          | selectattr('name', 'equalto', dc_vrf_lite_border_leaf)
+          | map(attribute='serial_number') | list | first | default('')) }}
+    dc_external_router_serial: >-
+      {{ dc_device_serials[dc_external_edge_router.hostname] | default('') }}
+    dc_l3out_config: []
+
+- name: Fail when stage 00 left a serial unresolved
+  ansible.builtin.assert:
+    that:
+      - dc_vrf_lite_border_serial | length > 0
+      - dc_external_router_serial | length > 0
+    fail_msg: >-
+      No serial for {{ dc_vrf_lite_border_leaf }} in
+      playbooks/host_vars/{{ inventory_hostname }}/topology_switches.nac.yaml
+      or for {{ dc_external_edge_router.hostname }} in
+      inventory/group_vars/all/dc_device_serials.yml. Re-run
+      playbooks/00_discover_dc_switch_serials.yml.
+
+# One entry per selected row. switch_id is a serial on both sides: the
+# module would resolve a management IP to one anyway, and a serial makes
+# the diff exact. The peer ASN goes in fabric2_details.local_asn - the
+# module has no neighbour-ASN field. No route maps on either side: main
+# applies none to this handoff, and every peering-policy field is
+# optional.
+- name: Build the L3Out definitions
+  ansible.builtin.set_fact:
+    dc_l3out_config: >-
+      {{ dc_l3out_config + [{
+           'name': item.name,
+           'fabric1_name': dc_fabric_name,
+           'fabric2_name': dc_external_fabric_name,
+           'vrf1_name': item.vrf,
+           'vrf2_name': item.peer_vrf,
+           'configured_fabrics': 'fabric1',
+           'ip_version': 'ipv4',
+           'connectivity_details': {
+             'routing_interface_type': 'subInterface',
+             'links': [{
+               'vlan_id': item.dot1q | int,
+               'mtu': dc_vrf_lite_mtu | int,
+               'ipv4_mask_length': item.ipv4_addr.split('/')[1] | int,
+               'switch1_details': {
+                 'switch_id': dc_vrf_lite_border_serial,
+                 'interface_name': dc_vrf_lite_interface ~ dc_l3out_subif,
+                 'interface_ipv4_address': item.ipv4_addr.split('/')[0]},
+               'switch2_details': {
+                 'switch_id': dc_external_router_serial,
+                 'interface_name': dc_vrf_lite_peer_interface ~ dc_l3out_subif,
+                 'interface_ipv4_address': item.neighbor_ipv4}}]},
+           'routing_details': {
+             'routing_protocol': 'bgp',
+             'bgp': {
+               'fabric1_details': {'local_asn': dc_global_model.vxlan.global.ibgp.bgp_asn | string},
+               'fabric2_details': {'local_asn': dc_external_fabric_settings.bgp_asn | string}}}}] }}
+  vars:
+    dc_l3out_subif: >-
+      {{ ('.' ~ item.dot1q) if dc_vrf_lite_interface_form == 'subinterface' else '' }}
+  loop: "{{ dc_l3out_rows }}"
+  loop_control:
+    label: "{{ item.name }}"
