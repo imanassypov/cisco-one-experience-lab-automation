@@ -45,6 +45,10 @@
       inventory/group_vars/all/dc_device_serials.yml. Re-run
       playbooks/00_discover_dc_switch_serials.yml.
 
+# advertise_default_route matches main: its VRF extension template puts
+# "network 0.0.0.0/0" in each VRF's IPv4 address family, and an L3Out without
+# this option does not (pod diff, 2026-11-12).
+#
 # One entry per selected row. switch_id is a serial on both sides: the
 # module would resolve a management IP to one anyway, and a serial makes
 # the diff exact. The peer ASN goes in fabric2_details.local_asn - the
@@ -79,7 +83,8 @@
            'routing_details': {
              'routing_protocol': 'bgp',
              'bgp': {
-               'fabric1_details': {'local_asn': dc_global_model.vxlan.global.ibgp.bgp_asn | string},
+               'fabric1_details': {'local_asn': dc_global_model.vxlan.global.ibgp.bgp_asn | string,
+                                   'advertise_default_route': true},
                'fabric2_details': {'local_asn': dc_external_fabric_settings.bgp_asn | string}}}}] }}
   vars:
     dc_l3out_subif: >-
