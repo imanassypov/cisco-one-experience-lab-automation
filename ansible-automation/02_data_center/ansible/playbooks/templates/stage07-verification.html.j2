@@ -81,13 +81,13 @@
 <div class="page" id="top">
 
 <p class="doc-title">Intent Verification Report</p>
-<p class="doc-sub">Data centre VXLAN EVPN fabric &mdash; pipeline stage 08</p>
+<p class="doc-sub">Data centre VXLAN EVPN fabric &mdash; pipeline stage 07</p>
 <hr class="rule">
 
 <h2>Document control</h2>
 <dl class="meta">
   <dt>Report generated</dt><dd>{{ dc_verify_timestamp }}</dd>
-  <dt>Produced by</dt><dd><code>playbooks/08_verify_fabric.yml</code></dd>
+  <dt>Produced by</dt><dd><code>playbooks/07_verify_fabric.yml</code></dd>
   <dt>Fabric</dt><dd><code>{{ dc_fabric_name }}</code></dd>
   <dt>Controller</dt><dd><code>{{ ansible_host }}</code></dd>
   <dt>Intent sources</dt>
@@ -114,7 +114,7 @@
       <li><a href="#f1">Switches</a></li>
       <li><a href="#f2">VRFs</a></li>
       <li><a href="#f3">Networks</a></li>
-      <li><a href="#f4">VRF-Lite extensions</a></li>
+      <li><a href="#f4">L3Outs</a></li>
       <li><a href="#f5">VRF-Lite sub-interfaces</a></li>
       <li><a href="#f6">VRF-Lite BGP sessions</a></li>
     </ol>
@@ -190,7 +190,7 @@
     <tr><td>Switches</td><td class="mono">rest/control/fabrics/.../inventory</td><td>Controller API</td></tr>
     <tr><td>VRFs</td><td class="mono">rest/top-down/fabrics/.../vrfs</td><td>Controller API</td></tr>
     <tr><td>Networks</td><td class="mono">rest/top-down/fabrics/.../networks</td><td>Controller API</td></tr>
-    <tr><td>VRF-Lite extensions</td><td class="mono">rest/top-down/fabrics/.../vrfs/switches</td><td>Controller API</td></tr>
+    <tr><td>L3Outs</td><td class="mono">nd_manage_l3out (check mode), api/v1/manage/l3Outs</td><td>Controller API</td></tr>
     <tr><td>Sub-interfaces</td><td class="mono">show interface {{ dc_vrf_lite_interface }}.&lt;dot1q&gt;</td><td>SSH, parsed by pyATS/Genie</td></tr>
     <tr><td>BGP sessions</td><td class="mono">show bgp sessions vrf &lt;vrf&gt;</td><td>SSH, NX-OS JSON output</td></tr>
   </tbody>
@@ -275,28 +275,35 @@
   one leaf but not its vPC peer raises an exception rather than passing.
 </p>
 
-<h3 id="f4">4.4 VRF-Lite extensions
+<h3 id="f4">4.4 L3Outs
   <span class="backlink">{{ dc_vrf_lite_rows | default([]) | rejectattr('ok') | list | length }} exception(s) &middot; <a href="#top">top</a></span>
 </h3>
 <table>
-  <caption>Table 7 &mdash; Extensions held by the controller</caption>
-  <thead><tr><th style="width:26%">Extension</th><th>Result</th><th>Declared</th><th>Attached</th><th>State</th></tr></thead>
+  <caption>Table 7 &mdash; L3Outs held by the controller</caption>
+  <thead><tr><th style="width:26%">L3Out</th><th>Result</th><th>Declared</th><th>Present</th><th>State</th><th>Differs</th></tr></thead>
   <tbody>
   {% for row in dc_vrf_lite_rows | default([]) %}
     <tr{% if not row.ok %} class="exception"{% endif %}>
       <td>{{ row.name }}</td>
       <td class="status">{{ 'Pass' if row.ok else 'Exception' }}</td>
       <td class="mono">{{ row.declared }}</td>
-      <td>{{ 'yes' if row.attached else 'no' }}</td>
+      <td>{{ 'yes' if row.present else 'no' }}</td>
       <td>{{ row.state }}</td>
+      <td>{% set differs = [] %}{% for key, label in [('vrf_seen', 'VRF'), ('interface_seen', 'interface'), ('dot1q_seen', 'dot1q'), ('ipv4_seen', 'address'), ('neighbor_seen', 'neighbour'), ('mtu_seen', 'MTU'), ('peer_asn_seen', 'peer ASN')] %}{% if row.present and not row[key] %}{{ differs.append(label) or '' }}{% endif %}{% endfor %}{{ differs | join(', ') if differs else 'none' }}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 <p class="small muted">
-  Each extension must be attached to the border leaf, in <code>DEPLOYED</code>,
-  and its <code>extensionValues</code> must carry the declared interface, dot1q
-  tag and neighbour address.
+  Module drift check: {{ 'not run' if dc_observed_l3out is not defined or dc_observed_l3out is skipped else ('nd_manage_l3out reports a difference between the controller and the definition stage 05 writes' if dc_observed_l3out.changed | default(false) else 'none') }}.
+  Informational; it covers every field the module manages and is not counted as a control.
+</p>
+<p class="small muted">
+  Each L3Out must exist on the controller with the declared VRF, interface,
+  dot1q tag, addresses, MTU and peer ASN, read from the controller's own copy.
+  Whether it is attached is not reported by any module; the raw L3Out
+  collection is saved beside this report, and sections 4.5 and 4.6 are what
+  prove it reached the switch.
 </p>
 
 <h3 id="f5">4.5 VRF-Lite sub-interfaces
@@ -322,8 +329,8 @@
 </table>
 <p class="small muted">
   Section 4.4 is what the controller believes; this is what the switch runs.
-  Extensions <code>DEPLOYED</code> on the controller with no sub-interface here
-  means the deploy did not reach the switch.
+  L3Outs present on the controller with no sub-interface here means they were
+  not attached or the deploy did not reach the switch.
 </p>
 {% else %}
 <p class="muted">
@@ -342,7 +349,7 @@
 </p>
 {% elif not (dc_vrf_lite_rows | default([])) %}
 <p class="muted">
-  No VRF-Lite extensions are declared, so there are no sessions to assess.
+  No L3Outs are declared, so there are no sessions to assess.
 </p>
 {% else %}
 <table>
@@ -396,7 +403,8 @@
 </p>
 {% endif %}
 <p class="small muted">
-  Outside the scope of this report in all cases: the edge router's side of the
+  Outside the scope of this report in all cases: whether each L3Out is
+  attached, which no module reports; the edge router's side of the
   VRF-Lite links, which is pre-built by the pod and which Nexus Dashboard never
   writes to; the fabric underlay and the EVPN overlay, since the session table
   covers only the three VRF-Lite eBGP sessions; and the data plane, since

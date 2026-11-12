@@ -1,7 +1,7 @@
-{# Evidence report for 08_verify_fabric.yml. Generated - do not edit by hand. #}
+{# Evidence report for 07_verify_fabric.yml. Generated - do not edit by hand. #}
 # DC fabric verification - {{ dc_fabric_name }}
 
-Generated {{ dc_verify_timestamp }} by `08_verify_fabric.yml`.
+Generated {{ dc_verify_timestamp }} by `07_verify_fabric.yml`.
 
 Declared intent comes from `group_vars/all/dc_switches.yml`,
 `group_vars/all/dc_vrf_lite.yml`,
@@ -49,7 +49,7 @@ a pending state, so those switches are excluded from "Attachment states" and
 named under "Not attached" instead. A switch that
 *was* declared and is not among the attached ones is the real fault, and
 shows up under "Switches missing". An attachment stuck in `PENDING` means the
-intent was created but never pushed - re-run `07_recalculate_and_deploy.yml`.
+intent was created but never pushed - re-run `06_recalculate_and_deploy.yml`.
 
 ## Networks
 
@@ -68,33 +68,36 @@ Nexus Dashboard lists but has not attached come back as `NA` and are named
 under "Not attached" rather than judged; a declared pair that is missing from
 the attached set is what fails, under "Attachments missing".
 
-## VRF-Lite extensions
+## L3Outs
 
-| Extension | Declared | Attached | State | Interface seen | Dot1q seen | Neighbour seen | Match |
-|---|---|---|---|---|---|---|---|
+| L3Out | Declared | Present | State | VRF | Interface | Dot1q | Address | Neighbour | MTU | Peer ASN | Match |
+|---|---|---|---|---|---|---|---|---|---|---|---|
 {% for row in dc_vrf_lite_rows | default([]) %}
-| {{ row.name }} | {{ row.declared }} | {{ 'yes' if row.attached else 'NO' }} | {{ row.state }} | {{ 'yes' if row.interface_seen else 'NO' }} | {{ 'yes' if row.dot1q_seen else 'NO' }} | {{ 'yes' if row.neighbor_seen else 'NO' }} | {{ 'yes' if row.ok else 'NO' }} |
+| {{ row.name }} | {{ row.declared }} | {{ 'yes' if row.present else 'NO' }} | {{ row.state }} | {{ 'yes' if row.vrf_seen else 'NO' }} | {{ 'yes' if row.interface_seen else 'NO' }} | {{ 'yes' if row.dot1q_seen else 'NO' }} | {{ 'yes' if row.ipv4_seen else 'NO' }} | {{ 'yes' if row.neighbor_seen else 'NO' }} | {{ 'yes' if row.mtu_seen else 'NO' }} | {{ 'yes' if row.peer_asn_seen else 'NO' }} | {{ 'yes' if row.ok else 'NO' }} |
 {% endfor %}
 {% if not (dc_vrf_lite_rows | default([])) %}
-No VRF-Lite extensions are declared in `group_vars/all/dc_vrf_lite.yml`, so
-none were checked.
+No L3Outs are declared in `group_vars/all/dc_vrf_lite.yml`, so none were
+checked.
 {% endif %}
 
-Each extension must be attached to the border leaf, in `DEPLOYED`, and its
-`extensionValues` must carry the declared interface, dot1q tag and neighbour
-address. Those three columns read named fields out of that document, which
-Nexus Dashboard returns as JSON nested inside a JSON string.
+Module drift check: {{ 'not run' if dc_observed_l3out is not defined or dc_observed_l3out is skipped else ('the module reports a difference between the controller and the definition stage 05 writes - see the task diff in the run output' if dc_observed_l3out.changed | default(false) else 'none - the module finds the controller identical to the definition stage 05 writes') }}.
 
-A whole row reading `NO` with state `absent` almost always means stage 02 ran
-after stage 05: the create role uses `state: replaced`, and the data model has
-no key for an extension, so a create run clears `extensionValues` even though
-it keeps the border leaf's attachment. Re-run `06_vrf_lite.yml`. If it then
-fails with `No VRF LITE capable interfaces found on this switch`, run
-`05_recalculate_and_deploy.yml` first, then retry stage 06.
-A row that is attached and `DEPLOYED` but has a `NO` in one
-of the seen columns means the extension exists with different values than
-`dc_vrf_lite.yml` declares - reconcile those values before running stage 06
-again.
+Each L3Out must exist on the controller with the declared VRF, dot1q tag,
+leaf address, neighbour address, MTU and peer ASN. The values are read from
+the controller's own copy of each L3Out. The drift check above is wider: it is
+nd_manage_l3out's own comparison of every field it manages, so it can report a
+difference none of the columns show. It is informational and does not count
+as a check.
+
+Whether an L3Out is attached is not in this table: no module reports it. The
+raw L3Out collection is saved beside this report as
+`stage07-l3outs-<run>.json`. The two tables below are read off the switch and
+are what prove the L3Outs were attached and deployed.
+
+A row reading `absent` means the L3Out does not exist - run `05_l3out.yml`,
+then `06_recalculate_and_deploy.yml`. A `NO` in one of the value columns
+means the L3Out exists with values other than `dc_vrf_lite.yml` declares -
+re-run `05_l3out.yml`, which converges it.
 
 ## VRF-Lite sub-interfaces on the switch
 
@@ -113,9 +116,10 @@ actually runs. `show interface` is parsed with pyATS/Genie, so the dot1q tag,
 address and MTU are compared as named fields rather than matched out of screen
 text.
 
-The two can disagree, and the disagreement is the finding. Extensions
-`DEPLOYED` on the controller with no sub-interface here means the deploy did
-not reach the switch - run `07_recalculate_and_deploy.yml`. A sub-interface
+The two can disagree, and the disagreement is the finding. L3Outs
+present on the controller with no sub-interface here means they were not
+attached or the deploy did not reach the switch - run `05_l3out.yml`, then
+`06_recalculate_and_deploy.yml`. A sub-interface
 that is present but `down` usually means the far end is not configured to
 match; the BGP table below will show the session never leaving Idle.
 
@@ -125,11 +129,11 @@ match; the BGP table below will show the session never leaving Idle.
 Skipped: this run was made with `-e dc_verify_bgp_sessions=false`, so the
 border leaf was not read and nothing here is known either way.
 {% elif not (dc_vrf_lite_rows | default([])) %}
-No VRF-Lite extensions are declared in `group_vars/all/dc_vrf_lite.yml`, so
-there are no sessions to check.
+No L3Outs are declared in `group_vars/all/dc_vrf_lite.yml`, so there are no
+sessions to check.
 {% else %}
 Read from `{{ dc_vrf_lite_border_leaf }}` with
-`show bgp sessions vrf <vrf>`, one command per declared extension.
+`show bgp sessions vrf <vrf>`, one command per declared L3Out.
 
 | VRF | Neighbour | Peer ASN observed | State expected | State observed | Match |
 |---|---|---|---|---|---|
@@ -151,8 +155,8 @@ sub-interface for that dot1q tag carries the address `dc_vrf_lite.yml` names
 as `neighbor_ipv4`, that it is up, and that the peer ASN in the table above is
 the AS the router really uses. `absent` is a different fault: the switch
 answered and has no session to that neighbour in that VRF at all, so the
-extension never reached the running configuration - re-run
-`06_vrf_lite.yml` and then `07_recalculate_and_deploy.yml`.
+L3Out never reached the running configuration - re-run `05_l3out.yml` and
+then `06_recalculate_and_deploy.yml`.
 {% endif %}
 {% if dc_bgp_undetermined_rows | default([]) %}
 
@@ -176,10 +180,10 @@ values side by side.
 {% if row.observed_role is defined %}
 - **{{ row.name }}** ({{ row.ip }}) - {{ 'not present in the fabric' if row.observed_role == 'absent' else 'holds role ' ~ row.observed_role ~ ', declared as ' ~ row.declared_role }}
 {% elif row.expected_state is defined %}
-- **{{ row.name }}** (BGP session) - {% if row.observed_state == 'absent' %}{{ dc_vrf_lite_border_leaf }} has no BGP session to {{ row.neighbor }} in VRF {{ row.vrf }}, so the extension is not in its running configuration; re-run `06_vrf_lite.yml` then `07_recalculate_and_deploy.yml`{% else %}the session to {{ row.neighbor }} in VRF {{ row.vrf }} is `{{ row.observed_state }}`, not `Established`. The neighbour is configured on the leaf, since the leaf reports a session for it, so look next at the far end on DC-SITE11-CEDGE8Kv{% endif %}
+- **{{ row.name }}** (BGP session) - {% if row.observed_state == 'absent' %}{{ dc_vrf_lite_border_leaf }} has no BGP session to {{ row.neighbor }} in VRF {{ row.vrf }}, so the L3Out is not in its running configuration; re-run `05_l3out.yml` then `06_recalculate_and_deploy.yml`{% else %}the session to {{ row.neighbor }} in VRF {{ row.vrf }} is `{{ row.observed_state }}`, not `Established`. The neighbour is configured on the leaf, since the leaf reports a session for it, so look next at the far end on DC-SITE11-CEDGE8Kv{% endif %}
 
 {% elif row.interface_seen is defined %}
-- **{{ row.name }}** (VRF-Lite) - {% if not row.attached %}not attached to the border leaf at all; re-run `06_vrf_lite.yml`{% else %}{% set faults = [] %}{% if row.state != 'DEPLOYED' %}{{ faults.append('attachment state is ' ~ row.state ~ ', must be DEPLOYED') or '' }}{% endif %}{% if not row.interface_seen %}{{ faults.append('declared interface is absent from extensionValues') or '' }}{% endif %}{% if not row.dot1q_seen %}{{ faults.append('declared dot1q tag is absent from extensionValues') or '' }}{% endif %}{% if not row.neighbor_seen %}{{ faults.append('declared neighbour address is absent from extensionValues') or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
+- **{{ row.name }}** (L3Out) - {% if not row.present %}does not exist on the controller; run `05_l3out.yml`{% else %}{% set faults = [] %}{% for key, label in [('vrf_seen', 'VRF'), ('interface_seen', 'interface'), ('dot1q_seen', 'dot1q tag'), ('ipv4_seen', 'leaf address'), ('neighbor_seen', 'neighbour address'), ('mtu_seen', 'MTU'), ('peer_asn_seen', 'peer ASN')] %}{% if not row[key] %}{{ faults.append('declared ' ~ label ~ ' differs on the controller') or '' }}{% endif %}{% endfor %}{{ faults | join('; ') }}{% endif %}
 
 {% elif row.declared_id is defined %}
 - **{{ row.name }}** (VRF) - {% if row.observed_id == 'absent' %}does not exist on the controller{% else %}{% set faults = [] %}{% if row.observed_id | string != row.declared_id | string %}{{ faults.append('has VNI ' ~ row.observed_id ~ ', declared as ' ~ row.declared_id) or '' }}{% endif %}{% if not row.attach_states %}{{ faults.append('exists but is attached to nothing') or '' }}{% elif row.attach_states | reject('eq', 'DEPLOYED') | list %}{{ faults.append('attached switches report ' ~ row.attach_states | join(', ') ~ ', all of which must be DEPLOYED') or '' }}{% endif %}{% if row.missing_switches %}{{ faults.append('not attached on ' ~ row.missing_switches | join(', ')) or '' }}{% endif %}{{ faults | join('; ') }}{% endif %}
@@ -195,8 +199,8 @@ None.
 
 ## Not covered by this report
 
-- **The edge router's side of the VRF-Lite links.** The extensions on
-  DC-Service-Leaf are built by `06_vrf_lite.yml` and checked above, and the BGP
+- **The edge router's side of the VRF-Lite links.** The L3Outs on
+  DC-Service-Leaf are built by `05_l3out.yml` and checked above, and the BGP
   session table says whether the router answered, but nothing here is read from
   DC-SITE11-CEDGE8Kv itself. The External fabric is in Monitor Mode, so Nexus
   Dashboard never writes to that router and has nothing to report about it. Its
@@ -206,6 +210,8 @@ None.
   It does not say how many prefixes crossed, or that the ones that did are the
   ones you wanted. `show bgp ipv4 unicast neighbors <neighbour> vrf <vrf>` on
   the border leaf reports the prefixes sent and received on that session.
+- **Whether each L3Out is attached.** No module reports it; see the raw
+  L3Out JSON saved beside this report.
 - **The fabric underlay and the EVPN overlay.** The BGP session table covers
   only the three VRF-Lite eBGP sessions to the edge router. The iBGP EVPN
   sessions to the spines are not checked here.
