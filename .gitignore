@@ -56,3 +56,6 @@ venv/
 
 # Ansible local cache
 .ansible/
+
+# Unreleased collections installed for an evaluation branch (eval/nd-l3out).
+.eval_collections/
