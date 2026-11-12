@@ -1,0 +1,91 @@
+---
+# Stage 06 - recalculate and deploy the fabric, L3Outs included.
+#
+# Named after the UI action it performs: "Recalculate and Deploy". Stages 02
+# to 05 build intent on the controller and change nothing on a switch; this is
+# the stage that changes running configuration on DC-Leaf1, DC-Leaf2,
+# DC-SPINE-1, DC-SPINE-2 and DC-Service-Leaf.
+#
+# EVALUATION BRANCH (eval/nd-l3out). main deploys twice, with the VRF-Lite
+# stage in between, because Nexus Dashboard only offers a VRF-Lite extension
+# prototype once Ethernet1/8 has been deployed and CDP sees the router across
+# it. An L3Out names its interfaces explicitly and does not use that
+# prototype, so this branch deploys once, after stage 05. If the pod shows the
+# L3Out still needs a deployed parent interface, run this stage before stage
+# 05 as well - no code change needed (docs/eval-nd-l3out.md, section 5).
+#
+# Why the recalculation is two calls rather than one:
+#   - config-save recalculates the intended configuration. On its own it leaves
+#     every switch still reporting In-Sync.
+#   - reading config-preview is what refreshes each switch's compliance state.
+#     Only after it does a switch with pending configuration read Out-of-Sync,
+#     which is the flag the deploy role selects on.
+# Skipping the second call fails silently: the deploy finds nothing to do and
+# reports success while the configuration never reaches a switch.
+#
+# Both stay as REST. cisco.nd was checked: config_actions on
+# nd_manage_fabric_ibgp_vxlan only runs after that task changes the fabric,
+# which it does not here, and cisco.nd has no config-preview endpoint at all.
+# cisco.dcnm has no config-save module either. This stage keeps cisco.dcnm
+# because cisco.nac_dc_vxlan's deploy role drives it, so dcnm_rest shares that
+# connection rather than mixing collections in one run.
+#
+# Expect several minutes, and expect switches to show as out-of-sync while it
+# runs.
+#
+# Run from the collection root as its own ansible-playbook run (see
+# 01_dc_deploy.yml for why):
+#
+#   cd ansible-automation/02_data_center/ansible
+#   ansible-playbook playbooks/06_recalculate_and_deploy.yml
+
+- name: Stage 06 - recalculate the DC fabric configuration
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  vars:
+    ndfc_api_root: /appcenter/cisco/ndfc/api/v1/lan-fabric
+
+  roles:
+    - role: cisco.nac_dc_vxlan.validate
+
+  tasks:
+    - name: Recalculate the intended configuration
+      cisco.dcnm.dcnm_rest:
+        method: POST
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-save"
+      changed_when: true
+
+    - name: Refresh each switch's compliance state
+      cisco.dcnm.dcnm_rest:
+        method: GET
+        path: "{{ ndfc_api_root }}/rest/control/fabrics/{{ dc_fabric_name }}/config-preview?forceShowRun=false&showBrief=true"
+      register: dc_recalculate_preview
+      changed_when: false
+
+    - name: Report which switches now have pending configuration
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['Compliance after recalculation:', '| Switch | State |',
+              '| --- | --- |']
+             + dc_recalculate_rows
+             + ['Every switch reading Out-of-Sync is deployed below.'] }}
+      vars:
+        dc_recalculate_rows: >-
+          {%- set rows = [] -%}
+          {%- for switch in ((dc_recalculate_preview.response | default({})).DATA | default([])) -%}
+          {{- rows.append('| ' ~ switch.get('switchName', 'unknown') ~ ' | '
+                          ~ switch.get('status', 'unknown') ~ ' |') or '' -}}
+          {%- endfor -%}
+          {{ rows }}
+
+# A separate play so the deploy role runs after the recalculation above; roles
+# in a single play always run before that play's tasks.
+- name: Stage 06 - push the pending configuration
+  hosts: Pseudoco-DC1
+  gather_facts: false
+  any_errors_fatal: true
+
+  roles:
+    - role: cisco.nac_dc_vxlan.dtc.deploy
