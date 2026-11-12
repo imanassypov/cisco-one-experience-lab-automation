@@ -9,6 +9,56 @@ UI, this pipeline declares instead. The one thing it does not carry is the edge
 router's own side of the VRF-Lite handoff, which Nexus Dashboard cannot write -
 see [Scope](#scope).
 
+## Evaluation branch `eval/nd-l3out`
+
+This branch is an evaluation, not the supported pipeline. It is not merged to
+`main` and has not yet been run on a pod. Findings, open questions, the test
+plan and the rollback: [`docs/eval-nd-l3out.md`](../../../docs/eval-nd-l3out.md).
+
+What differs from `main`:
+
+- **The VRF-Lite handoff is three L3Outs** (`cisco.nd.nd_manage_l3out`), one
+  per VRF, on an eBGP VRF-Lite inter-fabric link (`cisco.nd.nd_manage_links`),
+  instead of VRF attachment extensions written over the Manage API. The values
+  on the wire are unchanged.
+- **Stages 03, 04, 05, 07 and 08 use `cisco.nd`** from the unreleased
+  `develop` branch, commit `671e596`, installed into the git-ignored
+  `.eval_collections/` at the repository root. `ansible.cfg` searches it first,
+  for this track only. Stages 02 and 06 still use `cisco.nac_dc_vxlan` and
+  `cisco.dcnm`.
+- **Each stage runs as its own `ansible-playbook` process.** `01_dc_deploy.yml`
+  launches them in order. Inside one process a `cisco.nd` stage could reuse
+  the `cisco.dcnm` connection stage 02 left open, because ansible-core does not
+  key persistent connections on `ansible_network_os`.
+- **One deploy instead of two**, and the stages are renumbered:
+
+| `main` | This branch |
+|---|---|
+| 03 fabric settings | 03 fabric settings (`nd_manage_fabric_ibgp_vxlan`) |
+| 04 External fabric, router, link | 04 the same (`nd_manage_fabric_external`, `nd_manage_switches`, `nd_manage_links`) |
+| 05 first deploy | - |
+| 06 VRF-Lite extensions | 05 L3Outs (`nd_manage_l3out`) |
+| 07 second deploy | 06 the one deploy |
+| 08 verify | 07 verify |
+| 09 cleanup | 08 cleanup |
+
+Install before the first run:
+
+```bash
+cd ~/cisco-one-experience-lab-automation
+ansible-galaxy collection install 'git+https://github.com/CiscoDevNet/ansible-nd.git,671e596' \
+  -p .eval_collections --no-deps
+pip install 'pydantic==2.12.5' requests_toolbelt jsonpath-ng lxml
+```
+
+Below the pipeline table, the deep-dive sections that explain the Manage API
+extension method - `extensionValues`, dot1q reservation, the VRF-Lite
+prototype, "What stage 06 needs from the controller" and its historical
+notes, the MTU and the handoff history - describe `main` and use `main`'s
+stage numbers (06 extensions, 05 and 07 deploys, 08 verify, 09 cleanup). They
+are kept unchanged for comparison. The tables in this section and the
+pipeline table describe this branch.
+
 ## What this builds
 
 PseudoCo's campus and SD-WAN domains already segment traffic into MAIN, PROD
@@ -22,7 +72,7 @@ reaching it.
 | 5. Configure Interfaces for Endpoints | The DC-Leaf1 / DC-Leaf2 vPC pair, and Port-channel3/4/5 as vPCs 3, 4 and 5 for the MAIN, PROD and IOT servers |
 | 6. Configure Overlay - VRFs and Networks | VRFs MAIN, PROD and IOT, their overlay networks with anycast gateways, and the attachment of each port-channel on both leaves |
 | 7. Create an External Fabric | The `External` fabric, ASN 65531, in Fabric Monitor Mode, with the IOS-XE edge router `DC-SITE11-CEDGE8Kv` added to it as an Edge Router |
-| 8. Create VRF-Lite Connections to External | The three VRF-Lite extensions out of DC-Service-Leaf on `Ethernet1/8`, one per VRF, each with its dot1q tag, sub-interface address and BGP neighbour. The router's side of those links is pre-built by the pod and stays outside the pipeline |
+| 8. Create VRF-Lite Connections to External | Three L3Outs out of DC-Service-Leaf on `Ethernet1/8`, one per VRF, each with its dot1q tag, sub-interface address and BGP neighbour. The router's side of those links is pre-built by the pod and stays outside the pipeline |
 
 The resulting fabric:
 
@@ -60,8 +110,8 @@ Two consequences of that shape matter more than any syntax:
   controller onto whatever the YAML currently says, so the way to change the
   fabric is to change the model and run it again.
 - **Only the last hop touches a switch.** Everything from the model down to
-  Nexus Dashboard is *intent*. Stages 02 to 06 write intent; stages 05 and 07
-  are the deploy stages that change running configuration.
+  Nexus Dashboard is *intent*. Stages 02 to 05 write intent; stage 06 is the
+  deploy stage that changes running configuration.
 
 ### Network as Code roles and their fabric outcomes
 
@@ -70,9 +120,9 @@ staged, and deployed data center fabric. Each has a distinct part in that path:
 
 | Role | Called by | What it does |
 |---|---|---|
-| `cisco.nac_dc_vxlan.validate` | 02, 05, 07, and 08, as the first role of the play | Reads every `*.nac.yaml` out of `playbooks/host_vars/<fabric>/` and checks it against the collection's schema and rule set. Touches neither controller nor switch. A model error fails here instead of half way through a build |
+| `cisco.nac_dc_vxlan.validate` | 02 and 06, as the first role of the play | Reads every `*.nac.yaml` out of `playbooks/host_vars/<fabric>/` and checks it against the collection's schema and rule set. Touches neither controller nor switch. A model error fails here instead of half way through a build |
 | `cisco.nac_dc_vxlan.dtc.create` | 02 | Builds the fabric intent on the controller; see the sequence below |
-| `cisco.nac_dc_vxlan.dtc.deploy` | 05 and 07 | The UI's Recalculate and Deploy. The only thing in this pipeline that changes running configuration |
+| `cisco.nac_dc_vxlan.dtc.deploy` | 06 | The UI's Recalculate and Deploy. The only thing in this pipeline that changes running configuration |
 
 Stage 02 builds:
 
@@ -90,8 +140,9 @@ Switch import is the exception to the controller-only changes: it is a greenfiel
 separate stage, because they read the same files and neither notices a key
 the schema would have rejected.
 
-Stages 03, 04, 06 and 08 call **no** Nexus as Code role. They use `cisco.dcnm`
-modules and raw REST, because what they declare has no key in the data model -
+Stages 03, 04, 05, 07 and 08 call **no** Nexus as Code role. They use `cisco.nd`
+modules, and `nd_rest` where no module covers the call, because what they
+declare has no key in the data model -
 see [Settings Nexus as Code cannot
 express](#settings-nexus-as-code-cannot-express) and [Scope](#scope).
 
@@ -104,7 +155,7 @@ each is pinned for a different reason.
 |---|---|---|
 | `cisco.nac_dc_vxlan` | 0.9.0 | The declarative layer. It renders `cisco.dcnm` module calls from the `host_vars` data model |
 | `cisco.dcnm` | 3.13.0 | The modules underneath. **The floor matters**: Nexus Dashboard 4.2.1 support landed in `cisco.dcnm` 3.12.1 and 3.13.0 adds 4.3.1, and `cisco.nac_dc_vxlan` 0.9.0 declares `cisco.dcnm` >= 3.13.0 as a hard dependency. Do not pin it lower |
-| `cisco.nxos` | 10.2.0 | Used by **two stages only** - `00_discover_dc_switch_serials.yml`, which SSHes to the switches to read their serial numbers, and the BGP session check in `08_verify_fabric.yml`, which reads the border leaf. Every other stage talks to Nexus Dashboard over `httpapi` and needs none of it |
+| `cisco.nxos` | 10.2.0 | Used by **two stages only** - `00_discover_dc_switch_serials.yml`, which SSHes to the switches to read their serial numbers, and the BGP session check in `07_verify_fabric.yml`, which reads the border leaf. Every other stage talks to Nexus Dashboard over `httpapi` and needs none of it |
 
 The four supporting collections - `ansible.netcommon` 7.1.0, `ansible.utils`
 5.1.2, `ansible.posix` 2.0.0 and `community.general` 10.1.0 - match the
@@ -183,28 +234,30 @@ Two things to expect from a first run, both normal:
 | Playbook | What it does |
 |---|---|
 | `00_discover_dc_switch_serials.yml` | Reads each switch's serial over SSH and generates the switch model. Read-only against the switches. **Run first.** Not in the orchestrator |
-| `01_dc_deploy.yml` | Orchestrator. Imports 02 to 08 in order |
+| `01_dc_deploy.yml` | Orchestrator. Runs 02 to 07 in order, each as its own `ansible-playbook` process, and stops at the first failure. Logs every stage under `evidence/dc-deploy-<run>/` |
 | `02_create_dc_fabric.yml` | Creates the whole intent on the controller: fabric, switch import, roles, vPC pair, port-channels, VRFs, networks |
-| `03_fabric_advanced_settings.yml` | Applies the settings Nexus as Code cannot express. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
-| `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode, adds the IOS-XE edge router to it, and builds the VRF-Lite inter-fabric link that stage 06 needs |
-| `05_recalculate_and_deploy.yml` | First "Recalculate and Deploy". Pushes the fabric and configures the parent interface of the inter-fabric link required by stage 06 |
-| `06_vrf_lite.yml` | Uses the Nexus Dashboard Manage API to reconcile declared dot1q resources and write only changed VRF-Lite extensions from `inventory/group_vars/all/dc_vrf_lite.yml`. Stages intent only |
-| `07_recalculate_and_deploy.yml` | Second "Recalculate and Deploy". Pushes the extensions staged by stage 06 and is the **only** stage that changes running configuration |
-| `08_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes timestamped Markdown and HTML reports in `evidence/` |
-| `09_cleanup.yml` | Destructive teardown: overlays, inter-fabric link, switches, both fabrics, then the sub-interfaces on the border leaf. Needs `-e dc_cleanup_confirm=CLEANUP_OK` |
+| `03_fabric_advanced_settings.yml` | Applies the settings Nexus as Code cannot express, with `nd_manage_fabric_ibgp_vxlan`. See [Settings Nexus as Code cannot express](#settings-nexus-as-code-cannot-express) |
+| `04_external_fabric.yml` | Creates the External connectivity fabric in Monitor Mode, adds the IOS-XE edge router to it, and builds the eBGP VRF-Lite inter-fabric link the L3Outs sit on |
+| `05_l3out.yml` | Creates the three L3Outs declared in `inventory/group_vars/all/dc_vrf_lite.yml` and attaches them. Stages intent only |
+| `06_recalculate_and_deploy.yml` | "Recalculate and Deploy". Pushes the fabric and the L3Outs, and is the **only** stage that changes running configuration |
+| `07_verify_fabric.yml` | Read-only check against the declared model, over the Nexus Dashboard API and over SSH to the border leaf with pyATS/Genie. Writes timestamped Markdown and HTML reports and the raw L3Out collection in `evidence/` |
+| `08_cleanup.yml` | Destructive teardown: L3Outs, overlays, inter-fabric link, switches, both fabrics, then the sub-interfaces on the border leaf. Needs `-e dc_cleanup_confirm=CLEANUP_OK` |
 
-The numbering tells you who runs a playbook. Stages 02 to 08 are contiguous
-because they are exactly what `01_dc_deploy.yml` imports. Stage 00 sits below
+The numbering tells you who runs a playbook. Stages 02 to 07 are contiguous
+because they are exactly what `01_dc_deploy.yml` runs. Stage 00 sits below
 that range because it is the prerequisite you run yourself, once per pod, and
-09 sits above it because it is deliberately outside the orchestrated run.
+08 sits above it because it is deliberately outside the orchestrated run.
 
-the switch. Stage 07 then carries the three dot1q sub-interfaces and their BGP
-Stages 03 and 04 run before the first deploy because their settings and
-External fabric are inputs to the inter-fabric link, and stage 04 is what
-creates that link. Stage 06 runs after stage 05, which configures the link's
-parent interface and makes its DCI resource available. Stage 07 then deploys
-the three dot1q sub-interfaces and their BGP neighbours to the border leaf.
-The execution order is `02, 03, 04, 05, 06, 07, 08`.
+Stages 03 and 04 run first because their settings and the External fabric are
+inputs to the inter-fabric link, and stage 04 is what creates that link.
+Stage 05 builds the L3Outs on it. Stage 06 then deploys the fabric, the
+three dot1q sub-interfaces and their BGP neighbours in one pass. If the pod
+shows an L3Out still needs a deployed parent interface, add stage 06 before
+stage 05 in `dc_deploy_stages` in `01_dc_deploy.yml` as well.
+
+Each stage can still be run on its own. Extra variables for an orchestrated
+run go in one dictionary that is forwarded to every stage:
+`-e '{"dc_deploy_extra_vars": {"dc_verify_fail_on_mismatch": false}}'`.
 
 Useful overrides:
 
@@ -480,9 +533,10 @@ inventory/
   group_vars/nd/               controller transport and credentials
   group_vars/dc_fabric_switches/  SSH to the switches; stage 00 only
 playbooks/
-  00_discover_dc_switch_serials.yml ... 09_remove.yml
+  00_discover_dc_switch_serials.yml ... 08_cleanup.yml
   host_vars/Pseudoco-DC1/*.nac.yaml   the data model
-  templates/stage08-verification.md.j2
+  tasks/                            L3Out builder and stage runner
+  templates/stage07-verification.md.j2
 evidence/                         written by stage 07, gitignored
 ```
 
@@ -879,6 +933,9 @@ rather than an error.
 
 ## What stage 06 needs from the controller
 
+> **`main` only.** This section describes `main`'s `06_vrf_lite.yml`, which
+> this branch replaces with `05_l3out.yml`. Kept for comparison.
+
 Stage 06 now uses the Manage API, not the legacy switches/prototype endpoint.
 It requires the stage-04 `DCI subnet pool` resource to exist with link scope on
 the border serial and `Ethernet1/8`, plus a stage-02 attachment with `vlanId`.
@@ -1148,7 +1205,7 @@ switch itself, which rejected the configuration, and the controller repeated
 the rejection verbatim. Treat the error string as the evidence. 1500 is
 comfortably inside that range, so the switch accepts it.
 
-`06_vrf_lite.yml` sends the MTU with the other typed extension fields through
+On `main`, `06_vrf_lite.yml` sends the MTU with the other typed extension fields through
 `POST /api/v1/manage/fabrics/<fabric>/vrfAttachments`. It carries `vlanId`,
 `instanceValues` and `extraConfig` forward from `vrfAttachments/query`, and
 posts only when one of the six declared fields differs. `neighborAsn` comes
@@ -1291,7 +1348,7 @@ The habits worth keeping from all of this generalise past one stage:
   finished.** An idempotent pipeline reporting nothing pending means only that
   the controller had nothing pending *when it was asked*. The authoritative
   signals here are `check_sync` reporting `in_sync=True` after a run that
-  actually deployed something, and a clean `08_verify_fabric.yml`.
+  actually deployed something, and a clean `07_verify_fabric.yml`.
 - **Something appearing on a re-run is not drift.** Nobody touched the switch.
   The controller learned something it did not know on the previous pass.
 - **Not every precondition is eventual, and a retry loop cannot tell you
@@ -1303,10 +1360,10 @@ The habits worth keeping from all of this generalise past one stage:
 
 ## What the verification stage proves
 
-`08_verify_fabric.yml` compares the declared model against what the controller
+`07_verify_fabric.yml` compares the declared model against what the controller
 actually holds, and then asks the border leaf one question the controller
 cannot answer. It is read-only throughout and can be re-run freely. It writes
-`evidence/stage08-verification-<UTC timestamp>.md` and a matching `.html` report,
+`evidence/stage07-verification-<UTC timestamp>.md` and a matching `.html` report,
 and fails on a mismatch. Each run uses a new timestamp with microsecond precision
 (for example, `20261110T143025123456Z`), preserving evidence from previous runs.
 
@@ -1369,7 +1426,7 @@ Reading the report:
 - A name under **"Switches missing"** or **"Attachments missing"** is a real
   fault: something declared did not attach.
 - An attached switch in **`PENDING`** means the intent exists on the
-  controller but was never pushed. Re-run `07_recalculate_and_deploy.yml`.
+  controller but was never pushed. Re-run `06_recalculate_and_deploy.yml`.
 - **`not determined` in the BGP session table is not a fault in the fabric.**
   It means this run could not read the border leaf, and the reason the
   transport gave is printed beside it. Those rows are excluded from the count
@@ -1512,16 +1569,18 @@ router is discovered and added only when the fabric's switch list does not
 already contain it. Skip the router with `-e
 dc_external_add_edge_router=false`.
 
-**The VRF-Lite extensions themselves** - MAIN, PROD and IOT reaching out of
-DC-Service-Leaf to the edge router - are stage 06, `06_vrf_lite.yml`. They are
+**The VRF-Lite handoffs themselves** - MAIN, PROD and IOT reaching out of
+DC-Service-Leaf to the edge router - are stage 05, `05_l3out.yml`, built on
+this branch as three L3Outs (on `main`, stage 06 `06_vrf_lite.yml` builds
+them as VRF attachment extensions). They are
 the one part of the build that does not come from the Nexus as Code model,
 because that model cannot express them: a `vrf_attach_group` entry names a
 switch and nothing else, with no key for `EXTEND: VRF_LITE`, the
 sub-interface, the dot1q tag or the neighbour address. The model does the half
 guide's own: section 8 has two Detach/Attach sliders per VRF, one for the
 it can - `DC-Service-Leaf` is in the `dc_leaves` attach group, so stage 02
-attaches the three VRFs to it - and stage 06 writes typed extension values
-through the Manage API for the other half. `dcnm_vrf` does not expose the MTU
+attaches the three VRFs to it - and the L3Outs carry the other half (on
+`main`, stage 06 writes typed extension values through the Manage API). `dcnm_vrf` does not expose the MTU
 or neighbor ASN in its `vrf_lite` options, and Manage `extensionValues` has no
 template field. That split is the guide's own: section 8 has two Detach/Attach
 sliders per VRF, one for the attachment and one for the extension.

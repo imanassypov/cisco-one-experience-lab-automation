@@ -4,15 +4,17 @@ This directory contains the Infrastructure as Code track for the data center fab
 
 The automation is an alternative to the manual Nexus Dashboard deployment in the student guide. Run one track or the other. Both tracks build the same `Pseudoco-DC1` fabric on the same pod.
 
+> **Evaluation branch `eval/nd-l3out`.** This branch builds the VRF-Lite handoff as three Nexus Dashboard **L3Out** objects instead of VRF attachment extensions, and replaces most `cisco.dcnm` and `dcnm_rest` calls in stages 03 to 08 with native `cisco.nd` modules from the unreleased `develop` branch (commit `671e596`). The stages are renumbered. It is not merged to `main` and has not yet been run on a pod. Findings, open questions and the test plan: [`docs/eval-nd-l3out.md`](../../docs/eval-nd-l3out.md).
+
 ## What the automation builds
 
-The `ansible/` track uses Cisco Nexus as Code (`cisco.nac_dc_vxlan`) with the `cisco.dcnm` collection. It automates the fabric-side work covered by sections 4 through 8 of the guide:
+The `ansible/` track uses Cisco Nexus as Code (`cisco.nac_dc_vxlan`) with the `cisco.dcnm` collection for stage 02, and `cisco.nd` for the stages after it. It automates the fabric-side work covered by sections 4 through 8 of the guide:
 
 - The `Pseudoco-DC1` VXLAN EVPN fabric and its five switches.
 - The DC-Leaf1/DC-Leaf2 vPC pair and three server port-channels.
 - The MAIN, PROD, and IOT VRFs and networks.
 - The External fabric and its IOS-XE edge router as a monitored device.
-- Three VRF-Lite extensions from DC-Service-Leaf.
+- Three VRF-Lite handoffs from DC-Service-Leaf, built as L3Outs.
 
 The edge router is already configured by the pod. The pipeline discovers it and adds it to the External fabric, but does not change its configuration. This is intentional: the External fabric is in Monitor Mode and the router's sub-interfaces and BGP peers are pre-built.
 
@@ -64,19 +66,27 @@ ansible-playbook playbooks/01_dc_deploy.yml
 
 The first command is a prerequisite, not part of the orchestrator. It reads each switch serial over SSH and generates `playbooks/host_vars/Pseudoco-DC1/topology_switches.nac.yaml`. That file is build output and is overwritten on every run. Change the tracked `dc_switches.yml` or `topology_switches.nac.yaml.example` instead.
 
-The orchestrator runs the stages in this order:
+On this branch, `cisco.nd` must be installed into the git-ignored `.eval_collections/` at the repository root, with its Python requirements. `ansible.cfg` searches that path first, for this track only:
 
-```text
-02_create_dc_fabric.yml
-03_fabric_advanced_settings.yml
-04_external_fabric.yml
-05_recalculate_and_deploy.yml
-06_vrf_lite.yml
-07_recalculate_and_deploy.yml
-08_verify_fabric.yml
+```bash
+cd ~/cisco-one-experience-lab-automation
+ansible-galaxy collection install 'git+https://github.com/CiscoDevNet/ansible-nd.git,671e596' \
+  -p .eval_collections --no-deps
+pip install 'pydantic==2.12.5' requests_toolbelt jsonpath-ng lxml
 ```
 
-The stages follow the execution order. Stage 04 creates the VRF-Lite inter-fabric link that stage 06 needs, and stage 05 deploys its parent interface. Stage 06 uses the Manage API to reconcile dot1q resources and the three VRF-Lite extensions; stage 07 deploys those extensions to DC-Service-Leaf.
+The orchestrator runs each stage as its own `ansible-playbook` process, in this order, and stops at the first failure:
+
+```text
+02_create_dc_fabric.yml          cisco.nac_dc_vxlan / cisco.dcnm
+03_fabric_advanced_settings.yml  cisco.nd
+04_external_fabric.yml           cisco.nd
+05_l3out.yml                     cisco.nd
+06_recalculate_and_deploy.yml    cisco.nac_dc_vxlan / cisco.dcnm
+07_verify_fabric.yml             cisco.nd, plus SSH to the border leaf
+```
+
+Separate processes keep the `cisco.dcnm` and `cisco.nd` connections to Nexus Dashboard apart. Each stage's output appears when the stage finishes and is also saved under `ansible/evidence/dc-deploy-<run>/`. Stage 04 creates the External fabric, adds the edge router and builds the eBGP VRF-Lite inter-fabric link. Stage 05 creates and attaches the three L3Outs. Stage 06 deploys everything once.
 
 ## Intent and configuration
 
@@ -87,7 +97,7 @@ The files under `ansible/inventory/group_vars/all/` hold values that the current
 - `dc_switches.yml`: switch addresses, roles, and endpoint interfaces.
 - `dc_advanced_settings.yml`: non-VRF fabric-object properties such as license tier, telemetry, and location.
 - `dc_external_settings.yml`: the External fabric and monitored edge router.
-- `dc_vrf_lite.yml`: all VRF-Lite intent, including fabric mode and subnet pool, inter-fabric link settings, and the three extensions with dot1q tags, addresses, and BGP neighbors.
+- `dc_vrf_lite.yml`: all VRF-Lite intent, including fabric mode and subnet pool, inter-fabric link settings, and the three L3Outs with dot1q tags, addresses, and BGP neighbors. Keys match the `cisco.nd` module options.
 
 The model is the source of truth for the objects it describes. To change those objects, edit the model, run the pipeline, and review the verification report. Do not make an undocumented UI change and expect the repository to record it.
 
@@ -95,29 +105,24 @@ The model is the source of truth for the objects it describes. To change those o
 
 - Stage 02 imports all five switches with `preserve_config: false`. This erases their existing running configuration without prompting. Use a pod that is safe to rebuild.
 - Stage 02 can remain silent for several minutes while Nexus Dashboard discovers the switches. Do not interrupt that request unless it has clearly exceeded the expected time.
-- Stage 06 requires a Manage `DCI subnet pool` link resource on the border serial and `Ethernet1/8`, plus a VRF attachment with `vlanId`. Stage 04 creates the link and stage 05 deploys its parent interface; if either precondition is missing, stage 06 names the required earlier stage.
+- Stage 05 requires the inter-fabric link from stage 04 and stops with a message naming stage 04 if it is missing. Its attach step reports `changed` on every run, because the module cannot read whether an L3Out is already attached.
+- Two values are still open and can be switched per run while the pod settles them: how `interface_name` is written (`-e dc_vrf_lite_interface_form=subinterface`), and which `peer_vrf` names Nexus Dashboard accepts for the External fabric.
 - The External edge router is not configured by this repository. Its side of the VRF-Lite links must remain consistent with the fixed values in `dc_vrf_lite.yml`.
-
-2026-11-10, observed on ND 4.2.1.10: the UI's **Edit VRF attachment** page
-showed the IFC default address pair (`192.168.252.1/30`, `192.168.252.2`)
-while MAIN's saved Manage record held `.13/30` and `.14`. Cancel that page;
-do not Save. Verify saved values with stage 08 or `vrfAttachments/query`.
-Whether Save persists the displayed defaults is untested.
 
 ## Verification
 
-Stage 08 is read-only and writes `ansible/evidence/stage08-verification.md` together with `stage08-verification.html`, the same findings laid out as a formal report. It compares the controller state with the declared model for switches, VRFs, networks, and all six Manage VRF-Lite extension fields, requiring status `deployed`. It also reads DC-Service-Leaf: the three sub-interfaces are parsed from `show interface` with pyATS/Genie and compared on dot1q tag, address and MTU.
+Stage 07 is read-only and writes `ansible/evidence/stage07-verification-<run>.md` together with a matching `.html`, the same findings laid out as a formal report, and the raw L3Out collection as `stage07-l3outs-<run>.json`. It compares the controller state with the declared model for switches, VRFs, networks, and the three L3Outs (VRF, interface, dot1q tag, addresses, MTU and peer ASN). No module reports whether an L3Out is attached, so that is proven on the switch instead: the three sub-interfaces are parsed from `show interface` on DC-Service-Leaf with pyATS/Genie and compared on dot1q tag, address and MTU.
 
 It also reads BGP session state from DC-Service-Leaf over SSH when `dc_verify_bgp_sessions` is enabled. A reachable switch adds three BGP checks; an unreachable switch produces `not determined` rows rather than claiming that the sessions are down. The BGP check can be skipped with:
 
 ```bash
-ansible-playbook playbooks/08_verify_fabric.yml -e dc_verify_bgp_sessions=false
+ansible-playbook playbooks/07_verify_fabric.yml -e dc_verify_bgp_sessions=false
 ```
 
 The report does not verify the edge router's configuration or data-plane traffic. Those remain outside the pipeline's ownership.
 
 ## Other playbooks
 
-- `09_cleanup.yml` is a destructive teardown and is not called by the orchestrator. It requires `-e dc_cleanup_confirm=CLEANUP_OK`. It removes the overlays, the inter-fabric link, the switches and both fabrics, in that order, and then defaults `Ethernet1/8` on the border leaf so the sub-interfaces it built do not survive into the next run.
+- `08_cleanup.yml` is a destructive teardown and is not called by the orchestrator. It requires `-e dc_cleanup_confirm=CLEANUP_OK`. It detaches and deletes the L3Outs, then removes the overlays, the inter-fabric link, the switches and both fabrics, in that order, and then defaults `Ethernet1/8` on the border leaf so the sub-interfaces it built do not survive into the next run.
 
 For implementation details, see [`ansible/README.md`](ansible/README.md).
