@@ -59,6 +59,10 @@ stage numbers (06 extensions, 05 and 07 deploys, 08 verify, 09 cleanup). They
 are kept unchanged for comparison. The tables in this section and the
 pipeline table describe this branch.
 
+Comments in the playbooks and data model are kept short for students.
+Implementation detail for maintainers and coding agents is in
+[`../AGENTS.md`](../AGENTS.md).
+
 ## What this builds
 
 PseudoCo's campus and SD-WAN domains already segment traffic into MAIN, PROD
@@ -611,8 +615,9 @@ controller cannot tell you a serial until the switch is already in the fabric,
 so the serial has to come from somewhere else first.
 
 Stage 00 gets it from the switches. It SSHes to each management address in
-`dc_switches.yml`, runs `nxos_facts`, and reads the serial from
-`show version`. Because it never asks the controller, it has no ordering
+`dc_switches.yml` and reads the chassis serial from `show inventory`. This
+is the serial the controller uses; `show version` reports a different number
+on Nexus 9000v. Because it never asks the controller, it has no ordering
 dependency: nothing has to exist in Nexus Dashboard before it runs.
 
 It then generates `topology_switches.nac.yaml` by copying the `.example` and
