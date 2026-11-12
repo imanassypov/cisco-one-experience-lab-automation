@@ -78,12 +78,13 @@ dc_vrf_lite_ifc:
 # parent interface detected").
 dc_vrf_lite_mtu: 1500
 
-# How interface_name is written in each L3Out link. Open question B2 in
-# docs/eval-nd-l3out.md: the module's EXAMPLES use the sub-interface name
-# (Ethernet1/8.2) while its integration tests use the parent name plus
-# vlan_id. Override per run while the pod settles it:
-#   -e dc_vrf_lite_interface_form=subinterface
-dc_vrf_lite_interface_form: parent
+# How interface_name is written in each L3Out link: parent.dot1q, for example
+# Ethernet1/8.2. Settled on the pod 2026-11-12 (ND 4.2.1.10): with the parent
+# name the create is rejected with "Subinterface name should contain dot1q ID
+# as well. Ex: Ethernet1/1.300". The module's EXAMPLES are right and its
+# integration tests, which use the parent name, are not. 'parent' is kept as
+# a value only to reproduce that rejection.
+dc_vrf_lite_interface_form: subinterface
 
 # Which rows stages 05 and 07 act on: all, or one or more VRF names.
 dc_vrf_lite_only: all
