@@ -202,6 +202,28 @@
     ansible_network_os: cisco.nd.nd
 
   tasks:
+    # nd_manage_links resolves both endpoints in their fabrics' inventories
+    # before it does anything, even for a delete, and fails when either is
+    # missing - a router that never joined, a fabric already gone, a switch
+    # an earlier partial teardown removed. Reading the links first, which
+    # needs no endpoint, keeps a re-run of a partial teardown going.
+    - name: Read the inter-fabric links of the DC fabric
+      cisco.nd.nd_manage_links:
+        fabric_name: "{{ dc_fabric_name }}"
+        link_scope: manage
+        state: gathered
+      register: dc_cleanup_links_read
+      when: dc_cleanup_dc_present | bool
+
+    - name: Note whether the link is still there
+      ansible.builtin.set_fact:
+        dc_cleanup_link_present: >-
+          {{ dc_cleanup_links_read.gathered | default([])
+             | selectattr('dst_fabric_name', 'defined')
+             | selectattr('dst_fabric_name', 'equalto', dc_external_fabric_name)
+             | selectattr('src_interface_name', 'equalto', dc_vrf_lite_interface)
+             | list | length > 0 }}
+
     - name: Delete the link on {{ dc_vrf_lite_interface }}
       cisco.nd.nd_manage_links:
         fabric_name: "{{ dc_fabric_name }}"
@@ -215,14 +237,14 @@
             src_interface_name: "{{ dc_vrf_lite_interface }}"
             dst_interface_name: "{{ dc_vrf_lite_peer_interface }}"
       register: dc_cleanup_link
-      when: dc_cleanup_dc_present | bool
+      when: dc_cleanup_link_present | bool
 
     - name: Report the link result
       ansible.builtin.debug:
         msg: >-
-          {{ 'Inter-fabric link removed. changed=' ~ (dc_cleanup_link.changed | default(false)) ~ '.'
-             if dc_cleanup_dc_present | bool
-             else dc_fabric_name ~ ' is not on the controller - no link to remove.' }}
+          {{ 'Inter-fabric link removed.'
+             if dc_cleanup_link_present | bool
+             else 'No inter-fabric link on ' ~ dc_vrf_lite_interface ~ ' - nothing to remove.' }}
 
 # ---------------------------------------------------------------------------
 # 4. Inventory

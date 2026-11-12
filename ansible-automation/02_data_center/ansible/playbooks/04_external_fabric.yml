@@ -32,6 +32,7 @@
 #
 # Useful override:
 #   -e dc_external_add_edge_router=false   create the fabric, skip the router
+#                                          and the link (stage 05 then stops)
 
 - name: Stage 04 - create the External connectivity fabric
   hosts: External
@@ -198,6 +199,10 @@
 
   vars:
     ansible_network_os: cisco.nd.nd
+    # Repeated from the play above: play vars do not carry across plays. The
+    # link cannot be built without the router - nd_manage_links resolves the
+    # far end in the External fabric's inventory and fails if it is absent.
+    dc_external_add_edge_router: true
 
   tasks:
     # The DC fabric's ASN lives in the NAC model rather than in group_vars, so
@@ -234,6 +239,7 @@
                               'auto_gen_config_default_vrf': false,
                               'auto_gen_config_nx_peer_default_vrf': false}) }}
       register: dc_external_link
+      when: dc_external_add_edge_router | bool
 
     - name: Report the link result
       ansible.builtin.debug:
@@ -242,4 +248,6 @@
           {{ dc_vrf_lite_interface }} -> {{ dc_external_edge_router.hostname }}
           {{ dc_vrf_lite_peer_interface }}, link MTU
           {{ dc_vrf_lite_ifc.link_mtu }}.
-          changed={{ dc_external_link.changed | default(false) }}.
+          {{ ('changed=' ~ (dc_external_link.changed | default(false)) ~ '.')
+             if dc_external_add_edge_router | bool
+             else 'Skipped: dc_external_add_edge_router is false.' }}
