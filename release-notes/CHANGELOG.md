@@ -6,6 +6,15 @@ dated files, consolidated into the arcs they actually formed. Exact error
 strings, version numbers and API paths are kept deliberately — they are the
 reason these notes exist. Full history is in `git log`.
 
+- **repo — the student guide moved out, and its old history was purged.** *2026-11-13.*
+  The guide now lives in
+  [cisco-one-experience-lab-guide](https://github.com/imanassypov/cisco-one-experience-lab-guide).
+  Historical `docs/` assets were removed from every published automation branch
+  and the tag, while `main` retains the Pages redirect. Ordinary full clones
+  no longer download old screenshots. Commit IDs changed: existing users
+  must re-clone and preserve local work and gitignored configuration, rather
+  than merge or push the old history. See [migration notes](2026-11-13.md).
+
 - **02_data_center — the VRF-Lite handoff is now three Nexus Dashboard L3Outs, built with `cisco.nd`.** *2026-11-12.* The three handoffs out of DC-Service-Leaf
   are no longer VRF attachment extensions written over the Manage API; each VRF
   gets one L3Out (`05_l3out.yml`, `nd_manage_l3out`) on an eBGP VRF-Lite

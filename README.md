@@ -29,6 +29,12 @@ https://github.com/imanassypov/cisco-one-experience-lab-automation
 **Students** never install anything locally — they clone onto the script server
 and run everything there. Start at [Getting started](#getting-started).
 
+> **Existing clones: re-clone after the 2026-11-13 history purge.** The old
+> student guide was removed from all published branches and the tag, changing
+> commit IDs. Keep your old checkout until you have copied uncommitted work and
+> gitignored local configuration into a fresh clone. Do not merge or push the
+> old history back. See the [migration notes](release-notes/2026-11-13.md).
+
 ## Lab references
 
 - **[Lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-guide/)** — the full student walkthrough. Its source, screenshots and sample reports live in a separate repository, [cisco-one-experience-lab-guide](https://github.com/imanassypov/cisco-one-experience-lab-guide), so cloning this one onto the script server stays small. [docs/](docs/) here holds only a redirect from the guide's old Pages URL
