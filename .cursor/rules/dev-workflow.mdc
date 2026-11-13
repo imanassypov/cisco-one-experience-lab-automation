@@ -127,7 +127,8 @@ dCloud **PseudoCo / Cisco One** lab. Client VPN must be up before SSH or playboo
 
 ## Docs, release notes and log noise
 
-- The student guide is served by **GitHub Pages from `main` / `/docs`** at `https://imanassypov.github.io/cisco-one-experience-lab-automation/`. It lives at `docs/index.html` — the old `User Guide/` copy was removed, so do not recreate it.
+- The student guide lives in a **separate repository**, `imanassypov/cisco-one-experience-lab-guide` (`index.html` at its root), served by GitHub Pages from its `main` / `/` at `https://imanassypov.github.io/cisco-one-experience-lab-guide/`. Clone it beside this repo to edit it. This repo's `docs/` holds only a redirect from the old Pages URL — never add guide content, images or screenshots back here; that is what made the student clone slow.
+- Student-facing clone commands use `git clone --depth 1 --single-branch`. Keep them that way, and keep the automation working with `git pull` on a shallow clone.
 - Release notes are `release-notes/YYYY-MM-DD.md`, **one file per date**, bullets appended for same-day changes. Entry style: `- **area — what changed.** Why it matters operationally.`
 - Any code or file change must update the README(s) **and** the release note in the same commit, and a rename needs a repo-wide grep of the old name across `**/*.md` and code.
 - `display_skipped_hosts = False` is set in the campus `ansible.cfg` (stage 01 output went 1298 → 249 lines). The assurance and bootstrap `ansible.cfg` files do **not** have it yet.

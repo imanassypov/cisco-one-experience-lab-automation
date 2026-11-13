@@ -81,7 +81,7 @@ ssh cisco@198.18.134.12
 ### Step 2 — Clone the repository onto the script server
 
 ```bash
-git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+git clone --depth 1 --single-branch https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation
 ```
 

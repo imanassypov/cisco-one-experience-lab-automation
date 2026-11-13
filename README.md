@@ -31,16 +31,16 @@ and run everything there. Start at [Getting started](#getting-started).
 
 ## Lab references
 
-- **[Lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-automation/)** — the full student walkthrough, published from [docs/](docs/) by GitHub Pages. The same file opens offline as [docs/index.html](docs/index.html)
+- **[Lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-guide/)** — the full student walkthrough. Its source, screenshots and sample reports live in a separate repository, [cisco-one-experience-lab-guide](https://github.com/imanassypov/cisco-one-experience-lab-guide), so cloning this one onto the script server stays small. [docs/](docs/) here holds only a redirect from the guide's old Pages URL
 - [Lab topology diagram](Lab%20Topology/PseudoCo_Lab_Topology.png)
 - [Lab access lookup](Lab%20Topology/PseudoCo_Lab_Access_Lookup.md) — host and URL index. Credentials for all playbooks are vault-encrypted in [lab_access.yml](Lab%20Topology/lab_access.yml)
 - [Release notes](release-notes/) — what changed and what an operator should do differently. Start with [`CHANGELOG.md`](release-notes/CHANGELOG.md), the consolidated history; any dated file beside it is the current day's working note.
 
-> **Guide images.** Every image in `docs/index.html` now resolves from
-> [docs/automation_images/](docs/automation_images/), so the guide renders
-> complete both on GitHub Pages and offline. Seven placeholders remain, marked
-> with a `data-missing` attribute: those screenshots were never exported from
-> the course platform and have no source to restore from.
+> **Guide images.** Every image in the guide's `index.html` resolves from its
+> own `automation_images/` folder, so the guide renders complete both on GitHub
+> Pages and offline. Seven placeholders remain, marked with a `data-missing`
+> attribute: those screenshots were never exported from the course platform and
+> have no source to restore from.
 
 ## Collection layout
 
@@ -154,7 +154,7 @@ with first-run setup and then serves as the per-stage reference.
 | 2 | **EVPN assurance with Splunk** — streams fabric telemetry into Splunk and installs the dashboards | [README — Installation](ansible-automation/07_assurance/splunk_evpn/README.md#installation) — automated and manual deployment | [README — How it works](ansible-automation/07_assurance/splunk_evpn/README.md#how-it-works) — architecture and per-stage reference |
 | 3 | **DC fabric with Nexus as Code** — builds the `Pseudoco-DC1` VXLAN EVPN fabric on Nexus Dashboard, stages 00–09 | [README.md](ansible-automation/02_data_center/ansible/README.md) — running it, the data model, and the traps | [02_data_center/README.md](ansible-automation/02_data_center/README.md) — how the DC tracks fit together |
 
-Each collection also has a walkthrough in the [lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-automation/). The DC track is covered twice there, deliberately: **Nexus Dashboard - DC Fabric Deployment — Manual Provisioning** clicks the fabric together in the Nexus Dashboard UI, and **Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code** builds the same fabric from this repository in nine cards. They are alternatives — do one or the other. Card 1 of the IaC track opens with a table of exactly where the pipeline diverges from the manual steps, and why.
+Each collection also has a walkthrough in the [lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-guide/). The DC track is covered twice there, deliberately: **Nexus Dashboard - DC Fabric Deployment — Manual Provisioning** clicks the fabric together in the Nexus Dashboard UI, and **Nexus Dashboard - DC Fabric Deployment — Infrastructure as Code** builds the same fabric from this repository in nine cards. They are alternatives — do one or the other. Card 1 of the IaC track opens with a table of exactly where the pipeline diverges from the manual steps, and why.
 
 Assurance depends on the fabric being up: the telemetry subscriptions it
 consumes are pushed by EVPN stage 10, so run the campus collection first.

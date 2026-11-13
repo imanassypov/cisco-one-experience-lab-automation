@@ -3,7 +3,7 @@
 #
 # Run this ON the script server, from your own clone of the repository:
 #   ssh cisco@198.18.134.12
-#   git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+#   git clone --depth 1 --single-branch https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 #   cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 #   ./stage-script-server.sh
 #

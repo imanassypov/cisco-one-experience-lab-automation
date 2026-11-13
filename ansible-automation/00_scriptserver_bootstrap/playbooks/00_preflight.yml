@@ -32,7 +32,7 @@
         fail_msg: >-
           {{ repo_root }} does not look like a full clone of the automation
           repository. Re-clone it with:
-          git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+          git clone --depth 1 --single-branch https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 
     - name: Check the vault password file exists
       ansible.builtin.stat:

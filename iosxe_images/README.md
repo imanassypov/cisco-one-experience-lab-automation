@@ -182,4 +182,4 @@ under **System > Settings > Cisco.com Credentials**.
 - Stage 09 reference, including phases and knobs:
   [`01_campus/evpn/ansible/README.md`](../ansible-automation/01_campus/evpn/ansible/README.md#stage-09--software-image-management-swim)
 - Student walkthrough, Card 1 Step 5:
-  [`docs/index.html`](../docs/index.html)
+  [lab user guide](https://imanassypov.github.io/cisco-one-experience-lab-guide/)

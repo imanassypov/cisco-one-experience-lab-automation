@@ -15,7 +15,7 @@ Host and URL index: [PseudoCo_Lab_Access_Lookup.md](../../Lab%20Topology/PseudoC
 ssh cisco@198.18.134.12
 
 # 2. Clone this repository onto the script server
-git clone https://github.com/imanassypov/cisco-one-experience-lab-automation.git
+git clone --depth 1 --single-branch https://github.com/imanassypov/cisco-one-experience-lab-automation.git
 cd cisco-one-experience-lab-automation/ansible-automation/00_scriptserver_bootstrap
 
 # 3. Stage the box. Prompts once for your dCloud POD number.

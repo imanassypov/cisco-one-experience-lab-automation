@@ -40,11 +40,12 @@ It is the part whose absence actually costs something.
 - Markdown anchor links resolve. GitHub lowercases a heading, drops
   punctuation and hyphenates spaces — an em dash in a heading yields a
   double hyphen and a dead link.
-- `docs/index.html` tag balance is unchanged, since it is hand-edited HTML:
+- The guide's `index.html` tag balance is unchanged, since it is hand-edited
+  HTML (run from the `cisco-one-experience-lab-guide` clone):
 
   ```bash
   python3 -c "
-  import re; s=open('docs/index.html').read()
+  import re; s=open('index.html').read()
   for t in ['div','pre','ul','li','p','tr','td','table']:
       o,c=len(re.findall(r'<%s\b'%t,s)),len(re.findall(r'</%s>'%t,s))
       print(t,o,c,'OK' if o==c else 'MISMATCH')"
@@ -67,7 +68,7 @@ Four `generalPurpose` subagents in three waves, with these file boundaries.
 |---|---|---|
 | 1 | **Build** | `ansible-automation/**` except `**/README.md` |
 | 2 (parallel) | **README** | `**/README.md` **and** `release-notes/YYYY-MM-DD.md` |
-| 2 (parallel) | **Guide** | `docs/index.html` |
+| 2 (parallel) | **Guide** | `index.html` in the separate `cisco-one-experience-lab-guide` repo (committed and pushed there) |
 | 3 | **Review** | may edit any file in waves 1–2 to correct an error |
 
 Wave 2 launches only after wave 1 is **verified** done. A truncated or
@@ -99,7 +100,8 @@ Subagents do not share this session's context. Every prompt must carry:
 2. The user's original request, verbatim — not a paraphrase.
 3. The relevant constraints from `dev-workflow.mdc`, quoted, not referenced.
    A subagent cannot see that this is a dCloud lab, that credentials come
-   only from the vault, or that `docs/index.html` is served by GitHub Pages.
+   only from the vault, or that the guide is a separate repository
+   (`cisco-one-experience-lab-guide`) served by GitHub Pages.
 4. Its file ownership from the table, stated as a hard boundary.
 5. Any live evidence already in hand — a captured API payload, a `PLAY RECAP`,
    an exact error string. It turns a discovery task into an implementation
